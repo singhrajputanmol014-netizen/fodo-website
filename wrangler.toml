@@ -1,8 +1,12 @@
 # Cloudflare Pages config (used by Git deploys and `npx wrangler pages deploy`).
-# It makes the free Workers AI binding automatic. KV and secrets are added in the dashboard (see DEPLOY-GUIDE.md).
-name = "fodo"
+# It makes the free Workers AI binding automatic. Secrets are added in the dashboard (see DEPLOY-GUIDE.md).
+name = "fodo-website"
 pages_build_output_dir = "."
 compatibility_date = "2026-10-01"
 
 [ai]
 binding = "AI"
+
+[[kv_namespaces]]
+binding = "CHAT_KV"
+id = "dc36f659051342a39608e79046ae2d44"

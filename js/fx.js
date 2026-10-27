@@ -96,7 +96,23 @@
       document.querySelectorAll(".cmp").forEach(function (c) {
         var r = c.querySelector("input[type=range]"); if (!r) return;
         var upd = function () { c.style.setProperty("--pos", r.value + "%"); };
-        r.addEventListener("input", upd); upd();
+        var raf = 0, hinting = false;
+        var stop = function () { if (c.classList.contains("touched")) return; c.classList.add("touched"); if (hinting) { cancelAnimationFrame(raf); hinting = false; r.value = 50; upd(); } };
+        r.addEventListener("input", function () { stop(); upd(); });
+        ["pointerdown", "focus", "keydown", "touchstart"].forEach(function (ev) { r.addEventListener(ev, stop, { passive: true }); });
+        upd();
+        // one gentle sweep the first time the slider scrolls into view, so people see it can be dragged
+        if (!reduce && "IntersectionObserver" in window) {
+          var io = new IntersectionObserver(function (en) {
+            if (!en[0].isIntersecting) return; io.disconnect();
+            setTimeout(function () {
+              if (c.classList.contains("touched")) return; hinting = true; var t0 = performance.now();
+              var step = function (t) { var k = Math.min(1, (t - t0) / 1800); r.value = Math.round(50 - 22 * Math.sin(k * Math.PI * 2)); upd(); if (k < 1 && hinting) raf = requestAnimationFrame(step); else hinting = false; };
+              raf = requestAnimationFrame(step);
+            }, 900);
+          }, { threshold: 0.6 });
+          io.observe(c);
+        }
       });
     }, "compare");
 

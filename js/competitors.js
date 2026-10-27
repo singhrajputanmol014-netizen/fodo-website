@@ -56,7 +56,8 @@
     setStatus("Searching " + type + " near " + (coords ? "you" : area) + "…", "busy");
     list.innerHTML = '<li class="cf-empty">Looking up businesses near ' + esc(coords ? "you" : area) + "…</li>";
     var u = (U.root || "/") + "api/competitors?type=" + encodeURIComponent(type) + "&area=" + encodeURIComponent(coords ? "" : area) + "&radius=" + rIn.value + (coords ? "&lat=" + coords.lat + "&lng=" + coords.lng : "");
-    fetch(u, { headers: { accept: "application/json" } }).then(function (r) { return r.json().catch(function () { return { ok: false, reason: "The finder service did not answer." }; }).then(function (j) { j._s = r.status; return j; }); })
+    var ac = "AbortController" in window ? new AbortController() : null, tm = ac ? setTimeout(function () { ac.abort(); }, 35000) : 0;
+    fetch(u, { headers: { accept: "application/json" }, signal: ac ? ac.signal : undefined }).then(function (r) { clearTimeout(tm); return r.json().catch(function () { return { ok: false, reason: r.status === 404 ? "The finder service is not deployed yet (404)." : "The finder service did not answer (code " + r.status + ")." }; }).then(function (j) { j._s = r.status; if (!j.ok && j.errors && j.errors.length) j.reason = (j.reason || "") + " [" + j.errors.join(", ") + "]"; return j; }); })
       .then(function (j) {
         busy = false;
         if (!j.ok) { data = null; fallback(type, area, j.reason); return; }
@@ -64,7 +65,7 @@
         var n = j.results.length;
         setStatus(n ? n + " businesses found within " + km(j.radius) + (j.source === "google" ? " · from Google Maps" : " · from OpenStreetMap, with Google Maps links") : (j.note || "No listed businesses found. Try a bigger radius or a nearby area."), n ? "ok" : "warn");
         paint(); insight();
-      }, function () { busy = false; data = null; fallback(type, area); });
+      }, function (err) { clearTimeout(tm); busy = false; data = null; fallback(type, area, err && err.name === "AbortError" ? "The map servers took too long to answer." : "Could not reach the finder — check your connection or turn off any ad-blocker for this site."); });
   }
   function fallback(type, area, reason) {
     var q = type + " near " + (coords ? coords.lat + "," + coords.lng : area + ", Delhi NCR");

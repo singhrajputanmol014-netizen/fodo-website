@@ -54,22 +54,41 @@ const R = 6371000, rad = (d) => (d * Math.PI) / 180;
 export function dist(a, b) { const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng); const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
 const gmapsSearch = (name, addr) => "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([name, addr].filter(Boolean).join(", "));
 
+// every outside call gets a time limit, so a slow map server can never hang the page
+const fetchT = (u, o, ms) => fetch(u, Object.assign({}, o, { signal: AbortSignal.timeout(ms || 9000) }));
+// popular Delhi NCR areas: known centres, no geocoding call needed
+export const AREAS = { "najafgarh": [28.6092, 76.9798], "dwarka": [28.5921, 77.046], "uttam nagar": [28.6219, 77.055], "janakpuri": [28.6219, 77.0878], "rajouri garden": [28.6492, 77.122],
+  "punjabi bagh": [28.6683, 77.132], "pitampura": [28.7036, 77.1318], "rohini": [28.7383, 77.0822], "connaught place": [28.6315, 77.2167], "karol bagh": [28.6519, 77.1907],
+  "lajpat nagar": [28.5677, 77.2433], "saket": [28.5245, 77.2066], "hauz khas": [28.5494, 77.2001], "greater kailash": [28.5482, 77.238], "vasant kunj": [28.52, 77.159],
+  "mayur vihar": [28.609, 77.294], "laxmi nagar": [28.6304, 77.2777], "preet vihar": [28.6418, 77.295], "gurugram sector 29": [28.4683, 77.064], "cyber city gurugram": [28.495, 77.089],
+  "sohna road gurugram": [28.41, 77.044], "noida sector 18": [28.57, 77.326], "noida sector 62": [28.627, 77.365], "greater noida": [28.4744, 77.504], "indirapuram ghaziabad": [28.646, 77.369],
+  "faridabad sector 15": [28.396, 77.326], "gurugram": [28.4595, 77.0266], "gurgaon": [28.4595, 77.0266], "noida": [28.5355, 77.391], "ghaziabad": [28.6692, 77.4538], "faridabad": [28.4089, 77.3178],
+  "west delhi": [28.6519, 77.0597], "south delhi": [28.5355, 77.2167], "new delhi": [28.6139, 77.209], "delhi": [28.6139, 77.209] };
+const normArea = (a) => a.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\b(new delhi|delhi|india|ncr)\b/g, (m, x, i, str) => (str.trim() === m ? m : "")).replace(/\s+/g, " ").trim();
+export function knownArea(area) { const n = normArea(area); if (AREAS[n]) return { lat: AREAS[n][0], lng: AREAS[n][1], label: area }; return null; }
 async function geocode(area) {
-  const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&viewbox=76.80,28.95,77.65,28.25&q=" + encodeURIComponent(area);
-  const r = await fetch(u, { headers: { "user-agent": UA, "accept-language": "en" } });
-  if (!r.ok) throw new Error("geocode " + r.status);
-  const j = await r.json(); if (!j.length) return null;
-  return { lat: +j[0].lat, lng: +j[0].lon, label: j[0].display_name };
+  const known = knownArea(area); if (known) return known;
+  try {
+    const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&viewbox=76.80,28.95,77.65,28.25&q=" + encodeURIComponent(area);
+    const r = await fetchT(u, { headers: { "user-agent": UA, "accept-language": "en" } }, 7000);
+    if (r.ok) { const j = await r.json(); if (j.length) return { lat: +j[0].lat, lng: +j[0].lon, label: j[0].display_name }; }
+  } catch (e) {}
+  // backup geocoder (Photon, also OpenStreetMap data), biased to Delhi
+  const r2 = await fetchT("https://photon.komoot.io/api/?limit=1&lat=28.61&lon=77.21&q=" + encodeURIComponent(area), { headers: { "user-agent": UA } }, 7000);
+  if (!r2.ok) throw new Error("geocode " + r2.status);
+  const f = ((await r2.json()).features || [])[0]; if (!f) return null;
+  return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], label: (f.properties && f.properties.name) || area };
 }
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 
 async function viaGoogle(env, { type, area, center, radius }) {
   const body = { textQuery: `${type} in ${area}`, maxResultCount: 20, languageCode: "en", regionCode: "IN" };
   if (center) body.locationBias = { circle: { center: { latitude: center.lat, longitude: center.lng }, radius: Math.min(50000, radius) } };
-  const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+  const r = await fetchT("https://places.googleapis.com/v1/places:searchText", {
     method: "POST", body: JSON.stringify(body),
     headers: { "content-type": "application/json", "X-Goog-Api-Key": env.GOOGLE_PLACES_KEY,
       "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri,places.nationalPhoneNumber,places.businessStatus,places.primaryTypeDisplayName,places.currentOpeningHours.openNow" },
-  });
+  }, 9000);
   if (!r.ok) throw new Error("google " + r.status);
   const j = await r.json();
   const list = (j.places || []).map((p) => ({
@@ -88,12 +107,20 @@ async function viaOSM({ type, area, center, radius }) {
   if (!center) return { source: "osm", center: null, results: [], note: "Area not found. Try adding the city, e.g. “Dwarka, Delhi”." };
   const tags = osmTags(type), around = `(around:${radius},${center.lat},${center.lng})`;
   const safe = type.replace(/["\\]/g, "").slice(0, 40);
-  const parts = tags ? tags.map(([k, v]) => `nwr["${k}"~"^(${v})$"]["name"]${around};`) : [];
-  parts.push(`nwr["name"~"${safe.replace(/[.*+?^${}()|[\]]/g, "")}",i]["shop"]${around};`, `nwr["name"~"${safe.replace(/[.*+?^${}()|[\]]/g, "")}",i]["amenity"]${around};`, `nwr["name"~"${safe.replace(/[.*+?^${}()|[\]]/g, "")}",i]["office"]${around};`);
-  const q = `[out:json][timeout:20];(${parts.join("")});out center tags 60;`;
-  const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": UA } });
-  if (!r.ok) throw new Error("overpass " + r.status);
-  const j = await r.json(), seen = new Set();
+  const word = safe.replace(/[.*+?^${}()|[\]]/g, "");
+  // known category → tag query only (fast); unknown → name search among shops/offices/amenities
+  const parts = tags ? tags.map(([k, v]) => `nwr["${k}"~"^(${v})$"]["name"]${around};`)
+    : [`nwr["name"~"${word}",i]["shop"]${around};`, `nwr["name"~"${word}",i]["amenity"]${around};`, `nwr["name"~"${word}",i]["office"]${around};`];
+  const q = `[out:json][timeout:12];(${parts.join("")});out center tags 60;`;
+  let j = null, last = "";
+  for (const ep of OVERPASS) {
+    try {
+      const r = await fetchT(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": UA } }, 9000);
+      if (r.ok) { j = await r.json(); break; } last = "overpass " + r.status;
+    } catch (e) { last = "overpass " + (e.name === "TimeoutError" ? "timeout" : e.message); }
+  }
+  if (!j) throw new Error(last || "overpass failed");
+  const seen = new Set();
   const results = (j.elements || []).map((e) => {
     const t = e.tags || {}, lat = e.lat ?? (e.center && e.center.lat), lng = e.lon ?? (e.center && e.center.lon);
     const addr = [t["addr:housenumber"], t["addr:street"], t["addr:suburb"] || t["addr:neighbourhood"], t["addr:city"]].filter(Boolean).join(", ");
@@ -104,8 +131,13 @@ async function viaOSM({ type, area, center, radius }) {
   return { source: "osm", center, results };
 }
 
-export async function onRequestGet({ request, env }) {
+export async function onRequestGet(ctx) {
+  try { return await handle(ctx); }
+  catch (e) { return json({ ok: false, reason: "The finder hit an error. Please try again.", errors: [String(e && e.message || e)] }, 500); }
+}
+async function handle({ request, env }) {
   const q = new URL(request.url).searchParams;
+  if (q.get("health")) return json({ ok: true, service: "competitor-finder", google: !!env.GOOGLE_PLACES_KEY, kv: !!env.CHAT_KV });
   const type = clean(q.get("type"), 60), area = clean(q.get("area"), 80);
   const radius = Math.min(5000, Math.max(500, parseInt(q.get("radius") || "2000", 10) || 2000));
   const lat = parseFloat(q.get("lat")), lng = parseFloat(q.get("lng"));
@@ -125,7 +157,7 @@ export async function onRequestGet({ request, env }) {
   let out = null, errors = [];
   if (env.GOOGLE_PLACES_KEY) { try { out = await viaGoogle(env, { type, area, center, radius }); } catch (e) { errors.push(String(e.message || e)); } }
   if (!out || !out.results.length) { try { const o = await viaOSM({ type, area, center: center || (out && out.center), radius }); if (!out || o.results.length) out = o; } catch (e) { errors.push(String(e.message || e)); } }
-  if (!out) return json({ ok: false, reason: "The map services are busy right now. Please try again in a minute.", errors }, 502);
+  if (!out) return json({ ok: false, reason: "The free map servers are busy right now. Please try again in a minute.", errors }, 502);
 
   if (out.center) out.results.forEach((p) => { p.distance = dist(out.center, p); });
   out.results = out.results.filter((p) => p.distance == null || p.distance <= radius * 1.6).sort((a, b) => (a.distance ?? 1e9) - (b.distance ?? 1e9)).slice(0, 40);

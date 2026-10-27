@@ -3,7 +3,7 @@
    shows the search and each business on an embedded Google Map, and gives a quick read of the area. */
 (function () {
   "use strict";
-  window.FODO_CF_VERSION = "6.4";
+  window.FODO_CF_VERSION = "6.5";
   var U = window.FODO_UTIL || {}, esc = U.esc || function (s) { return String(s); };
   var $ = function (id) { return document.getElementById(id); };
   var form = $("cf"); if (!form) return;
@@ -64,14 +64,16 @@
         show(j);
       }).catch(function (err) {
         clearTimeout(tm);
-        var reason = err && err.reason ? err.reason : err && err.name === "AbortError" ? "The map servers took too long to answer." : "Could not reach the finder service.";
+        var reason = err && err.reason ? err.reason : err && err.name === "AbortError" ? "The finder took too long to answer." : "Could not reach the finder service (" + ((err && err.message) || "network") + ").";
+        if (window.console) console.warn("[finder] server route failed:", err);
         if (err && err.soft) { busy = false; data = null; fallback(type, area, reason); return; }
         // server route failed — ask OpenStreetMap directly from the browser
         setStatus("Trying the map servers directly…", "busy");
-        clientOSM(type, area, coords, +rIn.value).then(function (j) { j.direct = true; show(j); }, function (e2) { busy = false; data = null; fallback(type, area, reason + " " + (e2 && e2.message ? "(" + e2.message + ")" : "")); });
+        clientOSM(type, area, coords, +rIn.value).then(function (j) { j.direct = true; show(j); }, function (e2) { busy = false; data = null; if (window.console) console.warn("[finder] direct map search failed:", e2); fallback(type, area, "Free map servers did not answer right now. Please try again in a minute.", reason + " · direct: " + ((e2 && e2.message) || "failed")); });
       });
   }
-  function show(j) {
+  function show(j) { try { show_(j); } catch (e) { busy = false; if (window.console) console.error('[finder] render failed', e); fallback(tIn.value.trim(), aIn.value.trim(), 'Could not show the results.', e.message); } }
+  function show_(j) {
     busy = false; data = j; data.results.forEach(function (p, i) { p._i = i; });
     var n = j.results.length;
     setStatus(n ? n + " businesses found within " + km(j.radius) + (j.source === "google" ? " · from Google Maps" : " · from OpenStreetMap, with Google Maps links") : (j.note || "No listed businesses found. Try a bigger radius or a nearby area."), n ? "ok" : "warn");
@@ -79,46 +81,20 @@
     insight();
   }
 
-  /* ---- browser-side OpenStreetMap search (used only if /api/competitors is unreachable) ---- */
-  var OSM_T = [["caf[e\u00e9]|coffee|chai|tea", [["amenity", "cafe"]]], ["restaurant|dhaba|food|biryani|pizza|eatery|diner", [["amenity", "restaurant|fast_food|food_court"]]], ["bakery|cake|sweet|mithai|halwai", [["shop", "bakery|confectionery|pastry"]]], ["dentist|dental", [["amenity", "dentist"], ["healthcare", "dentist"]]], ["clinic|doctor|physician|skin|derma|\\beye\\b|\\bent\\b|pediatric|gyn", [["amenity", "clinic|doctors"], ["healthcare", "clinic|doctor"]]], ["hospital|nursing home", [["amenity", "hospital"]]], ["pharma|chemist|medical store", [["amenity", "pharmacy"], ["shop", "chemist"]]], ["gym|fitness|crossfit", [["leisure", "fitness_centre|sports_centre"]]], ["yoga|pilates|zumba|dance", [["leisure", "fitness_centre|dance"], ["sport", "yoga"]]], ["salon|hair|barber|parlou?r|beauty|makeup|nail", [["shop", "hairdresser|beauty|cosmetics"]]], ["spa|massage", [["leisure", "spa"], ["shop", "massage"], ["amenity", "spa"]]], ["boutique|cloth|fashion|garment|saree|apparel", [["shop", "clothes|boutique|fashion|tailor"]]], ["jewel", [["shop", "jewelry"]]], ["mobile|phone shop", [["shop", "mobile_phone|electronics"]]], ["electronic|appliance|computer|laptop", [["shop", "electronics|computer|appliance"]]], ["supermarket|grocery|kirana|mart|general store", [["shop", "supermarket|convenience|grocery"]]], ["coaching|tuition|institute|academy|classes", [["amenity", "college|school|language_school|training"], ["office", "educational_institution"]]], ["play ?school|preschool|kindergarten|daycare", [["amenity", "kindergarten|childcare"]]], ["school", [["amenity", "school"]]], ["real estate|property|estate agent|broker", [["office", "estate_agent"], ["shop", "estate_agent"]]], ["hotel|guest ?house|hostel|stay", [["tourism", "hotel|guest_house|hostel|motel"]]], ["car dealer|showroom|bike dealer", [["shop", "car|motorcycle"]]], ["car repair|garage|mechanic|service centre", [["shop", "car_repair|tyres|motorcycle_repair"]]], ["chartered|accountant|\\bca\\b|tax", [["office", "accountant|tax_advisor"]]], ["lawyer|advocate|legal", [["office", "lawyer"]]], ["interior|furniture|decor", [["shop", "furniture|interior_decoration"], ["craft", "interior_work"]]], ["photograph|studio", [["shop", "photo"], ["craft", "photographer"]]], ["wedding|event|banquet", [["amenity", "events_venue|banquet_hall"], ["shop", "wedding"]]], ["bank|atm", [["amenity", "bank"]]], ["petrol|fuel|pump", [["amenity", "fuel"]]], ["pet|vet", [["amenity", "veterinary"], ["shop", "pet"]]], ["optic|spectacle|glasses", [["shop", "optician"]]], ["book|stationer", [["shop", "books|stationery"]]]], AREAS = {"najafgarh": [28.6092, 76.9798], "dwarka": [28.5921, 77.046], "uttam nagar": [28.6219, 77.055], "janakpuri": [28.6219, 77.0878], "rajouri garden": [28.6492, 77.122], "punjabi bagh": [28.6683, 77.132], "pitampura": [28.7036, 77.1318], "rohini": [28.7383, 77.0822], "connaught place": [28.6315, 77.2167], "karol bagh": [28.6519, 77.1907], "lajpat nagar": [28.5677, 77.2433], "saket": [28.5245, 77.2066], "hauz khas": [28.5494, 77.2001], "greater kailash": [28.5482, 77.238], "vasant kunj": [28.52, 77.159], "mayur vihar": [28.609, 77.294], "laxmi nagar": [28.6304, 77.2777], "preet vihar": [28.6418, 77.295], "gurugram sector 29": [28.4683, 77.064], "cyber city gurugram": [28.495, 77.089], "sohna road gurugram": [28.41, 77.044], "noida sector 18": [28.57, 77.326], "noida sector 62": [28.627, 77.365], "greater noida": [28.4744, 77.504], "indirapuram ghaziabad": [28.646, 77.369], "faridabad sector 15": [28.396, 77.326], "gurugram": [28.4595, 77.0266], "gurgaon": [28.4595, 77.0266], "noida": [28.5355, 77.391], "ghaziabad": [28.6692, 77.4538], "faridabad": [28.4089, 77.3178], "west delhi": [28.6519, 77.0597], "south delhi": [28.5355, 77.2167], "new delhi": [28.6139, 77.209], "delhi": [28.6139, 77.209]};
-  var OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-  function tmo(ms) { if (window.AbortSignal && AbortSignal.timeout) return AbortSignal.timeout(ms); return undefined; }
-  function known(area) { var n = area.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(); var m = n.replace(/\b(new delhi|delhi|india|ncr)\b/g, "").replace(/\s+/g, " ").trim(); var k = AREAS[n] || AREAS[m]; return k ? { lat: k[0], lng: k[1], label: area } : null; }
-  function geo(area) {
-    var k = known(area); if (k) return Promise.resolve(k);
-    return fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&viewbox=76.80,28.95,77.65,28.25&q=" + encodeURIComponent(area), { signal: tmo(8000) })
-      .then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; })
-      .then(function (j) { if (j && j.length) return { lat: +j[0].lat, lng: +j[0].lon, label: area };
-        return fetch("https://photon.komoot.io/api/?limit=1&lat=28.61&lon=77.21&q=" + encodeURIComponent(area), { signal: tmo(8000) }).then(function (r) { return r.json(); }).then(function (g) { var f = (g.features || [])[0]; if (!f) throw new Error("area not found"); return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], label: area }; }); });
-  }
-  function dist(a, b) { var R = 6371000, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r, h = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.pow(Math.sin(dLng / 2), 2); return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
+  /* ---- browser-side free search (same code as the server: js/free-places.js) — used only if /api/competitors fails ---- */
+  var freeMod = null;
   function clientOSM(type, area, c, radius) {
-    return (c ? Promise.resolve(c) : geo(area)).then(function (center) {
-      var t = type.toLowerCase(), tags = null; for (var i = 0; i < OSM_T.length; i++) if (new RegExp(OSM_T[i][0]).test(t)) { tags = OSM_T[i][1]; break; }
-      var around = "(around:" + radius + "," + center.lat + "," + center.lng + ")", w = type.replace(/["\\.*+?^${}()|[\]]/g, "").slice(0, 40);
-      var parts = tags ? tags.map(function (kv) { return 'nwr["' + kv[0] + '"~"^(' + kv[1] + ')$"]["name"]' + around + ";"; }) : ["shop", "amenity", "office"].map(function (k) { return 'nwr["name"~"' + w + '",i]["' + k + '"]' + around + ";"; });
-      var q = "[out:json][timeout:12];(" + parts.join("") + ");out center tags 60;";
-      var tryEp = function (k) {
-        if (k >= OVERPASS.length) return Promise.reject(new Error("map servers busy"));
-        return fetch(OVERPASS[k], { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "content-type": "application/x-www-form-urlencoded" }, signal: tmo(12000) })
-          .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function () { return tryEp(k + 1); });
-      };
-      return tryEp(0).then(function (j) {
-        var seen = {}, res = (j.elements || []).map(function (e) {
-          var g = e.tags || {}, lat = e.lat != null ? e.lat : e.center && e.center.lat, lng = e.lon != null ? e.lon : e.center && e.center.lon;
-          var addr = [g["addr:housenumber"], g["addr:street"], g["addr:suburb"] || g["addr:neighbourhood"], g["addr:city"]].filter(Boolean).join(", "), nm = g.name || g["name:en"] || "";
-          return { name: nm, address: addr, lat: lat, lng: lng, rating: null, reviews: null, phone: g.phone || g["contact:phone"] || "", website: g.website || g["contact:website"] || "", hours: g.opening_hours || "",
-            mapsUrl: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([nm, addr || area].filter(Boolean).join(", ")), open: null, status: "",
-            category: (g.amenity || g.shop || g.office || g.leisure || g.tourism || g.healthcare || "").replace(/_/g, " "), distance: lat != null ? dist(center, { lat: lat, lng: lng }) : null };
-        }).filter(function (p) { var k = p.name.toLowerCase(); if (!k || p.lat == null || seen[k] || p.distance > radius * 1.6) return false; seen[k] = 1; return true; })
-          .sort(function (a, b) { return a.distance - b.distance; }).slice(0, 40);
-        return { ok: true, type: type, area: area || "your location", radius: radius, source: "osm", center: center, results: res };
-      });
-    });
+    var tmo = function (ms) { return window.AbortSignal && AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined; };
+    var fetchT = function (u, o, ms) { return fetch(u, Object.assign({}, o, { signal: tmo(ms || 8000) })); };
+    freeMod = freeMod || import((U.root || "/") + "js/free-places.js?v=" + (window.FODO_CF_VERSION || "1"));
+    return freeMod.then(function (m) { return m.freePlaces(fetchT, {}).search({ type: type, area: area, center: c, radius: radius }); })
+      .then(function (o) { return { ok: true, type: type, area: area || "your location", radius: radius, source: o.source, via: o.via, center: o.center, results: o.results, note: o.note, tried: o.tried }; },
+        function (e) { var x = new Error(e && e.tried ? e.tried.join(", ") : (e && e.message) || "failed"); throw x; });
   }
-  function fallback(type, area, reason) {
+  function fallback(type, area, reason, diag) {
     var q = type + " near " + (coords ? coords.lat + "," + coords.lng : area + ", Delhi NCR");
-    setStatus((reason || "The live list is not available right now.") + " The map shows the Google Maps listings for your search.", "warn");
+    setStatus((reason || "The live list is not available right now.") + " The map below still shows the Google Maps listings for your search.", "warn");
+    var dv = document.querySelector(".cf-ver"); if (dv) dv.textContent = "Finder v" + window.FODO_CF_VERSION + (diag ? " · " + diag : "");
     list.innerHTML = '<li class="cf-empty">The Google Maps view on this page shows the businesses for your search. <a href="https://www.google.com/maps/search/' + encodeURIComponent(q) + '" target="_blank" rel="noopener noreferrer">Open the full list on Google Maps ↗</a></li>';
     read.textContent = "Open the top three listings on Google Maps and compare their reviews, photos and hours with yours. That is where most local wins come from.";
   }

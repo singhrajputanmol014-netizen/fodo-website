@@ -82,102 +82,167 @@ export const gmapsSearch = (name, addr) => "https://www.google.com/maps/search/?
 const bbox = (c, r) => { const dLat = r / 111320, dLng = r / (111320 * Math.cos(c.lat * Math.PI / 180)); return { minLat: c.lat - dLat, maxLat: c.lat + dLat, minLng: c.lng - dLng, maxLng: c.lng + dLng }; };
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 const errName = (e) => (e && (e.name === "TimeoutError" || e.name === "AbortError") ? "timeout" : (e && e.message) || "failed");
+export const MAX_RADIUS = 100000;      // 100 km
+export const MAX_RESULTS = 5000;
+
+/* ---- turn raw OpenStreetMap tags into one flat, export-ready record ---- */
+const first = (t, keys) => { for (const k of keys) if (t[k]) return String(t[k]); return ""; };
+const handle = (v, base) => { if (!v) return ""; v = String(v).trim(); if (/^https?:\/\//i.test(v)) return v; return base + v.replace(/^@/, ""); };
+export function fromTags(t, extra) {
+  t = t || {};
+  const street = [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" ");
+  const locality = t["addr:suburb"] || t["addr:neighbourhood"] || t["addr:quarter"] || t["addr:district"] || "";
+  const city = t["addr:city"] || t["addr:town"] || t["addr:village"] || "";
+  const rec = {
+    name: t.name || t["name:en"] || t.brand || "",
+    category: (t.amenity || t.shop || t.office || t.leisure || t.tourism || t.healthcare || t.craft || t.industrial || "").replace(/_/g, " "),
+    address: t["addr:full"] || [street, locality, city, t["addr:postcode"]].filter(Boolean).join(", "),
+    street, locality, city, state: t["addr:state"] || "", postcode: t["addr:postcode"] || "", country: t["addr:country"] || "",
+    phone: first(t, ["phone", "contact:phone", "telephone"]), mobile: first(t, ["mobile", "contact:mobile", "phone:mobile"]),
+    whatsapp: first(t, ["contact:whatsapp", "whatsapp"]), email: first(t, ["email", "contact:email"]),
+    website: first(t, ["website", "contact:website", "url", "brand:website"]),
+    instagram: handle(first(t, ["contact:instagram", "instagram"]), "https://instagram.com/"), facebook: handle(first(t, ["contact:facebook", "facebook"]), "https://facebook.com/"),
+    twitter: handle(first(t, ["contact:twitter", "twitter", "contact:x"]), "https://x.com/"), linkedin: handle(first(t, ["contact:linkedin", "linkedin"]), "https://linkedin.com/company/"),
+    youtube: handle(first(t, ["contact:youtube", "youtube"]), "https://youtube.com/"),
+    hours: t.opening_hours || "", brand: t.brand || "", operator: t.operator || "", cuisine: (t.cuisine || "").replace(/;/g, ", ").replace(/_/g, " "),
+    description: t.description || "", wheelchair: t.wheelchair || "", delivery: t.delivery || "", takeaway: t.takeaway || "",
+    payment: Object.keys(t).filter((k) => /^payment:/.test(k) && t[k] === "yes").map((k) => k.slice(8).replace(/_/g, " ")).join(", "),
+    established: t.start_date || "", wikidata: t.wikidata ? "https://www.wikidata.org/wiki/" + t.wikidata : "",
+    tags: Object.keys(t).filter((k) => !/^name:|^source|^note|^fixme/i.test(k)).map((k) => k + "=" + t[k]).join("; "),
+  };
+  return Object.assign(rec, extra || {});
+}
 
 /* fetchT(url, options, ms) must add a time limit. headers: extra headers (the server adds a User-Agent; browsers may not). */
 export function freePlaces(fetchT, headers) {
   headers = headers || {};
-  const place = (o, area) => Object.assign({ rating: null, reviews: null, phone: "", website: "", hours: "", open: null, status: "" }, o, { mapsUrl: gmapsSearch(o.name, o.address || area) });
+  const finish = (o, area) => Object.assign({ rating: null, reviews: null, open: null, status: "" }, o, { mapsUrl: o.mapsUrl || gmapsSearch(o.name, o.address || area) });
 
   async function geocode(area) {
     const known = knownArea(area); if (known) return known;
     try {
-      const r = await fetchT("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(area), { headers }, 7000);
+      const r = await fetchT("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(area), { headers }, 8000);
       if (r.ok) { const j = await r.json(); if (j.length) return { lat: +j[0].lat, lng: +j[0].lon, label: j[0].display_name }; }
     } catch (e) {}
-    const r2 = await fetchT("https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(area), { headers }, 7000);
+    const r2 = await fetchT("https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(area), { headers }, 8000);
     if (!r2.ok) throw new Error("geocode " + r2.status);
     const f = ((await r2.json()).features || [])[0]; if (!f) return null;
     return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], label: (f.properties && f.properties.name) || area };
   }
 
-  async function overpass(type, area, c, radius, eps) {
-    const tags = osmTags(type), around = `(around:${radius},${c.lat},${c.lng})`, word = String(type).replace(/["\\.*+?^${}()|[\]]/g, "").slice(0, 40);
-    const parts = tags ? tags.map(([k, v]) => `nwr["${k}"~"^(${v})$"]["name"]${around};`) : ["shop", "amenity", "office"].map((k) => `nwr["name"~"${word}",i]["${k}"]${around};`);
-    const q = `[out:json][timeout:10];(${parts.join("")});out center tags 60;`;
+  // Overpass: every tagged business of this category in the circle, plus (for smaller circles) anything whose name contains the word
+  async function overpass(type, area, c, radius, eps, max) {
+    const tags = osmTags(type), around = `(around:${radius},${c.lat},${c.lng})`, word = String(type).replace(/["\\.*+?^${}()|[\]]/g, "").trim().slice(0, 40);
+    const parts = tags ? tags.map(([k, v]) => `nwr["${k}"~"^(${v})$"]${around};`) : [];
+    if (!tags || radius <= 15000) {
+      const w = word.split(/\s+/).filter((x) => x.length > 2 && !/^(shop|store|company|agency|centre|center|services?)$/i.test(x)).slice(0, 2);
+      if (w.length) ["shop", "amenity", "office", "craft", "healthcare", "leisure", "tourism"].forEach((k) => parts.push(`nwr["${k}"]["name"~"${w.join(".*")}",i]${around};`));
+    }
+    if (!parts.length) parts.push(`nwr["name"~"${word}",i]["shop"]${around};`);
+    const tmo = radius > 30000 ? 60 : 25;
+    const q = `[out:json][timeout:${tmo}][maxsize:268435456];(${parts.join("")});out center tags ${max || MAX_RESULTS};`;
     let last = "";
     for (const ep of eps) {
       try {
-        const r = await fetchT(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: Object.assign({ "content-type": "application/x-www-form-urlencoded" }, headers) }, 7000);
+        const r = await fetchT(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: Object.assign({ "content-type": "application/x-www-form-urlencoded" }, headers) }, (tmo + 5) * 1000);
         if (!r.ok) { last = r.status; continue; }
         const j = await r.json();
         return (j.elements || []).map((e) => {
-          const t = e.tags || {}, lat = e.lat ?? (e.center && e.center.lat), lng = e.lon ?? (e.center && e.center.lon);
-          const addr = [t["addr:housenumber"], t["addr:street"], t["addr:suburb"] || t["addr:neighbourhood"], t["addr:city"]].filter(Boolean).join(", ");
-          return place({ id: e.type + "/" + e.id, name: t.name || t["name:en"] || "", address: addr, lat, lng, phone: t.phone || t["contact:phone"] || "", website: t.website || t["contact:website"] || "", hours: t.opening_hours || "",
-            category: (t.amenity || t.shop || t.office || t.leisure || t.tourism || t.healthcare || "").replace(/_/g, " ") }, area);
+          const lat = e.lat ?? (e.center && e.center.lat), lng = e.lon ?? (e.center && e.center.lon);
+          return finish(fromTags(e.tags, { id: e.type + "/" + e.id, lat, lng, osmUrl: `https://www.openstreetmap.org/${e.type}/${e.id}`, source: "OpenStreetMap" }), area);
         });
       } catch (e) { last = errName(e); }
     }
     throw new Error("overpass " + last);
   }
 
+  // Nominatim: category search inside the box, paged with exclude_place_ids (up to 5 pages × 40)
   async function nominatim(type, area, c, radius) {
     const b = bbox(c, radius), tags = osmTags(type);
     const words = [type].concat(tags ? [tags[0][1].split("|")[0].replace(/_/g, " ")] : []).filter((w, i, a) => a.indexOf(w) === i);
-    let last = "";
+    let last = "", out = [];
     for (const w of words) {
-      try {
-        const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&extratags=1&addressdetails=1&viewbox=${b.minLng},${b.maxLat},${b.maxLng},${b.minLat}&q=` + encodeURIComponent(w);
-        const r = await fetchT(u, { headers: Object.assign({ "accept-language": "en" }, headers) }, 7000);
-        if (!r.ok) { last = r.status; continue; }
-        const j = await r.json();
-        const out = (j || []).filter((x) => x.name).map((x) => {
-          const a = x.address || {}, t = x.extratags || {};
-          const addr = [a.house_number, a.road, a.suburb || a.neighbourhood || a.quarter, a.city || a.town || a.city_district].filter(Boolean).join(", ");
-          return place({ id: (x.osm_type || "n") + "/" + x.osm_id, name: x.name, address: addr, lat: +x.lat, lng: +x.lon, phone: t.phone || t["contact:phone"] || "", website: t.website || t["contact:website"] || "", hours: t.opening_hours || "", category: String(x.type || x.category || "").replace(/_/g, " ") }, area);
-        });
-        if (out.length) return out;
-      } catch (e) { last = errName(e); }
+      const ex = [];
+      for (let page = 0; page < 5; page++) {
+        try {
+          const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&extratags=1&addressdetails=1&namedetails=1&viewbox=${b.minLng},${b.maxLat},${b.maxLng},${b.minLat}&q=` + encodeURIComponent(w) + (ex.length ? "&exclude_place_ids=" + ex.join(",") : "");
+          const r = await fetchT(u, { headers: Object.assign({ "accept-language": "en" }, headers) }, 9000);
+          if (!r.ok) { last = r.status; break; }
+          const j = await r.json(); if (!j.length) break;
+          j.forEach((x) => { ex.push(x.place_id); if (!x.name) return; const a = x.address || {}, t = Object.assign({}, x.extratags || {});
+            t.name = x.name; t["addr:housenumber"] = a.house_number; t["addr:street"] = a.road; t["addr:suburb"] = a.suburb || a.neighbourhood || a.quarter; t["addr:city"] = a.city || a.town || a.village || a.city_district; t["addr:state"] = a.state; t["addr:postcode"] = a.postcode; t["addr:country"] = a.country;
+            if (!t.amenity && !t.shop && !t.office) t[x.category || "amenity"] = x.type;
+            out.push(finish(fromTags(t, { id: (x.osm_type || "n") + "/" + x.osm_id, lat: +x.lat, lng: +x.lon, osmUrl: x.osm_type ? `https://www.openstreetmap.org/${x.osm_type}/${x.osm_id}` : "", source: "OpenStreetMap" }), area)); });
+          if (j.length < 40) break;
+        } catch (e) { last = errName(e); break; }
+      }
+      if (out.length) return out;
     }
-    if (last) throw new Error("nominatim " + last);
-    return [];
+    if (last && !out.length) throw new Error("nominatim " + last);
+    return out;
   }
 
   async function photon(type, area, c, radius) {
     const b = bbox(c, radius), tags = osmTags(type);
     const tq = tags ? tags.flatMap(([k, v]) => v.split("|").map((x) => "&osm_tag=" + encodeURIComponent(k + ":" + x))).join("") : "";
-    const u = `https://photon.komoot.io/api/?limit=40&lang=en&lat=${c.lat}&lon=${c.lng}&bbox=${b.minLng},${b.minLat},${b.maxLng},${b.maxLat}&q=` + encodeURIComponent(type) + tq;
+    const u = `https://photon.komoot.io/api/?limit=50&lang=en&lat=${c.lat}&lon=${c.lng}&bbox=${b.minLng},${b.minLat},${b.maxLng},${b.maxLat}&q=` + encodeURIComponent(type) + tq;
     try {
-      const r = await fetchT(u, { headers }, 7000);
+      const r = await fetchT(u, { headers }, 8000);
       if (!r.ok) throw new Error(String(r.status));
       const j = await r.json();
       return (j.features || []).filter((f) => f.properties && f.properties.name).map((f) => {
-        const p = f.properties; const addr = [p.housenumber, p.street, p.district || p.locality, p.city].filter(Boolean).join(", ");
-        return place({ id: (p.osm_type || "n") + "/" + p.osm_id, name: p.name, address: addr, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], category: String(p.osm_value || "").replace(/_/g, " ") }, area);
+        const p = f.properties, t = { name: p.name, "addr:housenumber": p.housenumber, "addr:street": p.street, "addr:suburb": p.district || p.locality, "addr:city": p.city, "addr:state": p.state, "addr:postcode": p.postcode, "addr:country": p.country };
+        t[p.osm_key || "amenity"] = p.osm_value;
+        const ot = { N: "node", W: "way", R: "relation" }[p.osm_type] || "";
+        return finish(fromTags(t, { id: (p.osm_type || "n") + "/" + p.osm_id, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], osmUrl: ot ? `https://www.openstreetmap.org/${ot}/${p.osm_id}` : "", source: "OpenStreetMap" }), area);
       });
     } catch (e) { throw new Error("photon " + errName(e)); }
   }
 
-  /* search → { source, center, results, tried: [..] } ; throws only if every source failed */
-  async function search({ type, area, center, radius }) {
+  /* search → { source, via, center, results (ALL within the radius, nearest first), tried } ; throws only if every source failed */
+  async function search({ type, area, center, radius, max }) {
+    radius = Math.min(MAX_RADIUS, Math.max(200, +radius || 2000));
     if (!center) center = await geocode(area);
-    if (!center) return { source: "osm", center: null, results: [], note: "Area not found. Try adding the city, e.g. “Dwarka, Delhi”.", tried: [] };
-    const steps = [["overpass", () => overpass(type, area, center, radius, OVERPASS.slice(0, 1))], ["nominatim", () => nominatim(type, area, center, radius)],
-                   ["photon", () => photon(type, area, center, radius)], ["overpass-mirror", () => overpass(type, area, center, radius, OVERPASS.slice(1))]];
+    if (!center) return { source: "osm", center: null, results: [], note: "Place not found. Try adding the city and country, e.g. “Soho, London”.", tried: [] };
+    const steps = [["overpass", () => overpass(type, area, center, radius, OVERPASS.slice(0, 1), max)], ["overpass-mirror", () => overpass(type, area, center, radius, OVERPASS.slice(1), max)],
+                   ["nominatim", () => nominatim(type, area, center, radius)], ["photon", () => photon(type, area, center, radius)]];
     const tried = []; let empty = false;
     for (const [name, fn] of steps) {
       try {
-        const seen = new Set();
-        const res = (await fn()).filter((p) => { const k = (p.name || "").toLowerCase().trim(); if (!k || p.lat == null || !isFinite(p.lat) || seen.has(k)) return false; seen.add(k); return true; });
+        const res = dedupe(await fn());
         res.forEach((p) => { p.distance = dist(center, p); });
-        const near = res.filter((p) => p.distance <= radius * 1.6).sort((a, b) => a.distance - b.distance).slice(0, 40);
+        const near = res.filter((p) => p.distance <= radius * 1.05).sort((a, b) => a.distance - b.distance);
         tried.push(name + ":" + near.length);
-        if (near.length) return { source: "osm", via: name, center, results: near, tried };
+        if (near.length) return { source: "osm", via: name, center, radius, results: near, tried };
         empty = true;
       } catch (e) { tried.push(String(e.message || e)); }
     }
-    if (empty) return { source: "osm", center, results: [], tried };
+    if (empty) return { source: "osm", center, radius, results: [], tried };
     const err = new Error("all map servers failed"); err.tried = tried; throw err;
   }
   return { search, geocode };
+}
+
+/* remove duplicates (same name within ~120 m), keeping the record with the most filled-in fields */
+const filled = (p) => Object.keys(p).filter((k) => p[k] !== "" && p[k] != null).length;
+const nkey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/g, "");
+export function dedupe(list) {
+  const out = [], byKey = new Map();
+  for (const p of list) {
+    if (!p.name || p.lat == null || !isFinite(p.lat)) continue;
+    const k = nkey(p.name), same = byKey.get(k) || [], dup = same.find((q) => dist(p, q) < 120);
+    if (!dup) { out.push(p); same.push(p); byKey.set(k, same); }
+    else Object.assign(dup, pick(p, dup));
+  }
+  return out;
+}
+const pick = (src, dst) => { const o = {}; for (const k in src) if (src[k] !== "" && src[k] != null && (!dst || dst[k] === "" || dst[k] == null)) o[k] = src[k]; return o; };
+/* merge Google + OpenStreetMap: Google wins on rating/reviews/hours, OSM fills email, socials and tags */
+export function mergeSources(google, osm) {
+  const out = google.map((g) => Object.assign({}, g));
+  for (const o of osm) {
+    const k = nkey(o.name), m = out.find((g) => dist(g, o) < 150 && (nkey(g.name) === k || nkey(g.name).indexOf(k) > -1 || k.indexOf(nkey(g.name)) > -1));
+    if (m) { Object.assign(m, pick(o, m)); m.source = "Google Maps + OpenStreetMap"; } else out.push(o);
+  }
+  return out;
 }

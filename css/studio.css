@@ -1368,3 +1368,37 @@ section.afraid p.reveal{margin-inline:auto}
 .cf-form{overflow:visible!important;position:relative;z-index:5}
 .cf-fields{position:relative;z-index:3}
 .cf-f:focus-within{z-index:40}
+
+/* ===== §29 v8 — finder: radius slider + typed km, all-pins map, contacts, show more ===== */
+.cf-radius{display:flex;align-items:center;gap:10px;min-height:48px}
+.cf-radius input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:6px;border-radius:99px;background:linear-gradient(90deg,var(--accent) var(--fill,2%),var(--mist-2,#E9EBEF) var(--fill,2%));outline-offset:6px;cursor:pointer}
+.cf-radius input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.cf-radius input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--accent)}
+.cf-km{display:inline-flex;align-items:center;gap:6px;flex:none}
+.cf-km input{width:84px!important;text-align:right;padding:10px 10px!important;min-height:44px!important}
+.cf-km span{font-weight:600;color:var(--graphite);font-size:14px}
+.cf-fields{grid-template-columns:1.1fr 1.3fr 1fr}
+.cf-fields-b{grid-template-columns:1.6fr .9fr;}
+.cf-fields-b .cf-f:nth-child(3){grid-column:1/2}.cf-fields-b .cf-f:nth-child(4){grid-column:2/3}
+.cf-check{display:flex;gap:10px;align-items:flex-start;margin:14px 0 0;font-size:13.5px;color:var(--graphite);max-width:80ch}
+.cf-check input{width:18px;height:18px;margin-top:2px;accent-color:var(--accent)}
+.cf-map{position:relative;aspect-ratio:auto;height:min(70vh,560px)}
+.cf-maptabs{position:absolute;z-index:500;top:10px;left:10px;display:flex;gap:6px}
+.cf-maptabs .chip{background:var(--surface)!important;box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer;min-height:34px}
+.cf-maptabs .chip[aria-pressed=true]{background:var(--accent)!important;color:var(--btn-text)!important;border-color:var(--accent)!important}
+.cf-pins{position:absolute;inset:0;background:var(--mist)}
+.cf-map iframe{position:absolute;inset:0}
+.leaflet-container{font-family:var(--font-body)}
+.cf-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.cf-tools .muted{font-size:13px}
+.cf-tools .btn[disabled]{opacity:.45;pointer-events:none}
+.cf-contacts{display:grid;gap:4px;margin:8px 0 0;font-size:13.5px}
+.cf-contacts div{display:grid;grid-template-columns:78px 1fr;gap:8px}
+.cf-contacts dt{color:var(--slate)}.cf-contacts dd{margin:0;word-break:break-word}
+.cf-contacts a{color:var(--ink);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 60%,transparent);text-underline-offset:2px}
+.cf-more{display:flex;gap:8px;justify-content:center;margin:16px 0 0}
+@media(max-width:899px){.cf-fields{grid-template-columns:1fr 1fr}.cf-fields .cf-f:first-child{grid-column:1/-1}.cf-fields .cf-r{grid-column:1/-1}.cf-fields-b{grid-template-columns:1fr}.cf-fields-b .cf-f{grid-column:auto!important}.cf-map{height:420px}}
+@media(max-width:480px){.cf-fields{grid-template-columns:1fr}.cf-contacts div{grid-template-columns:70px 1fr}}
+.cf-f .cf-radius input[type=range]{padding:0!important;border:0!important;min-height:0!important;height:6px!important;border-radius:99px!important;background:linear-gradient(90deg,var(--accent) var(--fill,2%),var(--mist-2,#E9EBEF) var(--fill,2%))!important;margin:0}
+html[data-theme=dark] .cf-f .cf-radius input[type=range]{background:linear-gradient(90deg,var(--accent) var(--fill,2%),#2E3038 var(--fill,2%))!important}
+.cf-f .cf-radius input[type=range]:focus{outline:2px solid var(--accent);outline-offset:8px}

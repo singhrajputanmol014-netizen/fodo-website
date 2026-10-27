@@ -7,6 +7,27 @@
    Every call has its own time limit, so one slow server never blocks the next. */
 
 export const OSM_TYPES = [
+  // companies, startups and B2B first, so "software company" is not read as a "shop"
+  [/software|saas|\bit\b|tech (company|startup)|app develop|web develop|startup/, [["office", "it|company|software|telecommunication|research"]]],
+  [/marketing|advertising|digital agency|seo agency|branding|pr agency|media agency/, [["office", "advertising_agency|company|consulting"]]],
+  [/cowork/, [["amenity", "coworking_space"], ["office", "coworking"]]],
+  [/consult/, [["office", "consulting|company"]]],
+  [/logistic|courier|freight|transport company/, [["office", "logistics|courier|company"], ["amenity", "courier"]]],
+  [/insurance/, [["office", "insurance"]]],
+  [/travel agen|tour operator|travel company/, [["shop", "travel_agency"], ["office", "travel_agent"]]],
+  [/architect/, [["office", "architect"]]],
+  [/ngo|non.?profit|charity/, [["office", "ngo|association|charity"]]],
+  [/financ|loan|investment|fintech/, [["office", "financial|financial_advisor|company"], ["amenity", "bank"]]],
+  [/recruit|staffing|employment|hr agency/, [["office", "employment_agency"]]],
+  [/print/, [["shop", "copyshop|printing"], ["craft", "printer"]]],
+  [/manufactur|factory|industrial/, [["man_made", "works"], ["industrial", "factory"], ["landuse", "industrial"]]],
+  [/laundry|dry clean/, [["shop", "laundry|dry_cleaning"]]],
+  [/florist|flower/, [["shop", "florist"]]],
+  [/hardware|paint|tiles|sanitary/, [["shop", "hardware|doityourself|paint|tiles|bathroom_furnishing"]]],
+  [/shoe|footwear/, [["shop", "shoes"]]],
+  [/sport/, [["shop", "sports"], ["leisure", "sports_centre"]]],
+  [/toy|gift/, [["shop", "toys|gift"]]],
+  [/car wash/, [["amenity", "car_wash"]]],
   [/caf[eé]|coffee|chai|tea/, [["amenity", "cafe"]]],
   [/restaurant|dhaba|food|biryani|pizza|eatery|diner/, [["amenity", "restaurant|fast_food|food_court"]]],
   [/bakery|cake|sweet|mithai|halwai/, [["shop", "bakery|confectionery|pastry"]]],
@@ -70,10 +91,10 @@ export function freePlaces(fetchT, headers) {
   async function geocode(area) {
     const known = knownArea(area); if (known) return known;
     try {
-      const r = await fetchT("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&viewbox=76.80,28.95,77.65,28.25&q=" + encodeURIComponent(area), { headers }, 7000);
+      const r = await fetchT("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(area), { headers }, 7000);
       if (r.ok) { const j = await r.json(); if (j.length) return { lat: +j[0].lat, lng: +j[0].lon, label: j[0].display_name }; }
     } catch (e) {}
-    const r2 = await fetchT("https://photon.komoot.io/api/?limit=1&lat=28.61&lon=77.21&q=" + encodeURIComponent(area), { headers }, 7000);
+    const r2 = await fetchT("https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(area), { headers }, 7000);
     if (!r2.ok) throw new Error("geocode " + r2.status);
     const f = ((await r2.json()).features || [])[0]; if (!f) return null;
     return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], label: (f.properties && f.properties.name) || area };
@@ -106,7 +127,7 @@ export function freePlaces(fetchT, headers) {
     let last = "";
     for (const w of words) {
       try {
-        const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&extratags=1&addressdetails=1&countrycodes=in&viewbox=${b.minLng},${b.maxLat},${b.maxLng},${b.minLat}&q=` + encodeURIComponent(w);
+        const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&extratags=1&addressdetails=1&viewbox=${b.minLng},${b.maxLat},${b.maxLng},${b.minLat}&q=` + encodeURIComponent(w);
         const r = await fetchT(u, { headers: Object.assign({ "accept-language": "en" }, headers) }, 7000);
         if (!r.ok) { last = r.status; continue; }
         const j = await r.json();

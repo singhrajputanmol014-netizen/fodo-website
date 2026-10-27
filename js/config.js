@@ -10,6 +10,7 @@ window.FODO = {
   phoneDisplay: "+91 7827007676",
   whatsappNumber: "917827007676",
   address: "65 M Block, New Roshanpura, Najafgarh, New Delhi – 110043, India",
+  hq: "HQ New Delhi, India · working worldwide",
   instagramHandle: "@fodo.co.in",
   instagramUrl: "https://instagram.com/fodo.co.in",
   linkedinUrl: "https://www.linkedin.com/in/anmol-singh-43720724a",

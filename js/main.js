@@ -26,7 +26,7 @@
   const routes = {
     home:P(""), about:P("about/"), services:P("services/"), industries:P("industries/"), work:P("work/"), insights:P("insights/"), resources:P("resources/"),
     lab:P("#growth-lab"), score:P("growth-score/"), roi:P("roi-calculator/"), game:P("fodo-challenge/"), quiz:P("marketing-quiz/"),
-    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), pricing:P("faq/#pricing"), legal:P("legal/"), thanks:P("thank-you/")
+    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), legal:P("legal/"), thanks:P("thank-you/")
   };
   U.routes = routes;
   const here = (document.body.dataset.route==="service"?"services":document.body.dataset.route) || "";
@@ -52,7 +52,7 @@
   U.safe(()=>{
     const h=document.getElementById("site-header"); if(!h)return;
     h.className="header"; h.innerHTML=`<div class="container">
-      <a class="wordmark" href="${routes.home||'./'}" aria-label="FODO home"><b>FODO</b><small>FEAR OF DIGITALLY OUT ?</small></a>
+      <a class="wordmark" href="${routes.home||'./'}" aria-label="FODO home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a>
       <nav class="nav" aria-label="Primary">
         <a href="${routes.work}"${cur("work")}>Work</a><a href="${routes.reviews}"${cur("reviews")}>Reviews</a><a href="${routes.services}"${cur("services")}>Services</a>
         <div class="sub"><button class="sub-btn" type="button" aria-expanded="false" aria-haspopup="true">Growth Lab <span aria-hidden="true">▾</span></button>
@@ -69,10 +69,10 @@
     // Drawer
     const d=document.createElement("div"); d.id="drawer"; d.className="drawer"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true"); d.setAttribute("aria-label","Menu");
     const grp=(t,items,cls)=>`<div class="dgrp"><span class="dlabel">${t}</span><div class="${cls||"dlist"}">${items.map(l=>`<a href="${routes[l[1]]}" class="${l[2]||""}"${cur(l[1])}>${l[0]}</a>`).join("")}</div></div>`;
-    d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}"><b>FODO</b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
+    d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}" aria-label="FODO home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
       <nav aria-label="Mobile">${grp("Explore",[["Home","home"],["About","about"],["Services","services"],["Industries","industries"],["Work","work"],["Insights","insights"]])}
       ${grp("Growth Lab",[["Growth Score","score"],["ROI Calculator","roi"],["Play the Game","game","hot"],["Marketing Quiz","quiz"]],"dgrid")}
-      ${grp("More",[["Resources","resources"],["FAQ","faq"],["Pricing","pricing"],["Contact","contact"]],"dgrid")}</nav>
+      ${grp("More",[["Pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Locations","locations"],["FAQ","faq"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
       <a class="btn" href="${routes.audit}">Book a Free Growth Audit</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
     document.body.appendChild(d);
     const open=h.querySelector(".burger"), close=d.querySelector(".burger"); let trap, scrollPos=0;
@@ -89,11 +89,12 @@
   U.safe(()=>{
     const f=document.getElementById("site-footer"); if(!f)return; f.className="footer";
     const S=s=>`${routes.services}${s}/`;
-    f.innerHTML=`<div class="container"><div class="footer-mark" aria-hidden="true">FODO</div><div class="footer-sub">FEAR OF DIGITALLY OUT.</div>
+    f.innerHTML=`<div class="container"><div class="footer-mark" aria-hidden="true"><span class="fm-base">FOD<span class="so">O<i></i></span></span><span class="fm-glow">FOD<span class="so">O<i></i></span></span></div><div class="footer-sub">FEAR OF DIGITALLY OUT ?</div>
     <div class="footer-cols">
-      <div><h4>Company</h4><ul><li><a href="${routes.about}">About</a></li><li><a href="${routes.about}#founder">Founder</a></li><li><a href="${routes.work}">Work</a></li><li><a href="${routes.reviews}">Reviews</a></li><li><a href="${routes.insights}">Insights</a></li><li><a href="${routes.contact}">Contact</a></li></ul></div>
+      <div><h4>Company</h4><ul><li><a href="${routes.about}">About</a></li><li><a href="${routes.about}#founder">Founder</a></li><li><a href="${routes.work}">Work</a></li><li><a href="${routes.reviews}">Reviews</a></li><li><a href="${routes.insights}">Insights</a></li><li><a href="${routes.pricing}">Pricing</a></li><li><a href="${routes.founding}">Founding Programme</a></li><li><a href="${routes.contact}">Contact</a></li></ul></div>
       <div><h4>Services</h4><ul><li><a href="${S('paid-advertising')}">Paid Media</a></li><li><a href="${S('seo')}">SEO</a></li><li><a href="${S('content-marketing')}">Content</a></li><li><a href="${S('social-media')}">Social</a></li><li><a href="${S('brand-strategy')}">Brand</a></li><li><a href="${S('marketing-automation')}">Automation</a></li></ul></div>
-      <div><h4>Tools</h4><ul><li><a href="${routes.score}">Growth Score</a></li><li><a href="${routes.roi}">ROI Calculator</a></li><li><a href="${routes.lab}">Growth Lab</a></li><li><a href="${routes.game}">FODO Challenge</a></li><li><a href="${routes.quiz}">Marketing Quiz</a></li></ul></div>
+      <div><h4>Tools</h4><ul><li><a href="${routes.score}">Growth Score</a></li><li><a href="${routes.roi}">ROI Calculator</a></li><li><a href="${routes.lab}">Growth Lab</a></li><li><a href="${routes.game}">FODO Challenge</a></li><li><a href="${routes.quiz}">Marketing Quiz</a></li><li><a href="${routes.teardowns}">Ad Teardowns</a></li><li><a href="${routes.templates}">Free Templates</a></li><li><a href="${routes.resources}">Checklists</a></li></ul></div>
+      <div><h4>Where we work</h4><ul><li><a href="${routes.locations}">All locations</a></li><li><a href="${routes.locations}gurugram/">Gurugram</a></li><li><a href="${routes.locations}noida/">Noida</a></li><li><a href="${routes.locations}dwarka/">Dwarka</a></li><li><a href="${routes.locations}west-delhi/">West Delhi</a></li><li><a href="${routes.industries}">Industries</a></li></ul></div>
       <div><h4>Legal</h4><ul><li><a href="${routes.legal}#privacy">Privacy</a></li><li><a href="${routes.legal}#cookies">Cookie Policy</a></li><li><a href="${routes.legal}#terms">Terms</a></li><li><a href="${routes.legal}#disclaimer">Disclaimer</a></li></ul></div>
       <div><h4>Contact</h4><address class="contact-list"><span class="ci"><i class="ic">${ico.pin}</i><span>${U.esc(C.address)}</span></span><a class="ci" href="mailto:${C.email}"><i class="ic">${ico.mail}</i>${C.email}</a><a class="ci" href="tel:${C.phone}"><i class="ic">${ico.tel}</i>${U.esc(C.phoneDisplay)}</a><a class="ci" href="${U.wa()}"${ext}><i class="ic wa-c">${ico.wa16}</i>WhatsApp</a><a class="ci" href="${C.instagramUrl}"${ext}><i class="ic ig-c">${ico.ig}</i>${U.esc(C.instagramHandle)}</a>${C.linkedinUrl?`<a class="ci" href="${C.linkedinUrl}"${ext}><i class="ic li-c">${ico.li}</i>CONNECT ON LINKEDIN</a>`:""}</address></div>
     </div>
@@ -200,7 +201,7 @@
 /* Mobile: limit items per section, "Show all" expands in place */
 (function(){ try{ if(!matchMedia("(max-width:767px)").matches)return;
   const lim=(sel,n,label)=>{ document.querySelectorAll(sel).forEach(g=>{ if(g.closest(".detail")||g.closest(".bot-panel"))return; const kids=[...g.children]; if(kids.length<=n)return; kids.slice(n).forEach(k=>k.classList.add("m-hidden")); const b=document.createElement("button"); b.type="button"; b.className="btn ghost sm showall"; b.textContent=`${label} (${kids.length})`; b.setAttribute("aria-expanded","false"); b.addEventListener("click",()=>{ const open=b.getAttribute("aria-expanded")==="true"; kids.slice(n).forEach(k=>k.classList.toggle("m-hidden",open)); b.setAttribute("aria-expanded",!open); b.textContent=open?`${label} (${kids.length})`:"Show less"; if(open)g.scrollIntoView({block:"start"}); }); g.after(b); }); };
-  lim("main section .grid.g3, main section .grid.g4, main section .grid.g2.cards",3,"Show all"); lim("main .marquee",6,"Show all services"); lim("#checklists",2,"Show all checklists");
+  lim("main section .grid.g3, main section .grid.g4, main section .grid.g2.cards",3,"Show all"); lim("main .marquee",6,"Show all"); lim("main .fc-grid",3,"Show all work"); lim("#checklists",2,"Show all checklists");
   document.addEventListener("fodo:rendered",()=>{ lim("#services-grid, #industries-grid, #work-grid, #insights-grid",4,"Show all"); });
   setTimeout(()=>{ lim("#services-grid, #industries-grid, #work-grid, #insights-grid",4,"Show all"); lim("#services-strip",6,"Show all services"); lim("#home-work, #home-insights",3,"Show all"); },0);
 }catch(e){} })();

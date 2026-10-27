@@ -84,8 +84,9 @@
 
   /* INDUSTRIES */
   U.safe(()=>{ if(route!=="industries")return;
+    { const h=decodeURIComponent(location.hash.slice(1)); if(h&&D.industries.some(x=>x.slug===h)){ location.replace(R.industries+h+"/"); return; } }
     const grid=document.getElementById("industries-grid"), wrap=document.getElementById("industries-wrap");
-    grid.innerHTML=D.industries.map(i=>`<a class="panel hud" href="#${i.slug}"><span class="tag">Industry</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(i.name)}</h3><p class="muted" style="margin:0;font-size:14px">${e(i.h)}</p><span class="panel-line"></span></a>`).join("");
+    grid.innerHTML=D.industries.map(i=>`<a class="panel hud spot" href="${R.industries}${i.slug}/"><span class="tag">Industry</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(i.name)}</h3><p class="muted" style="margin:0;font-size:14px">${e(i.h)}</p><span class="panel-line"></span></a>`).join("");
     hashState(wrap,(id,det)=>{ const i=D.industries.find(x=>x.slug===id); if(!i)return false; document.title=`${i.name} marketing — FODO`;
       det.innerHTML=`<div class="detail-head">${back("all industries")}<span class="tag">${e(i.name)}</span></div><h2 style="font-size:clamp(28px,4vw,48px)">${e(i.h)}</h2>
       ${i.note?`<div class="notice">${e(i.note)}</div>`:""}
@@ -100,10 +101,11 @@
 
   /* WORK */
   U.safe(()=>{ if(route!=="work")return;
+    { const h=decodeURIComponent(location.hash.slice(1)); if(h&&D.cases.some(x=>x.slug===h)){ location.replace(R.work+h+"/"); return; } }
     const grid=document.getElementById("work-grid"), filt=document.getElementById("work-filters"), wrap=document.getElementById("work-wrap");
     const tags=["ALL","E-COMMERCE","B2B","LOCAL BUSINESS","LEAD GENERATION","BRANDING","SOCIAL","PAID MEDIA","SEO"];
     filt.innerHTML=tags.map((t,i)=>`<button type="button" aria-pressed="${i===0}" data-f="${t}">${t}</button>`).join("");
-    grid.innerHTML=D.cases.map(c=>`<a class="panel hud work-card" href="#${c.slug}" data-tags="${c.tags.join("|")}"><span class="tag warn">CONCEPT ENGAGEMENT</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(c.title)}</h3><p class="muted" style="margin:0;font-size:14px">${c.tags.join(" · ")} · ${e(c.industry)}</p><span class="panel-line"></span></a>`).join("");
+    grid.innerHTML=D.cases.map(c=>`<a class="panel hud work-card spot" href="${R.work}${c.slug}/" data-tags="${c.tags.join("|")}"><span class="tag warn">CONCEPT ENGAGEMENT</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(c.title)}</h3><p class="muted" style="margin:0;font-size:14px">${c.tags.join(" · ")} · ${e(c.industry)}</p><span class="panel-line"></span></a>`).join("");
     filt.addEventListener("click",ev=>{ const b=ev.target.closest("button"); if(!b)return; filt.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); grid.querySelectorAll("[data-tags]").forEach(c=>c.style.display=(b.dataset.f==="ALL"||c.dataset.tags.split("|").includes(b.dataset.f))?"":"none"); });
     hashState(wrap,(id,det)=>{ const c=D.cases.find(x=>x.slug===id); if(!c)return false; document.title=`${c.title} — FODO (concept)`;
       const sec=(t,b)=>`<h3>${t}</h3><p>${b}</p>`;

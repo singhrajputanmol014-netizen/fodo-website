@@ -49,6 +49,7 @@
     var n = document.getElementById("bot-composer-note");
     if (n) n.textContent = aiPossible() ? NOTE_AI : NOTE_OFFLINE;
   }
+  { var pc = ss("fodo-llm-probe"); if (pc === "1" || pc === "0") probe = pc === "1"; }   // cached result applies at once, no 600 ms gap
   setNote();
   function runProbe() {
     if (MODE !== "auto" || location.protocol === "file:") return;

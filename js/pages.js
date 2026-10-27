@@ -52,7 +52,7 @@
   U.safe(()=>{ if(route!=="home")return;
     const strip=document.getElementById("services-strip"); if(strip)strip.innerHTML=D.services.map(s=>`<a href="${R.services}${s.slug}/">${e(s.name)}</a>`).join("");
     const work=document.getElementById("home-work"); if(work)work.innerHTML=D.cases.map(c=>`<a class="panel work-card" href="${R.work}#${c.slug}"><span class="tag warn">CONCEPT ENGAGEMENT</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(c.title)}</h3><p class="muted" style="margin:0;font-size:14px">${c.tags.join(" · ")}</p><span class="panel-line"></span></a>`).join("");
-    const ins=document.getElementById("home-insights"); if(ins)ins.innerHTML=D.articles.slice(0,3).map(a=>`<a class="panel" href="${R.insights}#${a.slug}"><span class="tag">${e(a.cat)}</span>${U.ico.arrow}<h3 style="margin-top:12px;font-size:20px">${e(a.title)}</h3><span class="panel-line"></span></a>`).join("");
+    const ins=document.getElementById("home-insights"); if(ins)ins.innerHTML=D.articles.slice(0,3).map(a=>`<a class="panel" href="${R.insights}${a.slug}/"><span class="tag">${e(a.cat)}</span>${U.ico.arrow}<h3 style="margin-top:12px;font-size:20px">${e(a.title)}</h3><span class="panel-line"></span></a>`).join("");
     const st=document.getElementById("home-stages"); if(st)st.innerHTML=D.stages.map(s=>`<button class="panel explain stage-card" type="button" data-title="${s.n} · ${e(s.name)}" data-body="${e(s.what)} What FODO does: ${e(s.fodo)} You receive: ${e(s.client)} Measured: ${e(s.measure)} Next: ${e(s.next)}"><span class="mono signal">${s.n}</span><b class="stage-name">${e(s.name)}</b><span class="stage-what">${e(s.what)}</span><span class="more-hint">Tap for details →</span></button>`).join("");
     U.rereveal();
   },"home");
@@ -119,20 +119,14 @@
 
   /* INSIGHTS */
   U.safe(()=>{ if(route!=="insights")return;
+    { const h=decodeURIComponent(location.hash.slice(1)); if(h&&D.articles.some(x=>x.slug===h)){ location.replace(R.insights+h+"/"); return; } }
     const grid=document.getElementById("insights-grid"), filt=document.getElementById("insights-filters"), search=document.getElementById("insights-search"), wrap=document.getElementById("insights-wrap");
     const cats=["All","Growth","Paid Media","SEO","Brand","Social","AI","Content","Strategy"]; let cat="All";
     const words=a=>a.body.replace(/<[^>]+>/g," ").split(/\s+/).filter(Boolean).length;
-    const card=a=>`<a class="panel" href="#${a.slug}" data-cat="${a.cat}"><span class="tag">${e(a.cat)}</span>${U.ico.arrow}<h3 style="margin-top:12px;font-size:20px">${e(a.title)}</h3><p class="muted" style="margin:0;font-size:13px">${Math.max(1,Math.round(words(a)/220))} min read · ${a.date}</p><span class="panel-line"></span></a>`;
-    const apply=()=>{ const q=(search.value||"").toLowerCase(); let n=0; grid.querySelectorAll("a").forEach(c=>{ const a=D.articles.find(x=>x.slug===c.getAttribute("href").slice(1)); const ok=(cat==="All"||a.cat===cat)&&(!q||(a.title+a.body).toLowerCase().includes(q)); c.style.display=ok?"":"none"; if(ok)n++; }); document.getElementById("insights-empty").hidden=n>0; };
+    const card=a=>`<a class="panel" href="${R.insights}${a.slug}/" data-slug="${a.slug}" data-cat="${a.cat}"><span class="tag">${e(a.cat)}</span>${U.ico.arrow}<h3 style="margin-top:12px;font-size:20px">${e(a.title)}</h3><p class="muted" style="margin:0;font-size:13px">${Math.max(1,Math.round(words(a)/220))} min read · ${a.date}</p><span class="panel-line"></span></a>`;
+    const apply=()=>{ const q=(search.value||"").toLowerCase(); let n=0; grid.querySelectorAll("a").forEach(c=>{ const a=D.articles.find(x=>x.slug===c.dataset.slug); const ok=(cat==="All"||a.cat===cat)&&(!q||(a.title+a.body).toLowerCase().includes(q)); c.style.display=ok?"":"none"; if(ok)n++; }); document.getElementById("insights-empty").hidden=n>0; };
     grid.innerHTML=D.articles.map(card).join(""); filt.innerHTML=cats.map((c,i)=>`<button type="button" aria-pressed="${i===0}" data-f="${c}">${c}</button>`).join("");
     filt.addEventListener("click",ev=>{ const b=ev.target.closest("button"); if(!b)return; cat=b.dataset.f; filt.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); apply(); }); search.addEventListener("input",apply);
-    hashState(wrap,(id,det)=>{ const a=D.articles.find(x=>x.slug===id); if(!a)return false; document.title=`${a.title} — FODO Insights`;
-      const rel=D.articles.filter(x=>x.slug!==a.slug).slice(0,3);
-      det.innerHTML=`<div class="detail-head">${back("insights")}<span class="tag">${e(a.cat)}</span></div><h2 style="font-size:clamp(26px,3.6vw,44px);text-transform:none">${e(a.title)}</h2>
-      <p class="mono muted">By ${e(C.founderName)} · ${a.date} · ${Math.max(1,Math.round(words(a)/220))} min read</p><div class="prose">${a.body}</div>
-      <h3>Related reading</h3><p>${rel.map(r=>`<a href="#${r.slug}">${e(r.title)}</a>`).join("<br>")}</p>
-      <h3>Related services</h3><p>${svcLink("paid-advertising")} · ${svcLink("seo")} · ${svcLink("cro")} · ${svcLink("analytics")}</p>${cta}`;
-      const ld=document.getElementById("article-ld"); if(ld)ld.textContent=JSON.stringify({"@context":"https://schema.org","@type":"Article",headline:a.title,datePublished:a.date,author:{"@type":"Person",name:C.founderName},publisher:{"@type":"Organization",name:"FODO"}}); return true; },"#insights-list");
   },"insights");
 
   /* RESOURCES checklists */

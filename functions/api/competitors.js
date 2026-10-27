@@ -21,12 +21,12 @@ const FIELDS = ["id", "displayName", "formattedAddress", "shortFormattedAddress"
 const PRICE = { PRICE_LEVEL_FREE: "Free", PRICE_LEVEL_INEXPENSIVE: "₹ / $", PRICE_LEVEL_MODERATE: "₹₹ / $$", PRICE_LEVEL_EXPENSIVE: "₹₹₹ / $$$", PRICE_LEVEL_VERY_EXPENSIVE: "₹₹₹₹ / $$$$" };
 const rectAround = (c, r) => { const dLat = r / 111320, dLng = r / (111320 * Math.cos(c.lat * Math.PI / 180)); return { low: { latitude: c.lat - dLat, longitude: c.lng - dLng }, high: { latitude: c.lat + dLat, longitude: c.lng + dLng } }; };
 
-export async function googleSearch(key, { type, area, center, radius, rect }) {
+export async function googleSearch(key, { type, area, center, radius, rect, pages }) {
   const base = { textQuery: area && !center && !rect ? `${type} in ${area}` : type, pageSize: 20, languageCode: "en" };
   if (rect) base.locationRestriction = { rectangle: { low: { latitude: rect[0], longitude: rect[1] }, high: { latitude: rect[2], longitude: rect[3] } } };
   else if (center) base.locationRestriction = { rectangle: rectAround(center, radius) };
   const out = []; let token = "";
-  for (let page = 0; page < 3; page++) {
+  for (let page = 0; page < (pages || 3); page++) {
     const body = Object.assign({}, base, token ? { pageToken: token } : {});
     const r = await fetchT("https://places.googleapis.com/v1/places:searchText", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": FIELDS } }, 10000);
     if (!r.ok) { if (page === 0) throw new Error("google " + r.status); break; }

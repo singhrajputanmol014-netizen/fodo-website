@@ -146,6 +146,14 @@
     if (opener && opener.focus) opener.focus();
   }
   window.FODO_SEARCH = { open: open, close: close, search: function (q) { return load().then(function () { return search(q); }); }, suggest: function (q) { return load().then(function () { return suggestions(q); }); } };
+  /* ?q=… opens the search with that query (the WebSite SearchAction in the home page schema points here) */
+  try {
+    var q0 = (new URLSearchParams(location.search).get("q") || "").trim().slice(0, 80);
+    if (q0) {
+      var go0 = function () { open(); input.value = q0; render(q0); load().then(function () { if (input.value === q0) render(q0); }).catch(function () {}); };
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go0); else go0();
+    }
+  } catch (e) {}
 
   function wire() {
     var b = document.getElementById("search-open"); if (b && !b._w) { b._w = 1; b.addEventListener("click", open); b.addEventListener("pointerenter", function () { load().catch(function () {}); }, { once: true }); }

@@ -5,7 +5,8 @@
  * Nothing is stored. CPU is kept small (pages are cut at 250 KB) so it fits Cloudflare's free plan. */
 const UA = "Mozilla/5.0 (compatible; FODO-CompetitorFinder/2.0; +https://www.fodo.co.in/competitor-finder/)";
 const json = (b, s) => new Response(JSON.stringify(b), { status: s || 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
-const MAX_URLS = 4, MAX_BYTES = 250000;
+const MAX_URLS = 4, MAX_PLACES = 4, MAX_BYTES = 250000;
+import { googleSearch } from "./competitors.js";
 
 export function safeUrl(u) {
   try {
@@ -42,18 +43,32 @@ export function extract(html, base) {
   const whatsapp = uniq(links.filter((l) => /wa\.me\/|api\.whatsapp\.com\/send|whatsapp\.com\/send/i.test(l)).map((l) => { const m = l.match(/wa\.me\/(\d+)|phone=(\d+)/i); return m ? "+" + (m[1] || m[2]) : ""; })).slice(0, 3);
   const title = ((h.match(/<title[^>]*>([^<]{1,200})<\/title>/i) || [])[1] || "").replace(/\s+/g, " ").trim();
   const description = ((h.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']{1,400})/i) || h.match(/<meta[^>]+content=["']([^"']{1,400})["'][^>]*name=["']description["']/i) || [])[1] || "").trim();
+  // schema.org JSON-LD (Organization / LocalBusiness): phone, email, address, socials, founding date
+  const ld = { phones: [], emails: [], same: [], address: "", founded: "" };
+  for (const m of html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
+    let j; try { j = JSON.parse(m[1].trim()); } catch (e) { continue; }
+    const walk = (o, d) => { if (!o || typeof o !== "object" || d > 6) return; if (Array.isArray(o)) { o.forEach((x) => walk(x, d + 1)); return; }
+      if (o.telephone) ld.phones.push(String(o.telephone)); if (o.email) ld.emails.push(String(o.email).replace(/^mailto:/i, "").toLowerCase());
+      if (o.sameAs) ld.same.push(...[].concat(o.sameAs).map(String)); if (o.foundingDate && !ld.founded) ld.founded = String(o.foundingDate).slice(0, 4);
+      const a = o.address; if (a && !ld.address) ld.address = typeof a === "string" ? a : [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode, a.addressCountry && (a.addressCountry.name || a.addressCountry)].filter((x) => x && typeof x === "string").join(", ");
+      Object.keys(o).forEach((k) => { if (typeof o[k] === "object") walk(o[k], d + 1); }); };
+    walk(j, 0);
+  }
+  links.push(...ld.same);
   let contactPage = "";
   const c = links.find((l) => /contact|reach-us|get-in-touch|about/i.test(l) && !/^(mailto|tel|javascript):/i.test(l));
   if (c) { try { const u = new URL(c, base); if (u.hostname.replace(/^www\./, "") === base.hostname.replace(/^www\./, "")) contactPage = u.href; } catch (e) {} }
-  return { emails, phones, whatsapp, instagram: find(/instagram\.com\/(?!p\/|reel|explore|sharer)[^/]+/i), facebook: find(/facebook\.com\/(?!sharer|share|dialog|plugins|tr\b)[^/]+/i),
+  return { emails: uniq(emails.concat(ld.emails.filter((e) => /@/.test(e) && !BAD_MAIL.test(e)))).slice(0, 6), phones: uniq(phones.concat(ld.phones.map((p) => p.replace(/[^\d+]/g, "")).filter((p) => p.length >= 7))).slice(0, 5),
+    address: ld.address.slice(0, 200), founded: ld.founded, whatsapp, instagram: find(/instagram\.com\/(?!p\/|reel|explore|sharer)[^/]+/i), facebook: find(/facebook\.com\/(?!sharer|share|dialog|plugins|tr\b)[^/]+/i),
     linkedin: find(/linkedin\.com\/(company|in|school)\//i), twitter: find(/(^|\/\/|\.)(twitter|x)\.com\/(?!share|intent|home)[A-Za-z0-9_]+/i), youtube: find(/youtube\.com\/(@|c\/|channel\/|user\/)/i), title, description, contactPage };
 }
-const mergeInfo = (a, b) => { for (const k of ["emails", "phones", "whatsapp"]) a[k] = uniq(a[k].concat(b[k] || [])).slice(0, 6); for (const k of ["instagram", "facebook", "linkedin", "twitter", "youtube"]) a[k] = a[k] || b[k] || ""; return a; };
+const mergeInfo = (a, b) => { a.address = a.address || b.address || ""; for (const k of ["emails", "phones", "whatsapp"]) a[k] = uniq(a[k].concat(b[k] || [])).slice(0, 6); for (const k of ["instagram", "facebook", "linkedin", "twitter", "youtube"]) a[k] = a[k] || b[k] || ""; return a; };
 
 export async function onRequestPost({ request, env }) {
   let body; try { body = await request.json(); } catch (e) { return json({ ok: false, reason: "Send JSON: { urls: [...] }" }, 400); }
   const urls = (Array.isArray(body && body.urls) ? body.urls : []).slice(0, MAX_URLS);
-  if (!urls.length) return json({ ok: false, reason: "No websites to read." }, 400);
+  const places = (Array.isArray(body && body.places) ? body.places : []).slice(0, MAX_PLACES);
+  if (!urls.length && !places.length) return json({ ok: false, reason: "Nothing to look up." }, 400);
   const kv = env.CHAT_KV, ip = request.headers.get("cf-connecting-ip") || "anon", hour = Math.floor(Date.now() / 3600000);
   if (kv) { try { const rk = `en:rl:${ip}:${hour}`, n = parseInt((await kv.get(rk)) || "0", 10); if (n >= parseInt(env.ENRICH_PER_HOUR || "150", 10)) return json({ ok: false, reason: "Too many website look-ups this hour — try again later." }, 429); await kv.put(rk, String(n + 1), { expirationTtl: 3700 }); } catch (e) {} }
   const results = {};
@@ -71,6 +86,21 @@ export async function onRequestPost({ request, env }) {
       if (kv) { try { await kv.put(ck, JSON.stringify(info), { expirationTtl: 7 * 86400 }); } catch (e) {} }
     } catch (e) { results[raw] = { error: String(e && e.name === "TimeoutError" ? "timeout" : (e && e.message) || "failed") }; }
   }));
-  return json({ ok: true, results });
+  // Google Maps listing for each named business (only when the site has a Google Places key)
+  const placeOut = {};
+  if (places.length && env.GOOGLE_PLACES_KEY) {
+    await Promise.all(places.map(async (pl) => {
+      const name = String(pl.name || "").slice(0, 120), near = String(pl.near || "").slice(0, 120), key = String(pl.key || name).slice(0, 200);
+      if (!name) return;
+      const ck = "en:g1:" + (name + "|" + near).toLowerCase();
+      if (kv) { try { const hit = await kv.get(ck, "json"); if (hit) { placeOut[key] = hit; return; } } catch (e) {} }
+      try {
+        const lat = +pl.lat, lng = +pl.lng, c = isFinite(lat) && isFinite(lng) && pl.lat != null ? { lat, lng } : null;
+        const r = await googleSearch(env.GOOGLE_PLACES_KEY, { type: name + (near && !c ? " " + near : ""), area: "", center: c, radius: 25000, rect: null, pages: 1 });
+        const best = r[0]; if (best) { placeOut[key] = best; if (kv) { try { await kv.put(ck, JSON.stringify(best), { expirationTtl: 14 * 86400 }); } catch (e) {} } }
+      } catch (e) {}
+    }));
+  }
+  return json({ ok: true, results, places: placeOut, google: !!env.GOOGLE_PLACES_KEY });
 }
 export const onRequestGet = () => json({ ok: true, service: "enrich", method: "POST { urls: [...] }", max: MAX_URLS });

@@ -1,0 +1,22 @@
+/scripts/*
+  X-Robots-Tag: noindex
+/tests/*
+  X-Robots-Tag: noindex
+/docs/*
+  X-Robots-Tag: noindex
+/data/*
+  X-Robots-Tag: noindex
+/thank-you/*
+  X-Robots-Tag: noindex
+/BOT-README.md
+  X-Robots-Tag: noindex
+/DEPLOY-GUIDE.md
+  X-Robots-Tag: noindex
+/DESIGN-NOTES.md
+  X-Robots-Tag: noindex
+/QA-report.md
+  X-Robots-Tag: noindex
+/README.md
+  X-Robots-Tag: noindex
+/VOICE-README.md
+  X-Robots-Tag: noindex

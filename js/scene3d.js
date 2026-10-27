@@ -84,6 +84,7 @@
   var last = performance.now(), clock = 0, running = true, raf = 0;
   function frame(now) {
     raf = 0; if (!running) return;
+    if (mobile && now - last < 30) { raf = requestAnimationFrame(frame); return; }   // phones: ~30 fps is plenty for a background and halves the work
     var dt = Math.min(.05, (now - last) / 1000); last = now; if (!reduce) clock += dt;
     prog01 += (target - prog01) * Math.min(1, dt * 4.5);
     mx += (tmx - mx) * Math.min(1, dt * 3); my += (tmy - my) * Math.min(1, dt * 3);

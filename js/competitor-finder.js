@@ -8,7 +8,7 @@
    • Every search is added to one sheet in this browser → Excel (one row per competitor, every column), CSV or Google Sheets. */
 (function () {
   "use strict";
-  window.FODO_CF_VERSION = "8.0";
+  window.FODO_CF_VERSION = "8.1";
   var U = window.FODO_UTIL || {}, esc = U.esc || function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var $ = function (id) { return document.getElementById(id); };
   var form = $("cf"), bform = $("cfb"); if (!form || !bform) return;
@@ -217,23 +217,86 @@
     });
   }
 
-  /* ================= brand & startup search (Wikidata) ================= */
+  /* ================= brand & startup search (Wikidata — fast search API, no heavy SPARQL) =================
+     1. find the company / industry (wbsearchentities)   2. read its industries + types (wbgetentities)
+     3. find other companies with the same industry/type (CirrusSearch haswbstatement — answers in ~1 s)
+     4. read every competitor's details in batches of 50 (wbgetentities)  5. names for countries, HQs, people (labels)
+     6. optional: keep only companies headquartered within the radius of the chosen city
+     7. then each website (and Google Maps, when connected) is read for contacts — see "contacts" below */
   bform.addEventListener("click", function (e) { var b = e.target.closest(".chip[data-brand]"); if (!b) return; bIn.value = b.dataset.brand; brandPick = null; runBrand(); });
   bform.addEventListener("submit", function (e) { e.preventDefault(); runBrand(); });
-  var WD = "https://query.wikidata.org/sparql?format=json&query=";
-  function sparql(q) { return fetchT(WD + encodeURIComponent(q), { headers: { accept: "application/sparql-results+json" } }, 45000).then(function (r) { if (!r.ok) throw new Error("wikidata " + r.status); return r.json(); }).then(function (j) { return j.results.bindings; }); }
-  var val = function (b, k) { return b[k] ? b[k].value : ""; };
-  var qid = function (uri) { return String(uri || "").split("/").pop(); };
-  var GENERIC = "wd:Q4830453, wd:Q783794, wd:Q6881511, wd:Q891723, wd:Q43229, wd:Q167037, wd:Q1589009, wd:Q18388277, wd:Q155076, wd:Q219577, wd:Q658255, wd:Q778575, wd:Q431289, wd:Q1137109, wd:Q163740, wd:Q2659904, wd:Q4120211";
+  var WAPI = "https://www.wikidata.org/w/api.php?format=json&origin=*&";
+  var wget = function (params, ms) { return fetchT(WAPI + params, {}, ms || 20000).then(function (r) { if (!r.ok) throw new Error("wikidata " + r.status); return r.json(); }); };
+  var GENERIC = { Q4830453: 1, Q783794: 1, Q6881511: 1, Q891723: 1, Q43229: 1, Q167037: 1, Q1589009: 1, Q18388277: 1, Q155076: 1, Q219577: 1, Q658255: 1, Q778575: 1, Q431289: 1, Q1137109: 1, Q163740: 1, Q2659904: 1, Q4120211: 1, Q5621421: 1, Q1664720: 1, Q15911314: 1, Q3918: 1, Q31855: 1, Q7210356: 1, Q21980538: 1 };
+  function claimVals(ent, p) {
+    var cs = (ent.claims || {})[p] || []; var pref = cs.filter(function (c) { return c.rank === "preferred"; }); cs = (pref.length ? pref : cs).filter(function (c) { return c.rank !== "deprecated" && c.mainsnak && c.mainsnak.datavalue; });
+    return cs.map(function (c) { var v = c.mainsnak.datavalue.value; return { v: v, q: c.qualifiers || {} }; });
+  }
+  var ids = function (ent, p) { return claimVals(ent, p).map(function (x) { return x.v && x.v.id; }).filter(Boolean); };
+  var strs = function (ent, p) { return claimVals(ent, p).map(function (x) { return typeof x.v === "string" ? x.v : ""; }).filter(Boolean); };
+  var num = function (ent, p) { var a = claimVals(ent, p).map(function (x) { return x.v && x.v.amount ? +x.v.amount : NaN; }).filter(isFinite); return a.length ? Math.max.apply(null, a) : ""; };
+  var year = function (ent, p) { var a = claimVals(ent, p).map(function (x) { return x.v && x.v.time ? x.v.time.slice(1, 5) : ""; }).filter(Boolean).sort(); return a[0] || ""; };
+  var coord = function (ent) { var a = claimVals(ent, "P625")[0]; return a && a.v && a.v.latitude != null ? { lat: a.v.latitude, lng: a.v.longitude } : null; };
+  function entities(list, props) {      // 50 ids per call, 3 calls at a time
+    var out = {}, chunks = []; for (var i = 0; i < list.length; i += 50) chunks.push(list.slice(i, i + 50));
+    var k = 0, worker = function () { var c = chunks[k++]; if (!c) return Promise.resolve(); return wget("action=wbgetentities&ids=" + c.join("|") + "&props=" + (props || "labels|descriptions|claims|sitelinks/urls") + "&languages=en&sitefilter=enwiki").then(function (r) { Object.assign(out, r.entities || {}); }, function () {}).then(worker); };
+    return Promise.all([worker(), worker(), worker()]).then(function () { return out; });
+  }
+  // light SPARQL: only the HQ (or own) coordinates for a list of companies — used for the city/radius filter
+  function hqCoords(list) {
+    var out = {}, chunks = []; for (var i = 0; i < list.length; i += 250) chunks.push(list.slice(i, i + 250));
+    return Promise.all(chunks.map(function (c) {
+      var q = "SELECT ?c ?coord WHERE { VALUES ?c { " + c.map(function (x) { return "wd:" + x; }).join(" ") + " } { ?c wdt:P159/wdt:P625 ?coord . } UNION { ?c wdt:P625 ?coord . } }";
+      return fetchT("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(q), { headers: { accept: "application/sparql-results+json" } }, 30000).then(function (r) { return r.json(); })
+        .then(function (j) { j.results.bindings.forEach(function (b) { var m = (b.coord.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/) || []); if (m[1]) out[b.c.value.split("/").pop()] = out[b.c.value.split("/").pop()] || { lat: +m[2], lng: +m[1] }; }); }, function () {});
+    })).then(function () { return out; });
+  }
+  var label = function (e) { return e && e.labels && e.labels.en ? e.labels.en.value : ""; };
   function resolveSeed(q) {
     if (brandPick && brandPick.id && nrm(brandPick.label) === nrm(q)) return Promise.resolve(brandPick);
-    return fetchT("https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&origin=*&language=en&uselang=en&type=item&limit=1&search=" + encodeURIComponent(q), {}, 8000)
-      .then(function (r) { return r.json(); }).then(function (j) { var x = (j.search || [])[0]; if (!x) throw Object.assign(new Error("not found"), { reason: "No company or industry called “" + q + "” was found. Try the full name, or pick one from the suggestions." }); return { id: x.id, label: x.label, sub: x.description || "" }; });
+    return wget("action=wbsearchentities&language=en&uselang=en&type=item&limit=1&search=" + encodeURIComponent(q), 10000)
+      .then(function (j) { var x = (j.search || [])[0]; if (!x) throw Object.assign(new Error("not found"), { reason: "No company or industry called “" + q + "” was found. Try the full name, or pick one from the suggestions." }); return { id: x.id, label: x.label, sub: x.description || "" }; });
   }
   function placeCoords() {
     var t = blIn.value.trim(); if (!t) return Promise.resolve(null);
     if (bplace && bplace.lat != null) return Promise.resolve(bplace);
     return lib().then(function (m) { return m.freePlaces(fetchT, {}).geocode(t); }).then(function (c) { if (!c) throw Object.assign(new Error("place"), { reason: "That city or region was not found — pick one from the suggestions." }); return Object.assign({ value: t }, c); });
+  }
+  function searchIds(stmts, country) {
+    // one CirrusSearch per statement, sorted by how linked-to (well known) each company is
+    return Promise.all(stmts.map(function (s) {
+      var q = "haswbstatement:" + s + (country ? " haswbstatement:P17=" + country : "");
+      return wget("action=query&list=search&srnamespace=0&srlimit=500&srprop=&srsort=incoming_links_desc&srsearch=" + encodeURIComponent(q), 20000)
+        .then(function (j) { return ((j.query || {}).search || []).map(function (x) { return x.title; }); }, function () { return []; });
+    })).then(function (lists) {
+      var score = {}, order = [];
+      lists.forEach(function (l, li) { l.forEach(function (id, rank) { if (!/^Q\d+$/.test(id)) return; if (!(id in score)) { score[id] = 0; order.push(id); } score[id] += 1000 - Math.min(999, rank) + (li < 3 ? 2000 : 0); }); });
+      return order.sort(function (a, b) { return score[b] - score[a]; }).map(function (id) { return { id: id, score: score[id] }; });
+    });
+  }
+  var BRAND_PAGE = 200;
+  function brandRecords(o) {
+      var L = function (list) { return list.map(function (x) { return label(o.labs[x]); }).filter(Boolean); };
+      var res = [];
+      o.found.forEach(function (f) {
+        var e = o.ents[f.id]; if (!e || e.missing !== undefined) return;
+        var name = label(e); if (!name) return;
+        var hqIds = ids(e, "P159"), hqC = coord(e) || (o.cc && o.cc[f.id]) || (f.lat != null ? { lat: f.lat, lng: f.lng } : null);
+        var ex = claimVals(e, "P414"), tick = ex.map(function (x) { var t = (x.q.P249 || [])[0]; return t && t.datavalue ? t.datavalue.value : ""; }).filter(Boolean);
+        var h = function (p, base) { var v = strs(e, p)[0]; return v ? base + v : ""; };
+        var p = { mode: "brand", id: f.id, name: name, description: e.descriptions && e.descriptions.en ? e.descriptions.en.value : "",
+          website: strs(e, "P856")[0] || "", email: strs(e, "P968").map(function (x) { return x.replace(/^mailto:/, ""); }).join("; "), phone: strs(e, "P1329").join("; "),
+          country: L(ids(e, "P17")).slice(0, 3).join(", "), hq: L(hqIds).slice(0, 2).join(", "), founded: year(e, "P571"), employees: num(e, "P1128"), revenue: num(e, "P2139"),
+          industry: L(ids(e, "P452")).slice(0, 3).join(", "), kind: L(ids(e, "P31").filter(function (t) { return !GENERIC[t]; })).slice(0, 3).join(", "),
+          ceo: L(ids(e, "P169")).slice(0, 2).join(", "), founders: L(ids(e, "P112")).slice(0, 5).join(", "), parent: L(ids(e, "P749")).slice(0, 2).join(", "),
+          exchange: L(ex.map(function (x) { return x.v && x.v.id; }).filter(Boolean)).slice(0, 2).join(", "), ticker: tick.slice(0, 2).join(", "), products: L(ids(e, "P1056")).slice(0, 6).join(", "),
+          twitter: h("P2002", "https://x.com/"), instagram: h("P2003", "https://instagram.com/"), facebook: h("P2013", "https://facebook.com/"), linkedin: h("P4264", "https://www.linkedin.com/company/"), youtube: h("P2397", "https://www.youtube.com/channel/"),
+          wikipedia: e.sitelinks && e.sitelinks.enwiki ? e.sitelinks.enwiki.url || "https://en.wikipedia.org/wiki/" + encodeURIComponent(e.sitelinks.enwiki.title.replace(/ /g, "_")) : "",
+          wikidata: "https://www.wikidata.org/wiki/" + f.id, lat: hqC ? hqC.lat : null, lng: hqC ? hqC.lng : null, score: f.score + (e.sitelinks && e.sitelinks.enwiki ? 500 : 0) };
+        p.mapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(name + (p.hq ? ", " + p.hq : ""));
+        res.push(p);
+      });
+      return res;
   }
   function runBrand() {
     var q = bIn.value.trim(); if (!q) { setStatus("Type a brand, company or industry — for example “Zomato” or “fintech”.", "warn"); bIn.focus(); return; }
@@ -242,46 +305,40 @@
     setStatus("Finding competitors of " + q + "…", "busy");
     list.innerHTML = '<li class="cf-empty">Looking up companies that compete with ' + esc(q) + "…</li>"; $("cf-more").hidden = true;
     Promise.all([resolveSeed(q), placeCoords()]).then(function (r) {
-      var seed = r[0], loc = r[1], S = "wd:" + seed.id;
-      var cf = country ? "?c wdt:P17 wd:" + country + " ." : "";
-      var lf = loc ? '?c wdt:P159 ?hqf . SERVICE wikibase:around { ?hqf wdt:P625 ?hqloc . bd:serviceParam wikibase:center "Point(' + (+loc.lng).toFixed(5) + " " + (+loc.lat).toFixed(5) + ')"^^geo:wktLiteral . bd:serviceParam wikibase:radius "' + rkm + '" . }' : "";
-      var compQ = "SELECT ?c ?cLabel ?cDescription ?website ?email ?phone ?countryLabel ?hqLabel ?coord ?inception ?employees ?revenue ?ceoLabel ?founderLabel ?parentLabel ?exchangeLabel ?ticker ?productLabel ?ciLabel ?typeLabel ?tw ?ig ?fb ?li ?yt ?article ?shared ?links WHERE {" +
-        "{ SELECT ?c (COUNT(DISTINCT ?ind) AS ?shared) (MAX(?sl) AS ?links) WHERE { VALUES ?seed { " + S + " } " +
-        "{ ?seed wdt:P452 ?ind . ?c wdt:P452 ?ind . } UNION { ?seed wdt:P31 ?ind . FILTER(?ind NOT IN (" + GENERIC + ")) ?c wdt:P31 ?ind . } UNION { BIND(?seed AS ?ind) ?c wdt:P452 ?ind . } " +
-        "FILTER(?c != ?seed) " + cf + " " + lf + " ?c wikibase:sitelinks ?sl . } GROUP BY ?c ORDER BY DESC(?shared) DESC(?links) LIMIT 300 }" +
-        "OPTIONAL { ?c wdt:P856 ?website . } OPTIONAL { ?c wdt:P968 ?email . } OPTIONAL { ?c wdt:P1329 ?phone . } OPTIONAL { ?c wdt:P17 ?country . }" +
-        "OPTIONAL { ?c wdt:P159 ?hq . OPTIONAL { ?hq wdt:P625 ?coord . } } OPTIONAL { ?c wdt:P571 ?inception . } OPTIONAL { ?c wdt:P1128 ?employees . } OPTIONAL { ?c wdt:P2139 ?revenue . }" +
-        "OPTIONAL { ?c wdt:P169 ?ceo . } OPTIONAL { ?c wdt:P112 ?founder . } OPTIONAL { ?c wdt:P749 ?parent . } OPTIONAL { ?c wdt:P414 ?exchange . } OPTIONAL { ?c p:P414/pq:P249 ?ticker . }" +
-        "OPTIONAL { ?c wdt:P1056 ?product . } OPTIONAL { ?c wdt:P452 ?ci . } OPTIONAL { ?c wdt:P31 ?type . } OPTIONAL { ?c wdt:P2002 ?tw . } OPTIONAL { ?c wdt:P2003 ?ig . } OPTIONAL { ?c wdt:P2013 ?fb . }" +
-        "OPTIONAL { ?c wdt:P4264 ?li . } OPTIONAL { ?c wdt:P2397 ?yt . } OPTIONAL { ?article schema:about ?c ; schema:isPartOf <https://en.wikipedia.org/> . }" +
-        ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }';
-      var seedQ = 'SELECT ?sLabel ?sDescription ?indLabel ?countryLabel ?website ?inception WHERE { BIND(' + S + ' AS ?s) OPTIONAL { ?s wdt:P452 ?ind . } OPTIONAL { ?s wdt:P17 ?country . } OPTIONAL { ?s wdt:P856 ?website . } OPTIONAL { ?s wdt:P571 ?inception . } SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }';
-      return Promise.all([sparql(compQ), sparql(seedQ).catch(function () { return []; })]).then(function (rr) {
-        var rows = rr[0], srows = rr[1], by = {}, order = [];
-        var ARR = ["websites", "emails", "phones", "countries", "hq", "industries", "types", "ceos", "founders", "parents", "exchanges", "tickers", "products"];
-        rows.forEach(function (b) {
-          var id = qid(val(b, "c")); if (!by[id]) { by[id] = { id: id, name: val(b, "cLabel"), description: val(b, "cDescription"), founded: "", employees: "", revenue: "", coord: "", wikipedia: "", tw: "", ig: "", fb: "", li: "", yt: "", shared: +val(b, "shared") || 0, links: +val(b, "links") || 0 }; ARR.forEach(function (k) { by[id][k] = []; }); order.push(id); }
-          var o = by[id], add = function (k, v) { if (v && o[k].indexOf(v) < 0) o[k].push(v); };
-          add("websites", val(b, "website")); add("emails", val(b, "email").replace(/^mailto:/, "")); add("phones", val(b, "phone").replace(/^tel:/, "")); add("countries", val(b, "countryLabel")); add("hq", val(b, "hqLabel"));
-          add("industries", val(b, "ciLabel")); add("types", val(b, "typeLabel")); add("ceos", val(b, "ceoLabel")); add("founders", val(b, "founderLabel")); add("parents", val(b, "parentLabel")); add("exchanges", val(b, "exchangeLabel")); add("tickers", val(b, "ticker")); add("products", val(b, "productLabel"));
-          var inc = val(b, "inception"); if (inc && (!o.founded || inc < o.founded)) o.founded = inc;
-          var em = +val(b, "employees"); if (em && (!o.employees || em > o.employees)) o.employees = em;
-          var rv = +val(b, "revenue"); if (rv && (!o.revenue || rv > o.revenue)) o.revenue = rv;
-          ["tw", "ig", "fb", "li", "yt"].forEach(function (k) { o[k] = o[k] || val(b, k); }); o.coord = o.coord || val(b, "coord"); o.wikipedia = o.wikipedia || val(b, "article");
+      var seed = r[0], loc = r[1];
+      return entities([seed.id]).then(function (se) {
+        var s = se[seed.id] || {}, inds = ids(s, "P452"), types = ids(s, "P31").filter(function (t) { return !GENERIC[t]; });
+        var stmts = inds.slice(0, 4).map(function (i) { return "P452=" + i; }).concat(types.slice(0, 2).map(function (t) { return "P31=" + t; }));
+        if (!inds.length) stmts.unshift("P452=" + seed.id);                    // the search itself is an industry (e.g. "fintech")
+        setStatus("Found " + (label(s) || seed.label) + " — collecting companies in the same space…", "busy");
+        return searchIds(stmts, country).then(function (found) {
+          found = found.filter(function (x) { return x.id !== seed.id; });
+          var total = found.length;
+          var near = !loc ? Promise.resolve(found) : (setStatus("Checking where " + found.length + " companies are headquartered…", "busy"), hqCoords(found.slice(0, 1500).map(function (x) { return x.id; })).then(function (cc) {
+            var R = 6371, rr = Math.PI / 180;
+            return found.filter(function (x) { var p = cc[x.id]; if (!p) return false; var a = Math.pow(Math.sin((p.lat - loc.lat) * rr / 2), 2) + Math.cos(loc.lat * rr) * Math.cos(p.lat * rr) * Math.pow(Math.sin((p.lng - loc.lng) * rr / 2), 2); x.lat = p.lat; x.lng = p.lng; x.distance = Math.round(2 * R * Math.asin(Math.sqrt(a)) * 1000); return x.distance <= rkm * 1000; });
+          }));
+          return near.then(function (kept) {
+            var first = kept.slice(0, BRAND_PAGE);
+            if (!first.length) return { seed: seed, s: s, loc: loc, ents: {}, found: [], rest: [], total: total };
+            setStatus("Reading details of " + first.length + (kept.length > first.length ? " of " + kept.length : "") + " companies…", "busy");
+            return entities(first.map(function (x) { return x.id; })).then(function (ents) { return { seed: seed, s: s, loc: loc, ents: ents, found: first, rest: kept.slice(BRAND_PAGE), total: total }; });
+          });
         });
-        var res = order.map(function (id) {
-          var o = by[id], pt = (o.coord.match(/Point\(([-\d.]+) ([-\d.]+)\)/) || []), j = function (a, n) { return a.filter(function (x) { return !/^Q\d+$/.test(x); }).slice(0, n || 4).join(", "); };
-          return { mode: "brand", id: id, name: o.name, description: o.description, website: o.websites[0] || "", email: o.emails.join("; "), phone: o.phones.join("; "),
-            country: j(o.countries), hq: j(o.hq, 2), founded: o.founded ? o.founded.slice(0, 4) : "", employees: o.employees || "", revenue: o.revenue || "", industry: j(o.industries, 3), kind: j(o.types, 3),
-            ceo: j(o.ceos, 2), founders: j(o.founders, 5), parent: j(o.parents, 2), exchange: j(o.exchanges, 2), ticker: o.tickers.slice(0, 2).join(", "), products: j(o.products, 6),
-            twitter: o.tw ? "https://x.com/" + o.tw : "", instagram: o.ig ? "https://instagram.com/" + o.ig : "", facebook: o.fb ? "https://facebook.com/" + o.fb : "", linkedin: o.li ? "https://www.linkedin.com/company/" + o.li : "", youtube: o.yt ? "https://www.youtube.com/channel/" + o.yt : "",
-            wikipedia: o.wikipedia, wikidata: "https://www.wikidata.org/wiki/" + id, lat: pt[2] ? +pt[2] : null, lng: pt[1] ? +pt[1] : null, score: o.shared * 1000 + o.links };
-        }).filter(function (x) { return x.name && !/^Q\d+$/.test(x.name); });
-        var seedInfo = { id: seed.id, label: seed.label, sub: seed.sub, industries: [], country: "", website: "", founded: "" };
-        srows.forEach(function (b) { var i = val(b, "indLabel"); if (i && seedInfo.industries.indexOf(i) < 0) seedInfo.industries.push(i); seedInfo.country = seedInfo.country || val(b, "countryLabel"); seedInfo.website = seedInfo.website || val(b, "website"); seedInfo.founded = seedInfo.founded || val(b, "inception").slice(0, 4); if (val(b, "sDescription")) seedInfo.sub = val(b, "sDescription"); if (val(b, "sLabel")) seedInfo.label = val(b, "sLabel"); });
-        var where = [loc ? "within " + rkm + " km of " + (loc.value || blIn.value) : "", country ? cname : ""].filter(Boolean).join(", ") || "Worldwide";
-        return { ok: true, mode: "brand", type: seed.label, area: where, seed: seedInfo, loc: loc, results: res, source: "wikidata" };
       });
+    }).then(function (o) {
+      // names for everything the companies point to (countries, HQs, people, industries, products)
+      var refs = {}, need = ["P17", "P159", "P169", "P112", "P749", "P414", "P1056", "P452", "P31"];
+      Object.keys(o.ents).forEach(function (id) { need.forEach(function (p) { ids(o.ents[id], p).slice(0, 6).forEach(function (x) { refs[x] = 1; }); }); });
+      ids(o.s, "P452").concat(ids(o.s, "P17")).forEach(function (x) { refs[x] = 1; });
+      return entities(Object.keys(refs).slice(0, 3000), "labels").then(function (labs) { o.labs = labs; return o.loc || !o.found.length ? o : hqCoords(o.found.map(function (f) { return f.id; })).then(function (cc) { o.cc = cc; return o; }); });
+    }).then(function (o) {
+      var L = function (list) { return list.map(function (x) { return label(o.labs[x]); }).filter(Boolean); };
+      var res = brandRecords(o);
+      if (o.loc) res.forEach(function (p, i) { var f = o.found.filter(function (x) { return x.id === p.id; })[0]; if (f && f.distance != null) p.distance = f.distance; });
+      var s = o.s, seedInfo = { id: o.seed.id, label: label(s) || o.seed.label, sub: (s.descriptions && s.descriptions.en && s.descriptions.en.value) || o.seed.sub, industries: L(ids(s, "P452")), country: L(ids(s, "P17")).join(", "), website: strs(s, "P856")[0] || "", founded: year(s, "P571") };
+      var where = [o.loc ? "HQ within " + rkm + " km of " + (o.loc.value || blIn.value) : "", country ? cname : ""].filter(Boolean).join(", ") || "Worldwide";
+      return { ok: true, mode: "brand", type: seedInfo.label, area: where, seed: seedInfo, loc: o.loc, results: res, rest: o.rest || [], total: o.total || res.length, source: "wikidata" };
     }).then(function (j) { show(j); }, function (e) {
       busy = false; data = null; view = [];
       setStatus(e && e.reason ? e.reason : "Wikidata did not answer right now — please try again in a minute.", "warn"); ver(e && e.message);
@@ -305,7 +362,10 @@
     ver(j.viaServer ? "server" : "");
     $("cf-enrich").disabled = !n || !j.results.some(function (p) { return p.website; }); $("cf-enrich-s").textContent = "";
     if (n) { addToSheet(j); paint(true); } else { list.innerHTML = '<li class="cf-empty">Nothing listed here yet. Try a wider search.</li>'; $("cf-more").hidden = true; }
-    pins(); insight();
+    pins(); insight(); brandMoreUI();
+    $("cf-gmatch").hidden = !google || !n;
+    if (j.mode === "brand" && j.total > n) setStatus(status.textContent + " · showing the " + n + " best-known of " + j.total.toLocaleString("en-IN") + " found", "ok");
+    if (n) autoEnrich(j.results);
   }
   filt.addEventListener("input", function () { paint(true); });
   document.querySelector(".cf-sort").addEventListener("click", function (e) {
@@ -313,6 +373,21 @@
     this.querySelectorAll("[data-sort]").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); paint(true);
   });
   $("cf-more-b").addEventListener("click", function () { paint(false, PAGE); });
+  $("cf-load-b").addEventListener("click", function () {
+    if (!data || data.mode !== "brand" || !data.rest.length || busy) return;
+    var b = this, next = data.rest.slice(0, BRAND_PAGE); busy = true; b.disabled = true; b.textContent = "Loading…";
+    entities(next.map(function (x) { return x.id; })).then(function (ents) {
+      var refs = {}; Object.keys(ents).forEach(function (id) { ["P17", "P159", "P169", "P112", "P749", "P414", "P1056", "P452", "P31"].forEach(function (p) { ids(ents[id], p).slice(0, 6).forEach(function (x) { refs[x] = 1; }); }); });
+      return Promise.all([entities(Object.keys(refs), "labels"), data.loc ? Promise.resolve({}) : hqCoords(next.map(function (x) { return x.id; }))]).then(function (r) {
+        var more = brandRecords({ ents: ents, labs: r[0], cc: r[1], found: next });
+        if (data.loc) more.forEach(function (p) { var f = next.filter(function (x) { return x.id === p.id; })[0]; if (f) p.distance = f.distance; });
+        var base = data.results.length; more.forEach(function (p, i) { p._i = base + i; }); data.results = data.results.concat(more); data.rest = data.rest.slice(BRAND_PAGE);
+        busy = false; addToSheet(Object.assign({}, data, { results: more })); paint(true); pins(); insight(); brandMoreUI();
+        setStatus(data.results.length + " of " + data.total + " competitors of " + data.type + " loaded · from Wikidata", "ok"); autoEnrich(more);
+      });
+    }).catch(function () { busy = false; }).then(function () { b.disabled = false; brandMoreUI(); });
+  });
+  function brandMoreUI() { var b = $("cf-load-b"), n = data && data.mode === "brand" ? data.rest.length : 0; b.hidden = !n; b.textContent = "Load " + Math.min(BRAND_PAGE, n) + " more companies (" + n + " left)"; if (n) $("cf-more").hidden = false; }
   $("cf-all-b").addEventListener("click", function () { paint(false, 1e9); });
   list.addEventListener("click", function (e) {
     var b = e.target.closest("[data-show]"); if (!b || !data) return;
@@ -369,10 +444,11 @@
     var facts = [p.kind && ["Type", p.kind], p.country && ["Country", p.country], p.hq && ["HQ", p.hq], p.founded && ["Founded", p.founded], p.employees && ["Employees", (+p.employees).toLocaleString("en-IN")],
       p.ceo && ["CEO", p.ceo], p.founders && ["Founders", p.founders], p.parent && ["Parent", p.parent], p.ticker && ["Ticker", p.ticker + (p.exchange ? " (" + p.exchange + ")" : "")], p.products && ["Products", p.products]].filter(Boolean);
     return '<li class="cf-item" data-i="' + p._i + '"><span class="cf-n">' + (k + 1) + '</span><div class="cf-body"><h3>' + esc(p.name) + "</h3>" +
-      (p.industry ? '<p class="cf-meta"><span class="cf-cat">' + esc(p.industry) + "</span></p>" : "") + (p.description ? '<p class="cf-addr">' + esc(p.description) + "</p>" : "") +
+      (p.industry ? '<p class="cf-meta"><span class="cf-cat">' + esc(p.industry) + "</span></p>" : "") + (p.description ? '<p class="cf-addr">' + esc(p.description) + "</p>" : "") + (p.address ? '<p class="cf-addr">📍 ' + esc(p.address) + "</p>" : "") +
+      (p.rating != null && p.rating !== "" ? '<span class="cf-rate"><b>' + (+p.rating).toFixed(1) + '</b> <span aria-hidden="true">' + stars(p.rating) + '</span> <span class="muted">(' + (p.reviews || 0).toLocaleString("en-IN") + " Google reviews)</span></span>" : "") +
       (facts.length ? '<dl class="cf-facts">' + facts.map(function (f) { return "<div><dt>" + f[0] + "</dt><dd>" + esc(f[1]) + "</dd></div>"; }).join("") + "</dl>" : "") + contacts(p) +
       (!p.website ? '<p class="cf-flags"><span class="cf-flag warn">No website listed</span></p>' : "") +
-      '<div class="cf-acts">' + link(p.website, "Website ↗", "") + link(p.wikipedia, "Wikipedia") +
+      '<div class="cf-acts">' + link(p.website, "Website ↗", "") + '<a class="btn sm ghost" href="' + esc(p.mapsUrl) + '" target="_blank" rel="noopener noreferrer">Google Maps</a>' + link(p.wikipedia, "Wikipedia") +
       '<a class="btn sm ghost" href="https://www.google.com/search?q=' + encodeURIComponent(p.name + " company") + '" target="_blank" rel="noopener noreferrer">Google it</a>' +
       (p.linkedin ? "" : '<a class="btn sm ghost" href="https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(p.name) + '" target="_blank" rel="noopener noreferrer">LinkedIn</a>') +
       (p.lat != null ? '<button type="button" class="btn sm ghost" data-show="' + p._i + '">Show HQ on map</button>' : "") + "</div></div></li>";
@@ -448,31 +524,57 @@
   document.querySelector(".cf-maptabs").addEventListener("click", function (e) { var b = e.target.closest("[data-map]"); if (!b) return; setMapView(b.dataset.map); if (b.dataset.map === "pins" && !map) pins(); });
   setMapView("google");
 
-  /* ================= contacts from each competitor's own website ================= */
-  $("cf-enrich").addEventListener("click", function () {
-    if (!data) return;
-    var b = this, st = $("cf-enrich-s"), todo = data.results.filter(function (p) { return p.website && !p._enriched; });
-    if (!todo.length) { st.textContent = "All websites already checked."; return; }
-    b.disabled = true; var done = 0, found = 0, BATCH = 4, stop = false;
+  /* ================= contacts: each competitor's own website (free) and its Google Maps listing (when connected) ================= */
+  var enriching = false;
+  function mergeInfo(p, x) {
+    if (!x || x.error) return false;
+    var before = JSON.stringify([p.email, p.phone, p.instagram, p.facebook, p.linkedin, p.twitter, p.youtube, p.whatsapp, p.siteAddress]);
+    var join = function (a, b) { return a.concat(b).map(function (v) { return String(v || "").trim(); }).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; }).join("; "); };
+    p.email = join(String(p.email || "").split(/;\s*/), x.emails || []); p.phone = join(String(p.phone || "").split(/;\s*/), x.phones || []); p.whatsapp = join(String(p.whatsapp || "").split(/;\s*/), x.whatsapp || []);
+    ["instagram", "facebook", "linkedin", "twitter", "youtube"].forEach(function (k) { p[k] = p[k] || x[k] || ""; });
+    p.siteTitle = x.title || p.siteTitle || ""; p.siteDescription = x.description || p.siteDescription || ""; p.contactPage = x.contactPage || p.contactPage || "";
+    if (x.address) { p.siteAddress = x.address; if (!p.address) p.address = x.address; }
+    if (x.founded && !p.founded) p.founded = x.founded;
+    return JSON.stringify([p.email, p.phone, p.instagram, p.facebook, p.linkedin, p.twitter, p.youtube, p.whatsapp, p.siteAddress]) !== before;
+  }
+  function mergeGoogle(p, g) {
+    if (!g) return false;
+    p.gName = g.name || ""; p.gAddress = g.address || ""; p.gPhone = g.intlPhone || g.phone || ""; p.gRating = g.rating == null ? "" : g.rating; p.gReviews = g.reviews == null ? "" : g.reviews;
+    p.gHours = g.hours || ""; p.gMaps = g.mapsUrl || ""; p.gStatus = g.status || "";
+    if (!p.website && g.website) p.website = g.website; if (!p.address && g.address) p.address = g.address; if (p.rating == null && g.rating != null) { p.rating = g.rating; p.reviews = g.reviews; }
+    if (g.mapsUrl) p.mapsUrl = g.mapsUrl; if (!p.hours && g.hours) p.hours = g.hours;
+    if (g.phone && String(p.phone || "").indexOf(g.phone) < 0) p.phone = [p.phone, g.intlPhone || g.phone].filter(Boolean).join("; ");
+    return true;
+  }
+  function enrich(list, opts) {
+    opts = opts || {};
+    var st = $("cf-enrich-s"), b = $("cf-enrich");
+    var sites = list.filter(function (p) { return p.website && !p._site; }), places = opts.google ? list.filter(function (p) { return !p._g; }) : [];
+    if (!sites.length && !places.length) { if (!opts.auto) st.textContent = "Every website in this list has been read already."; return Promise.resolve(); }
+    if (enriching) return Promise.resolve(); enriching = true; b.disabled = true; $("cf-gmatch").disabled = true;
+    var jobs = sites.map(function (p) { return { p: p, kind: "site" }; }).concat(places.map(function (p) { return { p: p, kind: "g" }; }));
+    var done = 0, found = 0, BATCH = 4, stopped = "";
     var step = function (i) {
-      if (i >= todo.length || stop) { b.disabled = false; st.textContent = "Done — checked " + done + " websites, found new contact details for " + found + "."; refreshSheet(); paint(true); return; }
-      var batch = todo.slice(i, i + BATCH);
-      st.textContent = "Reading websites… " + done + " of " + todo.length + (found ? " · " + found + " with new details" : "");
-      fetchT(ROOT + "api/enrich", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ urls: batch.map(function (p) { return href(p.website); }) }) }, 30000)
-        .then(function (r) { return r.json(); }).then(function (j) {
-          if (!j.ok) { st.textContent = j.reason || "Website reader is busy — try again later."; stop = true; return; }
-          batch.forEach(function (p) {
-            var x = j.results[href(p.website)] || {}; p._enriched = true; done++; if (x.error) return; var before = JSON.stringify([p.email, p.phone, p.instagram, p.facebook, p.linkedin, p.twitter, p.youtube, p.whatsapp]);
-            var join = function (a, b) { return a.concat(b).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; }).join("; "); };
-            p.email = join(String(p.email || "").split(/;\s*/), x.emails || []); p.phone = join(String(p.phone || "").split(/;\s*/), x.phones || []); p.whatsapp = join(String(p.whatsapp || "").split(/;\s*/), x.whatsapp || []);
-            ["instagram", "facebook", "linkedin", "twitter", "youtube"].forEach(function (k) { p[k] = p[k] || x[k] || ""; });
-            p.siteTitle = x.title || ""; p.siteDescription = x.description || ""; p.contactPage = x.contactPage || "";
-            if (JSON.stringify([p.email, p.phone, p.instagram, p.facebook, p.linkedin, p.twitter, p.youtube, p.whatsapp]) !== before) found++;
-          });
-        }, function () { done += batch.length; }).then(function () { step(i + BATCH); });
+      if (i >= jobs.length || stopped) {
+        enriching = false; b.disabled = !data; $("cf-gmatch").disabled = !data;
+        st.textContent = (stopped ? stopped + " " : "Done — ") + "checked " + done + " of " + jobs.length + (found ? ", new contact details for " + found : "") + "."; refreshSheet(); paint(true); insight(); return Promise.resolve();
+      }
+      var batch = jobs.slice(i, i + BATCH), body = { urls: [], places: [] };
+      batch.forEach(function (j) { if (j.kind === "site") body.urls.push(href(j.p.website)); else body.places.push({ key: j.p._key || j.p.id || j.p.name, name: j.p.name, near: j.p.address || j.p.hq || j.p.country || data.area, lat: j.p.lat, lng: j.p.lng }); });
+      st.textContent = (opts.google ? "Matching on Google Maps & reading websites… " : "Reading websites for emails, phones & socials… ") + done + " of " + jobs.length + (found ? " · " + found + " with new details" : "");
+      return fetchT(ROOT + "api/enrich", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, 40000).then(function (r) { return r.json(); }).then(function (jr) {
+        if (!jr.ok) { stopped = (jr.reason || "The website reader is busy.") + " Stopped —"; return; }
+        batch.forEach(function (j) { done++;
+          if (j.kind === "site") { j.p._site = true; if (mergeInfo(j.p, (jr.results || {})[href(j.p.website)])) found++; }
+          else { j.p._g = true; if (mergeGoogle(j.p, (jr.places || {})[j.p._key || j.p.id || j.p.name])) found++; }
+        });
+      }, function () { done += batch.length; }).then(function () { if (i && i % 40 === 0) { refreshSheet(); } return step(i + BATCH); });
     };
-    step(0);
-  });
+    return step(0);
+  }
+  function autoEnrich(list) { var n = list.filter(function (p) { return p.website; }).length; if (!n) return; enrich(list.slice(0, 400), { auto: true }); }
+  $("cf-enrich").addEventListener("click", function () { if (data) enrich(data.results); });
+  $("cf-gmatch").addEventListener("click", function () { if (!data) return; if (data.results.length > 60 && !confirm("This looks up " + data.results.length + " businesses on Google Maps (uses Google credits). Continue?")) return; enrich(data.results, { google: true }); });
 
   /* ================= one sheet for every search + export (every column) ================= */
   var SHEET_KEY = "fodo-cf-sheet2", sheet = LS.get(SHEET_KEY, { local: [], brand: [], searches: [] });
@@ -481,15 +583,16 @@
     ["Instagram", "instagram"], ["Facebook", "facebook"], ["LinkedIn", "linkedin"], ["X / Twitter", "twitter"], ["YouTube", "youtube"],
     ["Rating", "rating"], ["Reviews", "reviews"], ["Price", "price"], ["Open now", "openTxt"], ["Opening hours", "hours"], ["Business status", "status"], ["Google types", "types"],
     ["Brand", "brand"], ["Operator", "operator"], ["Cuisine", "cuisine"], ["Payment", "payment"], ["Delivery", "delivery"], ["Takeaway", "takeaway"], ["Wheelchair", "wheelchair"], ["Established", "established"], ["Description", "description"],
-    ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Distance (km)", "km"], ["Latitude", "lat"], ["Longitude", "lng"], ["Google Maps", "mapsUrl"], ["OpenStreetMap", "osmUrl"], ["Wikidata", "wikidata"], ["Source", "source"], ["All OSM tags", "tags"]];
+    ["Google Maps name", "gName"], ["Google Maps address", "gAddress"], ["Google Maps phone", "gPhone"], ["Google rating", "gRating"], ["Google reviews", "gReviews"], ["Google hours", "gHours"], ["Google Maps listing", "gMaps"], ["Google status", "gStatus"], ["Address (from website)", "siteAddress"], ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Distance (km)", "km"], ["Latitude", "lat"], ["Longitude", "lng"], ["Google Maps", "mapsUrl"], ["OpenStreetMap", "osmUrl"], ["Wikidata", "wikidata"], ["Source", "source"], ["All OSM tags", "tags"]];
   var BRAND_COLS = [["Search", "search"], ["Company", "name"], ["Description", "description"], ["Industry", "industry"], ["Type", "kind"], ["Country", "country"], ["Headquarters", "hq"], ["Founded", "founded"], ["Employees", "employees"], ["Revenue", "revenue"],
     ["CEO", "ceo"], ["Founders", "founders"], ["Parent company", "parent"], ["Stock exchange", "exchange"], ["Ticker", "ticker"], ["Products / services", "products"],
     ["Website", "website"], ["Email", "email"], ["Phone", "phone"], ["WhatsApp", "whatsapp"], ["Contact page", "contactPage"], ["LinkedIn", "linkedin"], ["Instagram", "instagram"], ["Facebook", "facebook"], ["X / Twitter", "twitter"], ["YouTube", "youtube"],
-    ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Wikipedia", "wikipedia"], ["Wikidata", "wikidata"], ["HQ latitude", "lat"], ["HQ longitude", "lng"]];
+    ["Address", "address"], ["Google Maps name", "gName"], ["Google Maps address", "gAddress"], ["Google Maps phone", "gPhone"], ["Google rating", "gRating"], ["Google reviews", "gReviews"], ["Google hours", "gHours"], ["Google Maps listing", "gMaps"], ["Google status", "gStatus"], ["Address (from website)", "siteAddress"], ["Distance from city (km)", "km"], ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Wikipedia", "wikipedia"], ["Wikidata", "wikidata"], ["HQ latitude", "lat"], ["HQ longitude", "lng"]];
   function rowOf(j, p, label) {
     var o = { search: label };
     (j.mode === "local" ? LOCAL_COLS : BRAND_COLS).forEach(function (c) { if (c[1] !== "search") o[c[1]] = p[c[1]] == null ? "" : p[c[1]]; });
-    if (j.mode === "local") { o.openTxt = p.open === true ? "Yes" : p.open === false ? "No" : ""; o.km = p.distance == null ? "" : +(p.distance / 1000).toFixed(2); }
+    if (j.mode === "local") o.openTxt = p.open === true ? "Yes" : p.open === false ? "No" : "";
+    o.km = p.distance == null ? "" : +(p.distance / 1000).toFixed(2);
     o.key = j.mode === "local" ? nrm(p.name) + "|" + (p.lat != null ? (+p.lat).toFixed(4) + "," + (+p.lng).toFixed(4) : nrm(p.address)) : p.id;
     return o;
   }
@@ -508,6 +611,7 @@
   }
   function saveSheet() { if (!LS.set(SHEET_KEY, sheet)) { var slim = JSON.parse(JSON.stringify(sheet)); ["local"].forEach(function (k) { slim[k].forEach(function (r) { r.tags = ""; }); }); if (!LS.set(SHEET_KEY, slim)) $("cf-sheet-n").textContent += " (too big to keep after reload — download it now)"; } }
   function sheetUI(added) {
+    if (!$("cf-sheet-n")) return;
     var n = sheet.local.length + sheet.brand.length;
     $("cf-sheet-n").textContent = n ? n.toLocaleString("en-IN") + " competitors from " + sheet.searches.length + (sheet.searches.length === 1 ? " search" : " searches") + (added ? " · " + added.toLocaleString("en-IN") + " new just added" : "") + " — download them all at once." : "Empty — every search you run is added here.";
     ["cf-x-xlsx", "cf-x-csv", "cf-x-copy", "cf-x-clear"].forEach(function (id) { $(id).disabled = !n; });

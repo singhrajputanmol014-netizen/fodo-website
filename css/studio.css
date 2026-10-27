@@ -1402,3 +1402,22 @@ section.afraid p.reveal{margin-inline:auto}
 .cf-f .cf-radius input[type=range]{padding:0!important;border:0!important;min-height:0!important;height:6px!important;border-radius:99px!important;background:linear-gradient(90deg,var(--accent) var(--fill,2%),var(--mist-2,#E9EBEF) var(--fill,2%))!important;margin:0}
 html[data-theme=dark] .cf-f .cf-radius input[type=range]{background:linear-gradient(90deg,var(--accent) var(--fill,2%),#2E3038 var(--fill,2%))!important}
 .cf-f .cf-radius input[type=range]:focus{outline:2px solid var(--accent);outline-offset:8px}
+
+/* §30 v9 SEO pages — static Insights articles + location link lists (uses existing tokens; no new visual language) */
+.detail.art{max-width:780px}
+.detail .art-by{margin:0 0 24px;font-size:13px}
+.detail .art-by a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+.detail .art-body h2{font-family:var(--font-display);font-size:clamp(22px,2.6vw,30px);font-weight:400;text-transform:none;letter-spacing:-.01em;color:var(--ink,var(--text));margin:36px 0 10px;line-height:1.15}
+.detail .art-body p,.detail .art-body li{max-width:70ch;line-height:1.7}
+.detail .art-body ul{padding-left:20px}
+.detail .art-author{margin:40px 0 8px;padding:20px 22px}
+.detail .art-author h2,.detail h2.art-h{font-family:var(--font-body);font-size:14px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--accent);margin:28px 0 10px}
+.detail .art-author h2{margin-top:0}
+.loc-links{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}
+.loc-links a{color:var(--ink,var(--text));text-decoration:none;border-bottom:1px solid var(--line);padding:6px 0;display:block}
+.loc-links a:hover,.loc-links a:focus-visible{color:var(--accent)}
+.loc-links.cols{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));column-gap:24px}
+.fodo-3d{animation:fodo3dIn .9s ease both}@keyframes fodo3dIn{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.fodo-3d{animation:none}}
+/* reserve the header's height before main.js renders it, so the page does not jump (CLS) */
+#site-header{min-height:56px}@media (min-width:768px){#site-header{min-height:60px}}

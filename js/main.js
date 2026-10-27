@@ -26,7 +26,7 @@
   const routes = {
     home:P(""), about:P("about/"), services:P("services/"), industries:P("industries/"), work:P("work/"), insights:P("insights/"), resources:P("resources/"),
     lab:P("#growth-lab"), score:P("growth-score/"), roi:P("roi-calculator/"), game:P("fodo-challenge/"), quiz:P("marketing-quiz/"),
-    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), legal:P("legal/"), thanks:P("thank-you/")
+    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), competitors:P("competitor-finder/"), legal:P("legal/"), thanks:P("thank-you/")
   };
   U.routes = routes;
   const here = (document.body.dataset.route==="service"?"services":document.body.dataset.route) || "";
@@ -44,6 +44,7 @@
     wa16:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.1.6 2.8.5a2.4 2.4 0 0 0 1.6-1.1 2 2 0 0 0 .1-1.1c0-.1-.2-.2-.5-.3z"/></svg>',
     sun:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
     moon:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+    search:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>',
     arrow:'<svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg>'
   };
   U.ico = ico;
@@ -56,10 +57,10 @@
       <nav class="nav" aria-label="Primary">
         <a href="${routes.work}"${cur("work")}>Work</a><a href="${routes.reviews}"${cur("reviews")}>Reviews</a><a href="${routes.services}"${cur("services")}>Services</a>
         <div class="sub"><button class="sub-btn" type="button" aria-expanded="false" aria-haspopup="true">Growth Lab <span aria-hidden="true">▾</span></button>
-          <div class="sub-menu"><a href="${routes.lab}"${cur("lab")}>Growth Lab</a><a href="${routes.score}"${cur("score")}>Growth Score</a><a href="${routes.roi}"${cur("roi")}>ROI Calculator</a><a href="${routes.game}"${cur("game")}>FODO Challenge</a><a href="${routes.quiz}"${cur("quiz")}>Marketing Quiz</a></div></div>
+          <div class="sub-menu"><a href="${routes.lab}"${cur("lab")}>Growth Lab</a><a href="${routes.score}"${cur("score")}>Growth Score</a><a href="${routes.roi}"${cur("roi")}>ROI Calculator</a><a href="${routes.competitors}"${cur("competitors")}>Competitor Finder</a><a href="${routes.game}"${cur("game")}>FODO Challenge</a><a href="${routes.quiz}"${cur("quiz")}>Marketing Quiz</a></div></div>
         <a href="${routes.about}"${cur("about")}>About</a><a href="${routes.insights}"${cur("insights")}>Insights</a><a href="${routes.contact}"${cur("contact")}>Contact</a>
       </nav>
-      <button class="theme-btn" type="button" id="theme-toggle" aria-label="Toggle dark / light mode" title="Dark / light"><span class="tb-sun">${ico.sun}</span><span class="tb-moon">${ico.moon}</span></button><a class="btn header-cta" href="${routes.audit}">Book a Free Growth Audit</a>
+      <button class="search-btn" type="button" id="search-open" aria-label="Search the site" title="Search (Ctrl K)" aria-haspopup="dialog">${ico.search}</button><button class="theme-btn" type="button" id="theme-toggle" aria-label="Toggle dark / light mode" title="Dark / light"><span class="tb-sun">${ico.sun}</span><span class="tb-moon">${ico.moon}</span></button><a class="btn header-cta" href="${routes.audit}">Book a Free Growth Audit</a>
       <button class="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="drawer">${ico.menu}</button></div>`;
     const sub=h.querySelector(".sub"), sb=h.querySelector(".sub-btn");
     sb.addEventListener("click",()=>{const o=sub.classList.toggle("open");sb.setAttribute("aria-expanded",o);});
@@ -71,7 +72,7 @@
     const grp=(t,items,cls)=>`<div class="dgrp"><span class="dlabel">${t}</span><div class="${cls||"dlist"}">${items.map(l=>`<a href="${routes[l[1]]}" class="${l[2]||""}"${cur(l[1])}>${l[0]}</a>`).join("")}</div></div>`;
     d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}" aria-label="FODO home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
       <nav aria-label="Mobile">${grp("Explore",[["Home","home"],["About","about"],["Services","services"],["Industries","industries"],["Work","work"],["Insights","insights"]])}
-      ${grp("Growth Lab",[["Growth Score","score"],["ROI Calculator","roi"],["Play the Game","game","hot"],["Marketing Quiz","quiz"]],"dgrid")}
+      ${grp("Growth Lab",[["Competitor Finder","competitors","hot"],["Growth Score","score"],["ROI Calculator","roi"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
       ${grp("More",[["Pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Locations","locations"],["FAQ","faq"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
       <a class="btn" href="${routes.audit}">Book a Free Growth Audit</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
     document.body.appendChild(d);
@@ -81,7 +82,7 @@
     open.addEventListener("click",show); close.addEventListener("click",hide);
     document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&d.classList.contains("open"))hide(); });
     d.querySelectorAll("nav a").forEach(a=>a.addEventListener("click",()=>{d.classList.remove("open");document.body.classList.remove("locked");}));
-    matchMedia("(min-width:1024px)").addEventListener("change",e=>{ if(e.matches&&d.classList.contains("open"))hide(); });
+    document.addEventListener("click",e=>{ if(d.classList.contains("open")&&!d.contains(e.target)&&!open.contains(e.target)&&matchMedia("(min-width:1024px)").matches)hide(); });   // desktop: click the dimmed area to close the top menu
     // (mobile sticky bar removed by request)
   },"header");
 
@@ -93,7 +94,7 @@
     <div class="footer-cols">
       <div><h4>Company</h4><ul><li><a href="${routes.about}">About</a></li><li><a href="${routes.about}#founder">Founder</a></li><li><a href="${routes.work}">Work</a></li><li><a href="${routes.reviews}">Reviews</a></li><li><a href="${routes.insights}">Insights</a></li><li><a href="${routes.pricing}">Pricing</a></li><li><a href="${routes.founding}">Founding Programme</a></li><li><a href="${routes.contact}">Contact</a></li></ul></div>
       <div><h4>Services</h4><ul><li><a href="${S('paid-advertising')}">Paid Media</a></li><li><a href="${S('seo')}">SEO</a></li><li><a href="${S('content-marketing')}">Content</a></li><li><a href="${S('social-media')}">Social</a></li><li><a href="${S('brand-strategy')}">Brand</a></li><li><a href="${S('marketing-automation')}">Automation</a></li></ul></div>
-      <div><h4>Tools</h4><ul><li><a href="${routes.score}">Growth Score</a></li><li><a href="${routes.roi}">ROI Calculator</a></li><li><a href="${routes.lab}">Growth Lab</a></li><li><a href="${routes.game}">FODO Challenge</a></li><li><a href="${routes.quiz}">Marketing Quiz</a></li><li><a href="${routes.teardowns}">Ad Teardowns</a></li><li><a href="${routes.templates}">Free Templates</a></li><li><a href="${routes.resources}">Checklists</a></li></ul></div>
+      <div><h4>Tools</h4><ul><li><a href="${routes.competitors}">Competitor Finder</a></li><li><a href="${routes.score}">Growth Score</a></li><li><a href="${routes.roi}">ROI Calculator</a></li><li><a href="${routes.lab}">Growth Lab</a></li><li><a href="${routes.game}">FODO Challenge</a></li><li><a href="${routes.quiz}">Marketing Quiz</a></li><li><a href="${routes.teardowns}">Ad Teardowns</a></li><li><a href="${routes.templates}">Free Templates</a></li><li><a href="${routes.resources}">Checklists</a></li></ul></div>
       <div><h4>Where we work</h4><ul><li><a href="${routes.locations}">All locations</a></li><li><a href="${routes.locations}gurugram/">Gurugram</a></li><li><a href="${routes.locations}noida/">Noida</a></li><li><a href="${routes.locations}dwarka/">Dwarka</a></li><li><a href="${routes.locations}west-delhi/">West Delhi</a></li><li><a href="${routes.industries}">Industries</a></li></ul></div>
       <div><h4>Legal</h4><ul><li><a href="${routes.legal}#privacy">Privacy</a></li><li><a href="${routes.legal}#cookies">Cookie Policy</a></li><li><a href="${routes.legal}#terms">Terms</a></li><li><a href="${routes.legal}#disclaimer">Disclaimer</a></li></ul></div>
       <div><h4>Contact</h4><address class="contact-list"><span class="ci"><i class="ic">${ico.pin}</i><span>${U.esc(C.address)}</span></span><a class="ci" href="mailto:${C.email}"><i class="ic">${ico.mail}</i>${C.email}</a><a class="ci" href="tel:${C.phone}"><i class="ic">${ico.tel}</i>${U.esc(C.phoneDisplay)}</a><a class="ci" href="${U.wa()}"${ext}><i class="ic wa-c">${ico.wa16}</i>WhatsApp</a><a class="ci" href="${C.instagramUrl}"${ext}><i class="ic ig-c">${ico.ig}</i>${U.esc(C.instagramHandle)}</a>${C.linkedinUrl?`<a class="ci" href="${C.linkedinUrl}"${ext}><i class="ic li-c">${ico.li}</i>CONNECT ON LINKEDIN</a>`:""}</address></div>
@@ -212,7 +213,7 @@
   scan(); new MutationObserver(()=>{ document.querySelectorAll(".detail").forEach(d=>{ if(d.dataset.folded&&d.dataset.lastHtml!==d.innerHTML.length+""){ delete d.dataset.folded; } }); scan(); document.querySelectorAll(".detail").forEach(d=>d.dataset.lastHtml=d.innerHTML.length+""); }).observe(document.body,{childList:true,subtree:true});
 }catch(e){} })();
 
-/* Theme toggle (dark / light) — persisted; default follows system */
+/* Theme toggle (dark / light) — persisted; first visit opens in dark */
 (function(){ try{ const root=document.documentElement; const KEY="fodo-theme";
   const apply=t=>{ root.setAttribute("data-theme",t); document.querySelectorAll("#theme-toggle,#theme-toggle-m").forEach(b=>b.setAttribute("aria-pressed",t==="dark")); const m=document.querySelector('meta[name="theme-color"]'); if(m)m.content=t==="dark"?"#0f0f16":"#f2f1f6"; };
   const cur=()=>root.getAttribute("data-theme")||"dark";

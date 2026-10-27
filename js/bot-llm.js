@@ -21,13 +21,16 @@
   var NOTE_AI = "Enter to send · AI-assisted replies · please don’t share passwords or card details";
   var NOTE_OFFLINE = "Enter to send · Replies are generated offline";
 
-  var hist = [];       // [{role:"user"|"assistant", content:"plain text"}] — memory only, never stored
+  var hist = [];       // [{role:"user"|"assistant", content:"plain text"}] — this tab only (sessionStorage), so the chat remembers across pages
   var failures = 0;    // consecutive hard failures (404, network) → circuit breaker
   var disabledUntil = 0;
   var used = 0;
 
   function ss(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch (_) { } return null; }
   used = parseInt(ss("fodo-llm-used") || "0", 10) || 0;
+  var HKEY = "fodo-llm-hist";
+  try { var hh = JSON.parse(ss(HKEY) || "[]"); if (Array.isArray(hh)) hist = hh.filter(function (m) { return m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"; }).slice(-16); } catch (_) { hist = []; }
+  function saveHist() { try { sessionStorage.setItem(HKEY, JSON.stringify(hist)); } catch (_) { } }
   disabledUntil = parseInt(ss("fodo-llm-off") || "0", 10) || 0;
 
   function aiPossible() {
@@ -75,8 +78,9 @@
   function remember(role, text) {
     text = String(text || "").trim();
     if (!text) return;
-    hist.push({ role: role, content: text.slice(0, 700) });
-    if (hist.length > 12) hist.splice(0, hist.length - 12);
+    hist.push({ role: role, content: text.slice(0, 900) });
+    if (hist.length > 16) hist.splice(0, hist.length - 16);
+    saveHist();
   }
   var lastLocalChips = null;
   function safeLocal(q) {
@@ -88,7 +92,10 @@
 
   /* Questions the offline engine answers better than any model: maths/metrics (exact), navigation chips, tiny talk. */
   var NAV = ["what do you do?", "what does fodo do?", "pricing", "free audit", "play the game", "contact anmol", "founding programme", "growth score", "quiz", "roi calculator", "game"];
-  var TINY = /^(hi+|hello+|hey+|hii+|namaste|thanks?|thank you|thx|ok(ay)?|cool|bye|good (morning|evening|night)|shukriya|dhanyavaad)\W*$/i;
+  var TINY = /^(hi+|hello+|hey+|hii+|namaste|thanks?|thank you|thx|bye|good (morning|evening|night)|shukriya|dhanyavaad)\W*$/i;
+  // Short replies that only make sense with the conversation ("haan", "ok", "yes please", "aur batao", "kar do", "nahi"...)
+  var FOLLOW = /^(ha+n*|haa+|han|hm+|ji+|ji haan|yes+|yeah|yep|yup|ya+|sure|ok+|okay|okk|theek( hai)?|thik( hai)?|accha|acha|achha|bilkul|zaroor|kar do|karo|chalo|go ahead|please|yes please|do it|continue|aur|aur batao|more|next|phir|then|nahi|nhi|no|nope|na|why|kyun|kyu|kaise|how|example|details?|samjhao|explain)\b/i;
+  function isFollowUp(q) { var n = q.trim().toLowerCase(); return hist.length > 0 && n.length <= 40 && n.split(/\s+/).length <= 6 && FOLLOW.test(n); }
   var MATHY = /[0-9]/;
   var MATHOP = /[+\-*/^()%×÷]|\b(?:calculate|calc|compute|solve|times|plus|minus|divided by|percent of|to the power)\b/i;
   function deterministic(q) {
@@ -102,10 +109,13 @@
   }
   function localWins(q, local) {
     var n = q.trim().toLowerCase();
-    if (NAV.indexOf(n) > -1 || TINY.test(n)) return true;
-    // Safety + exact maths + funnel numbers always come from the offline engine.
-    try { var st = window.FODO_MIND && window.FODO_MIND.state; var lt = st && st.lastTopic || ""; if (/^support|^(math|metric|funnel|target)$/.test(lt)) return true; } catch (_) { }
-    if (deterministic(q)) return true;
+    if (NAV.indexOf(n) > -1) return true;
+    if (deterministic(q)) return true;                                   // exact maths always from the calculator
+    if (local && /14416|Tele-MANAS/i.test(local)) return true;          // crisis support always from the vetted offline text
+    if (isFollowUp(q)) return false;                                     // "haan / ok / aur batao" → the AI, which sees the whole chat
+    if (TINY.test(n) && !hist.length) return true;                       // a first "hi" / "thanks" needs no model
+    // Safety (crisis support) always comes from the offline engine; numeric funnel maths too, but only when this message has numbers.
+    try { var st = window.FODO_MIND && window.FODO_MIND.state; var lt = st && st.lastTopic || ""; if (/^(metric|funnel|target)$/.test(lt) && /\d/.test(q) && st.lastQ === q) return true; } catch (_) { }
     if (MODE === "local-first") return !isWeak(local);
     return false;
   }
@@ -113,7 +123,7 @@
     if (!local) return true;
     try { if (window.FODO_MIND && /^(low|unknown)$/.test(window.FODO_MIND.lastConfidence)) return true; } catch (_) { }
     var t = htmlToText(local);
-    return /outside my notes|rather not guess|not fully sure|don.?t know|couldn.?t find|try (asking|rephras)|scenic detour|marketing brain is looking|where does the CTA go|my strongest superpower/i.test(t);
+    return /outside my notes|rather not guess|solid answer for that here|tell me a bit more so i can answer|not fully sure|don.?t know|couldn.?t find|try (asking|rephras)|scenic detour|marketing brain is looking|where does the CTA go|my strongest superpower/i.test(t);
   }
 
   /* ---------- safe rendering of model text ---------- */
@@ -164,7 +174,7 @@
     return fetch(ENDPOINT, {
       method: "POST", credentials: "omit", signal: ctl ? ctl.signal : undefined,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: q, history: prior.slice(-8), context: contextSnapshot(), page: route })
+      body: JSON.stringify({ message: q, history: prior.slice(-12), context: contextSnapshot(), page: route })
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {
         clearTimeout(timer);
@@ -206,7 +216,7 @@
 
   // "New conversation" clears the model's memory too.
   document.addEventListener("click", function (ev) {
-    if (ev.target && ev.target.closest && ev.target.closest(".bot-new")) hist.length = 0;
+    if (ev.target && ev.target.closest && ev.target.closest(".bot-new")) { hist.length = 0; saveHist(); }
   });
-  window.FODO_BOT_LLM = { version: "2026.10.25", mode: MODE, endpoint: ENDPOINT, render: render, safeHref: safeHref, state: function () { return { used: used, failures: failures, pausedUntil: disabledUntil, history: hist.length }; } };
+  window.FODO_BOT_LLM = { version: "2026.10.27", mode: MODE, endpoint: ENDPOINT, render: render, safeHref: safeHref, state: function () { return { used: used, failures: failures, pausedUntil: disabledUntil, history: hist.length }; } };
 })();

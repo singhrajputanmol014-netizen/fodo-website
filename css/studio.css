@@ -908,3 +908,12 @@ html.has-3d main .cta-final .lead,html.has-3d main .cta-final h2,html.has-3d .ct
 .lab-toasts{top:auto;bottom:24px;left:24px;transform:none;width:min(300px,calc(100vw - 120px))}
 .lab-toast{padding:10px 14px;font-size:13px;border-radius:14px}
 @media (max-width:767px){.lab-toasts{bottom:calc(84px + env(safe-area-inset-bottom));left:12px}}
+
+/* §24 Bot header: "New chat" button beside close */
+.bot-panel .bot-new{position:absolute;top:50%;transform:translateY(-50%);right:48px;width:36px;height:36px;display:grid;place-items:center;padding:0;border-radius:999px;border:1px solid var(--hairline,var(--line));background:transparent;color:var(--text);cursor:pointer}
+.bot-panel .bot-new:hover{color:var(--accent,#5B3DF5)}
+.bot-panel header{padding-right:92px!important}
+@media(max-width:767px){
+  .bot-panel .bot-new{right:56px;width:40px;height:40px;top:calc(50% + env(safe-area-inset-top)/2)}
+  .bot-panel header{padding-right:104px!important}
+}

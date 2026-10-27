@@ -1337,3 +1337,4 @@ section.afraid p.reveal{margin-inline:auto}
 .lp2.ad-after .td-cal{flex:1 1 0;min-height:0;width:100%;height:100%}
 .td-stats s{color:#B3261E}html[data-theme=dark] .td-stats s{color:#FF8A80}
 .ad2-cta.wa{background:#15803D;box-shadow:0 10px 24px rgba(21,128,61,.4)}
+.cf-ver{margin:6px 0 0;font-size:11px;color:var(--slate);opacity:.8}

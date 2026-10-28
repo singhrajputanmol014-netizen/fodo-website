@@ -95,18 +95,21 @@
   /* ---------- profile bar ---------- */
   var bars = [];
   function barHTML() {
-    var L = level(P.xp), nb = Object.keys(P.badges).length;
-    return '<div class="lab-bar-in"><span class="lab-lvl" aria-label="Level ' + L.n + '">' + L.n + '</span>' +
-      '<div class="lab-who"><b>' + esc(L.name) + '</b><span>' + P.xp + ' XP' + (L.to ? ' · ' + (L.to - P.xp) + ' to ' + esc(L.nextName) : ' · max level') + '</span>' +
-      '<i class="lab-xp" aria-hidden="true"><b style="width:' + Math.round(L.pct * 100) + '%"></b></i></div>' +
-      '<div class="lab-stats"><span title="Days in a row"><b>' + (P.days || 0) + '</b> day streak</span><span title="Badges"><b>' + nb + '</b>/' + Object.keys(BADGES).length + ' badges</span></div>' +
-      '<button type="button" class="lab-badges-btn" aria-expanded="false">Badges</button></div><div class="lab-badges" hidden>' +
-      Object.keys(BADGES).map(function (k) { var got = !!P.badges[k]; return '<span class="lab-badge' + (got ? " got" : "") + '" title="' + esc(BADGES[k][1]) + '"><i aria-hidden="true">' + (got ? "★" : "☆") + '</i>' + esc(BADGES[k][0]) + '<em class="sr-only">' + (got ? " (unlocked)" : " (locked)") + '</em></span>'; }).join("") + '</div>';
+    var L = level(P.xp), nb = Object.keys(P.badges).length, total = Object.keys(BADGES).length, fresh = !P.xp && !nb;
+    var badgesBtn = '<button type="button" class="lab-badges-btn" aria-expanded="false">See all ' + total + ' badges</button>';
+    var head = fresh
+      ? '<div class="lab-intro"><b>Your Growth Lab progress</b><span>Finish any tool on this page to earn points (XP). Points move you up 8 levels — from Intern to Growth Legend — and unlock ' + total + ' badges. Just for fun: it is saved only in this browser and never sent anywhere.</span></div>'
+      : '<div class="lab-who"><span class="lab-k">Level ' + L.n + ' of ' + LEVELS.length + '</span><b>' + esc(L.name) + '</b>' +
+        '<i class="lab-xp" aria-hidden="true"><b style="width:' + Math.round(L.pct * 100) + '%"></b></i>' +
+        '<span>' + P.xp + ' XP' + (L.to ? ' · ' + (L.to - P.xp) + ' XP to ' + esc(L.nextName) : ' · top level reached') + '</span></div>' +
+        '<div class="lab-stats"><span><b>' + (P.days || 0) + '</b> ' + ((P.days || 0) === 1 ? "day" : "days") + ' in a row</span><span><b>' + nb + '</b> of ' + total + ' badges</span></div>';
+    return '<div class="lab-bar-in' + (fresh ? " fresh" : "") + '"><span class="lab-lvl" aria-hidden="true">' + (fresh ? "★" : L.n) + '</span>' + head + badgesBtn + '</div><div class="lab-badges" hidden>' +
+      Object.keys(BADGES).map(function (k) { var got = !!P.badges[k]; return '<span class="lab-badge' + (got ? " got" : "") + '"><i aria-hidden="true">' + (got ? "★" : "☆") + '</i><span><b>' + esc(BADGES[k][0]) + '</b><small>' + esc(BADGES[k][1]) + '</small></span><em class="sr-only">' + (got ? " (unlocked)" : " (locked)") + '</em></span>'; }).join("") + '</div>';
   }
   function mountBar(where) {
     if (!where) return; var el = document.createElement("div"); el.className = "lab-bar panel"; el.setAttribute("role", "region"); el.setAttribute("aria-label", "Your Growth Lab progress");
     el.innerHTML = barHTML(); where.parentNode.insertBefore(el, where); bars.push(el);
-    el.addEventListener("click", function (ev) { var b = ev.target.closest(".lab-badges-btn"); if (!b) return; var p = el.querySelector(".lab-badges"); p.hidden = !p.hidden; b.setAttribute("aria-expanded", String(!p.hidden)); });
+    el.addEventListener("click", function (ev) { var b = ev.target.closest(".lab-badges-btn"); if (!b) return; var p = el.querySelector(".lab-badges"); p.hidden = !p.hidden; b.setAttribute("aria-expanded", String(!p.hidden)); b.textContent = p.hidden ? "See all " + Object.keys(BADGES).length + " badges" : "Hide badges"; });
   }
   function paintBars() { bars.forEach(function (el) { var open = !el.querySelector(".lab-badges").hidden; el.innerHTML = barHTML(); if (open) { el.querySelector(".lab-badges").hidden = false; el.querySelector(".lab-badges-btn").setAttribute("aria-expanded", "true"); } }); }
 

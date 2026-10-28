@@ -31,20 +31,20 @@
   var helix = shape(function (i) { var s = i % 2 ? Math.PI : 0, t = (i / N) * Math.PI * 9 - Math.PI * 4.5, r = .55 + (rnd(i) - .5) * .08; return [Math.cos(t + s) * r, t / 8, Math.sin(t + s) * r]; });
   var word = (function () { // sample the wordmark from a 2D canvas
     var c = document.createElement("canvas"), W = 460, H = 150; c.width = W; c.height = H;
-    var x = c.getContext("2d"); x.fillStyle = "#000"; x.font = "800 128px Inter Tight, Arial, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("FODO", W / 2, H / 2 + 6);
+    var x = c.getContext("2d"); x.fillStyle = "#000"; x.font = "800 128px 'Inter Tight', Arial, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("FODO", W / 2, H / 2 + 6);
     var d = x.getImageData(0, 0, W, H).data, pts = [];
     for (var yy = 0; yy < H; yy += 2) for (var xx = 0; xx < W; xx += 2) if (d[(yy * W + xx) * 4 + 3] > 128) pts.push([(xx / W - .5) * 3.0, -(yy / H - .5) * .98, 0]);
     if (!pts.length) return sphere;
-    return shape(function (i) { var p = pts[i % pts.length]; return [p[0] + (rnd(i) - .5) * .015, p[1] + (rnd(i + 3) - .5) * .015, (rnd(i + 9) - .5) * .12]; });
+    return shape(function (i) { var p = pts[Math.floor(i * pts.length / N) % pts.length]; return [p[0] + (rnd(i) - .5) * .015, p[1] + (rnd(i + 3) - .5) * .015, (rnd(i + 9) - .5) * .12]; });
   })();
   var SHAPES = reduce ? [sphere] : [sphere, torus, wave, helix, word];
 
   /* ---------- GL program ---------- */
-  var VS = "attribute vec3 a;attribute vec3 b;attribute float s;uniform float t,time,size,ax,ay,aspect,dx,dy,scale;varying float vA;varying float vS;" +
+  var VS = "attribute vec3 a;attribute vec3 b;attribute float s;uniform float t,time,size,ax,ay,aspect,dx,dy,scale,burst;uniform vec2 bpos;varying float vA;varying float vS;" +
     "void main(){vec3 p=mix(a,b,t);float w=sin(time*.9+s*40.0)*.012;p+=normalize(p+vec3(.0001))*w;" +
     "float cy=cos(ay),sy=sin(ay),cx=cos(ax),sx=sin(ax);p=vec3(cy*p.x+sy*p.z,p.y,-sy*p.x+cy*p.z);p=vec3(p.x,cx*p.y-sx*p.z,sx*p.y+cx*p.z);" +
-    "p*=scale;float z=p.z+3.2;vec2 q=vec2(p.x/aspect,p.y)*(2.2/z)+vec2(dx,dy);gl_Position=vec4(q,0.,1.);" +
-    "gl_PointSize=size*(2.6/z)*(.7+s*.6);vA=clamp(1.75-z*.3,.3,1.);vS=s;}";
+    "p*=scale;float z=p.z+3.2;vec2 q=vec2(p.x/aspect,p.y)*(2.2/z)+vec2(dx,dy);q=mix(bpos,q,burst);gl_Position=vec4(q,0.,1.);" +
+    "gl_PointSize=size*(2.6/z)*(.7+s*.6)*mix(.55,1.,burst);vA=clamp(1.75-z*.3,.3,1.);vS=s;}";
   var FS = "precision mediump float;uniform vec3 c1,c2;uniform float alpha;varying float vA;varying float vS;" +
     "void main(){vec2 d=gl_PointCoord-.5;float r=dot(d,d);if(r>.25)discard;float e=smoothstep(.25,.05,r);" +
     "vec3 col=mix(c1,c2,step(.82,vS));gl_FragColor=vec4(col,e*vA*alpha*(vS>.82?1.3:1.));}";
@@ -58,7 +58,7 @@
   var LA = gl.getAttribLocation(prog, "a"), LB = gl.getAttribLocation(prog, "b"), LS = gl.getAttribLocation(prog, "s");
   gl.enableVertexAttribArray(LA); gl.enableVertexAttribArray(LB); gl.enableVertexAttribArray(LS);
   gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.vertexAttribPointer(LS, 1, gl.FLOAT, false, 0, 0);
-  var U = {}; ["t", "time", "size", "ax", "ay", "aspect", "dx", "dy", "scale", "c1", "c2", "alpha"].forEach(function (k) { U[k] = gl.getUniformLocation(prog, k); });
+  var U = {}; ["t", "time", "size", "ax", "ay", "aspect", "dx", "dy", "scale", "c1", "c2", "alpha", "burst", "bpos"].forEach(function (k) { U[k] = gl.getUniformLocation(prog, k); });
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   var bound = [-1, -1];
   function bind(i, j) { if (bound[0] === i && bound[1] === j) return; gl.bindBuffer(gl.ARRAY_BUFFER, bufs[i]); gl.vertexAttribPointer(LA, 3, gl.FLOAT, false, 0, 0); gl.bindBuffer(gl.ARRAY_BUFFER, bufs[j]); gl.vertexAttribPointer(LB, 3, gl.FLOAT, false, 0, 0); bound = [i, j]; }
@@ -67,7 +67,7 @@
   function hex(h) { h = h.replace("#", ""); return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255]; }
   var theme = "", col1, col2, alpha;
   function paint() { theme = document.documentElement.getAttribute("data-theme") || "light";
-    if (theme === "dark") { col1 = hex("#C9C9D6"); col2 = hex("#9C8BFF"); alpha = .68; } else { col1 = hex("#4A4A56"); col2 = hex("#6A50F6"); alpha = .62; } }
+    if (theme === "dark") { col1 = hex("#C9C9D6"); col2 = hex("#9C8BFF"); alpha = .68; } else { col1 = hex("#2C2C36"); col2 = hex("#5B3DF5"); alpha = .86; } }
   paint(); new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   /* ---------- size, scroll, pointer ---------- */
@@ -81,6 +81,10 @@
   if (!mobile) addEventListener("pointermove", function (e) { tmx = e.clientX / W - .5; tmy = e.clientY / H - .5; }, { passive: true });
 
   var ease = function (x) { return x * x * (3 - 2 * x); };
+  /* opening animation: the cloud is born at the dot of the FODO logo on the intro screen, then spreads into place */
+  var BP = [0, 0], introOn = document.documentElement.classList.contains("intro") && !reduce;
+  (function () { var d = document.querySelector(".fi-dot"); if (!introOn || !d) return; var r = d.getBoundingClientRect(); BP = [((r.left + r.width / 2) / innerWidth) * 2 - 1, 1 - ((r.top + r.height / 2) / innerHeight) * 2]; })();
+  function introBurst(now) { if (!introOn) return 1; var go = window.__fodoIntroGo; if (!go) return 0; var u = Math.min(1, Math.max(0, (now - go) / 1100)); if (u >= 1) introOn = false; return 1 - Math.pow(1 - u, 3); }
   var last = performance.now(), clock = 0, running = true, raf = 0;
   function frame(now) {
     raf = 0; if (!running) return;
@@ -91,20 +95,22 @@
     var heroIn = scrollY < innerHeight * .6;
     var S = SHAPES.length, seg = prog01 * (S - 1), i = Math.min(S - 1, Math.floor(seg)), j = Math.min(S - 1, i + 1), t = reduce ? 0 : ease(seg - i);
     bind(i, j);
+    var wordT = (j === S - 1 && !reduce) ? t : 0;
     var wide = W > 900, side = wide ? (i % 2 ? -1 : 1) : 0, isWord = !reduce && j === S - 1 && t > .5;
     var dxTarget = wide ? (isWord ? 0 : (i === 0 && t < .5 ? .0 : side * .42 * (Math.sin(seg * Math.PI) * .5 + .5))) : 0;
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(U.t, t); gl.uniform1f(U.time, clock);
-    gl.uniform1f(U.size, (mobile ? 2.8 : 3.2) * dpr);
+    gl.uniform1f(U.size, (mobile ? 2.8 : 3.2) * dpr * (theme === "dark" ? 1 : 1.12) * (1 + .18 * wordT));
     var spin = isWord ? (1 - t) * 1.2 : 1;
     gl.uniform1f(U.ay, (clock * .12 + prog01 * Math.PI * 2.2) * spin + mx * .5);
     gl.uniform1f(U.ax, (.35 + Math.sin(prog01 * Math.PI) * .45) * spin + my * .35);
-    gl.uniform1f(U.aspect, W / H); gl.uniform1f(U.dx, dxTarget); var wordT = (j === S - 1 && !reduce) ? t : 0; gl.uniform1f(U.dy, (mobile ? .12 : 0) + wordT * (mobile ? .28 : .34));
+    gl.uniform1f(U.aspect, W / H); gl.uniform1f(U.dx, dxTarget); gl.uniform1f(U.dy, mobile ? .12 - wordT * .12 : wordT * .34);
     gl.uniform1f(U.scale, ((mobile ? .78 : .95) - wordT * (mobile ? .36 : .05)) * (1 + .32 * Math.max(0, 1 - prog01 * 12)));
-    gl.uniform3fv(U.c1, col1); gl.uniform3fv(U.c2, col2); gl.uniform1f(U.alpha, alpha * (heroIn ? 1.25 : 1));
-    var heroK = Math.min(1, scrollY / (innerHeight * .9)); scrim.style.opacity = (.25 + .75 * heroK).toFixed(3);
+    gl.uniform3fv(U.c1, col1); gl.uniform3fv(U.c2, col2); gl.uniform1f(U.alpha, Math.min(1, alpha * (heroIn ? 1.25 : 1) * (1 + .55 * wordT)));
+    var bu = introBurst(now); gl.uniform1f(U.burst, bu); gl.uniform2f(U.bpos, BP[0], BP[1]);
+    var heroK = Math.min(1, scrollY / (innerHeight * .9)); scrim.style.opacity = ((.25 + .75 * heroK) * (1 - .7 * wordT)).toFixed(3);
     gl.drawArrays(gl.POINTS, 0, N);
-    if (!reduce || Math.abs(target - prog01) > .001) raf = requestAnimationFrame(frame);
+    if (!reduce || Math.abs(target - prog01) > .001 || bu < 1) raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && running) { last = performance.now(); raf = requestAnimationFrame(frame); } }
   kick();

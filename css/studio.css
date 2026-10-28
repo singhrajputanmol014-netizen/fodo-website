@@ -1421,3 +1421,85 @@ html[data-theme=dark] .cf-f .cf-radius input[type=range]{background:linear-gradi
 @media (prefers-reduced-motion:reduce){.fodo-3d{animation:none}}
 /* reserve the header's height before main.js renders it, so the page does not jump (CLS) */
 #site-header{min-height:56px}@media (min-width:768px){#site-header{min-height:60px}}
+
+/* §31 v10 polish */
+/* "?" / "!" after a tightly-tracked headline word had no breathing room */
+h1 .dot,h2 .dot{letter-spacing:0}
+h1 .dot.q,h2 .dot.q{margin-left:.07em}
+/* phone footer: the address pin sat glued to its text */
+@media (max-width:1023px){
+  .footer-cols>.fcontact span.ci{gap:10px!important;align-items:center;line-height:1.45}
+  .footer-cols>.fcontact span.ci .ic{flex:0 0 auto;width:32px;height:32px;display:inline-grid;place-items:center;border:1px solid var(--glass-border,var(--line));border-radius:10px}
+}
+/* Competitor Finder: the search action sat small in the bottom-left corner of the form on laptops */
+@media (min-width:768px){
+  #cf>.btn-row,#cfb>.btn-row{display:flex;flex-direction:row-reverse;justify-content:flex-start;align-items:center;gap:12px;margin:18px 0 0!important;padding-top:16px;border-top:1px solid var(--line-2,rgba(127,127,127,.18))}
+  #cf-go,#cfb-go{min-width:220px;justify-content:center;font-size:16px;padding-top:14px;padding-bottom:14px}
+}
+/* hero status pill: say plainly what the founding cohort is */
+.status-pill{flex-wrap:wrap;justify-content:center;row-gap:4px;font-weight:500;color:var(--graphite,var(--ink))}
+.status-pill b{font-weight:700;color:var(--ink)}
+.status-pill .sp-sep{width:1px;height:14px;background:currentColor;opacity:.25}
+.status-pill .sp-go{color:var(--accent);font-weight:600;margin-left:2px}
+.status-pill:hover .sp-go{text-decoration:underline;text-underline-offset:3px}
+@media (max-width:560px){.status-pill{font-size:12.5px;padding:8px 14px;max-width:100%}.status-pill .sp-sep{display:none}}
+/* Growth System (home) — a calm six-step grid instead of the sticky panel with giant numbers */
+.gs2{list-style:none;margin:clamp(24px,3vw,40px) 0 8px;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;counter-reset:none}
+.gs2-step{position:relative;background:var(--surface);border:1px solid var(--hairline,var(--line));border-radius:20px;padding:20px 22px 18px;display:flex;flex-direction:column}
+.gs2-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.gs2-n{flex:0 0 auto;font:700 12px/1 var(--font-body);letter-spacing:.06em;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:7px 10px}
+.gs2-line{flex:1;height:1px;background:linear-gradient(90deg,var(--accent) 0,transparent 100%);opacity:.35}
+.gs2-step h3{font-size:clamp(19px,1.6vw,22px);font-weight:650;letter-spacing:-.02em;margin:0 0 6px;color:var(--ink)}
+.gs2-what{margin:0 0 14px;font-size:14px;line-height:1.55;color:var(--graphite,var(--text-2))}
+.gs2-dl{margin:auto 0 0;display:grid;gap:10px;padding-top:12px;border-top:1px solid var(--hairline,var(--line))}
+.gs2-dl dt{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate,var(--muted));margin:0 0 2px}
+.gs2-dl dd{margin:0;font-size:13.5px;line-height:1.5;color:var(--ink)}
+@media (max-width:1023px){.gs2{grid-template-columns:1fr 1fr}}
+@media (max-width:640px){.gs2{grid-template-columns:1fr;gap:10px}.gs2-step{padding:18px}}
+html.has-3d .gs2-step{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* Selected work (home) — three featured concept studies, more air, less text */
+.wl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:clamp(20px,3vw,32px)}
+.wl-card{display:flex;flex-direction:column;text-decoration:none;color:var(--ink);border-radius:22px;overflow:hidden;background:var(--surface);border:1px solid var(--hairline,var(--line));transition:transform .3s,box-shadow .3s}
+.wl-card:hover,.wl-card:focus-visible{transform:translateY(-3px);box-shadow:var(--shadow-lift)}
+.wl-art{display:block;aspect-ratio:4/3;background:var(--mist,#EEEEEC);padding:18px}
+.wl-art svg{width:100%;height:100%;display:block}
+.wl-body{display:flex;flex-direction:column;gap:6px;padding:18px 20px 20px}
+.wl-tag{align-self:flex-start;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate,var(--muted))}
+.wl-body h3{margin:0;font-size:18px;line-height:1.3;font-weight:650;letter-spacing:-.015em}
+.wl-meta{font-size:13px;color:var(--graphite,var(--text-2))}
+@media (max-width:900px){.wl-grid{grid-template-columns:1fr 1fr}}
+@media (max-width:600px){.wl-grid{grid-template-columns:1fr}}
+/* Growth Lab progress bar — explains itself on a first visit, "Level X of 8" afterwards */
+.lab-intro{flex:1 1 320px;min-width:0;display:grid;gap:4px}
+.lab-intro b{font-size:15px;color:var(--ink)}
+.lab-intro span{font-size:13.5px;line-height:1.5;color:var(--graphite,var(--slate))}
+.lab-bar-in.fresh .lab-lvl{background:var(--accent-soft);color:var(--accent);font-size:18px}
+.lab-k{font-size:11px!important;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)!important}
+.lab-badges{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.lab-badges[hidden]{display:none!important}
+.lab-badge{border-radius:14px!important;align-items:flex-start!important;padding:10px 12px!important}
+.lab-badge>span{display:grid;gap:2px}
+.lab-badge b{font-size:13px;color:var(--ink)}
+.lab-badge small{font-size:12px;font-weight:500;line-height:1.4;color:var(--slate)}
+@media (max-width:640px){.lab-badges-btn{width:100%}}
+/* v10 opening animation (first page of a visit) */
+html.intro .fodo-intro{position:fixed;inset:0;z-index:400;place-items:center;background:var(--paper);pointer-events:none;transition:background-color .65s ease,opacity .6s ease}
+.fi-mark{display:grid;justify-items:center;gap:14px;animation:fiIn .55s cubic-bezier(.2,.7,.2,1) both}
+.fi-mark b{position:relative;display:block;font:800 clamp(64px,11vw,128px)/.9 var(--font-body);letter-spacing:-.065em;color:var(--ink)}
+.fi-dot{position:absolute;right:-.2em;top:.02em;width:.15em;height:.15em;border-radius:50%;background:var(--accent)}
+.fi-mark small{font:600 11px/1 var(--font-body);letter-spacing:.3em;color:var(--slate,var(--muted));padding-left:.3em}
+html.intro-go .fodo-intro{background-color:transparent;transition:background-color .7s ease .35s}
+html.intro:not(.intro-out) .fodo-3d{z-index:401}
+html.intro-go .fi-dot{animation:fiPulse .7s ease-out both}
+html.intro-go .fi-mark b,html.intro-go .fi-mark small{color:transparent;transition:color .45s ease .1s}
+html.intro-go .fi-mark small{opacity:0;transition:opacity .3s}
+html.intro-out .fodo-intro{opacity:0}
+@keyframes fiIn{from{opacity:0;transform:translateY(10px) scale(.97);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes fiPulse{0%{transform:scale(1);box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}40%{transform:scale(1.6)}100%{transform:scale(0);box-shadow:0 0 0 40px transparent;opacity:0}}
+@media (prefers-reduced-motion:reduce){html.intro .fodo-intro{display:none!important}}
+/* phone footer: one accordion per row so each "+" sits at the end of its own row */
+@media (max-width:767px){
+  .footer-cols{grid-template-columns:1fr!important;column-gap:0!important}
+  .footer-cols>.facc h4{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-2,rgba(127,127,127,.18))}
+}

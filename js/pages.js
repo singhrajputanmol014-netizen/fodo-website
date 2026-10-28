@@ -23,7 +23,7 @@
     container.addEventListener("click",ev=>{ if(ev.target.closest(".detail-back")){ ev.preventDefault(); if(history.length>1&&document.referrer.includes(location.pathname))history.back(); else location.hash=""; } });
   };
   const back=(label)=>`<a href="#" class="btn ghost sm detail-back">← Back to ${label}</a>`;
-  const cta=`<div class="btn-row"><a class="btn" href="${R.audit}">Get Your Free Growth Audit</a><a class="btn ghost" href="${R.contact}">Start a Conversation</a></div>`;
+  const cta=`<div class="btn-row"><a class="btn" href="${R.contact}">Start a project</a><a class="btn ghost" href="${R.contact}">Start a Conversation</a></div>`;
   const svcLink=s=>{ const x=D.services.find(v=>v.slug===s); return x?`<a href="${R.services}${x.slug}/">${e(x.name)}</a>`:""; };
   const svcCard=s=>`<a class="panel hud" href="${R.services}${s.slug}/" data-pillar="${s.pillar}"><span class="tag">${e(D.pillars.find(p=>p.id===s.pillar).name)}</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(s.name)}</h3><p class="muted" style="margin:0;font-size:14px">${e(s.h)}</p><span class="panel-line"></span></a>`;
 

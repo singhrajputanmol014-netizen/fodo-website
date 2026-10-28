@@ -60,7 +60,7 @@
           <div class="sub-menu"><a href="${routes.lab}"${cur("lab")}>Growth Lab</a><a href="${routes.score}"${cur("score")}>Growth Score</a><a href="${routes.roi}"${cur("roi")}>ROI Calculator</a><a href="${routes.competitors}"${cur("competitors")}>Competitor Finder</a><a href="${routes.game}"${cur("game")}>FODO Challenge</a><a href="${routes.quiz}"${cur("quiz")}>Marketing Quiz</a></div></div>
         <a href="${routes.about}"${cur("about")}>About</a><a href="${routes.insights}"${cur("insights")}>Insights</a><a href="${routes.contact}"${cur("contact")}>Contact</a>
       </nav>
-      <button class="search-btn" type="button" id="search-open" aria-label="Search the site" title="Search (Ctrl K)" aria-haspopup="dialog">${ico.search}</button><button class="theme-btn" type="button" id="theme-toggle" aria-label="Toggle dark / light mode" title="Dark / light"><span class="tb-sun">${ico.sun}</span><span class="tb-moon">${ico.moon}</span></button><a class="btn header-cta" href="${routes.audit}">Book a Free Growth Audit</a>
+      <button class="search-btn" type="button" id="search-open" aria-label="Search the site" title="Search (Ctrl K)" aria-haspopup="dialog">${ico.search}</button><button class="theme-btn" type="button" id="theme-toggle" aria-label="Toggle dark / light mode" title="Dark / light"><span class="tb-sun">${ico.sun}</span><span class="tb-moon">${ico.moon}</span></button><a class="btn header-cta" href="${routes.contact}">Let's talk</a>
       <button class="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="drawer">${ico.menu}</button></div>`;
     const sub=h.querySelector(".sub"), sb=h.querySelector(".sub-btn");
     sb.addEventListener("click",()=>{const o=sub.classList.toggle("open");sb.setAttribute("aria-expanded",o);});
@@ -74,7 +74,7 @@
       <nav aria-label="Mobile">${grp("Explore",[["Home","home"],["About","about"],["Services","services"],["Industries","industries"],["Work","work"],["Insights","insights"]])}
       ${grp("Growth Lab",[["Competitor Finder","competitors","hot"],["Growth Score","score"],["ROI Calculator","roi"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
       ${grp("More",[["Pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Where we work","locations"],["FAQ","faq"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
-      <a class="btn" href="${routes.audit}">Book a Free Growth Audit</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
+      <a class="btn" href="${routes.contact}">Let's talk</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
     document.body.appendChild(d);
     const open=h.querySelector(".burger"), close=d.querySelector(".burger"); let trap, scrollPos=0;
     const show=()=>{scrollPos=scrollY;d.classList.add("open");document.body.classList.add("locked");open.setAttribute("aria-expanded","true");trap=U.focusTrap(d);d.addEventListener("keydown",trap);close.focus();};
@@ -190,12 +190,12 @@
   U.rereveal=()=>U.safe(U.reveal,"reveal2");
   document.dispatchEvent(new CustomEvent("fodo:ready"));
 })();
-(function(){ try{ document.querySelectorAll("main h2, .hero h1").forEach(h=>{ if(h.querySelector("span"))return; const t=h.lastChild; if(t&&t.nodeType===3&&/[.?!]\s*$/.test(t.textContent)){ const s=t.textContent.replace(/\s+$/,""); t.textContent=s.slice(0,-1); const sp=document.createElement("span"); sp.className="dot"; sp.style.color="var(--signal)"; sp.textContent=s.slice(-1); h.appendChild(sp);} }); }catch(e){} })();
+(function(){ try{ document.querySelectorAll("main h2, .hero h1").forEach(h=>{ if(h.querySelector("span"))return; const t=h.lastChild; if(t&&t.nodeType===3&&/[.?!]\s*$/.test(t.textContent)){ const s=t.textContent.replace(/\s+$/,""); t.textContent=s.slice(0,-1); const sp=document.createElement("span"); const ch=s.slice(-1); sp.className="dot"+(ch==="?"||ch==="!"?" q":""); sp.style.color="var(--signal)"; sp.textContent=ch; h.appendChild(sp);} }); }catch(e){} })();
 (function(){ try{ const C=window.FODO; const o=document.getElementById("slots-open"); if(!o)return; const open=Math.max(0,(C.foundingSlotsTotal||10)-(C.foundingSlotsTaken||0)); o.textContent=open; const bar=document.getElementById("slots-bar"); if(bar)setTimeout(()=>bar.style.width=((C.foundingSlotsTaken||0)/(C.foundingSlotsTotal||10)*100)+"%",300); }catch(e){} })();
 
 /* Explain modal: any .explain[data-title][data-body] opens a full-explanation dialog */
 (function(){ try{ const U=window.FODO_UTIL; const m=document.createElement("div"); m.id="explain-modal"; m.className="modal"; m.setAttribute("role","dialog"); m.setAttribute("aria-modal","true"); m.setAttribute("aria-labelledby","ex-title");
-  m.innerHTML=`<div class="modal-box"><button class="modal-close" type="button" aria-label="Close">${U.ico.close}</button><p class="eyebrow">Details</p><h3 id="ex-title"></h3><div id="ex-body" style="color:var(--text-2);line-height:1.6"></div><div class="btn-row"><a class="btn sm" href="${U.routes.audit}">Get a free growth audit</a><button class="btn sm ghost" type="button" data-close>Close</button></div></div>`;
+  m.innerHTML=`<div class="modal-box"><button class="modal-close" type="button" aria-label="Close">${U.ico.close}</button><p class="eyebrow">Details</p><h3 id="ex-title"></h3><div id="ex-body" style="color:var(--text-2);line-height:1.6"></div><div class="btn-row"><a class="btn sm" href="${U.routes.contact}">Talk to us</a><button class="btn sm ghost" type="button" data-close>Close</button></div></div>`;
   document.body.appendChild(m); const close=()=>U.closeModal("explain-modal"); m.querySelector(".modal-close").addEventListener("click",close); m.querySelector("[data-close]").addEventListener("click",close);
   document.addEventListener("click",ev=>{ const b=ev.target.closest(".explain"); if(!b||ev.target.closest("a"))return; m.querySelector("#ex-title").textContent=b.dataset.title||b.querySelector("h3,b")?.textContent||""; m.querySelector("#ex-body").textContent=b.dataset.body||""; U.openModal("explain-modal",b); });
 }catch(e){} })();

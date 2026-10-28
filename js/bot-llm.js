@@ -33,8 +33,12 @@
   function saveHist() { try { sessionStorage.setItem(HKEY, JSON.stringify(hist)); } catch (_) { } }
   disabledUntil = parseInt(ss("fodo-llm-off") || "0", 10) || 0;
 
+  /* Visitor switch (v10): AI replies are OFF until the visitor turns them on — the offline engine answers otherwise. */
+  function aiPref() { try { return localStorage.getItem("fodo-ai") === "on"; } catch (_) { return false; } }
+  function aiAvailable() { return MODE !== "off" && !!ENDPOINT && !(MODE === "auto" && probe !== true) && location.protocol !== "file:"; }
   function aiPossible() {
     if (MODE === "off" || !ENDPOINT) return false;
+    if (!aiPref()) return false;
     if (MODE === "auto" && probe !== true) return false;
     if (location.protocol === "file:") return false;           // local double-click preview has no backend
     if (navigator.onLine === false) return false;
@@ -48,6 +52,28 @@
   function setNote() {
     var n = document.getElementById("bot-composer-note");
     if (n) n.textContent = aiPossible() ? NOTE_AI : NOTE_OFFLINE;
+    ensureToggle();
+  }
+  function ensureToggle() {
+    var n = document.getElementById("bot-form"); if (!n) return;
+    var sw = document.getElementById("bot-ai-toggle");
+    if (!aiAvailable()) { if (sw) sw.hidden = true; return; }
+    if (!sw) {
+      sw = document.createElement("button"); sw.type = "button"; sw.id = "bot-ai-toggle"; sw.className = "bot-ai-sw"; sw.setAttribute("role", "switch");
+      sw.innerHTML = '<span class="bot-sw" aria-hidden="true"><i></i></span><span class="bot-sw-l">AI replies <b></b></span><span class="bot-sw-h"></span>';
+      sw.addEventListener("click", function () {
+        var on = !aiPref(); try { localStorage.setItem("fodo-ai", on ? "on" : "off"); } catch (_) { }
+        track("bot_ai_toggle", { state: on ? "on" : "off" }); setNote();
+      });
+      n.parentNode.insertBefore(sw, n);
+      if (!document.getElementById("bot-ai-sw-css")) { var st = document.createElement("style"); st.id = "bot-ai-sw-css";
+        st.textContent = ".bot-ai-sw{display:flex;align-items:center;gap:8px;width:calc(100% - 24px);margin:6px 12px 0;padding:6px 2px;border:0;background:none;color:inherit;font:inherit;font-size:12.5px;cursor:pointer;text-align:left}.bot-ai-sw[hidden]{display:none}.bot-sw{position:relative;flex:0 0 auto;width:30px;height:18px;border-radius:99px;background:rgba(127,127,127,.35);transition:background .2s}.bot-sw i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s}.bot-ai-sw[aria-checked=true] .bot-sw{background:var(--accent,#5B3DF5)}.bot-ai-sw[aria-checked=true] .bot-sw i{transform:translateX(12px)}.bot-sw-l b{font-weight:700}.bot-sw-h{margin-left:auto;opacity:.7;font-size:11.5px}.bot-ai-sw:focus-visible{outline:2px solid var(--accent,#5B3DF5);outline-offset:2px;border-radius:8px}";
+        document.head.appendChild(st); }
+    }
+    var on = aiPref(); sw.hidden = false; sw.setAttribute("aria-checked", on ? "true" : "false");
+    sw.querySelector("b").textContent = on ? "On" : "Off";
+    sw.querySelector(".bot-sw-h").textContent = on ? "for open-ended questions" : "turn on only when you need it";
+    sw.setAttribute("aria-label", "AI replies " + (on ? "on" : "off"));
   }
   { var pc = ss("fodo-llm-probe"); if (pc === "1" || pc === "0") probe = pc === "1"; }   // cached result applies at once, no 600 ms gap
   setNote();
@@ -59,7 +85,9 @@
       .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
       .then(function (j) { clearTimeout(t); probe = !!(j && j.ok && j.ai); ss("fodo-llm-probe", probe ? "1" : "0"); setNote(); });
   }
-  setTimeout(runProbe, 600);   // plain timer: idle callbacks can starve while the 3D background animates
+  setTimeout(runProbe, 600);
+  document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".bot-fab")) setTimeout(setNote, 60); }, true);
+  [800, 2000, 4000].forEach(function (ms) { setTimeout(ensureToggle, ms); });   // plain timer: idle callbacks can starve while the 3D background animates
   function track(name, params) { try { if (window.FODO_TRACK) window.FODO_TRACK(name, params); } catch (_) { } }
 
   /* small style for code blocks the AI may return (kept here so no stylesheet cache needs bumping) */

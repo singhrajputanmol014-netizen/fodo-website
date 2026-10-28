@@ -1,6 +1,6 @@
 /* FODO Competitor Finder — Google Places part (needs the Cloudflare Secret GOOGLE_PLACES_KEY)
  *
- *   GET /api/competitors?health=1                         → { ok, google, kv }
+ *   GET /api/competitors?health=1                         → { ok, version, google, geoapify, ai, kv, osmProxy } — which sources this site has
  *   GET /api/competitors?type=cafe&lat=..&lng=..&radius=5000            → Google results for that circle (up to 60, 3 pages)
  *   GET /api/competitors?type=cafe&rect=minLat,minLng,maxLat,maxLng     → one tile of a "deep search" (the browser splits big areas into tiles)
  *
@@ -52,7 +52,7 @@ export async function onRequestGet(ctx) {
 }
 async function handle({ request, env }) {
   const q = new URL(request.url).searchParams;
-  if (q.get("health")) return json({ ok: true, service: "competitor-finder", version: "8.0", google: !!env.GOOGLE_PLACES_KEY, kv: !!env.CHAT_KV, maxRadiusKm: MAX_RADIUS / 1000 });
+  if (q.get("health")) return json({ ok: true, service: "competitor-finder", version: "11.0", google: !!env.GOOGLE_PLACES_KEY, geoapify: !!env.GEOAPIFY_KEY, ai: !!env.AI, kv: !!env.CHAT_KV, osmProxy: true, maxRadiusKm: MAX_RADIUS / 1000 });
   const type = clean(q.get("type"), 60), area = clean(q.get("area"), 100);
   const radius = Math.min(MAX_RADIUS, Math.max(200, parseInt(q.get("radius") || "2000", 10) || 2000));
   const lat = parseFloat(q.get("lat")), lng = parseFloat(q.get("lng"));

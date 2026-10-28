@@ -19,7 +19,7 @@ Generated 2026-10-28 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/` | 59 | 155 | 1 | 1298 | Organization,Person,ProfessionalService,WebSite | FODO — Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
 | `/404.html` | 21 | 65 | 1 | 30 | — | Page not found — FODO |
 | `/about/` | 46 | 140 | 1 | 394 | BreadcrumbList,Person | About FODO — Founder Anmol Singh &amp; How We Work |
-| `/competitor-finder/` | 57 | 150 | 1 | 472 | BreadcrumbList | Competitor Finder — Any Business, Brand or Startup | FODO |
+| `/competitor-finder/` | 57 | 150 | 1 | 526 | BreadcrumbList | Competitor Finder — Any Business, Brand or Startup | FODO |
 | `/contact/` | 48 | 150 | 1 | 37 | BreadcrumbList | Contact FODO — Free Growth Audit &amp; Strategy Call |
 | `/faq/` | 49 | 155 | 1 | 609 | BreadcrumbList | FAQ — Services, Process &amp; Pricing Approach | FODO |
 | `/fodo-challenge/` | 46 | 138 | 1 | 113 | BreadcrumbList | The FODO Challenge — A 2-Minute Marketing Game |

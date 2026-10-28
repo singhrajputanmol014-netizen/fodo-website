@@ -1,4 +1,10 @@
-/* FODO Competitor Finder v8 — /competitor-finder/
+/* FODO Competitor Finder v11 — /competitor-finder/
+   v11 engine: every source runs at the same time and results appear as each one answers (chips show each source):
+     local  → OpenStreetMap through this site's cached proxy (/api/osm, then the public servers, then Photon)
+              + Geoapify (/api/geo, when GEOAPIFY_KEY is set) + Google Maps (/api/competitors, when GOOGLE_PLACES_KEY is set)
+     brands → Wikidata same-industry + Wikidata similar-description + AI suggestions (/api/brand-ai, Workers AI) checked on Wikidata;
+              a brand that is not on Wikidata still gets competitors. Exports: js/cf-export.js (own Excel writer, phone-safe download).
+   (v8 notes below)
    • Local businesses: any business type near any place on earth, radius 0.5–100 km (slider or typed).
      Every listed business is returned (no cap) from OpenStreetMap, searched straight from this browser (js/free-places.js);
      when the site has a Google Places key, Google results (up to 60, or more with "Deep Google search" tiles) are merged in.
@@ -8,7 +14,7 @@
    • Every search is added to one sheet in this browser → Excel (one row per competitor, every column), CSV or Google Sheets. */
 (function () {
   "use strict";
-  window.FODO_CF_VERSION = "8.1";
+  window.FODO_CF_VERSION = "11";
   var U = window.FODO_UTIL || {}, esc = U.esc || function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var $ = function (id) { return document.getElementById(id); };
   var form = $("cf"), bform = $("cfb"); if (!form || !bform) return;
@@ -25,6 +31,7 @@
   var ver = function (diag) { var v = document.querySelector(".cf-ver"); if (v) v.textContent = "Finder v" + window.FODO_CF_VERSION + (diag ? " · " + diag : ""); };
   var LS = { get: function (k, d) { try { var v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } }, set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } } };
   var nrm = function (s) { return String(s || "").toLowerCase().replace(/[^a-z0-9ऀ-ॿ ]+/g, " ").replace(/\s+/g, " ").trim(); };
+  var track = function (n, p) { try { if (window.FODO_TRACK) window.FODO_TRACK(n, p || {}); } catch (e) {} };
   var href = function (u) { return /^https?:/i.test(u) ? u : "https://" + u; };
 
   /* ================= radius: slider + typed km, kept in sync ================= */
@@ -132,7 +139,7 @@
 
   /* ================= is Google connected? (decides whether to merge Google results) ================= */
   var health = fetchT(ROOT + "api/competitors?health=1", { headers: { accept: "application/json" } }, 6000).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; })
-    .then(function (h) { google = !!h.google; $("cf-deep-wrap").hidden = !google; return h; });
+    .then(function (h) { google = !!h.google; $("cf-deep-wrap").hidden = !google; return h || {}; });
 
   /* ================= local search ================= */
   var last = LS.get("fodo-cf", null);
@@ -174,6 +181,32 @@
     };
     return next(0).then(function () { return out.length ? { ok: true, source: "google", results: out } : null; });
   }
+  /* ---- source chips: what each source is doing right now ---- */
+  var SRC_LABEL = { osm: "OpenStreetMap", geo: "Geoapify", google: "Google Maps", wd: "Wikidata industry", kw: "Wikidata keywords", ai: "AI suggestions" };
+  var srcs = {};
+  function chips(list) {
+    var el = $("cf-srcs"); if (!el) { el = document.createElement("p"); el.id = "cf-srcs"; el.className = "cf-srcs"; el.setAttribute("aria-live", "polite"); status.parentNode.insertBefore(el, status.nextSibling); }
+    srcs = {}; list.forEach(function (k) { srcs[k] = { s: "wait", t: "" }; }); paintChips();
+  }
+  function chip(k, s, t) { if (!srcs[k]) return; srcs[k] = { s: s, t: t || "" }; paintChips(); }
+  function paintChips() {
+    var el = $("cf-srcs"); if (!el) return;
+    el.innerHTML = Object.keys(srcs).map(function (k) { var x = srcs[k]; return '<span class="cf-src ' + x.s + '"><i aria-hidden="true"></i>' + SRC_LABEL[k] + (x.t ? " · " + esc(x.t) : x.s === "wait" ? " · searching…" : "") + "</span>"; }).join("");
+    el.hidden = !Object.keys(srcs).length;
+  }
+  var gmark = function (list) { (list || []).forEach(function (p) { var g = {}; Object.keys(p).forEach(function (k) { if (!/^(name|mapsUrl|source|id|_.*|distance)$/.test(k) && p[k] !== "" && p[k] != null && typeof p[k] !== "object") g[k] = p[k]; }); p._gf = g; }); return list; };
+  /* Geoapify (only when this site has a GEOAPIFY_KEY): 500 places a page, up to 4 pages for big circles */
+  function geoAll(m, type, c, rm) {
+    var g = m.geoCats(type), out = [], pages = rm > 20000 ? 4 : rm > 5000 ? 3 : 2;
+    var page = function (i) {
+      var u = ROOT + "api/geo?cat=" + g.cat + (g.name ? "&name=" + encodeURIComponent(g.name) : "") + "&lat=" + (+c.lat).toFixed(5) + "&lng=" + (+c.lng).toFixed(5) + "&radius=" + rm + "&offset=" + i * 500;
+      return fetchT(u, { headers: { accept: "application/json" } }, 25000).then(function (r) { if (!r.ok) throw new Error("geoapify " + r.status); return r.json(); }).then(function (j) {
+        var f = (j.features || []).map(m.fromGeoapify).filter(Boolean); out = out.concat(f);
+        if (f.length >= 500 && i + 1 < pages) return page(i + 1);
+      });
+    };
+    return page(0).then(function () { return out; }, function (e) { if (out.length) return out; throw e; });
+  }
   function run() {
     var type = tIn.value.trim(), area = aIn.value.trim(), rm = R1.m();
     if (!type) { setStatus("Type a business type, for example “Cafe” or “Software company”.", "warn"); tIn.focus(); return; }
@@ -182,30 +215,43 @@
     var where = coords ? (area && area !== "Near me" ? area : "you") : area, areaQ = area === "Near me" ? "" : area;
     frame.src = mapSrc(type + " near " + (coords ? coords.lat + "," + coords.lng : area), rm > 20000 ? 10 : rm > 5000 ? 12 : 14);
     LS.set("fodo-cf", { t: type, a: areaQ, km: R1.km(), lat: place ? place.lat : undefined, lng: place ? place.lng : undefined });
-    setStatus("Searching every " + type.toLowerCase() + " within " + R1.km() + " km of " + where + "… (big areas can take up to a minute)", "busy");
+    setStatus("Searching every " + type.toLowerCase() + " within " + R1.km() + " km of " + where + "… results appear as each source answers.", "busy");
     list.innerHTML = '<li class="cf-empty">Looking up ' + esc(type) + " near " + esc(where) + "…</li>"; $("cf-more").hidden = true;
-    var deep = $("cf-deep").checked;
-    lib().then(function (m) {
-      var F = m.freePlaces(fetchT, {});
+    var deep = $("cf-deep").checked, t0 = Date.now();
+    track("cf_search", { mode: "local", type: type, km: R1.km() });
+    Promise.all([lib(), health]).then(function (r0) {
+      var m = r0[0], h = r0[1] || {};
+      chips(["osm"].concat(h.geoapify ? ["geo"] : [], google ? ["google"] : []));
+      var F = m.freePlaces(fetchT, {}, { proxy: ROOT + "api/osm" });
       var center = coords ? Promise.resolve(coords) : F.geocode(areaQ);
       return center.then(function (c) {
         if (!c) throw Object.assign(new Error("place"), { reason: "That place was not found. Pick one from the suggestions while typing." });
-        var osmP = F.search({ type: type, area: areaQ, center: { lat: c.lat, lng: c.lng }, radius: rm }).catch(function (e) { return { results: [], failed: e && e.tried ? e.tried.join(", ") : (e && e.message) }; });
-        var gP = health.then(function () { return google ? googleAll(type, areaQ, c, rm, deep).catch(function () { return null; }) : null; });
-        return Promise.all([osmP, gP]).then(function (r) {
-          var osm = r[0], g = r[1], res;
-          if (g && g.results.length) { var gl = m.dedupe(g.results); res = m.mergeSources(gl, osm.results || []); }
-          else res = osm.results || [];
-          res.forEach(function (p) { p.distance = m.dist(c, p); });
-          res = res.filter(function (p) { return p.distance <= rm * 1.05; }).sort(function (a, b) { return a.distance - b.distance; });
-          if (!res.length && osm.failed && !(g && g.results.length)) {
-            // last try: the server route (it may reach the map servers when this browser can't)
+        var job = { ok: true, mode: "local", type: type, area: areaQ || "your location", radius: rm, center: { lat: c.lat, lng: c.lng }, results: [], source: "" };
+        var pools = { osm: [], geo: [], google: [] }, fails = [];
+        var merged = function () {
+          var free = m.dedupe(pools.osm.concat(pools.geo)), res = pools.google.length ? m.mergeSources(m.dedupe(pools.google), free) : free;
+          res.forEach(function (p) { p.distance = m.dist(c, p); if (p._gf && p.source === "OpenStreetMap") p.source = "Google Maps + OpenStreetMap"; });
+          return res.filter(function (p) { return p.distance <= rm * 1.05; }).sort(function (a, b) { return a.distance - b.distance; });
+        };
+        var srcName = function () { return [pools.google.length && "Google Maps", pools.osm.length && "OpenStreetMap", pools.geo.length && "Geoapify"].filter(Boolean).join(" + ") || "OpenStreetMap"; };
+        var update = function () { if (!busy) return; var res = merged(); if (!res.length) return; job.results = res; job.source = srcName(); show(job, true); };
+        var task = function (k, p) {
+          return p.then(function (list) { pools[k] = list || []; chip(k, pools[k].length ? "ok" : "empty", pools[k].length ? pools[k].length.toLocaleString("en-IN") + " found" : "none listed"); update(); },
+            function (e) { fails.push(k + ": " + (e && (e.tried ? e.tried.join(", ") : e.message) || "failed")); chip(k, "fail", "did not answer"); });
+        };
+        var jobs = [task("osm", F.search({ type: type, area: areaQ, center: { lat: c.lat, lng: c.lng }, radius: rm }).then(function (r) { return r.results; }))];
+        if (h.geoapify) jobs.push(task("geo", geoAll(m, type, c, rm)));
+        if (google) jobs.push(task("google", googleAll(type, areaQ, c, rm, deep).then(function (g) { return g ? gmark(g.results) : []; })));
+        return Promise.all(jobs).then(function () {
+          var res = merged();
+          if (!res.length && fails.length === jobs.length) {
+            // every source failed in this browser — last try: the server route (it may reach the map servers when this browser can't)
             return api({ type: type, area: areaQ, lat: c.lat, lng: c.lng, radius: rm }, 60000).then(function (j) {
-              if (j && j.ok && j.results && j.results.length) return Object.assign(j, { mode: "local", viaServer: true });
-              throw Object.assign(new Error("all"), { reason: "The free map servers did not answer right now. Please try again in a minute.", diag: osm.failed });
+              if (j && j.ok && j.results && j.results.length) { if (j.source === "google") gmark(j.results); return Object.assign(j, { mode: "local", viaServer: true, center: j.center || job.center }); }
+              throw Object.assign(new Error("all"), { reason: "The free map servers did not answer right now. Please try again in a minute.", diag: fails.join(" | ") });
             });
           }
-          return { ok: true, mode: "local", type: type, area: areaQ || "your location", radius: rm, center: c, results: res, source: g && g.results.length ? (osm.results && osm.results.length ? "google+osm" : "google") : "osm" };
+          job.results = res; job.source = srcName(); job.ms = Date.now() - t0; return job;
         });
       });
     }).then(function (j) { show(j); }, function (e) {
@@ -213,7 +259,7 @@
       var q = type + " near " + (coords ? coords.lat + "," + coords.lng : area);
       setStatus((e && e.reason) || "Something went wrong — please try again.", "warn"); ver(e && (e.diag || e.message));
       list.innerHTML = '<li class="cf-empty">The Google Maps view on this page still shows businesses for your search. <a href="https://www.google.com/maps/search/' + encodeURIComponent(q) + '" target="_blank" rel="noopener noreferrer">Open the full list on Google Maps ↗</a></li>';
-      setMapView("google");
+      setMapView("google"); track("cf_fail", { mode: "local" });
     });
   }
 
@@ -252,16 +298,6 @@
     })).then(function () { return out; });
   }
   var label = function (e) { return e && e.labels && e.labels.en ? e.labels.en.value : ""; };
-  function resolveSeed(q) {
-    if (brandPick && brandPick.id && nrm(brandPick.label) === nrm(q)) return Promise.resolve(brandPick);
-    return wget("action=wbsearchentities&language=en&uselang=en&type=item&limit=1&search=" + encodeURIComponent(q), 10000)
-      .then(function (j) { var x = (j.search || [])[0]; if (!x) throw Object.assign(new Error("not found"), { reason: "No company or industry called “" + q + "” was found. Try the full name, or pick one from the suggestions." }); return { id: x.id, label: x.label, sub: x.description || "" }; });
-  }
-  function placeCoords() {
-    var t = blIn.value.trim(); if (!t) return Promise.resolve(null);
-    if (bplace && bplace.lat != null) return Promise.resolve(bplace);
-    return lib().then(function (m) { return m.freePlaces(fetchT, {}).geocode(t); }).then(function (c) { if (!c) throw Object.assign(new Error("place"), { reason: "That city or region was not found — pick one from the suggestions." }); return Object.assign({ value: t }, c); });
-  }
   function searchIds(stmts, country) {
     // one CirrusSearch per statement, sorted by how linked-to (well known) each company is
     return Promise.all(stmts.map(function (s) {
@@ -292,38 +328,91 @@
           exchange: L(ex.map(function (x) { return x.v && x.v.id; }).filter(Boolean)).slice(0, 2).join(", "), ticker: tick.slice(0, 2).join(", "), products: L(ids(e, "P1056")).slice(0, 6).join(", "),
           twitter: h("P2002", "https://x.com/"), instagram: h("P2003", "https://instagram.com/"), facebook: h("P2013", "https://facebook.com/"), linkedin: h("P4264", "https://www.linkedin.com/company/"), youtube: h("P2397", "https://www.youtube.com/channel/"),
           wikipedia: e.sitelinks && e.sitelinks.enwiki ? e.sitelinks.enwiki.url || "https://en.wikipedia.org/wiki/" + encodeURIComponent(e.sitelinks.enwiki.title.replace(/ /g, "_")) : "",
-          wikidata: "https://www.wikidata.org/wiki/" + f.id, lat: hqC ? hqC.lat : null, lng: hqC ? hqC.lng : null, score: f.score + (e.sitelinks && e.sitelinks.enwiki ? 500 : 0) };
+          via: f.via || "", wikidata: "https://www.wikidata.org/wiki/" + f.id, lat: hqC ? hqC.lat : null, lng: hqC ? hqC.lng : null, score: f.score + (e.sitelinks && e.sitelinks.enwiki ? 500 : 0) };
         p.mapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(name + (p.hq ? ", " + p.hq : ""));
         res.push(p);
       });
       return res;
   }
+  function resolveSeed(q) {   // never fatal: a brand that is not on Wikidata still gets keyword + AI competitors
+    if (brandPick && brandPick.id && nrm(brandPick.label) === nrm(q)) return Promise.resolve(brandPick);
+    return wget("action=wbsearchentities&language=en&uselang=en&type=item&limit=3&search=" + encodeURIComponent(q), 10000)
+      .then(function (j) { var a = j.search || [], x = a.filter(function (s) { return /compan|business|startup|brand|firm|industry|service|platform|app|retail|chain|manufactur|bank|airline|provider/i.test(s.description || ""); })[0] || a[0]; return x ? { id: x.id, label: x.label, sub: x.description || "" } : null; }, function () { return null; });
+  }
+  function placeCoords() {
+    var t = blIn.value.trim(); if (!t) return Promise.resolve(null);
+    if (bplace && bplace.lat != null) return Promise.resolve(bplace);
+    return lib().then(function (m) { return m.freePlaces(fetchT, {}).geocode(t); }).then(function (c) { if (!c) throw Object.assign(new Error("place"), { reason: "That city or region was not found — pick one from the suggestions." }); return Object.assign({ value: t }, c); });
+  }
+  var COMPANY_TYPES = "P31=Q4830453|P31=Q783794|P31=Q6881511|P31=Q891723|P31=Q1589009|P31=Q21980538|P31=Q18388277|P31=Q167037|P31=Q1058914|P31=Q2085381|P31=Q1616075|P31=Q7275|P31=Q210167";
+  var STOP = /^(a|an|the|of|and|for|in|on|by|with|to|from|company|companies|business|startup|start|up|based|brand|firm|private|public|limited|ltd|inc|indian|american|british|chinese|german|french|japanese|global|online|multinational|headquartered|founded|which|that|is|its|an?)$/i;
+  function keywordIds(text, country) {    // companies whose Wikidata description/name matches the words ("food delivery", "pet food" …)
+    var w = String(text || "").toLowerCase().replace(/[^a-z0-9ऀ-ॿ\s-]+/g, " ").split(/\s+/).filter(function (x) { return x.length > 2 && !STOP.test(x); }).slice(0, 4);
+    if (!w.length) return Promise.resolve([]);
+    var q = w.join(" ") + " haswbstatement:" + COMPANY_TYPES + (country ? " haswbstatement:P17=" + country : "");
+    return wget("action=query&list=search&srnamespace=0&srlimit=150&srprop=&srsearch=" + encodeURIComponent(q), 15000)
+      .then(function (j) { return ((j.query || {}).search || []).map(function (x, i) { return { id: x.title, score: 900 - Math.min(899, i * 6) }; }).filter(function (x) { return /^Q\d+$/.test(x.id); }); });
+  }
+  function aiSuggest(seed, q, cname, city) {
+    return fetchT(ROOT + "api/brand-ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brand: seed ? seed.label : q, description: seed ? seed.sub : "", country: cname, city: city }) }, 45000)
+      .then(function (r) { return r.json().catch(function () { return {}; }); }).then(function (j) { if (!j.ok) throw new Error(j.reason || "ai"); return j.items || []; });
+  }
+  function verifyAI(items, seedName) {   // look each AI name up on Wikidata; keep the ones that match a company there
+    var out = { ids: [], loose: [] }, k = 0, seedN = nrm(seedName);
+    items = items.filter(function (x) { return nrm(x.name) && nrm(x.name) !== seedN; }).slice(0, 30);
+    var worker = function () {
+      var x = items[k++]; if (!x) return Promise.resolve();
+      return wget("action=wbsearchentities&language=en&uselang=en&type=item&limit=3&search=" + encodeURIComponent(x.name), 10000).then(function (j) {
+        var hit = (j.search || []).filter(function (s) { var a = nrm(s.label), b = nrm(x.name); return (a === b || a.indexOf(b) === 0 || b.indexOf(a) === 0) && !/human|person|film|song|album|novel|television|village|river|species|given name|family name|disambiguation/i.test(s.description || ""); })[0];
+        if (hit) out.ids.push({ id: hit.id, score: 2600 - out.ids.length * 10, ai: x }); else out.loose.push(x);
+      }, function () { out.loose.push(x); }).then(worker);
+    };
+    return Promise.all([worker(), worker(), worker(), worker()]).then(function () { return out; });
+  }
   function runBrand() {
     var q = bIn.value.trim(); if (!q) { setStatus("Type a brand, company or industry — for example “Zomato” or “fintech”.", "warn"); bIn.focus(); return; }
     if (busy) return; busy = true; ver();
-    var country = cIn.value, cname = cIn.options[cIn.selectedIndex].text, rkm = R2.km();
-    setStatus("Finding competitors of " + q + "…", "busy");
+    var country = cIn.value, cname = country ? cIn.options[cIn.selectedIndex].text : "", rkm = R2.km(), city = blIn.value.trim();
+    setStatus("Finding competitors of " + q + "… three searches run together: Wikidata industry, Wikidata keywords and AI suggestions.", "busy");
     list.innerHTML = '<li class="cf-empty">Looking up companies that compete with ' + esc(q) + "…</li>"; $("cf-more").hidden = true;
-    Promise.all([resolveSeed(q), placeCoords()]).then(function (r) {
-      var seed = r[0], loc = r[1];
-      return entities([seed.id]).then(function (se) {
-        var s = se[seed.id] || {}, inds = ids(s, "P452"), types = ids(s, "P31").filter(function (t) { return !GENERIC[t]; });
+    track("cf_search", { mode: "brand", brand: q });
+    Promise.all([resolveSeed(q), placeCoords(), health]).then(function (r) {
+      var seed = r[0], loc = r[1], h = r[2] || {};
+      chips(["wd", "kw"].concat(h.ai ? ["ai"] : []));
+      var seedEnt = seed ? entities([seed.id]).then(function (se) { return se[seed.id] || {}; }, function () { return {}; }) : Promise.resolve({});
+      // layer 1: same industry / same kind of company (Wikidata statements)
+      var L1 = seedEnt.then(function (s) {
+        if (!seed) return [];
+        var inds = ids(s, "P452"), types = ids(s, "P31").filter(function (t) { return !GENERIC[t]; });
         var stmts = inds.slice(0, 4).map(function (i) { return "P452=" + i; }).concat(types.slice(0, 2).map(function (t) { return "P31=" + t; }));
         if (!inds.length) stmts.unshift("P452=" + seed.id);                    // the search itself is an industry (e.g. "fintech")
-        setStatus("Found " + (label(s) || seed.label) + " — collecting companies in the same space…", "busy");
-        return searchIds(stmts, country).then(function (found) {
-          found = found.filter(function (x) { return x.id !== seed.id; });
-          var total = found.length;
-          var near = !loc ? Promise.resolve(found) : (setStatus("Checking where " + found.length + " companies are headquartered…", "busy"), hqCoords(found.slice(0, 1500).map(function (x) { return x.id; })).then(function (cc) {
-            var R = 6371, rr = Math.PI / 180;
-            return found.filter(function (x) { var p = cc[x.id]; if (!p) return false; var a = Math.pow(Math.sin((p.lat - loc.lat) * rr / 2), 2) + Math.cos(loc.lat * rr) * Math.cos(p.lat * rr) * Math.pow(Math.sin((p.lng - loc.lng) * rr / 2), 2); x.lat = p.lat; x.lng = p.lng; x.distance = Math.round(2 * R * Math.asin(Math.sqrt(a)) * 1000); return x.distance <= rkm * 1000; });
-          }));
-          return near.then(function (kept) {
-            var first = kept.slice(0, BRAND_PAGE);
-            if (!first.length) return { seed: seed, s: s, loc: loc, ents: {}, found: [], rest: [], total: total };
-            setStatus("Reading details of " + first.length + (kept.length > first.length ? " of " + kept.length : "") + " companies…", "busy");
-            return entities(first.map(function (x) { return x.id; })).then(function (ents) { return { seed: seed, s: s, loc: loc, ents: ents, found: first, rest: kept.slice(BRAND_PAGE), total: total }; });
-          });
+        return searchIds(stmts, country);
+      }).then(function (x) { chip("wd", x.length ? "ok" : "empty", x.length ? x.length + " found" : seed ? "none listed" : "brand not on Wikidata"); return x; }, function () { chip("wd", "fail", "did not answer"); return []; });
+      // layer 2: companies described with the same words (works for startups without an "industry" statement)
+      var L2 = seedEnt.then(function (s) {
+        var d = (s.descriptions && s.descriptions.en && s.descriptions.en.value) || (seed && seed.sub) || "";
+        return Promise.all([keywordIds(seed ? d || q : q, country), seed && /industry|sector|field|type of business|economic activity/i.test(d) ? keywordIds(q, country) : Promise.resolve([])]).then(function (a) { return a[0].concat(a[1]); });
+      }).then(function (x) { chip("kw", x.length ? "ok" : "empty", x.length ? x.length + " found" : "none"); return x; }, function () { chip("kw", "fail", "did not answer"); return []; });
+      // layer 3: AI suggestions, each checked against Wikidata
+      var L3 = !h.ai ? Promise.resolve({ ids: [], loose: [] }) : aiSuggest(seed, q, cname, city).then(function (items) { return verifyAI(items, seed ? seed.label : q); })
+        .then(function (x) { chip("ai", x.ids.length + x.loose.length ? "ok" : "empty", (x.ids.length + x.loose.length) + " suggested · " + x.ids.length + " confirmed on Wikidata"); return x; }, function () { chip("ai", "fail", "not available right now"); return { ids: [], loose: [] }; });
+      return Promise.all([seedEnt, L1, L2, L3]).then(function (a) {
+        var s = a[0], score = {}, via = {}, aiInfo = {}, order = [];
+        var add = function (list, tag) { list.forEach(function (x) { if (seed && x.id === seed.id) return; if (!(x.id in score)) { score[x.id] = 0; order.push(x.id); via[x.id] = []; } score[x.id] += x.score; if (via[x.id].indexOf(tag) < 0) via[x.id].push(tag); if (x.ai) aiInfo[x.id] = x.ai; }); };
+        add(a[1], "Same industry"); add(a[2], "Similar description"); add(a[3].ids, "AI + Wikidata");
+        order.forEach(function (id) { if (via[id].length > 1) score[id] += 1500 * (via[id].length - 1); });   // found by two layers → very likely a real competitor
+        var found = order.sort(function (x, y) { return score[y] - score[x]; }).map(function (id) { return { id: id, score: score[id], via: via[id].join(", "), ai: aiInfo[id] }; });
+        var total = found.length, loose = a[3].loose;
+        if (!seed && !found.length && !loose.length) throw Object.assign(new Error("not found"), { reason: "No company or industry called “" + q + "” was found. Try the full name, an industry such as “food delivery”, or pick one from the suggestions." });
+        var near = !loc ? Promise.resolve(found) : (setStatus("Checking where " + found.length + " companies are headquartered…", "busy"), hqCoords(found.slice(0, 1500).map(function (x) { return x.id; })).then(function (cc) {
+          var R = 6371, rr = Math.PI / 180;
+          return found.filter(function (x) { var p = cc[x.id]; if (!p) return false; var d = Math.pow(Math.sin((p.lat - loc.lat) * rr / 2), 2) + Math.cos(loc.lat * rr) * Math.cos(p.lat * rr) * Math.pow(Math.sin((p.lng - loc.lng) * rr / 2), 2); x.lat = p.lat; x.lng = p.lng; x.distance = Math.round(2 * R * Math.asin(Math.sqrt(d)) * 1000); return x.distance <= rkm * 1000; });
+        }));
+        return near.then(function (kept) {
+          var first = kept.slice(0, BRAND_PAGE), o = { seed: seed || { id: "", label: q, sub: "" }, s: s, loc: loc, ents: {}, found: first, rest: kept.slice(BRAND_PAGE), total: total, loose: loose };
+          if (!first.length) return o;
+          setStatus("Reading details of " + first.length + (kept.length > first.length ? " of " + kept.length : "") + " companies…", "busy");
+          return entities(first.map(function (x) { return x.id; })).then(function (ents) { o.ents = ents; return o; });
         });
       });
     }).then(function (o) {
@@ -335,28 +424,37 @@
     }).then(function (o) {
       var L = function (list) { return list.map(function (x) { return label(o.labs[x]); }).filter(Boolean); };
       var res = brandRecords(o);
-      if (o.loc) res.forEach(function (p, i) { var f = o.found.filter(function (x) { return x.id === p.id; })[0]; if (f && f.distance != null) p.distance = f.distance; });
-      var s = o.s, seedInfo = { id: o.seed.id, label: label(s) || o.seed.label, sub: (s.descriptions && s.descriptions.en && s.descriptions.en.value) || o.seed.sub, industries: L(ids(s, "P452")), country: L(ids(s, "P17")).join(", "), website: strs(s, "P856")[0] || "", founded: year(s, "P571") };
+      if (o.loc) res.forEach(function (p) { var f = o.found.filter(function (x) { return x.id === p.id; })[0]; if (f && f.distance != null) p.distance = f.distance; });
+      // AI names that are not on Wikidata: shown, clearly labelled, checked through their website
+      if (!o.loc) o.loose.forEach(function (x, i) {
+        if (res.some(function (p) { return nrm(p.name) === nrm(x.name); })) return;
+        res.push({ mode: "brand", id: "ai:" + nrm(x.name).replace(/ /g, "-"), name: x.name, description: x.why || "", website: x.website || "", country: x.country || "", via: "AI suggestion — verify", unverified: true, score: 1200 - i,
+          mapsUrl: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(x.name), lat: null, lng: null });
+      });
+      res.sort(function (a, b) { return b.score - a.score; });
+      var s = o.s, seedInfo = { id: o.seed.id, label: label(s) || o.seed.label, sub: (s.descriptions && s.descriptions.en && s.descriptions.en.value) || o.seed.sub, industries: L(ids(s, "P452")), country: L(ids(s, "P17")).join(", "), website: strs(s, "P856")[0] || "", founded: year(s, "P571"), missing: !o.seed.id };
       var where = [o.loc ? "HQ within " + rkm + " km of " + (o.loc.value || blIn.value) : "", country ? cname : ""].filter(Boolean).join(", ") || "Worldwide";
-      return { ok: true, mode: "brand", type: seedInfo.label, area: where, seed: seedInfo, loc: o.loc, results: res, rest: o.rest || [], total: o.total || res.length, source: "wikidata" };
+      return { ok: true, mode: "brand", type: seedInfo.label, area: where, seed: seedInfo, loc: o.loc, results: res, rest: o.rest || [], total: Math.max(o.total || 0, res.length), source: "wikidata" };
     }).then(function (j) { show(j); }, function (e) {
       busy = false; data = null; view = [];
       setStatus(e && e.reason ? e.reason : "Wikidata did not answer right now — please try again in a minute.", "warn"); ver(e && e.message);
       list.innerHTML = '<li class="cf-empty">No results yet. Try another spelling, pick a suggestion while typing, remove the city, or search an industry such as “food delivery”.</li>';
+      track("cf_fail", { mode: "brand" });
     });
   }
 
   /* ================= results ================= */
-  function show(j) { try { show_(j); } catch (e) { busy = false; if (window.console) console.error("[finder] render failed", e); setStatus("Could not show the results.", "warn"); ver(e.message); } }
-  function show_(j) {
-    busy = false; data = j; data.results.forEach(function (p, i) { p._i = i; });
+  function show(j, partial) { try { show_(j, partial); } catch (e) { busy = false; if (window.console) console.error("[finder] render failed", e); setStatus("Could not show the results.", "warn"); ver(e.message); } }
+  function show_(j, partial) {
+    if (!partial) busy = false; data = j; data.results.forEach(function (p, i) { p._i = i; });
     var n = j.results.length;
+    if (partial) { setStatus(n.toLocaleString("en-IN") + " found so far · still asking the other sources…", "busy"); paint(true); setMapView("pins"); pins(); insight(); return; }
     if (j.mode === "local") {
-      var src = j.source === "google+osm" ? "Google Maps + OpenStreetMap" : j.source === "google" ? "Google Maps" : "OpenStreetMap, with Google Maps links";
-      setStatus(n ? n.toLocaleString("en-IN") + " businesses found within " + km(j.radius) + " · " + src : (j.note || "No listed businesses found. Try a bigger radius, another spelling or a nearby area."), n ? "ok" : "warn");
+      var src = { "google+osm": "Google Maps + OpenStreetMap", google: "Google Maps", osm: "OpenStreetMap" }[j.source] || j.source || "OpenStreetMap";
+      setStatus(n ? n.toLocaleString("en-IN") + " businesses found within " + km(j.radius) + " · " + src + (j.ms ? " · " + (j.ms / 1000).toFixed(1) + " s" : "") : (j.note || "No listed businesses found. Try a bigger radius, another spelling or a nearby area."), n ? "ok" : "warn");
       setMapView("pins");
     } else {
-      setStatus(n ? n + " competitors of " + j.type + " · " + j.area + " · from Wikidata" : "No competitors listed for " + j.type + " (" + j.area + "). Try a bigger radius, “Any country”, or the industry name.", n ? "ok" : "warn");
+      setStatus(n ? n + " competitors of " + j.type + " · " + j.area + " · from Wikidata" + (j.results.some(function (p) { return /AI/.test(p.via || ""); }) ? " + AI" : "") : "No competitors listed for " + j.type + " (" + j.area + "). Try a bigger radius, “Any country”, or the industry name.", n ? "ok" : "warn");
       brandCard(j.seed); setMapView("pins");
     }
     ver(j.viaServer ? "server" : "");
@@ -447,7 +545,7 @@
       (p.industry ? '<p class="cf-meta"><span class="cf-cat">' + esc(p.industry) + "</span></p>" : "") + (p.description ? '<p class="cf-addr">' + esc(p.description) + "</p>" : "") + (p.address ? '<p class="cf-addr">📍 ' + esc(p.address) + "</p>" : "") +
       (p.rating != null && p.rating !== "" ? '<span class="cf-rate"><b>' + (+p.rating).toFixed(1) + '</b> <span aria-hidden="true">' + stars(p.rating) + '</span> <span class="muted">(' + (p.reviews || 0).toLocaleString("en-IN") + " Google reviews)</span></span>" : "") +
       (facts.length ? '<dl class="cf-facts">' + facts.map(function (f) { return "<div><dt>" + f[0] + "</dt><dd>" + esc(f[1]) + "</dd></div>"; }).join("") + "</dl>" : "") + contacts(p) +
-      (!p.website ? '<p class="cf-flags"><span class="cf-flag warn">No website listed</span></p>' : "") +
+      '<p class="cf-flags">' + (p.unverified ? '<span class="cf-flag warn">AI suggestion — verify</span>' : p.via ? '<span class="cf-flag">' + esc(p.via) + "</span>" : "") + (!p.website ? '<span class="cf-flag warn">No website listed</span>' : "") + "</p>" +
       '<div class="cf-acts">' + link(p.website, "Website ↗", "") + '<a class="btn sm ghost" href="' + esc(p.mapsUrl) + '" target="_blank" rel="noopener noreferrer">Google Maps</a>' + link(p.wikipedia, "Wikipedia") +
       '<a class="btn sm ghost" href="https://www.google.com/search?q=' + encodeURIComponent(p.name + " company") + '" target="_blank" rel="noopener noreferrer">Google it</a>' +
       (p.linkedin ? "" : '<a class="btn sm ghost" href="https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(p.name) + '" target="_blank" rel="noopener noreferrer">LinkedIn</a>') +
@@ -457,7 +555,7 @@
     if (!s) { card.hidden = true; return; }
     card.hidden = false;
     var ind = s.industries[0] || s.label;
-    card.innerHTML = '<span class="tag">YOUR SEARCH</span><h3>' + esc(s.label) + "</h3>" + (s.sub ? '<p class="muted">' + esc(s.sub) + "</p>" : "") +
+    card.innerHTML = '<span class="tag">YOUR SEARCH</span><h3>' + esc(s.label) + "</h3>" + (s.sub ? '<p class="muted">' + esc(s.sub) + "</p>" : s.missing ? '<p class="muted">Not on Wikidata yet — competitors below come from similar company descriptions' + (data && data.results.some(function (p) { return p.unverified || /AI/.test(p.via || ""); }) ? " and AI suggestions (each checked where possible)" : "") + ".</p>" : "") +
       '<dl class="cf-facts">' + (s.industries.length ? "<div><dt>Industry</dt><dd>" + esc(s.industries.slice(0, 3).join(", ")) + "</dd></div>" : "") + (s.country ? "<div><dt>Country</dt><dd>" + esc(s.country) + "</dd></div>" : "") + (s.founded ? "<div><dt>Founded</dt><dd>" + esc(s.founded) + "</dd></div>" : "") + "</dl>" +
       '<div class="btn-row" style="margin:12px 0 0">' + (s.website ? link(s.website, "Website ↗") : "") + '<button type="button" class="btn sm" id="cf-tolocal" data-type="' + esc(ind) + '">Find local ' + esc(ind) + " businesses on a map</button></div>";
     $("cf-tolocal").addEventListener("click", function () { tIn.value = this.dataset.type; if (data && data.loc) { aIn.value = data.loc.value || blIn.value; coords = { lat: data.loc.lat, lng: data.loc.lng }; place = data.loc; R1.set(R2.km()); } setMode("local", true); });
@@ -539,6 +637,9 @@
   }
   function mergeGoogle(p, g) {
     if (!g) return false;
+    var gf = p._gf = p._gf || {}, mark = function (k, v) { if (v !== "" && v != null) gf[k] = gf[k] != null && typeof v === "string" ? gf[k] + "; " + v : v; };
+    mark("website", !p.website ? g.website : ""); mark("address", !p.address ? g.address : ""); if (p.rating == null && g.rating != null) { mark("rating", g.rating); mark("reviews", g.reviews); }
+    mark("hours", !p.hours ? g.hours : ""); mark("phone", g.intlPhone || g.phone); mark("phone", g.phone);
     p.gName = g.name || ""; p.gAddress = g.address || ""; p.gPhone = g.intlPhone || g.phone || ""; p.gRating = g.rating == null ? "" : g.rating; p.gReviews = g.reviews == null ? "" : g.reviews;
     p.gHours = g.hours || ""; p.gMaps = g.mapsUrl || ""; p.gStatus = g.status || "";
     if (!p.website && g.website) p.website = g.website; if (!p.address && g.address) p.address = g.address; if (p.rating == null && g.rating != null) { p.rating = g.rating; p.reviews = g.reviews; }
@@ -576,23 +677,41 @@
   $("cf-enrich").addEventListener("click", function () { if (data) enrich(data.results); });
   $("cf-gmatch").addEventListener("click", function () { if (!data) return; if (data.results.length > 60 && !confirm("This looks up " + data.results.length + " businesses on Google Maps (uses Google credits). Continue?")) return; enrich(data.results, { google: true }); });
 
-  /* ================= one sheet for every search + export (every column) ================= */
-  var SHEET_KEY = "fodo-cf-sheet2", sheet = LS.get(SHEET_KEY, { local: [], brand: [], searches: [] });
+  /* ================= one sheet for every search + export (every column) =================
+     Kept in IndexedDB (js/cf-export.js) so big sheets survive a reload; older sheets in localStorage are moved over.
+     Google Maps terms do not allow exporting Google's place details, so values that came only from Google stay on screen;
+     the sheet keeps the name, the Google Maps link and everything from OpenStreetMap, Geoapify, Wikidata and the business's own website. */
+  var X = window.FODO_EXPORT, SHEET_KEY = "fodo-cf-sheet2", saveT = 0;
+  var sheet = LS.get(SHEET_KEY, null) || { local: [], brand: [], searches: [] };
+  function mergeSheets(a, b) {   // rows of b that a does not have yet
+    ["local", "brand"].forEach(function (k) { var have = {}; a[k].forEach(function (r) { have[r.key] = 1; }); (b[k] || []).forEach(function (r) { if (!have[r.key]) { a[k].push(r); have[r.key] = 1; } }); });
+    (b.searches || []).forEach(function (x) { if (a.searches.indexOf(x) < 0) a.searches.push(x); }); return a;
+  }
+  if (X) X.store.get("sheet3").then(function (v) { if (v && v.local) { sheet = mergeSheets(v, sheet); } if (sheet.local.length + sheet.brand.length) saveSheet(); sheetUI(0); });
   var LOCAL_COLS = [["Search", "search"], ["Name", "name"], ["Category", "category"], ["Address", "address"], ["Street", "street"], ["Locality", "locality"], ["City", "city"], ["State", "state"], ["Postcode", "postcode"], ["Country", "country"],
     ["Phone", "phone"], ["International phone", "intlPhone"], ["Mobile", "mobile"], ["WhatsApp", "whatsapp"], ["Email", "email"], ["Website", "website"], ["Contact page", "contactPage"],
     ["Instagram", "instagram"], ["Facebook", "facebook"], ["LinkedIn", "linkedin"], ["X / Twitter", "twitter"], ["YouTube", "youtube"],
     ["Rating", "rating"], ["Reviews", "reviews"], ["Price", "price"], ["Open now", "openTxt"], ["Opening hours", "hours"], ["Business status", "status"], ["Google types", "types"],
     ["Brand", "brand"], ["Operator", "operator"], ["Cuisine", "cuisine"], ["Payment", "payment"], ["Delivery", "delivery"], ["Takeaway", "takeaway"], ["Wheelchair", "wheelchair"], ["Established", "established"], ["Description", "description"],
-    ["Google Maps name", "gName"], ["Google Maps address", "gAddress"], ["Google Maps phone", "gPhone"], ["Google rating", "gRating"], ["Google reviews", "gReviews"], ["Google hours", "gHours"], ["Google Maps listing", "gMaps"], ["Google status", "gStatus"], ["Address (from website)", "siteAddress"], ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Distance (km)", "km"], ["Latitude", "lat"], ["Longitude", "lng"], ["Google Maps", "mapsUrl"], ["OpenStreetMap", "osmUrl"], ["Wikidata", "wikidata"], ["Source", "source"], ["All OSM tags", "tags"]];
-  var BRAND_COLS = [["Search", "search"], ["Company", "name"], ["Description", "description"], ["Industry", "industry"], ["Type", "kind"], ["Country", "country"], ["Headquarters", "hq"], ["Founded", "founded"], ["Employees", "employees"], ["Revenue", "revenue"],
+    ["Google Maps listing", "gMaps"], ["Address (from website)", "siteAddress"], ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Distance (km)", "km"], ["Latitude", "lat"], ["Longitude", "lng"], ["Google Maps", "mapsUrl"], ["OpenStreetMap", "osmUrl"], ["Wikidata", "wikidata"], ["Source", "source"], ["Note", "gnote"], ["All OSM tags", "tags"]];
+  var BRAND_COLS = [["Search", "search"], ["Company", "name"], ["Found by", "via"], ["Description", "description"], ["Industry", "industry"], ["Type", "kind"], ["Country", "country"], ["Headquarters", "hq"], ["Founded", "founded"], ["Employees", "employees"], ["Revenue", "revenue"],
     ["CEO", "ceo"], ["Founders", "founders"], ["Parent company", "parent"], ["Stock exchange", "exchange"], ["Ticker", "ticker"], ["Products / services", "products"],
     ["Website", "website"], ["Email", "email"], ["Phone", "phone"], ["WhatsApp", "whatsapp"], ["Contact page", "contactPage"], ["LinkedIn", "linkedin"], ["Instagram", "instagram"], ["Facebook", "facebook"], ["X / Twitter", "twitter"], ["YouTube", "youtube"],
-    ["Address", "address"], ["Google Maps name", "gName"], ["Google Maps address", "gAddress"], ["Google Maps phone", "gPhone"], ["Google rating", "gRating"], ["Google reviews", "gReviews"], ["Google hours", "gHours"], ["Google Maps listing", "gMaps"], ["Google status", "gStatus"], ["Address (from website)", "siteAddress"], ["Distance from city (km)", "km"], ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Wikipedia", "wikipedia"], ["Wikidata", "wikidata"], ["HQ latitude", "lat"], ["HQ longitude", "lng"]];
+    ["Address", "address"], ["Google Maps listing", "gMaps"], ["Address (from website)", "siteAddress"], ["Distance from city (km)", "km"], ["Website title", "siteTitle"], ["Website description", "siteDescription"], ["Wikipedia", "wikipedia"], ["Wikidata", "wikidata"], ["HQ latitude", "lat"], ["HQ longitude", "lng"], ["Note", "gnote"]];
+  var KEEP = { search: 1, name: 1, mapsUrl: 1, gMaps: 1, km: 1, source: 1, via: 1, gnote: 1 };
   function rowOf(j, p, label) {
-    var o = { search: label };
-    (j.mode === "local" ? LOCAL_COLS : BRAND_COLS).forEach(function (c) { if (c[1] !== "search") o[c[1]] = p[c[1]] == null ? "" : p[c[1]]; });
-    if (j.mode === "local") o.openTxt = p.open === true ? "Yes" : p.open === false ? "No" : "";
+    var o = { search: label }, gf = p._gf || {}, cut = false;
+    var strip = function (k, v) {
+      var g = gf[k]; if (KEEP[k] || g == null || v === "" || v == null) return v;
+      if (typeof v === "number" || typeof g === "number") { if (String(v) === String(g)) { cut = true; return ""; } return v; }
+      var gp = String(g).split(/;\s*/), parts = String(v).split(/;\s*/), kept = parts.filter(function (x) { return gp.indexOf(x) < 0; });
+      if (kept.length < parts.length) cut = true; return kept.join("; ");
+    };
+    (j.mode === "local" ? LOCAL_COLS : BRAND_COLS).forEach(function (c) { if (c[1] !== "search") o[c[1]] = strip(c[1], p[c[1]] == null ? "" : p[c[1]]); });
+    if (j.mode === "local") o.openTxt = gf.open != null ? "" : p.open === true ? "Yes" : p.open === false ? "No" : "";
     o.km = p.distance == null ? "" : +(p.distance / 1000).toFixed(2);
+    if (p.unverified) o.gnote = "AI suggestion — check the website before using";
+    if (cut) o.gnote = (o.gnote ? o.gnote + ". " : "") + "Google Maps details (phone, rating, hours …) are shown on the site only, as Google's terms require — open the Google Maps link";
     o.key = j.mode === "local" ? nrm(p.name) + "|" + (p.lat != null ? (+p.lat).toFixed(4) + "," + (+p.lng).toFixed(4) : nrm(p.address)) : p.id;
     return o;
   }
@@ -600,7 +719,7 @@
     var label = j.mode === "local" ? j.type + " · " + (j.radius / 1000) + " km of " + (j.area || "you") : j.type + " · " + j.area, arr = sheet[j.mode], idx = {};
     arr.forEach(function (x, i) { idx[x.key] = i; });
     var added = 0;
-    j.results.forEach(function (p) { var r = rowOf(j, p, label); p._key = r.key; if (idx[r.key] != null) return; idx[r.key] = arr.length; arr.push(r); added++; });
+    j.results.forEach(function (p) { var r = rowOf(j, p, label); p._key = r.key; if (idx[r.key] != null) { arr[idx[r.key]] = Object.assign(r, { search: arr[idx[r.key]].search }); return; } idx[r.key] = arr.length; arr.push(r); added++; });
     if (sheet.searches.indexOf(label) < 0) sheet.searches.push(label);
     saveSheet(); sheetUI(added);
   }
@@ -609,7 +728,13 @@
     data.results.forEach(function (p) { var i = idx[p._key]; if (i == null) return; var r = rowOf(data, p, arr[i].search); arr[i] = r; });
     saveSheet(); sheetUI(0);
   }
-  function saveSheet() { if (!LS.set(SHEET_KEY, sheet)) { var slim = JSON.parse(JSON.stringify(sheet)); ["local"].forEach(function (k) { slim[k].forEach(function (r) { r.tags = ""; }); }); if (!LS.set(SHEET_KEY, slim)) $("cf-sheet-n").textContent += " (too big to keep after reload — download it now)"; } }
+  function saveSheet() {
+    clearTimeout(saveT);
+    saveT = setTimeout(function () {
+      if (!X) { LS.set(SHEET_KEY, sheet); return; }
+      X.store.set("sheet3", sheet).then(function (ok) { if (ok) { try { localStorage.removeItem(SHEET_KEY); } catch (e) {} } else if ($("cf-sheet-n")) $("cf-sheet-n").textContent += " (could not be kept after reload — download it now)"; });
+    }, 250);
+  }
   function sheetUI(added) {
     if (!$("cf-sheet-n")) return;
     var n = sheet.local.length + sheet.brand.length;
@@ -621,39 +746,32 @@
   var cell = function (v) { v = v == null ? "" : String(v); if (/^[=@\t\r]/.test(v) || (/^[+\-]/.test(v) && !/^[+\-][\d\s().;+\-]*$/.test(v))) v = "'" + v; return v; };   // stop spreadsheet formula injection (phone numbers like +91… stay as they are)
   function rowsFor(kind) { var cols = kind === "local" ? LOCAL_COLS : BRAND_COLS; return [cols.map(function (c) { return c[0]; })].concat(sheet[kind].map(function (x) { return cols.map(function (c) { var v = x[c[1]]; return typeof v === "number" ? v : cell(v); }); })); }
   function stamp() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
-  function download(name, blob) { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800); }
-  function toCSV() {
-    var out = [];
-    ["local", "brand"].forEach(function (k) { if (!sheet[k].length) return; if (out.length) out.push([]); out.push([k === "local" ? "LOCAL COMPETITORS" : "BRAND & STARTUP COMPETITORS"]); rowsFor(k).forEach(function (r) { out.push(r); }); });
-    return out.map(function (r) { return r.map(function (v) { v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\r\n");
+  function csvRows() { var out = []; ["local", "brand"].forEach(function (k) { if (!sheet[k].length) return; if (out.length) out.push([]); out.push([k === "local" ? "LOCAL COMPETITORS" : "BRAND & STARTUP COMPETITORS"]); rowsFor(k).forEach(function (r) { out.push(r); }); }); return out; }
+  function toCSV() { return csvRows().map(function (r) { return r.map(function (v) { v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\r\n"); }
+  function toTSV() { var out = []; ["local", "brand"].forEach(function (k) { if (!sheet[k].length) return; if (out.length) out.push([""]); rowsFor(k).forEach(function (r) { out.push(r); }); }); return X ? X.tsv(out) : out.map(function (r) { return r.join("\t"); }).join("\n"); }
+  function workbook() {
+    var sum = [["FODO Competitor Sheet"], ["Exported", new Date().toLocaleString()], ["Local competitors", sheet.local.length], ["Brand & startup competitors", sheet.brand.length], [],
+      ["Sources", "OpenStreetMap contributors (ODbL), Geoapify, Wikidata (CC0), each business's own website. Google Maps details stay on the website as Google's terms require."], [], ["Searches"]].concat(sheet.searches.map(function (s) { return [s]; }));
+    var out = [{ name: "Summary", rows: sum, header: false, widths: [30, 90], boldRows: [0, 7] }];
+    [["local", "Local competitors"], ["brand", "Brands & startups"]].forEach(function (k) { if (sheet[k[0]].length) out.push({ name: k[1], rows: rowsFor(k[0]), freezeCols: 2 }); });
+    return X.xlsx(out, { title: "FODO Competitor Sheet " + stamp() });
   }
-  $("cf-x-csv").addEventListener("click", function () { download("FODO-competitors-" + stamp() + ".csv", new Blob(["﻿" + toCSV()], { type: "text/csv;charset=utf-8" })); flash(this, "Downloaded ✓"); });
+  var csvBlob = function () { return X ? X.csv(csvRows()) : new Blob(["﻿" + toCSV()], { type: "text/csv;charset=utf-8" }); };
+  var save = function (blob, name, kind) { if (X) return X.deliver(blob, name, { kind: kind }); var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 800); return Promise.resolve("download"); };
+  $("cf-x-csv").addEventListener("click", function () { var b = this; save(csvBlob(), "FODO-competitors-" + stamp() + ".csv", "CSV").then(function (h) { if (h === "download") flash(b, "Downloaded ✓"); }); });
   $("cf-x-copy").addEventListener("click", function () {
-    var b = this, out = [];
-    ["local", "brand"].forEach(function (k) { if (!sheet[k].length) return; if (out.length) out.push(""); rowsFor(k).forEach(function (r) { out.push(r.map(function (v) { return String(v == null ? "" : v).replace(/[\t\r\n]+/g, " "); }).join("\t")); }); });
-    var t = out.join("\n");
-    (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { flash(b, "Copied — paste into Google Sheets ✓"); }, function () { if (U.copy) U.copy(t, b); });
+    var b = this, t = toTSV();
+    (X ? X.copyText(t) : navigator.clipboard.writeText(t).then(function () { return "copied"; })).then(function (h) { if (h === "copied") flash(b, "Copied — paste into Google Sheets ✓"); }, function () { if (U.copy) U.copy(t, b); });
   });
   $("cf-x-clear").addEventListener("click", function () { if (!confirm("Clear all " + (sheet.local.length + sheet.brand.length) + " competitors from your sheet?")) return; sheet = { local: [], brand: [], searches: [] }; saveSheet(); sheetUI(0); });
-  function flash(b, t) { var o = b.textContent; b.textContent = t; setTimeout(function () { b.textContent = o; }, 2200); }
-  var xlsxLib = null;
-  function loadXLSX() {
-    if (window.XLSX) return Promise.resolve(window.XLSX);
-    return xlsxLib = xlsxLib || new Promise(function (res, rej) { var s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = function () { res(window.XLSX); }; s.onerror = rej; document.head.appendChild(s); });
-  }
+  function flash(b, t) { var o = b.dataset.label || b.textContent; b.dataset.label = o; b.textContent = t; setTimeout(function () { b.textContent = o; }, 2200); }
   $("cf-x-xlsx").addEventListener("click", function () {
-    var b = this; b.disabled = true; var o = b.textContent; b.textContent = "Preparing…";
-    loadXLSX().then(function (X) {
-      var wb = X.utils.book_new();
-      var sum = [["FODO Competitor Sheet"], ["Exported", new Date().toLocaleString()], ["Local competitors", sheet.local.length], ["Brand & startup competitors", sheet.brand.length], [], ["Searches"]].concat(sheet.searches.map(function (s) { return [s]; }));
-      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), "Summary");
-      [["local", "Local competitors"], ["brand", "Brands & startups"]].forEach(function (k) { if (!sheet[k[0]].length) return; var rows = rowsFor(k[0]), ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = rows[0].map(function (h) { return { wch: /tags|description/i.test(h) ? 60 : Math.max(12, Math.min(40, h.length + 14)) }; }); ws["!autofilter"] = { ref: ws["!ref"] }; ws["!freeze"] = { xSplit: 2, ySplit: 1 }; X.utils.book_append_sheet(wb, ws, k[1]); });
-      X.writeFile(wb, "FODO-competitors-" + stamp() + ".xlsx");
-      b.textContent = "Downloaded ✓";
-    }, function () { download("FODO-competitors-" + stamp() + ".csv", new Blob(["﻿" + toCSV()], { type: "text/csv;charset=utf-8" })); b.textContent = "Excel unavailable — saved CSV"; })
-      .then(function () { setTimeout(function () { b.textContent = o; b.disabled = false; }, 2200); });
+    var b = this, blob;
+    try { blob = X ? workbook() : null; } catch (e) { blob = null; if (window.console) console.error("[finder] xlsx failed", e); }
+    if (!blob) { save(csvBlob(), "FODO-competitors-" + stamp() + ".csv", "CSV"); flash(b, "Saved as CSV"); return; }
+    save(blob, "FODO-competitors-" + stamp() + ".xlsx", "Excel").then(function (h) { if (h === "download") flash(b, "Downloaded ✓"); });
   });
-  window.FODO_CF = { pins: function () { return Object.keys(markers).length; }, sheet: function () { return sheet; }, csv: toCSV, rows: rowsFor, data: function () { return data; }, radius: function () { return [R1.km(), R2.km()]; } };
+  window.FODO_CF = { pins: function () { return Object.keys(markers).length; }, sheet: function () { return sheet; }, csv: toCSV, tsv: toTSV, rows: rowsFor, xlsx: function () { return workbook(); }, data: function () { return data; }, radius: function () { return [R1.km(), R2.km()]; }, sources: function () { return srcs; } };
 
   /* ================= start ================= */
   if (location.hash === "#brands") setMode("brand"); else setMode("local");

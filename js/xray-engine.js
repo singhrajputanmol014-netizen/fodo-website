@@ -748,15 +748,30 @@
     return { listings: found, ratings: rating.slice(0, 6), siteSocials: B.socials, onSiteOnly: onSiteOnly, phoneCount: phones.length, nameVariants: uniq([B.name.value, (B.schemaChecks || []).filter(function (x) { return x.field === "name"; }).map(function (x) { return x.value; })[0]].filter(Boolean)), mapListing: place || null, searched: !!brandSerp };
   };
   E.visibility = function (answers, B, comps) {
-    var names = [low(B.name.value), B.domain].filter(Boolean), rows = answers.map(function (a) {
+    var names = [low(B.name.value), B.domain].filter(Boolean), dom = B.domain, rows = answers.map(function (a) {
       var t = low(a.answer), brand = names.some(function (n) { return n && t.indexOf(n) > -1; });
       var cm = comps.filter(function (c) { return t.indexOf(low(c.name)) > -1 || t.indexOf(c.domain) > -1; }).map(function (c) { return c.name || c.domain; });
-      return { q: a.q, brand: brand, competitors: cm, answered: !!a.answer, excerpt: clip(a.answer, 400), model: a.model };
+      var cites = (a.citations || []).map(function (c) { return { title: c.title, uri: c.uri, you: !!dom && low(c.title || "").indexOf(dom) > -1, comp: comps.some(function (x) { return low(c.title || "").indexOf(x.domain) > -1; }) }; });
+      // "recommended" = named in the first third of the answer (where assistants put their picks); a rule, labelled INFERRED
+      var first = brand && names.some(function (n) { var i = t.indexOf(n); return i > -1 && i < Math.max(300, t.length / 3); });
+      return { q: a.q, engine: a.engine || "workers-ai", engineName: a.engineName || "Llama on Cloudflare Workers AI", live: !!a.live, brand: brand, recommended: !!first, competitors: cm, answered: !!a.answer, excerpt: clip(a.answer, 400), model: a.model, citations: cites, citedYou: cites.some(function (c) { return c.you; }) };
     });
-    var answered = rows.filter(function (r) { return r.answered; });
-    return { rows: rows, tested: answered.length, brandIn: answered.filter(function (r) { return r.brand; }).length, compIn: answered.filter(function (r) { return r.competitors.length; }).length, model: (answered[0] || {}).model || "", label: "Sampled AI visibility" };
+    var answered = rows.filter(function (r) { return r.answered; }), engines = {};
+    answered.forEach(function (r) { var e = engines[r.engine] = engines[r.engine] || { id: r.engine, name: r.engineName, live: r.live, asked: 0, you: 0, comp: 0, cited: 0, withCites: 0, model: r.model }; e.asked++; if (r.brand) e.you++; if (r.competitors.length) e.comp++; if (r.citations.length) { e.withCites++; if (r.citedYou) e.cited++; } if (r.live) e.live = true; });
+    return { rows: rows, tested: answered.length, brandIn: answered.filter(function (r) { return r.brand; }).length, compIn: answered.filter(function (r) { return r.competitors.length; }).length, model: (answered[0] || {}).model || "", label: "Sampled AI visibility", engines: Object.keys(engines).map(function (k) { return engines[k]; }), score: E.aiScore(answered, comps) };
   };
-
+  /* v17 FODO AI Visibility Score (0–100) — FODO's own measure, NOT an official score from ChatGPT, Google or any AI company.
+     mention rate 50% + recommendation rate 20% + share of names vs competitors 20% + citations of your site 10% (when an engine gives citations) */
+  E.aiScore = function (answered, comps) {
+    if (!answered || answered.length < 2) return null;
+    var n = answered.length, you = answered.filter(function (r) { return r.brand; }).length, rec = answered.filter(function (r) { return r.recommended; }).length;
+    var compNames = answered.reduce(function (s, r) { return s + r.competitors.length; }, 0), share = you + compNames ? you / (you + compNames / Math.max(1, (comps || []).length || 1)) : 0;
+    var withC = answered.filter(function (r) { return r.citations && r.citations.length; }), cite = withC.length ? withC.filter(function (r) { return r.citedYou; }).length / withC.length : null;
+    var parts = [{ name: "Mentioned in answers (" + you + " of " + n + ")", score: Math.round(you / n * 100), w: 50 }, { name: "Named among the first picks (" + rec + " of " + n + ")", score: Math.round(rec / n * 100), w: 20 }, { name: "Share of names vs competitors", score: Math.round(Math.min(1, share) * 100), w: 20 }];
+    if (cite != null) parts.push({ name: "Your site cited as a source (" + withC.filter(function (r) { return r.citedYou; }).length + " of " + withC.length + " cited answers)", score: Math.round(cite * 100), w: 10 });
+    var W = parts.reduce(function (s, p) { return s + p.w; }, 0);
+    return { score: Math.round(parts.reduce(function (s, p) { return s + p.score * p.w; }, 0) / W), parts: parts, answers: n, label: "FODO AI Visibility Score — FODO's own measure, not an official score from ChatGPT, Google or any AI company." };
+  };
   /* ======================= scores ======================= */
   var groupScore = function (cs) { var w = 0, s = 0; cs.forEach(function (c) { if (c.status !== "na" && c.score != null) { w += c.weight; s += c.score * c.weight; } }); return w ? Math.round(s / w) : null; };
   E.groupScore = groupScore;
@@ -861,6 +876,9 @@
     X_extBroken: ["Links to other websites are broken", "Website", 2, 1, 2, "Update or remove the outgoing links listed — broken links lose visitors and look neglected.", "web"],
     G_contentGap: ["Competitors cover topics you don't", "Content", 3, 3, 3, "Add a page or section for the topics most competitors cover (only those you really offer), starting with the ones most of them share.", "seo"],
     V_complaint: ["Customers' top complaint in your market is unaddressed", "Market", 4, 2, 3, "Address the top complaint on your homepage and in your offer (with proof).", "brand"],
+    L_noListing: ["Not found on Google Maps for your own name", "Presence", 4, 2, 4, "Create or claim your Google Business Profile with the same name, phone and address as your website.", "local"],
+    L_weak: ["Fewer or weaker Google reviews than local competitors", "Trust", 4, 3, 3, "Ask every happy customer for a Google review (a QR/WhatsApp link after each job) and reply to every review.", "local"],
+    A_invisible: ["AI assistants don't name you when buyers ask", "Presence", 3, 3, 3, "Get listed and reviewed where AI tools read (Google Business Profile, directories, comparison articles), keep your name/address consistent, and publish clear answer pages for the questions buyers ask.", "seo"],
   };
   E.OPP = OPP;
   E.opportunities = function (checks, extra, ev) {
@@ -993,6 +1011,75 @@
       meta: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=" + cc + "&q=" + encodeURIComponent(c.name) + "&search_type=keyword_unordered",
       google: "https://adstransparency.google.com/?region=" + (cc === "ALL" ? "anywhere" : cc) + "&domain=" + encodeURIComponent(c.domain),
       linkedin: "https://www.linkedin.com/ad-library/search?companyName=" + encodeURIComponent(c.name) }; });
+  };
+  /* ======================= v17 ======================= */
+  /* Local visibility (Google Maps results via Serper): your listing vs the local competitors in the same results */
+  E.local = function (brandItems, marketItems, B, comps) {
+    var nm = low(B.name.value), words = nm.split(/\s+/).filter(function (w) { return w.length > 2; }), dom = B.domain;
+    var isMe = function (p) { var w = p.website ? E.domainOf(/^https?:/.test(p.website) ? p.website : "https://" + p.website) : ""; return (dom && w === dom) || (words.length && words.every(function (x) { return low(p.name).indexOf(x) > -1; })); };
+    var me = (brandItems || []).filter(isMe)[0] || (marketItems || []).filter(isMe)[0] || null;
+    var others = (marketItems || []).filter(function (p) { return !isMe(p) && p.rating != null; }).slice(0, 10);
+    var med = function (a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : null; };
+    var medRating = med(others.map(function (p) { return p.rating; })), medReviews = med(others.map(function (p) { return p.reviews || 0; }));
+    var myPos = me ? (marketItems || []).indexOf(me) : -1;
+    return { me: me, inMarketResults: myPos > -1 ? myPos + 1 : null, competitors: others, medianRating: medRating, medianReviews: medReviews, compared: others.length,
+      behindOnRating: !!(me && me.rating != null && medRating != null && me.rating < medRating - 0.15), behindOnReviews: !!(me && medReviews != null && (me.reviews || 0) < medReviews * 0.6) };
+  };
+  /* Conversion funnel (prompt §32): each stage = the weighted checks that show it on the pages. Lead/customer need your own analytics. */
+  E.funnel = function (checks, offerScore) {
+    var G = { understanding: ["Offer clarity"], trust: ["Credibility", "Social proof", "Consistency", "Off-site reviews"], interest: ["Pricing clarity", "Objection handling"], action: ["CTA clarity", "Contact friction"] };
+    var st = function (k, extra) { var cs = checks.filter(function (c) { return (c.area === "conversion" || c.area === "trust") && G[k].indexOf(c.group) > -1; }).concat(extra || []); var s = groupScore(cs); return { key: k, score: s, checks: cs.map(function (c) { return c.id; }) }; };
+    var und = st("understanding", offerScore != null ? [{ id: "offer", score: offerScore, weight: 2, status: "x" }] : []);
+    return [{ name: "Understanding", note: "Does the visitor get what you do and for whom?", s: und }, { name: "Trust", note: "Proof they can believe you", s: st("trust") }, { name: "Interest", note: "Prices, answers to objections", s: st("interest") }, { name: "Action", note: "Clear next step, easy contact", s: st("action") },
+      { name: "Lead", note: "Data unavailable — needs your form/CRM data", s: { score: null, checks: [] } }, { name: "Customer", note: "Data unavailable — needs your sales data", s: { score: null, checks: [] } }].map(function (x) { return { name: x.name, note: x.note, score: x.s.score, checks: x.s.checks }; });
+  };
+  /* Revenue Leak Finder (prompt §31): opportunities that lose enquiries — never a rupee figure without the business's own data */
+  E.leaks = function (opps) {
+    return opps.filter(function (o) { return ["Conversion", "Offer", "Trust"].indexOf(o.category) > -1 || ["P_perf", "P_field", "T_viewport", "T_home", "T_broken"].indexOf(o.key) > -1; }).slice(0, 12)
+      .map(function (o) { return { id: o.id, key: o.key, leak: o.title, evidence: o.evidence, detail: o.description, impact: o.impact >= 4 ? "High" : o.impact === 3 ? "Medium" : "Low", confidence: o.confidence >= 0.8 ? "High" : o.confidence >= 0.6 ? "Medium" : "Low", effort: o.effort <= 2 ? "Low" : o.effort === 3 ? "Medium" : "High", fix: o.recommendation, label: o.label }; });
+  };
+  /* Priority matrix (prompt §90) */
+  E.matrix4 = function (opps) {
+    var q = { quick: [], big: [], small: [], later: [] };
+    opps.forEach(function (o) { var hi = o.impact >= 4, easy = o.effort <= 2; q[hi && easy ? "quick" : hi ? "big" : easy ? "small" : "later"].push({ id: o.id, title: o.title, impact: o.impact, effort: o.effort, priority: o.priority }); });
+    return q;
+  };
+  /* 90-day roadmap without AI (prompt §45): month 1 foundation, month 2 acquisition, month 3 optimisation — from the real findings */
+  var KPI = { Website: "Mobile PageSpeed score and error pages (PageSpeed / Search Console)", Search: "Impressions and clicks for the target searches (Search Console)", Content: "Pages published and their impressions", Conversion: "Enquiries per 100 visits (your analytics)", Trust: "Number of reviews and testimonials", Offer: "Enquiry rate on the pages you changed", Positioning: "Enquiries mentioning the new message", Presence: "Listings completed and profile views", Competitive: "Gaps closed vs the competitor median (next X-Ray)", Market: "Share of top-10 results in your market searches (next X-Ray)" };
+  E.plan90 = function (opps) {
+    var used = {}, take = function (f, n) { var o = opps.filter(function (x) { return !used[x.id] && f(x); }).slice(0, n); o.forEach(function (x) { used[x.id] = 1; }); return o; };
+    var m1 = take(function (o) { return o.effort <= 2 || ["Website"].indexOf(o.category) > -1 || o.priority === "P0"; }, 6),
+      m2 = take(function (o) { return ["Search", "Content", "Presence", "Market"].indexOf(o.category) > -1; }, 6),
+      m3 = take(function () { return true; }, 6);
+    var row = function (o, dep) { return { opportunity: o.id, key: o.key, task: o.recommendation, problem: o.title, priority: o.priority, kpi: KPI[o.category] || "Next X-Ray score for this area", dependsOn: dep || null, evidence: o.evidence }; };
+    var first = m1[0] ? m1[0].id : null;
+    return [{ month: 1, name: "Foundation", goal: "Fix what stops visitors and Google today", items: m1.map(function (o) { return row(o); }) },
+      { month: 2, name: "Acquisition", goal: "Get found for the searches and places buyers use", items: m2.map(function (o) { return row(o, first); }) },
+      { month: 3, name: "Optimisation", goal: "Sharpen offer, proof and positioning; re-run the X-Ray to measure", items: m3.map(function (o) { return row(o); }) }];
+  };
+  /* Why are they winning? (prompt §34) — one competitor vs you, area by area, from both websites */
+  var WW = [["Offer clarity", function (p) { return p.offerScore || 0; }, "C_cta O_audience O_outcome O_problem"], ["Trust & proof", function (p) { return (p.testimonials ? 40 : 0) + Math.min(60, (p.trust || []).length * 20); }, "R_testi R_markers R_cases"], ["Pricing shown", function (p) { return p.pricing ? 100 : 0; }, "C_pricing"],
+    ["Objection handling (FAQ)", function (p) { return p.faq ? 100 : 0; }, "C_faq"], ["Content (blog / resources)", function (p) { return p.blog ? 100 : 0; }, "T_thin G_contentGap"], ["Search basics", function (p) { return (p.titleOk ? 35 : 0) + (p.metaOk ? 35 : 0) + ((p.schema || []).length ? 30 : 0); }, "T_title T_desc T_schema"], ["Contact ease", function (p) { return (p.phone ? 50 : 0) + (p.whatsapp ? 50 : 0); }, "C_contact C_tap"]];
+  E.whyWinning = function (T, comp, opps, serps) {
+    if (!T || !comp || !comp.profile) return null;
+    var areas = WW.map(function (w) { var a = w[1](T), b = w[1](comp.profile); return { area: w[0], you: a, them: b, theyWin: b > a, keys: w[2].split(" ") }; });
+    var wins = areas.filter(function (a) { return a.theyWin; });
+    var both = (serps || []).filter(function (s) { return s.ok && s.competitors.some(function (c) { return c.domain === comp.domain; }); }), ahead = both.filter(function (s) { var c = s.competitors.filter(function (x) { return x.domain === comp.domain; })[0]; return c && (s.ourPos == null || c.pos < s.ourPos); });
+    if (ahead.length) wins.push({ area: "Search", you: null, them: null, theyWin: true, keys: ["S_absent", "K_gap", "S_brand"], note: "Ahead of you in " + ahead.length + " of " + both.length + " searches where they appear" });
+    var match = function (keys) { return opps.filter(function (o) { return keys.indexOf(o.key) > -1; }); }, rel = [], seen = {};
+    wins.forEach(function (w) { match(w.keys).forEach(function (o) { if (!seen[o.id]) { seen[o.id] = 1; rel.push(o); } }); });
+    var act = function (o) { return { id: o.id, key: o.key, title: o.title, fix: o.recommendation, evidence: o.evidence }; };
+    return { domain: comp.domain, name: comp.name, areas: areas, wins: wins, youWin: areas.filter(function (a) { return a.you > a.them; }).map(function (a) { return a.area; }), searchAhead: ahead.map(function (s) { return s.q; }),
+      immediate: rel.filter(function (o) { return o.effort <= 2; }).slice(0, 4).map(act), d30: rel.filter(function (o) { return o.effort === 3; }).slice(0, 4).map(act), d90: rel.filter(function (o) { return o.effort >= 4 || ["Search", "Content", "Positioning"].indexOf(o.category) > -1 && o.effort >= 3; }).slice(0, 4).map(act), evidence: comp.evidence };
+  };
+  /* Search Console CTR quick wins (rule: position 2–20, enough impressions, CTR well below the usual CTR for that position) */
+  var EXP_CTR = function (pos) { return pos <= 1.5 ? 28 : pos <= 2.5 ? 15 : pos <= 3.5 ? 10 : pos <= 5 ? 7 : pos <= 7 ? 4.5 : pos <= 10 ? 2.5 : pos <= 15 ? 1.2 : 0.8; };
+  E.ctrOpps = function (g) {
+    if (!g || !g.ok) return [];
+    var minImp = Math.max(30, Math.round((g.totals.impressions || 0) / 400));
+    return (g.queries || []).filter(function (q) { return q.position >= 1.5 && q.position <= 20 && q.impressions >= minImp && q.ctr < EXP_CTR(q.position) * 0.6; })
+      .map(function (q) { var e = EXP_CTR(q.position); return { query: q.key, impressions: q.impressions, clicks: q.clicks, ctr: q.ctr, position: q.position, expected: e, extraClicks: Math.max(0, Math.round(q.impressions * (e - q.ctr) / 100)), action: q.position <= 10 ? "Rewrite the title and description for this search (it already shows on page 1)." : "Strengthen the page for this search (content, internal links) to reach page 1." }; })
+      .sort(function (a, b) { return b.extraClicks - a.extraClicks; }).slice(0, 12);
   };
   /* ---------- v14 competitor matrix — you vs every competitor on the same visible basics (OBSERVED) ---------- */
   E.compMatrix = function (T, comps, extra) {

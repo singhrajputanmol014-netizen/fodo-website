@@ -14,12 +14,21 @@
  *   POST /api/xray/refund     {jobId}        → gives the X-Ray credit back if the site could not be read at all (accounts on)
  *   POST /api/xray/linkcheck  {jobId, urls[]} → status of outgoing links (Pro+)
  *   POST /api/xray/authority  {jobId, domains[]} → Open PageRank domain authority (Pro+, needs OPR_API_KEY)
+ *   POST /api/xray/places     {jobId, q, country?} → v17 local listings (Google Maps results via Serper: rating, reviews, website) — cached 7 days
+ *   POST /api/xray/gsc        {jobId}        → v17 the user's own Google Search Console data for this site (when connected)
+ * v17: every outside call is logged with its (estimated) cost in api_usage (_lib/usage.js); search falls back Serper → Brave.
  * Why the browser does the analysis: Cloudflare's free plan gives a request ~10 ms of CPU — parsing 50 web pages on the
  * server would not fit, the browser has plenty. The server keeps the keys, blocks unsafe addresses, limits and stores. */
 import { json, log, safeUrl, safeFetch, regDomain, retrying, cacheGet, cachePut, jobCreate, jobGet, jobUpdate, reportPut, reportGet, rowsPut,
   hashIp, counter, memCount, providers, rid, UA, STAGES, ROW_TABLES, outbound, normSearch } from "../../_lib/xray-core.js";
 import { accountsOn, sessionUser, billingUser, spendCredit, hasCredit, refundCredit, limitsForUser, logEvent, activePlan, db as acctDb, count as acctCount, nowIso } from "../../_lib/accounts.js";
 import { PLANS, limitsFor } from "../../_lib/plans.js";
+import { logUsage } from "../../_lib/usage.js";
+import { applyConfig, toolOn } from "../../_lib/config.js";
+import { engines as aiEngines, ask as aiAsk } from "../../_lib/aivis.js";
+import { gscForJob } from "../../_lib/gsc.js";
+import { getPrompt } from "../../_lib/prompts.js";
+import { isOwner } from "../../_lib/accounts.js";
 /* per-job limits: the plan the X-Ray was paid with (accounts on), else the free defaults */
 async function jobLimits(env, job) {
   if (!accountsOn(env)) return LIMITS;
@@ -41,10 +50,12 @@ export async function onRequest(ctx) {
   const env = ctx.env.XRAY_TEST_MODE === "1" && ctx.env.XRAY_TEST_AI ? Object.assign({}, ctx.env, { AI: { run: (model, inp) => fetch(ctx.env.XRAY_TEST_AI, { method: "POST", body: JSON.stringify(inp) }).then((r) => r.json()) } }) : ctx.env;
   const path = [].concat(params.path || []), route = path[0] || "", method = request.method;
   try {
-    if (route === "health" && method === "GET") return json({ ok: true, service: "business-x-ray", version: "1.0", providers: providers(env), limits: LIMITS });
+    await applyConfig(env);
+    if (route === "health" && method === "GET") return json({ ok: true, service: "business-x-ray", version: "1.0", providers: Object.assign(providers(env), { aiEngines: aiEngines(env, toolOn).map((e) => e.id), places: providers(env).places || (env.SERPER_API_KEY && toolOn("places") ? "serper-places" : null) }), limits: LIMITS });
     if (route === "start" && method === "POST") return await start(request, env);
     if (route === "status" && method === "GET") return await status(env, path[1]);
-    if (route === "report" && method === "GET") { const r = await reportGet(env, path[1]); return r ? new Response(r, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "private, max-age=60" } }) : json({ ok: false, reason: "Report not found or expired." }, 404); }
+    if (route === "report" && method === "GET") { const gate = await shareGate(env, request, String(path[1] || "")); if (gate) return gate;
+      const r = await reportGet(env, path[1]); return r ? new Response(r, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "private, max-age=60" } }) : json({ ok: false, reason: "Report not found or expired." }, 404); }
     if (method !== "POST") return json({ ok: false, reason: "Not found." }, 404);
     if (route === "report") return await saveReport(request, env);
     const body = await request.json().catch(() => null); if (!body) return json({ ok: false, reason: "Send JSON." }, 400);
@@ -61,6 +72,8 @@ export async function onRequest(ctx) {
     if (route === "refund") return await refund(env, job);
     if (route === "linkcheck") return await linkcheck(env, job, body);
     if (route === "authority") return await authority(env, job, body);
+    if (route === "places") return await places(env, job, body, t0);
+    if (route === "gsc") return await gscRoute(env, job);
     if (route === "rows") { const kind = String(body.kind || ""); if (!ROW_TABLES[kind] || !Array.isArray(body.rows)) return json({ ok: false, reason: "Bad rows." }, 400); const n = await rowsPut(env, job.id, kind, body.rows); return json({ ok: true, stored: n }); }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
@@ -71,6 +84,7 @@ export async function onRequest(ctx) {
 
 async function start(request, env) {
   const b = await request.json().catch(() => null); if (!b) return json({ ok: false, reason: "Send JSON." }, 400);
+  if (!toolOn("xray")) return json({ ok: false, maintenance: true, reason: "Business X-Ray is being updated right now. Please try again in a little while." }, 503);
   const u = safeUrl(b.url); if (!u.ok) return json({ ok: false, reason: u.reason }, 400);
   const ip = await hashIp(request), hour = Math.floor(Date.now() / 3600e3), day = new Date().toISOString().slice(0, 10);
   let user = null, owner = null;
@@ -138,26 +152,65 @@ async function fetchPage(env, job, b, t0) {
 }
 
 const CC = { india: "in", in: "in", "united states": "us", usa: "us", us: "us", "united kingdom": "gb", uk: "gb", gb: "gb", uae: "ae", "united arab emirates": "ae", ae: "ae", canada: "ca", ca: "ca", australia: "au", au: "au", singapore: "sg", sg: "sg", germany: "de", de: "de", france: "fr", fr: "fr", "saudi arabia": "sa", sa: "sa", qatar: "qa", qa: "qa", nepal: "np", bangladesh: "bd", "sri lanka": "lk", "new zealand": "nz", "south africa": "za" };
+/* v17 search chain: Serper (Google) first, Brave Search as the backup when Serper fails or its credits run out */
+function searchChain(env) { const c = []; if (env.SERPER_API_KEY) c.push("serper"); if (env.BRAVE_API_KEY) c.push("brave"); return c; }
 async function search(env, job, b, t0) {
-  const P = providers(env), prov = P.search;
-  if (!prov) return json({ ok: false, disabled: true, reason: "Search provider not configured." }, 503);
+  const chain = searchChain(env);
+  if (!chain.length) return json({ ok: false, disabled: true, reason: "Search provider not configured." }, 503);
   const q = clean(b.q, 200); if (q.length < 2) return json({ ok: false, reason: "Empty query." }, 400);
   const gl = CC[String(b.country || "").toLowerCase()] || "";
-  const ckey = prov + "|" + gl + "|" + q.toLowerCase();
-  const hit = await cacheGet("search", ckey); if (hit) { log({ job: job.id, route: "search", provider: prov, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); }
+  for (const prov of chain) { const hit = await cacheGet("search", prov + "|" + gl + "|" + q.toLowerCase()); if (hit) { log({ job: job.id, route: "search", provider: prov, cached: true }); await logUsage(env, { provider: prov, endpoint: "search", job: job.id, status: 200, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); } }
   if (await over(env, job, "s", (await jobLimits(env, job)).MAX_QUERIES + 3)) return json({ ok: false, reason: "Search limit for this X-Ray reached." }, 429);
   if (await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || env.BRAVE_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
-  const out = outbound(env);
+  const out = outbound(env); let lastReason = "Search provider did not answer.";
+  for (const prov of chain) {
+    const t1 = Date.now();
+    try {
+      const { r, retries } = await retrying(() => prov === "serper"
+        ? out("https://google.serper.dev/search", { method: "POST", headers: { "x-api-key": env.SERPER_API_KEY, "content-type": "application/json" }, body: JSON.stringify(Object.assign({ q, num: 10, hl: "en" }, gl ? { gl } : {})), signal: AbortSignal.timeout(15000) })
+        : out("https://api.search.brave.com/res/v1/web/search?count=10&search_lang=en&safesearch=moderate&text_decorations=false&result_filter=web,discussions,faq,locations&country=" + (gl ? gl.toUpperCase() : "ALL") + "&q=" + encodeURIComponent(q), { headers: { accept: "application/json", "x-subscription-token": env.BRAVE_API_KEY }, signal: AbortSignal.timeout(12000) }), { tries: chain.length > 1 ? 2 : 3 });
+      if (!r.ok) { log({ job: job.id, route: "search", provider: prov, ok: false, status: r.status, retries, ms: Date.now() - t0 }); await logUsage(env, { provider: prov, endpoint: "search", job: job.id, status: r.status, ok: false, ms: Date.now() - t1 }); lastReason = "Search provider answered " + r.status + (r.status === 401 || r.status === 403 ? " (check the API key)" : ""); continue; }
+      const body = JSON.stringify(Object.assign({ ok: true }, normSearch(prov, await r.json(), q), prov !== chain[0] ? { fallback: true } : {}));
+      log({ job: job.id, route: "search", provider: prov, ok: true, status: r.status, retries, ms: Date.now() - t0, cost_credits: 1 });
+      await logUsage(env, { provider: prov, endpoint: "search", job: job.id, status: r.status, ms: Date.now() - t1 });
+      await cachePut("search", prov + "|" + gl + "|" + q.toLowerCase(), body, "application/json", 7 * 86400);
+      return new Response(body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "miss" } });
+    } catch (e) { log({ job: job.id, route: "search", provider: prov, ok: false, err: String(e.message), retries: e.retries }); await logUsage(env, { provider: prov, endpoint: "search", job: job.id, status: e.status || 0, ok: false, ms: Date.now() - t1 }); lastReason = "Search provider did not answer."; }
+  }
+  return json({ ok: false, reason: lastReason }, 502);
+}
+
+/* v17 local listings: Google Maps results via Serper's places search — name, address, rating, review count, category, website.
+   Rating and review counts belong to Google; FODO shows them with the source and the date, and never stores reviews themselves. */
+async function places(env, job, b, t0) {
+  if (!env.SERPER_API_KEY || !toolOn("places")) return json({ ok: false, disabled: true, reason: "Local listings provider not configured." }, 503);
+  const q = clean(b.q, 160); if (q.length < 3) return json({ ok: false, reason: "Empty query." }, 400);
+  const gl = CC[String(b.country || "").toLowerCase()] || "", key = "places|" + gl + "|" + q.toLowerCase();
+  const hit = await cacheGet("places", key); if (hit) { await logUsage(env, { provider: "serper_places", endpoint: "places", job: job.id, status: 200, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); }
+  if (await over(env, job, "pl", 4)) return json({ ok: false, reason: "Local listing limit for this X-Ray reached." }, 429);
+  if (await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
+  const t1 = Date.now();
   try {
-    const { r, retries } = await retrying(() => prov === "serper"
-      ? out("https://google.serper.dev/search", { method: "POST", headers: { "x-api-key": env.SERPER_API_KEY, "content-type": "application/json" }, body: JSON.stringify(Object.assign({ q, num: 10, hl: "en" }, gl ? { gl } : {})), signal: AbortSignal.timeout(15000) })
-      : out("https://api.search.brave.com/res/v1/web/search?count=10&search_lang=en&safesearch=moderate&text_decorations=false&result_filter=web,discussions,faq,locations&country=" + (gl ? gl.toUpperCase() : "ALL") + "&q=" + encodeURIComponent(q), { headers: { accept: "application/json", "x-subscription-token": env.BRAVE_API_KEY }, signal: AbortSignal.timeout(12000) }));
-    if (!r.ok) { log({ job: job.id, route: "search", provider: prov, ok: false, status: r.status, retries, ms: Date.now() - t0 }); return json({ ok: false, reason: "Search provider answered " + r.status + (r.status === 401 || r.status === 403 ? " (check the API key)" : "") }, 502); }
-    const body = JSON.stringify(Object.assign({ ok: true }, normSearch(prov, await r.json(), q)));
-    log({ job: job.id, route: "search", provider: prov, ok: true, status: r.status, retries, ms: Date.now() - t0, cost_credits: 1 });
-    await cachePut("search", ckey, body, "application/json", 7 * 86400);
+    const { r } = await retrying(() => outbound(env)("https://google.serper.dev/places", { method: "POST", headers: { "x-api-key": env.SERPER_API_KEY, "content-type": "application/json" }, body: JSON.stringify(Object.assign({ q, hl: "en" }, gl ? { gl } : {})), signal: AbortSignal.timeout(15000) }), { tries: 2 });
+    await logUsage(env, { provider: "serper_places", endpoint: "places", job: job.id, status: r.status, ok: r.ok, ms: Date.now() - t1 });
+    if (!r.ok) return json({ ok: false, reason: "Local listings provider answered " + r.status }, 502);
+    const j = await r.json(), num = (v) => (v == null || v === "" || !isFinite(+v) ? null : +v);
+    const items = (j.places || []).slice(0, 20).map((x, i) => ({ pos: x.position || i + 1, name: clean(x.title, 120), address: clean(x.address, 200), rating: num(x.rating), reviews: num(x.ratingCount), category: clean(x.category || (x.types || [])[0], 80),
+      phone: clean(x.phoneNumber, 30), website: /^https?:\/\//i.test(x.website || "") ? String(x.website).slice(0, 300) : "", cid: clean(x.cid, 40), lat: num(x.latitude), lng: num(x.longitude),
+      mapsUrl: x.cid ? "https://www.google.com/maps?cid=" + encodeURIComponent(String(x.cid)) : "https://www.google.com/maps/search/" + encodeURIComponent(clean(x.title, 120) + " " + clean(x.address, 120)) })).filter((x) => x.name);
+    const body = JSON.stringify({ ok: true, provider: "serper-places", providerName: "Google Maps results (via Serper)", q, items, retrievedAt: new Date().toISOString() });
+    await cachePut("places", key, body, "application/json", 7 * 86400);
+    log({ job: job.id, route: "places", ok: true, n: items.length, ms: Date.now() - t0 });
     return new Response(body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "miss" } });
-  } catch (e) { log({ job: job.id, route: "search", provider: prov, ok: false, err: String(e.message), retries: e.retries }); return json({ ok: false, reason: "Search provider did not answer." }, 502); }
+  } catch (e) { await logUsage(env, { provider: "serper_places", endpoint: "places", job: job.id, status: 0, ok: false, ms: Date.now() - t1 }); return json({ ok: false, reason: "Local listings provider did not answer." }, 502); }
+}
+async function gscRoute(env, job) {
+  if (!accountsOn(env) || !toolOn("gsc")) return json({ ok: false, disabled: true, reason: "Search Console connection is not switched on." }, 503);
+  const run = await (await acctDb(env)).prepare("SELECT user_id FROM acct_runs WHERE job_id=?1").bind(job.id).first(); if (!run) return json({ ok: false, connected: false, reason: "Log in to use your Search Console data." }, 403);
+  if (await over(env, job, "gsc", 2)) return json({ ok: false, reason: "Limit reached." }, 429);
+  const t1 = Date.now(), r = await gscForJob(env, run.user_id, job.domain);
+  if (r.calls) await logUsage(env, { provider: "gsc", endpoint: "searchAnalytics", job: job.id, user: run.user_id, status: r.ok ? 200 : 0, ok: r.ok !== false, ms: Date.now() - t1, units: r.calls });
+  return json(r, r.ok || r.connected === false || r.noProperty ? 200 : 502);
 }
 
 async function psi(env, job, b, t0) {
@@ -166,11 +219,12 @@ async function psi(env, job, b, t0) {
   if (memCount(job.id + ":p", 4)) return json({ ok: false, reason: "PageSpeed limit for this X-Ray reached." }, 429);
   const strategy = b.strategy === "desktop" ? "desktop" : "mobile";
   const api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(u.url) + "&strategy=" + strategy + "&category=PERFORMANCE&category=SEO&category=ACCESSIBILITY&category=BEST_PRACTICES";
-  const hit = await cacheGet("psi", api); if (hit) return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } });
+  const hit = await cacheGet("psi", api); if (hit) { await logUsage(env, { provider: "pagespeed", endpoint: "runPagespeed", job: job.id, status: 200, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); }
   try {
     const { r, retries } = await retrying(() => outbound(env)(api + (env.PAGESPEED_API_KEY ? "&key=" + encodeURIComponent(env.PAGESPEED_API_KEY) : ""), { signal: AbortSignal.timeout(60000) }), { tries: 2, base: 1500 });
     const buf = await r.arrayBuffer();
     log({ job: job.id, route: "psi", provider: "pagespeed", ok: r.ok, status: r.status, retries, ms: Date.now() - t0 });
+    await logUsage(env, { provider: "pagespeed", endpoint: "runPagespeed", job: job.id, status: r.status, ok: r.ok, ms: Date.now() - t0 });
     if (!r.ok) return json({ ok: false, reason: "PageSpeed answered " + r.status + (r.status === 429 ? " (daily quota — add PAGESPEED_API_KEY)" : "") }, 502);
     await cachePut("psi", api, buf, "application/json", 86400);
     return new Response(buf, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "miss" } });
@@ -189,48 +243,13 @@ async function seo(env, job, b, t0) {
     const { r } = await retrying(() => outbound(env)("https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live", { method: "POST", headers: { authorization: "Basic " + btoa(env.DATAFORSEO_LOGIN + ":" + env.DATAFORSEO_PASSWORD), "content-type": "application/json" }, body: JSON.stringify(task), signal: AbortSignal.timeout(30000) }), { tries: 2 });
     const j = await r.json(); const items = (((j.tasks || [])[0] || {}).result || []).map((x) => ({ keyword: x.keyword, volume: x.search_volume, cpc: x.cpc, competition: x.competition, competitionIndex: x.competition_index, trend: (x.monthly_searches || []).slice(0, 12).map((m) => m.search_volume) }));
     log({ job: job.id, route: "seo", provider: "dataforseo", ok: r.ok, ms: Date.now() - t0, cost_usd: j.cost });
+    await logUsage(env, { provider: "dataforseo", endpoint: "search_volume", job: job.id, status: r.status, ok: r.ok, ms: Date.now() - t0, cost: j.cost != null ? j.cost : null, units: kws.length });
     return json({ ok: r.ok && !!items.length, provider: "dataforseo", items });
   } catch (e) { return json({ ok: false, reason: "SEO data provider did not answer." }, 502); }
 }
 
 /* ---------------- AI orchestrator ---------------- */
-const SYSTEM = `You are FODO's Business Intelligence Analyst.
-
-You are given verified and partially verified research collected from public websites, APIs and deterministic analysis.
-
-Your job is to diagnose the business.
-
-Never invent evidence.
-
-Separate observed facts from inference.
-
-Every major conclusion must reference the evidence provided.
-
-When evidence is insufficient, explicitly state that it is unknown.
-
-Do not optimize for sounding impressive.
-
-Optimize for being useful, accurate and actionable.
-
-Your job is not to produce a generic marketing report.
-
-Your job is to identify:
-
-1. What the business is doing well.
-2. What is holding it back.
-3. Why the problem exists.
-4. What competitors are doing differently.
-5. What customers appear to want.
-6. What market opportunities exist.
-7. What the business should do first.
-8. What should NOT be prioritized.
-9. What evidence supports every conclusion.
-
-Rank recommendations by impact, effort, urgency and confidence.
-
-Do not overwhelm the business owner.
-
-Give them the five most important actions first.`;
+/* v17.1: the AI prompts live in _lib/prompts.js (versioned; owners can edit them in the admin dashboard). FORMAT stays fixed in code. */
 const FORMAT = `Answer with ONE JSON object only, no prose, in this exact shape:
 {"executiveSummary":"3-4 plain sentences","doingWell":[{"text":"...","evidence":["E1"]}],"holdingBack":[{"text":"...","evidence":["E2"]}],"whyProblem":{"text":"...","evidence":["E3"]},
 "competitorsDifferent":[{"text":"...","evidence":["E4"]}],"customersWant":[{"text":"...","evidence":["E5"]}],"marketOpportunities":[{"text":"...","evidence":["E6"]}],
@@ -269,17 +288,26 @@ async function ai(env, job, b, t0) {
   if (mode === "visibility") {
     const qs = (Array.isArray(pack.questions) ? pack.questions : []).map((q) => clean(q, 160)).filter(Boolean).slice(0, AIQ);
     if (!qs.length) return json({ ok: false, reason: "No questions." }, 400);
-    const answers = await Promise.all(qs.map((q) => runAI(env, [{ role: "system", content: "You are a helpful assistant. Answer the user's question directly. When recommending businesses, name specific real businesses and their websites if you know them." }, { role: "user", content: q }], 600)
-      .then((a) => ({ q, answer: clean(a.text, 3000), model: a.model }), () => ({ q, answer: "", error: "no answer" }))));
-    log({ job: job.id, route: "ai", mode, provider: "workers-ai", ok: true, ms: Date.now() - t0 });
-    return json({ ok: true, mode, answers });
+    // v17: every engine that is connected answers the same questions (Gemini at most 5 per X-Ray — its free tier is small)
+    const ENG = aiEngines(env, toolOn), jobs = [], VP = await getPrompt(env, "visibility");
+    ENG.forEach((e) => qs.slice(0, e.id === "gemini" ? Math.min(5, AIQ) : AIQ).forEach((q) => jobs.push({ e, q })));
+    const answers = [], pool = jobs.slice(); let pi = 0;
+    const worker = async () => { while (pi < pool.length) { const it = pool[pi++], t1 = Date.now();
+      try { const a = await aiAsk(env, it.e.id, it.q, (m, x) => runAI(env, m, x), VP.text); answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, live: it.e.live && a.grounded, answer: a.answer, model: a.model, citations: a.citations || [], searches: a.searches || [], grounded: !!a.grounded, groundingRefused: a.groundingRefused || null });
+        await logUsage(env, { provider: it.e.id, endpoint: "aivis", tool: "prompt:visibility@" + VP.ver, job: job.id, status: a.status || 200, ms: Date.now() - t1 }); }
+      catch (e) { answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, answer: "", error: "no answer" }); await logUsage(env, { provider: it.e.id, endpoint: "aivis", job: job.id, status: e.status || 0, ok: false, ms: Date.now() - t1 }); } } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    log({ job: job.id, route: "ai", mode, engines: ENG.map((e) => e.id).join(","), ok: true, ms: Date.now() - t0 });
+    return json({ ok: true, mode, engines: ENG, answers });
   }
   const ids = (Array.isArray(pack.ids) ? pack.ids : []).map(String).slice(0, 600);
   const data = JSON.stringify(pack.data || {}); if (data.length > 60000) return json({ ok: false, reason: "Research pack too large." }, 413);
   try {
-    const a = await runAI(env, [{ role: "system", content: SYSTEM + "\n\n" + FORMAT }, { role: "user", content: "RESEARCH DATA (JSON):\n" + data }], 1800);
-    const parsed = parseObj(a.text); if (!parsed) { log({ job: job.id, route: "ai", ok: false, err: "unparseable" }); return json({ ok: false, reason: "The AI answer could not be read." }, 502); }
+    const P = await getPrompt(env, "synthesis"), tool = "prompt:synthesis@" + P.ver;
+    const t1 = Date.now(), a = await runAI(env, [{ role: "system", content: P.text + "\n\n" + FORMAT }, { role: "user", content: "RESEARCH DATA (JSON):\n" + data }], 1800);
+    const parsed = parseObj(a.text); if (!parsed) { log({ job: job.id, route: "ai", ok: false, err: "unparseable" }); await logUsage(env, { provider: "workers-ai", endpoint: "synthesis", tool, job: job.id, status: 422, ok: false, ms: Date.now() - t1, units: 0 }); return json({ ok: false, reason: "The AI answer could not be read." }, 502); }
     const { out, dropped } = checkSynthesis(parsed, ids);
+    await logUsage(env, { provider: "workers-ai", endpoint: "synthesis", tool, job: job.id, status: 200, ms: Date.now() - t1, units: dropped.length });   // units = statements dropped for having no evidence (prompt quality)
     log({ job: job.id, route: "ai", mode, provider: "workers-ai", model: a.model, ok: true, dropped: dropped.length, ms: Date.now() - t0 });
     return json({ ok: true, mode, model: a.model, synthesis: out, dropped });
   } catch (e) { log({ job: job.id, route: "ai", ok: false, err: String(e.message) }); return json({ ok: false, reason: "AI did not answer." }, 502); }
@@ -289,18 +317,10 @@ async function ai(env, job, b, t0) {
    Every answer is JSON, checked against what was sent: page URLs, competitor domains and opportunity IDs that were not in the
    research pack are dropped, so the AI cannot invent pages, rivals or findings. Text is drafting help, labelled "AI draft". ---------- */
 const EDGE = {
-  fixPack: { feature: "fixPack", max: 2200,
-    prompt: `You are a senior SEO + conversion copywriter. For each page in PAGES write better copy that keeps every fact true (do not invent prices, numbers, awards, years or claims that are not in the data).
-Return JSON only: {"pages":[{"url":"<exact url from PAGES>","title":"<= 60 chars, main search phrase + brand","meta":"140-158 chars with a clear benefit and call to action","h1":"clear headline: who it is for + outcome"}],"headlines":["3 homepage hero headline options"],"faq":[{"q":"question real buyers ask","a":"short answer using only facts in the data"}],"cta":"one better call-to-action button text"}. Max 8 pages, 5 FAQ.` },
-  battleCards: { feature: "battleCards", max: 2200,
-    prompt: `You are a competitive strategist. Using ONLY the facts in the data, write one battle card per competitor in COMPETITORS.
-Return JSON only: {"cards":[{"domain":"<exact domain from COMPETITORS>","theyWinOn":["max 3, from their advantages"],"youWinOn":["max 3, from your strengths or their weaknesses"],"howToWin":["3 concrete actions"],"talkTrack":"2-3 sentences a salesperson can say when a buyer mentions this competitor — no false claims"}]}.` },
-  roadmap90: { feature: "roadmap90", max: 2200,
-    prompt: `You are a growth consultant. Turn OPPORTUNITIES into a 90-day plan (12 weeks) in sensible order: quick fixes first, then growth, then strategic work.
-Return JSON only: {"months":[{"month":1,"goal":"one line","weeks":[{"week":1,"focus":"short","tasks":["max 3 concrete tasks"],"opportunities":["ids from OPPORTUNITIES"],"kpi":"what to measure"}]}]} with 3 months and 4 weeks each. Use only opportunity ids that exist.` },
-  clientPitch: { feature: "clientPitch", max: 1600,
-    prompt: `You are an agency founder writing to a prospective client about the X-Ray of their website. Friendly, specific, no hype, no guarantees, no invented numbers.
-Return JSON only: {"subject":"email subject","email":"120-180 word email that names 3 findings and offers a call","findings":[{"text":"finding in plain words","opportunity":"id from OPPORTUNITIES"}],"proposal":[{"phase":"name","what":"what we will do","outcome":"expected outcome in words, no numbers you were not given"}]} with 3 findings and 3 phases.` },
+  fixPack: { feature: "fixPack", max: 2200 },
+  battleCards: { feature: "battleCards", max: 2200 },
+  roadmap90: { feature: "roadmap90", max: 2200 },
+  clientPitch: { feature: "clientPitch", max: 1600 },
 };
 async function edge(env, job, b, t0) {
   const kind = String(b.kind || ""), E = EDGE[kind]; if (!E) return json({ ok: false, reason: "Unknown tool." }, 400);
@@ -310,8 +330,10 @@ async function edge(env, job, b, t0) {
   if (await over(env, job, "edge:" + kind, 2)) return json({ ok: false, reason: "Limit for this tool reached on this X-Ray." }, 429);
   const pack = b.pack || {}, data = JSON.stringify(pack); if (data.length > 40000) return json({ ok: false, reason: "Research pack too large." }, 413);
   try {
-    const a = await runAI(env, [{ role: "system", content: E.prompt + "\nAnswer in English. Output one JSON object and nothing else." }, { role: "user", content: "DATA (JSON):\n" + data }], E.max);
-    const o = parseObj(a.text); if (!o) return json({ ok: false, reason: "The AI answer could not be read. Try again." }, 502);
+    const P = await getPrompt(env, kind), tool = "prompt:" + kind + "@" + P.ver;
+    const t1 = Date.now(), a = await runAI(env, [{ role: "system", content: P.text + "\nAnswer in English. Output one JSON object and nothing else." }, { role: "user", content: "DATA (JSON):\n" + data }], E.max);
+    const o = parseObj(a.text); await logUsage(env, { provider: "workers-ai", endpoint: "edge_" + kind, tool, job: job.id, status: o ? 200 : 422, ok: !!o, ms: Date.now() - t1 });
+    if (!o) return json({ ok: false, reason: "The AI answer could not be read. Try again." }, 502);
     const out = checkEdge(kind, o, pack);
     log({ job: job.id, route: "edge", kind, ok: true, model: a.model, ms: Date.now() - t0 });
     const ru = await (await acctDb(env)).prepare("SELECT user_id, domain FROM acct_runs WHERE job_id=?1").bind(job.id).first(); if (ru) await logEvent(env, ru.user_id, "edge_" + kind, ru.domain);
@@ -357,6 +379,7 @@ async function authority(env, job, b) {
   if (!doms.length) return json({ ok: false, reason: "No domains." }, 400);
   try {
     const { r } = await retrying(() => outbound(env)("https://openpagerank.com/api/v1.0/getPageRank?" + doms.map((x) => "domains%5B%5D=" + encodeURIComponent(x)).join("&"), { headers: { "API-OPR": env.OPR_API_KEY }, signal: AbortSignal.timeout(12000) }), { tries: 2 });
+    await logUsage(env, { provider: "opr", endpoint: "getPageRank", job: job.id, status: r.status, ok: r.ok, units: doms.length });
     const j = await r.json(), items = (j.response || []).map((x) => ({ domain: x.domain, rank: x.page_rank_decimal == null || x.page_rank_decimal === "" ? null : +x.page_rank_decimal, globalRank: x.rank ? +x.rank : null, found: x.status_code === 200 }));
     return json({ ok: r.ok, provider: "Open PageRank", items });
   } catch (e) { return json({ ok: false, reason: "Authority provider did not answer." }, 502); }
@@ -367,9 +390,26 @@ async function saveReport(request, env) {
   const text = await request.text();
   if (text.length > 5e6 || text.charAt(0) !== "{" || text.indexOf('"jobId":"' + id + '"') < 0) return json({ ok: false, reason: "Not a report for this job." }, 400);
   const ok = await reportPut(env, id, text);
-  if (accountsOn(env)) { const m = /"overall":(\d+|null)/.exec(text); await (await acctDb(env)).prepare("UPDATE acct_runs SET status='COMPLETE', score=?2 WHERE job_id=?1").bind(id, m && m[1] !== "null" ? +m[1] : null).run();
+  if (accountsOn(env)) { const m = /"overall":(\d+|null)/.exec(text), dc = /"completeness":\{"overall":(\d+)/.exec(text);
+    const du = /"durationMs":(\d+)/.exec(text);
+    await (await acctDb(env)).prepare("UPDATE acct_runs SET status='COMPLETE', score=?2, completeness=?3, duration_ms=?4 WHERE job_id=?1").bind(id, m && m[1] !== "null" ? +m[1] : null, dc ? +dc[1] : null, du ? +du[1] : null).run();
     const ru = await (await acctDb(env)).prepare("SELECT user_id, domain FROM acct_runs WHERE job_id=?1").bind(id).first(); if (ru) await logEvent(env, ru.user_id, "xray_done", ru.domain + (m ? " · score " + m[1] : "")); }
   await jobUpdate(env, job, { status: "COMPLETE", stage: "COMPLETE", progress: 100, completed: STAGES.slice() });
+  // v17: one usage row for the whole crawl (pages read through FODO's reader — free, but counted for the health view)
+  try { if (env.XRAY_DB) { const f = await env.XRAY_DB.prepare("SELECT n FROM xray_counters WHERE k=?1").bind("job:" + id + ":f").first(); const pg = /"crawl":\{"blocked":(null|\{)/.exec(text); await logUsage(env, { provider: "site", endpoint: "crawl", job: id, status: pg && pg[1] === "null" ? 200 : 403, ok: !!(pg && pg[1] === "null"), units: f ? f.n : 0 }); } } catch (e) {}
   log({ job: id, route: "report", ok, bytes: text.length });
   return json({ ok, url: "/business-x-ray/?r=" + id });
+}
+
+/* v17.1 share control (prompt §76): the owner can switch a report's link off or give it an expiry date. While off/expired only the
+   person who ran it (or their team owner) and the FODO admin team can open it. */
+async function shareGate(env, request, id) {
+  if (!accountsOn(env) || !/^[a-z0-9]{20}$/.test(id)) return null;
+  const d = await acctDb(env), run = await d.prepare("SELECT user_id, owner_id, share, share_until FROM acct_runs WHERE job_id=?1").bind(id).first();
+  if (!run) return null;
+  const closed = run.share === "off" || (run.share_until && Date.parse(run.share_until) < Date.now()); if (!closed) return null;
+  const u = await sessionUser(env, request);
+  if (u && (u.id === run.user_id || u.id === run.owner_id || isOwner(u))) return null;
+  if (u && u.email) { const a = await d.prepare("SELECT role FROM acct_admins WHERE email=?1").bind(u.email).first(); if (a) return null; }
+  return json({ ok: false, private: true, reason: run.share === "off" ? "The owner has turned off sharing for this report." : "This share link has expired." }, 403);
 }

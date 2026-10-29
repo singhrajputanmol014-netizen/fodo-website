@@ -98,3 +98,47 @@ html:not([data-theme=dark]) .ad-tag.bad{color:#B3261E}
 .ad-mt tr:last-child td{border-bottom:0}.ad-tt{max-height:520px;overflow:auto}.ad-note{font-size:12.5px;margin:0 0 10px}
 .ad-team li{grid-template-columns:minmax(0,1fr) auto auto}
 @media (max-width:1000px){.ad-xall{display:none}.ad-live{display:none}}
+/* v17 costs, monitoring, prices & tools */
+.ad-st{display:inline-block;padding:3px 9px;border-radius:999px;font:600 11px/1.3 var(--font-mono);text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--line-3,var(--line));color:var(--muted)}
+.ad-st.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,transparent)}.ad-st.mid{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}.ad-st.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 50%,transparent)}
+.ad-num{width:110px;padding:8px 10px}
+.ad-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.ad-tog{display:flex;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--line-3,var(--line));border-radius:14px;background:var(--panel);font-size:14px;cursor:pointer}.ad-tog input{width:18px;height:18px;accent-color:var(--signal)}
+.ad-kpi.bad b{color:var(--err)}
+/* v17.1 navigation: grouped sidebar, ☰ menu, mobile bar with "More" */
+.ad-gl{margin:14px 12px 4px;font:600 10.5px/1.2 var(--font-mono);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);opacity:.8}
+.ad-nav{overflow-y:auto}.ad-more{display:none}
+.ad-burger{display:inline-grid;align-content:center;justify-items:center;gap:4px;width:38px;height:38px;padding:0}.ad-burger i{display:block;width:16px;height:2px;border-radius:2px;background:currentColor}
+.ad-menu{position:fixed;inset:0;z-index:80;display:flex;justify-content:flex-end}
+.ad-menu-back{position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+.ad-menu-box{position:relative;width:min(360px,92vw);height:100%;overflow-y:auto;background:var(--panel,var(--surface));border-left:1px solid var(--line-3,var(--line));padding:16px 14px calc(18px + env(safe-area-inset-bottom));animation:adIn .18s ease-out}
+@keyframes adIn{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+.ad-menu-h{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px}.ad-menu-h b{font-size:16px}
+.ad-menu-g{display:grid;gap:2px}
+.ad-menu-g a,.ad-menu-g button{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;color:var(--text);text-decoration:none;font-family:inherit;font-weight:600;font-size:14px;line-height:1.2;background:none;border:0;text-align:left;cursor:pointer;width:100%}
+.ad-menu-g a:hover,.ad-menu-g button:hover,.ad-menu-g a:focus-visible,.ad-menu-g button:focus-visible{background:color-mix(in srgb,var(--text) 7%,transparent)}.ad-menu-g a.on{background:color-mix(in srgb,#4C3BCF 22%,transparent)}
+body.ad-menu-on{overflow:hidden}
+@media (prefers-reduced-motion:reduce){.ad-menu-box{animation:none}}
+@media (max-width:1000px){
+  .ad-nav .ad-gl,.ad-nav a:not(.ad-mob),.ad-nav .ad-site{display:none}
+  .ad-nav{overflow:visible;justify-content:space-around}.ad-nav a.ad-mob,.ad-more{flex:1 1 0;min-width:0}
+  .ad-more{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 10px;font-family:inherit;font-weight:600;font-size:11px;line-height:1.2;color:var(--muted);background:none;border:0;border-radius:12px;cursor:pointer}
+}
+/* v17.1 views */
+.ad-kpi.north{border-color:color-mix(in srgb,#4C3BCF 55%,var(--line-3,var(--line)));background:color-mix(in srgb,#4C3BCF 10%,var(--panel))}
+.ad-nba{margin-bottom:16px}.ad-nbl{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ad-nbl li{display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line-3,var(--line));border-radius:14px}
+.ad-nbl i{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-style:normal;font-weight:700;background:color-mix(in srgb,var(--text) 8%,transparent)}
+.ad-nbl li.money i{color:var(--ok)}.ad-nbl li.quality i,.ad-nbl li.health i{color:var(--warn)}.ad-nbl li.setup i{color:var(--signal)}.ad-nbl li.customers i{color:#ff8a9b}
+.ad-nbl b{display:block;font-size:14px}.ad-nbl span{display:block;font-size:13px;color:var(--muted)}
+.ad-fun2 li span small{display:block;font-size:11px;margin-top:2px}
+.ad-pre{white-space:pre-wrap;font:12px/1.5 var(--font-mono);overflow:auto;max-height:320px}
+.ad-ta{width:100%;min-height:220px;font:12.5px/1.5 var(--font-mono);margin:10px 0;resize:vertical}
+.ad-prompt .ad-ch{align-items:center}.ad-ph{font-size:13px;padding-left:18px}
+.ad-qc{margin:6px 0}
+@media (max-width:640px){.ad-nbl li{grid-template-columns:28px 1fr}.ad-nbl li a{grid-column:1/-1}}
+/* v17.1 phone header: the ☰ menu has "Export all", so the header button hides; tighter gaps keep the bar inside 360px */
+@media (max-width:1000px){.ad-top .btn.ad-xall{display:none}.ad-top{gap:8px}.ad-top>*{flex-shrink:0}.ad-top .ad-sp{flex:1 1 0;min-width:0}}
+/* v17.1: the drawer is solid (not glass) so the page behind never shows through the menu */
+.ad-menu-box{background:var(--bg);box-shadow:-24px 0 60px rgba(0,0,0,.45)}
+.ad-ib svg{display:block;margin:auto}

@@ -83,6 +83,7 @@
     });
     A.api("ledger").then(function (j) { var it = j.items || []; $("ac-ledger").innerHTML = it.length ? '<ul class="ac-led">' + it.slice(0, 30).map(function (l) { return "<li><b class=\"" + (l.delta > 0 ? "plus" : "minus") + '">' + (l.delta > 0 ? "+" : "") + l.delta + "</b> " + esc(l.note || l.kind) + ' <small class="muted">' + esc(date(l.created_at)) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">Nothing yet.</p>'; });
     if ($("ac-team")) agency();
+    if (window.FODO_LAB17) window.FODO_LAB17(u, acc);   // v17 My Growth Lab: score history, actions, monitoring, Search Console, monthly report
   }
   function agency() {
     var am = st2, done = function (j) { msg(am, j.ok ? "Saved." : j.reason, j.ok ? "ok" : "warn"); agency(); };

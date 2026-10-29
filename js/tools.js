@@ -62,6 +62,7 @@
     const num=(n,min,max,def)=>{ let x=parseFloat(f[n].value); if(!isFinite(x))x=def; x=Math.min(max,Math.max(min,x)); return x; };
     const sync=(a,b)=>{ f[a].addEventListener("input",()=>{f[b].value=f[a].value;calc();}); f[b].addEventListener("input",()=>{f[a].value=f[b].value;calc();}); };
     sync("spend","spend_n"); ["value","visitors","cr","lift","scenario","industry"].forEach(n=>f[n].addEventListener("input",calc));
+    f.addEventListener("input",()=>{ if(window.FODO_TOOL) window.FODO_TOOL("complete","roi","",true); },{once:true});   // v17.1: first real use of the calculator
     function calc(){ const spend=num("spend",0,10000000,50000), value=num("value",0,100000000,2000), visitors=num("visitors",0,100000000,5000), cr=num("cr",0,100,2), lift=num("lift",0,300,20); const sc=f.scenario.value;
       f.spend_n.value=spend; const conv=visitors*cr/100, val=conv*value, pcr=Math.min(100,cr*(1+lift/100)), pconv=visitors*pcr/100, pval=pconv*value; const label=sc==="leads"?"leads":"sales";
       const roas=spend>0?(val/spend):null, proas=spend>0?(pval/spend):null;

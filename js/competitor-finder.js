@@ -218,7 +218,7 @@
     setStatus("Searching every " + type.toLowerCase() + " within " + R1.km() + " km of " + where + "… results appear as each source answers.", "busy");
     list.innerHTML = '<li class="cf-empty">Looking up ' + esc(type) + " near " + esc(where) + "…</li>"; $("cf-more").hidden = true;
     var deep = $("cf-deep").checked, t0 = Date.now();
-    track("cf_search", { mode: "local", type: type, km: R1.km() });
+    track("cf_search", { mode: "local", type: type, km: R1.km() }); if (window.FODO_TOOL) window.FODO_TOOL("complete", "competitor_finder", "local " + type);
     Promise.all([lib(), health]).then(function (r0) {
       var m = r0[0], h = r0[1] || {};
       chips(["osm"].concat(h.geoapify ? ["geo"] : [], google ? ["google"] : []));
@@ -395,7 +395,7 @@
     var country = cIn.value, cname = country ? cIn.options[cIn.selectedIndex].text : "", rkm = R2.km(), city = blIn.value.trim();
     setStatus("Finding competitors of " + q + "… three searches run together: Wikidata industry, Wikidata keywords and AI suggestions.", "busy");
     list.innerHTML = '<li class="cf-empty">Looking up companies that compete with ' + esc(q) + "…</li>"; $("cf-more").hidden = true;
-    track("cf_search", { mode: "brand", brand: q });
+    track("cf_search", { mode: "brand", brand: q }); if (window.FODO_TOOL) window.FODO_TOOL("complete", "competitor_finder", "brand");
     Promise.all([resolveSeed(q), placeCoords(), health]).then(function (r) {
       var seed = r[0], loc = r[1], h = r[2] || {};
       chips(["wd", "kw"].concat(h.ai ? ["ai"] : []));

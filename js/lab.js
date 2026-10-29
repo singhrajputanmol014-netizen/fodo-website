@@ -67,6 +67,7 @@
     P.plays[tool] = (P.plays[tool] || 0) + 1;
     var prev = P.best[tool]; var isBest = prev == null || score > prev; if (isBest) P.best[tool] = score;
     P.history.unshift({ tool: tool, score: score, at: Date.now(), extra: extra || null }); P.history = P.history.slice(0, 30); save();
+    if (window.FODO_TOOL) window.FODO_TOOL("complete", tool, "score " + score);   // v17.1: Growth Lab analytics (admin)
     badge("first_steps");
     if (P.plays.score && P.plays.quiz && P.plays.game) badge("lab_all");
     return { isBest: isBest && prev != null, prev: prev, first: prev == null };

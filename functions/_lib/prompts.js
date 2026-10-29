@@ -1,0 +1,38 @@
+/* FODO Growth Lab v17.1 — AI prompt versions (prompt §68). Every prompt the AI receives has a default here; an owner can save a new
+   version in the admin dashboard (owners only — admins and viewers cannot change security-sensitive prompts). The output-format
+   rules that FODO's validators depend on are NOT part of the editable text: they are always appended in code.
+   A version id is "v" + the first 8 hex of SHA-256(text), so usage, errors and dropped statements are tracked per version (api_usage.tool). */
+export const DEFAULTS = {
+  synthesis: { name: "Diagnosis (executive summary)", text: "You are FODO's Business Intelligence Analyst.\n\nYou are given verified and partially verified research collected from public websites, APIs and deterministic analysis.\n\nYour job is to diagnose the business.\n\nNever invent evidence.\n\nSeparate observed facts from inference.\n\nEvery major conclusion must reference the evidence provided.\n\nWhen evidence is insufficient, explicitly state that it is unknown.\n\nDo not optimize for sounding impressive.\n\nOptimize for being useful, accurate and actionable.\n\nYour job is not to produce a generic marketing report.\n\nYour job is to identify:\n\n1. What the business is doing well.\n2. What is holding it back.\n3. Why the problem exists.\n4. What competitors are doing differently.\n5. What customers appear to want.\n6. What market opportunities exist.\n7. What the business should do first.\n8. What should NOT be prioritized.\n9. What evidence supports every conclusion.\n\nRank recommendations by impact, effort, urgency and confidence.\n\nDo not overwhelm the business owner.\n\nGive them the five most important actions first." },
+  visibility: { name: "AI visibility question answerer", text: "You are a helpful assistant. Answer the user's question directly. When recommending businesses, name specific real businesses and their websites if you know them." },
+  fixPack: { name: "FODO Edge · AI Fix Pack", text: "You are a senior SEO + conversion copywriter. For each page in PAGES write better copy that keeps every fact true (do not invent prices, numbers, awards, years or claims that are not in the data).\nReturn JSON only: {\"pages\":[{\"url\":\"<exact url from PAGES>\",\"title\":\"<= 60 chars, main search phrase + brand\",\"meta\":\"140-158 chars with a clear benefit and call to action\",\"h1\":\"clear headline: who it is for + outcome\"}],\"headlines\":[\"3 homepage hero headline options\"],\"faq\":[{\"q\":\"question real buyers ask\",\"a\":\"short answer using only facts in the data\"}],\"cta\":\"one better call-to-action button text\"}. Max 8 pages, 5 FAQ." },
+  battleCards: { name: "FODO Edge · Battle cards", text: "You are a competitive strategist. Using ONLY the facts in the data, write one battle card per competitor in COMPETITORS.\nReturn JSON only: {\"cards\":[{\"domain\":\"<exact domain from COMPETITORS>\",\"theyWinOn\":[\"max 3, from their advantages\"],\"youWinOn\":[\"max 3, from your strengths or their weaknesses\"],\"howToWin\":[\"3 concrete actions\"],\"talkTrack\":\"2-3 sentences a salesperson can say when a buyer mentions this competitor \u2014 no false claims\"}]}." },
+  roadmap90: { name: "FODO Edge · 90-day roadmap", text: "You are a growth consultant. Turn OPPORTUNITIES into a 90-day plan (12 weeks) in sensible order: quick fixes first, then growth, then strategic work.\nReturn JSON only: {\"months\":[{\"month\":1,\"goal\":\"one line\",\"weeks\":[{\"week\":1,\"focus\":\"short\",\"tasks\":[\"max 3 concrete tasks\"],\"opportunities\":[\"ids from OPPORTUNITIES\"],\"kpi\":\"what to measure\"}]}]} with 3 months and 4 weeks each. Use only opportunity ids that exist." },
+  clientPitch: { name: "FODO Edge · Client pitch", text: "You are an agency founder writing to a prospective client about the X-Ray of their website. Friendly, specific, no hype, no guarantees, no invented numbers.\nReturn JSON only: {\"subject\":\"email subject\",\"email\":\"120-180 word email that names 3 findings and offers a call\",\"findings\":[{\"text\":\"finding in plain words\",\"opportunity\":\"id from OPPORTUNITIES\"}],\"proposal\":[{\"phase\":\"name\",\"what\":\"what we will do\",\"outcome\":\"expected outcome in words, no numbers you were not given\"}]} with 3 findings and 3 phases." },
+};
+const DDL = "CREATE TABLE IF NOT EXISTS lab_prompts (id INTEGER PRIMARY KEY AUTOINCREMENT, pkey TEXT, ver TEXT, text TEXT, note TEXT, created_by TEXT, created_at TEXT, active INTEGER DEFAULT 0)";
+const made = new WeakSet(); let cache = { at: 0, db: null, rows: {} };
+const enc = new TextEncoder();
+export async function ver(text) { const d = await crypto.subtle.digest("SHA-256", enc.encode(String(text))); return "v" + [...new Uint8Array(d)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join(""); }
+export async function pdb(env) { const d = env && env.XRAY_DB; if (!d) return null; if (!made.has(d)) { await d.prepare(DDL).run(); made.add(d); } return d; }
+/* → { text, ver, custom } — custom = an owner's saved version is active */
+export async function getPrompt(env, key) {
+  const def = DEFAULTS[key]; if (!def) throw new Error("unknown prompt " + key);
+  try {
+    const d = await pdb(env);
+    if (d && (cache.db !== d || Date.now() - cache.at > 60e3)) { const r = (await d.prepare("SELECT pkey, ver, text FROM lab_prompts WHERE active=1").all()).results || []; cache = { at: Date.now(), db: d, rows: {} }; r.forEach((x) => { cache.rows[x.pkey] = x; }); }
+    const row = d && cache.rows[key]; if (row) return { text: row.text, ver: row.ver, custom: true };
+  } catch (e) {}
+  return { text: def.text, ver: def.ver || (def.ver = await ver(def.text)), custom: false };
+}
+export function clearCache() { cache.at = 0; }
+export async function savePrompt(env, key, text, by, note) {
+  if (!DEFAULTS[key]) return { ok: false, reason: "Unknown prompt." };
+  const d = await pdb(env); const t = String(text || "").replace(/\r/g, "").trim();
+  if (t.length < 40 || t.length > 8000) return { ok: false, reason: "A prompt must be 40 – 8,000 characters." };
+  const v = await ver(t), now = new Date().toISOString();
+  await d.batch([d.prepare("UPDATE lab_prompts SET active=0 WHERE pkey=?1").bind(key), d.prepare("INSERT INTO lab_prompts (pkey, ver, text, note, created_by, created_at, active) VALUES (?1,?2,?3,?4,?5,?6,1)").bind(key, v, t, String(note || "").slice(0, 200), by || "", now)]);
+  clearCache(); return { ok: true, key, ver: v };
+}
+export async function resetPrompt(env, key, by) { const d = await pdb(env); await d.prepare("UPDATE lab_prompts SET active=0 WHERE pkey=?1").bind(key).run(); await d.prepare("INSERT INTO lab_prompts (pkey, ver, text, note, created_by, created_at, active) VALUES (?1,?2,?3,'reset to default',?4,?5,0)").bind(key, await ver(DEFAULTS[key].text), DEFAULTS[key].text, by || "", new Date().toISOString()).run(); clearCache(); return { ok: true }; }
+export async function activatePrompt(env, key, id, by) { const d = await pdb(env); const r = await d.prepare("SELECT * FROM lab_prompts WHERE id=?1 AND pkey=?2").bind(id, key).first(); if (!r) return { ok: false, reason: "Version not found." }; return savePrompt(env, key, r.text, by, "restored " + r.ver); }

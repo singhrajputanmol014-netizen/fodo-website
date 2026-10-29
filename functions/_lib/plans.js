@@ -2,16 +2,16 @@
    Change prices here only. Amounts are INR. "needs" = a data provider that must be connected before that feature is
    shown or sold (the plans page hides features whose provider is missing, so nothing is promised that cannot be delivered). */
 export const PLANS = {
-  free:    { id: "free",    name: "Free",    price: 0,    xrays: 2,   period: "lifetime", pages: 15,  competitors: 2,  compPages: 2, searches: 8,  aiQuestions: 2,  perHour: 2,  runtime: 180, seats: 1,
+  free:    { id: "free",    name: "Free",    price: 0,    xrays: 2,   period: "lifetime", pages: 15,  competitors: 2,  compPages: 2, searches: 8,  aiQuestions: 2,  perHour: 2,  runtime: 180, seats: 1, monitors: 1,
     features: [] },
-  starter: { id: "starter", name: "Starter", price: 499,  xrays: 10,  period: "month",    pages: 50,  competitors: 5,  compPages: 2, searches: 14, aiQuestions: 4,  perHour: 6,  runtime: 240, seats: 1,
-    features: ["fullReport", "export", "history"] },
-  growth:  { id: "growth",  name: "Growth",  price: 1499, xrays: 30,  period: "month",    pages: 150, competitors: 8,  compPages: 3, searches: 20, aiQuestions: 10, perHour: 10, runtime: 360, seats: 1,
-    features: ["fullReport", "export", "history", "compare", "contentGap", "moreVoice", "volume", "shareOfVoice", "keywordMap"] },
-  pro:     { id: "pro",     name: "Pro",     price: 3999, xrays: 80,  period: "month",    pages: 300, competitors: 10, compPages: 6, searches: 24, aiQuestions: 10, perHour: 20, runtime: 480, seats: 1,
-    features: ["fullReport", "export", "history", "compare", "contentGap", "moreVoice", "volume", "shareOfVoice", "keywordMap", "techStack", "deepCompetitors", "externalLinks", "authority", "trackingAudit", "schemaCode", "adLibrary"] },
-  agency:  { id: "agency",  name: "Agency",  price: 9999, xrays: 250, period: "month",    pages: 500, competitors: 10, compPages: 6, searches: 24, aiQuestions: 10, perHour: 40, runtime: 600, seats: 5,
-    features: ["fullReport", "export", "history", "compare", "contentGap", "moreVoice", "volume", "shareOfVoice", "keywordMap", "techStack", "deepCompetitors", "externalLinks", "authority", "trackingAudit", "schemaCode", "adLibrary",
+  starter: { id: "starter", name: "Starter", price: 499,  xrays: 10,  period: "month",    pages: 50,  competitors: 5,  compPages: 2, searches: 14, aiQuestions: 4,  perHour: 6,  runtime: 240, seats: 1, monitors: 3,
+    features: ["fullReport", "export", "history", "monthlyReport"] },
+  growth:  { id: "growth",  name: "Growth",  price: 1499, xrays: 30,  period: "month",    pages: 150, competitors: 8,  compPages: 3, searches: 20, aiQuestions: 10, perHour: 10, runtime: 360, seats: 1, monitors: 6,
+    features: ["fullReport", "export", "history", "compare", "contentGap", "moreVoice", "volume", "shareOfVoice", "keywordMap", "monthlyReport", "whyWinning", "roadmapLite"] },
+  pro:     { id: "pro",     name: "Pro",     price: 3999, xrays: 80,  period: "month",    pages: 300, competitors: 10, compPages: 6, searches: 24, aiQuestions: 10, perHour: 20, runtime: 480, seats: 1, monitors: 15,
+    features: ["fullReport", "export", "history", "compare", "contentGap", "moreVoice", "volume", "shareOfVoice", "keywordMap", "techStack", "deepCompetitors", "externalLinks", "authority", "trackingAudit", "schemaCode", "adLibrary", "monthlyReport", "whyWinning", "roadmapLite"] },
+  agency:  { id: "agency",  name: "Agency",  price: 9999, xrays: 250, period: "month",    pages: 500, competitors: 10, compPages: 6, searches: 24, aiQuestions: 10, perHour: 40, runtime: 600, seats: 5, monitors: 40,
+    features: ["fullReport", "export", "history", "compare", "contentGap", "moreVoice", "volume", "shareOfVoice", "keywordMap", "techStack", "deepCompetitors", "externalLinks", "authority", "trackingAudit", "schemaCode", "adLibrary", "monthlyReport", "whyWinning", "roadmapLite",
       "fixPack", "battleCards", "roadmap90", "clientPitch", "whiteLabel", "team", "clients", "bulk"] },
 };
 export const ORDER = ["free", "starter", "growth", "pro", "agency"];
@@ -38,6 +38,9 @@ export const FEATURE_INFO = {
   trackingAudit: { label: "Tracking & ads readiness: analytics, pixels and Search Console checked — and which pixels competitors run that you don't" },
   schemaCode: { label: "Ready-to-paste schema code (JSON-LD) built from your real business details" },
   adLibrary: { label: "Competitor ads: one-click links to every competitor's live Meta and Google ads" },
+  monthlyReport: { label: "Monthly growth report: what improved, what declined, competitor changes and what to do next" },
+  whyWinning: { label: "Why are they winning? — head-to-head with any competitor, and how to catch them (now / 30 / 90 days)" },
+  roadmapLite: { label: "90-day growth roadmap (rules-based, from your own findings) with KPIs" },
   fixPack: { label: "FODO Edge · AI Fix Pack: rewritten titles, meta descriptions, headlines and FAQs for your pages, ready to paste", edge: true },
   battleCards: { label: "FODO Edge · Competitor battle cards: how to win against each competitor, with talk tracks for sales", edge: true },
   roadmap90: { label: "FODO Edge · 90-day growth roadmap, week by week, tied to the evidence", edge: true },
@@ -56,6 +59,6 @@ export function limitsFor(planId) {
 }
 export function publicPlans(providers) {
   const ok = (f) => !FEATURE_INFO[f].needs || (providers && providers[FEATURE_INFO[f].needs]);
-  return { plans: ORDER.map((id) => { const p = PLANS[id]; return { id, name: p.name, price: p.price, xrays: p.xrays, period: p.period, pages: p.pages, competitors: p.competitors, seats: p.seats,
+  return { plans: ORDER.map((id) => { const p = PLANS[id]; return { id, name: p.name, price: p.price, xrays: p.xrays, period: p.period, pages: p.pages, competitors: p.competitors, seats: p.seats, monitors: p.monitors,
     features: p.features.filter(ok).map((f) => ({ id: f, label: FEATURE_INFO[f].label })), pending: p.features.filter((f) => !ok(f)).map((f) => ({ id: f, label: FEATURE_INFO[f].label })) }; }), packs: Object.values(PACKS) };
 }

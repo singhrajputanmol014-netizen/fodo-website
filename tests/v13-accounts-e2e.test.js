@@ -136,6 +136,7 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   await p.goto(BASE + "/account/"); await p.waitForSelector("#ac-hist table", { timeout: 15000 });
   const hist = await p.$$eval("#ac-hist tbody tr", (r) => r.map((x) => x.textContent));
   ok(hist.length >= 4 && hist.some((h) => /spicehub\.test.*pro/.test(h)) && hist.some((h) => /refunded/i.test(h)), "history lists every X-Ray with its level (" + hist.length + ")");
+  await p.waitForFunction(() => /\+80/.test((document.getElementById("ac-ledger") || {}).textContent || ""), null, { timeout: 15000 }).catch(() => {});
   const led = await p.textContent("#ac-ledger"); ok(/\+80/.test(led) && /Refund/.test(led), "credit activity shows +80 for Pro and the refund");
 
   /* ---------- agency: white-label PDF, clients, bulk ---------- */

@@ -185,6 +185,47 @@ http.createServer((req, res) => {
   });
   if (first === "_opr") { if (req.headers["api-opr"] !== "opr_test_KEY") return send(res, 401, "application/json", "{}"); const ds = u.searchParams.getAll("domains[]"); calls.opr.push(ds);
     return send(res, 200, "application/json", JSON.stringify({ status_code: 200, response: ds.map((d, i) => ({ status_code: 200, domain: d, page_rank_decimal: (4.5 - i * 0.7).toFixed(2), rank: String(100000 * (i + 1)) })) })); }
+  /* v17 stand-ins: Serper places (Google Maps), Groq, Gemini (with Google Search grounding), Google OAuth + Search Console */
+  if (first === "_serper" && parts[2] === "places") return body((j) => {
+    if (req.headers["x-api-key"] !== KEY) return send(res, 403, "application/json", '{"message":"bad key"}');
+    const q = (j && j.q) || ""; calls.places = (calls.places || []).concat([q]);
+    const P = [{ title: "Tandoor Tales", address: "Sector 10, Dwarka, New Delhi", rating: 4.5, ratingCount: 640, category: "North Indian restaurant", website: "https://tandoortales.test/", phoneNumber: "+91 98100 00001", cid: "901" },
+      { title: "Curry House", address: "Sector 6, Dwarka, New Delhi", rating: 4.3, ratingCount: 410, category: "Indian restaurant", website: "https://curryhouse.test/", cid: "902" },
+      { title: "Spice Hub", address: "Sector 12, Dwarka, New Delhi", rating: 4.1, ratingCount: 180, category: "Indian restaurant", website: "https://spicehub.test/", cid: "123" },
+      { title: "Dhaba Corner", address: "Sector 7, Dwarka, New Delhi", rating: 4.0, ratingCount: 95, category: "Dhaba", cid: "903" }];
+    if (/spice hub/i.test(q)) return send(res, 200, "application/json", JSON.stringify({ places: [P[2]] }));
+    if (/dwarka|delhi/i.test(q)) return send(res, 200, "application/json", JSON.stringify({ places: P }));
+    send(res, 200, "application/json", '{"places":[]}');
+  });
+  if (first === "_groq") return body((j) => {
+    if (req.headers.authorization !== "Bearer groq_test_KEY") return send(res, 401, "application/json", '{"error":{"message":"bad key"}}');
+    const q = ((j && j.messages) || []).map((m) => m.content).pop() || ""; calls.groq = (calls.groq || []).concat([q]);
+    const t = /value/i.test(q) ? "For good value, Spice Hub in Dwarka and Curry House are popular choices." : "Popular options include Tandoor Tales and Curry House.";
+    send(res, 200, "application/json", JSON.stringify({ choices: [{ message: { role: "assistant", content: t } }], usage: { total_tokens: 120 } }));
+  });
+  if (first === "_gemini") return body((j) => {
+    if (req.headers["x-goog-api-key"] !== "gem_test_KEY") return send(res, 403, "application/json", '{"error":{"code":403}}');
+    const q = (((j && j.contents) || [])[0] || { parts: [{}] }).parts[0].text || "", grounded = !!(j && j.tools); calls.gemini = (calls.gemini || []).concat([(grounded ? "G:" : "") + q]);
+    send(res, 200, "application/json", JSON.stringify({ candidates: [{ content: { parts: [{ text: "Based on Google results: Tandoor Tales (tandoortales.test) and Spice Hub are well reviewed in Dwarka." }] }, groundingMetadata: grounded ? { webSearchQueries: [q.slice(0, 40)], groundingChunks: [{ web: { uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/a", title: "tandoortales.test" } }, { web: { uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/b", title: "spicehub.test" } }] } : undefined }], usageMetadata: { totalTokenCount: 300 } }));
+  });
+  if (first === "_gtoken") { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { const f = new URLSearchParams(b); calls.gtoken = (calls.gtoken || []).concat([f.get("grant_type") || parts[2] || ""]);
+    if (parts[2] === "revoke") return send(res, 200, "application/json", "{}");
+    if (f.get("client_secret") !== "gsecret_test") return send(res, 401, "application/json", '{"error":"invalid_client"}');
+    if (f.get("grant_type") === "authorization_code" && f.get("code") === "code_ok") return send(res, 200, "application/json", JSON.stringify({ access_token: "at_test", refresh_token: "rt_test", expires_in: 3600, scope: "https://www.googleapis.com/auth/webmasters.readonly" }));
+    if (f.get("grant_type") === "refresh_token" && f.get("refresh_token") === "rt_test") return send(res, 200, "application/json", JSON.stringify({ access_token: "at_test", expires_in: 3600 }));
+    send(res, 400, "application/json", '{"error":"invalid_grant"}'); }); return; }
+  if (first === "_psi" && /\/webmasters\/v3\//.test(u.pathname)) return body((j) => {
+    if (req.headers.authorization !== "Bearer at_test") return send(res, 401, "application/json", "{}");
+    calls.gsc = (calls.gsc || []).concat([u.pathname.replace(/^\/_psi/, "") + (j && j.dimensions ? ":" + j.dimensions.join(",") : "")]);
+    if (/\/sites$/.test(u.pathname)) return send(res, 200, "application/json", JSON.stringify({ siteEntry: [{ siteUrl: "sc-domain:spicehub.test", permissionLevel: "siteOwner" }, { siteUrl: "https://other.test/", permissionLevel: "siteFullUser" }] }));
+    const dim = j && j.dimensions ? j.dimensions[0] : null, R = (k, c, i, p) => ({ keys: [k], clicks: c, impressions: i, ctr: i ? c / i : 0, position: p });
+    const rows = !dim ? [{ clicks: 420, impressions: 18500, ctr: 0.0227, position: 14.2 }]
+      : dim === "query" ? [R("spice hub dwarka", 180, 900, 1.2), R("biryani dwarka", 22, 2600, 4.1), R("best restaurant dwarka", 9, 3100, 7.8), R("north indian food delhi", 4, 1900, 13.5), R("veg thali near me", 31, 700, 3.2)]
+      : dim === "page" ? [R("https://spicehub.test/", 300, 9000, 6.1), R("https://spicehub.test/menu", 90, 6000, 9.4)]
+      : dim === "device" ? [R("MOBILE", 330, 14000, 13.1), R("DESKTOP", 90, 4500, 17.9)]
+      : dim === "country" ? [R("ind", 410, 18000, 14) ] : [R("2026-10-01", 14, 600, 14), R("2026-10-02", 15, 620, 13.8)];
+    send(res, 200, "application/json", JSON.stringify({ rows }));
+  });
   if (first === "_serper") {
     let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => {
       if (req.headers["x-api-key"] !== KEY) return send(res, 403, "application/json", '{"message":"bad key"}');

@@ -16,6 +16,7 @@ import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER
   verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
 import { PLANS, PACKS, rank, has, publicPlans } from "../../_lib/plans.js";
 import { log, providers, outbound } from "../../_lib/xray-core.js";
+import { applyConfig } from "../../_lib/config.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const SITE = (request) => new URL(request.url).origin;
@@ -23,6 +24,7 @@ const SITE = (request) => new URL(request.url).origin;
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, path = [].concat(params.path || []).join("/"), m = request.method;
   try {
+    await applyConfig(env);
     if (path === "config" && m === "GET") return config(env);
     if (!accountsOn(env)) return json({ ok: false, disabled: true, reason: "Accounts are not switched on yet." }, 503);
     if (path === "webhook/cashfree" && m === "POST") return await webhook(request, env);
@@ -211,7 +213,7 @@ async function profile(env, u, b) {
 async function history(env, u, b, q) {
   if (!has(activePlan(b), "history")) return json({ ok: false, upgrade: "starter", reason: "Saved history is part of Starter and above." }, 402);
   const d = await db(env), client = clean(q.get("client"), 40), domain = clean(q.get("domain"), 120);
-  let sql = "SELECT job_id, domain, url, tier, client_id, score, status, created_at, user_id FROM acct_runs WHERE owner_id=?1", args = [b.id];
+  let sql = "SELECT job_id, domain, url, tier, client_id, score, completeness, duration_ms, share, share_until, status, created_at, user_id FROM acct_runs WHERE owner_id=?1", args = [b.id];
   if (client) { sql += " AND client_id=?" + (args.length + 1); args.push(client); }
   if (domain) { sql += " AND domain=?" + (args.length + 1); args.push(domain); }
   const r = await d.prepare(sql + " ORDER BY created_at DESC LIMIT 200").bind(...args).all();

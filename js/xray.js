@@ -61,7 +61,7 @@
       track("xray_start", { domain: E.domainOf(input.url.indexOf("://") < 0 ? "https://" + input.url : input.url) });
       return execute(j, Object.assign(input, { url: j.jobId && input.url }));
     }).then(function (rep) {
-      busy = false; $("xr-run").disabled = false; report = rep; render(rep); status("X-Ray complete — " + rep.crawl.pages + " pages read, " + rep.opportunities.length + " opportunities found.", "ok"); track("xray_complete", { score: rep.scores.overall });
+      busy = false; $("xr-run").disabled = false; report = rep; render(rep); status(rep.crawl.blocked ? "Limited X-Ray complete — the site blocked FODO's reader (" + rep.crawl.blocked.error + "), so this uses Google Search and PageSpeed data. " + rep.opportunities.length + " opportunities found." : "X-Ray complete — " + rep.crawl.pages + " pages read, " + rep.opportunities.length + " opportunities found.", "ok"); track("xray_complete", { score: rep.scores.overall });
       try { history.replaceState(null, "", location.pathname + "?r=" + rep.jobId); } catch (e) {}
     }, function (e) {
       busy = false; $("xr-run").disabled = false;
@@ -87,9 +87,22 @@
     var lib = null, freeLib = function () { return lib = lib || import(ROOT + "js/free-places.js"); };
     var psiP = callJ("psi", { jobId: jobId, url: startUrl, strategy: "mobile" }, { tries: 1, timeout: 90000 }).then(function (j) { return j._status === 200 ? E.parsePSI(j) : (S.psiError = j.reason || "unavailable", null); }, function () { S.psiError = "PageSpeed did not answer"; return null; });
 
+    var bad = function (r) { return r.error || !r.status || r.status >= 400; };
+    var altUrl = function (u) { try { var x = new URL(u); x.hostname = /^www\./.test(x.hostname) ? x.hostname.slice(4) : "www." + x.hostname; return x.toString(); } catch (e) { return u; } };
     return stage("DISCOVERY", function () {
-      return fetcher(E.normUrl(startUrl)).then(function (r) {
-        if (r.error || !r.status || r.status >= 400) throw Object.assign(new Error("The website could not be opened (" + (r.error || "HTTP " + r.status) + ")."), { fatal: true });
+      return fetcher(E.normUrl(startUrl)).then(function (r) { return bad(r) && !/blocked: /.test(r.error || "") ? fetcher(E.normUrl(altUrl(startUrl))).then(function (r2) { return bad(r2) ? r : r2; }) : r; }).then(function (r) {
+        if (bad(r)) {
+          if (/blocked: /.test(r.error || "")) throw Object.assign(new Error("That address cannot be X-Rayed: " + r.error.replace(/^blocked: /, "")), { fatal: true });
+          // the site turns our reader away (bot protection) — carry on with what Google and PageSpeed can see
+          S.blocked = { status: r.status || 0, error: r.error || "HTTP " + r.status, finalUrl: r.finalUrl || startUrl };
+          if (!P.search) throw Object.assign(new Error("The website did not let FODO read it (" + S.blocked.error + ") and no search provider is connected, so there is nothing to X-Ray. Try again later."), { fatal: true });
+          return search(E.domainOf(startUrl)).then(function (res) {
+            S.blockSerp = res;
+            if (!res || !res.web.some(function (w) { return w.domain === E.domainOf(startUrl); })) throw Object.assign(new Error("The website did not let FODO read it (" + S.blocked.error + ") and it could not be found in search either. Check the address."), { fatal: true });
+            S.quick = E.discoverFromSearch(input, E.domainOf(startUrl), res, new E.Evidence());
+            stageUI(done, "DISCOVERY", S.quick.name.value + " · limited X-Ray (site blocks automated readers)");
+          });
+        }
         S.firstUrl = r.finalUrl;
         var pg = E.parsePage(r.body, startUrl, r); pg.depth = 0;
         S.quick = E.discover({ pages: [pg] }, input, new E.Evidence());
@@ -98,6 +111,11 @@
     }).then(function () {
       if (modules.DISCOVERY && modules.DISCOVERY.status === "error") throw Object.assign(new Error(modules.DISCOVERY.note), { user: true });
       return stage("CRAWLING", function () {
+        if (S.blocked) {
+          S.crawl = E.emptyCrawl(E.normUrl(startUrl), S.blocked); S.B = E.discoverFromSearch(input, E.domainOf(startUrl), S.blockSerp, ev); S.country = input.country || E.guessCountry(S.B, startUrl);
+          modules.CRAWLING = { status: "unavailable", note: "The website answered " + S.blocked.error + " to every request from FODO's reader (bot protection), so its pages could not be checked. Speed, search, competitors and customer voice still ran." };
+          return;
+        }
         return E.crawl(S.firstUrl || startUrl, fetcher, {}, function (n, max) { stageUI(done, "CRAWLING", n + " of up to " + max + " pages"); }).then(function (c) { S.crawl = c; S.B = E.discover(c, input, ev); if (!S.B) throw new Error("No readable pages"); S.country = input.country || E.guessCountry(S.B, S.firstUrl || startUrl); });
       });
     }).then(function () {
@@ -126,7 +144,7 @@
           var cands = E.candidates(S.serpA || [], target, places, SN).slice(0, 8);
           if (!cands.length) { modules.COMPETITORS = { status: "unavailable", note: P.search ? "No competitor websites showed up in the searches." : "Needs a search provider or map listings." }; S.comps = []; return; }
           return progress("COMPETITORS", "", cands.map(function (c) { return c.domain; })).then(function () {
-            var T = E.compProfile(S.crawl.pages.filter(function (p) { return !p.error; }).slice(0, 3)), maxS = cands[0].score, res = [], i = 0;
+            var T = S.blocked ? { terms: E._terms(B.snippetText || B.name.value, 50), bigrams: [], text: E._u.low(B.snippetText || "") } : E.compProfile(S.crawl.pages.filter(function (p) { return !p.error; }).slice(0, 3)), maxS = cands[0].score, res = [], i = 0;
             S.T = T;
             var worker = function () {
               var c = cands[i++]; if (!c) return Promise.resolve();
@@ -138,7 +156,7 @@
                 var extra = hp.internalLinks.filter(function (l) { return /pric|plans|servic|product|solution/.test(l.url); }).map(function (l) { return l.url; })[0];
                 return (extra ? fetcher(extra).then(function (r2) { return r2.body && !r2.error ? [hp, E.parsePage(r2.body, extra, r2)] : [hp]; }) : Promise.resolve([hp])).then(function (pages) {
                   var C = E.compProfile(pages); if (!C) return;
-                  var cmp = E.compareCompetitor(T, C, c, B.city, maxS), ins = E.compInsights(T, C);
+                  var cmp = E.compareCompetitor(T, C, c, B.city, maxS), ins = S.blocked ? { advantages: [], weaknesses: [], opportunity: "Your own pages could not be read, so a side-by-side comparison was not possible. What they show: " + ([C.pricing && "prices", C.testimonials && "testimonials", C.faq && "an FAQ", C.blog && "a blog"].filter(Boolean).join(", ") || "none of prices, testimonials, FAQ or blog") + "." } : E.compInsights(T, C);
                   var nm = (hp.og.site_name || (hp.title || "").split(/\s[|–—\-:]\s/).pop() || c.domain).trim().slice(0, 60);
                   var evid = ev.add({ type: "competitor", claim: nm + " (" + c.domain + ") — " + cmp.reason, sourceUrl: C.url, sourceName: c.sources.join(" + ") + " + their website", pageUrl: C.url, evidenceText: "Headline: “" + (C.headline || "—") + "” · Title: " + C.title, label: "OBSERVED" });
                   res.push({ name: nm, domain: c.domain, url: C.url, source: c.sources, reason: cmp.reason, confidence: cmp.confidence, score: cmp.score, overlaps: cmp, profile: C, insights: ins, queries: c.queries, evidence: [evid].concat((c.evidence || []).slice(0, 2)) });
@@ -147,7 +165,8 @@
             };
             return Promise.all([worker(), worker(), worker()]).then(function () {
               S.comps = res.filter(function (c) { return c.score >= 25 || c.overlaps.serviceOverlap >= 0.06; }).sort(function (a, b) { return b.score - a.score; }).slice(0, E.CFG.MAX_COMPETITORS);
-              S.positioning = S.comps.length ? E.positioning(T, S.comps.map(function (c) { return c.profile; })) : null;
+              S.positioning = S.comps.length && !S.blocked ? E.positioning(T, S.comps.map(function (c) { return c.profile; })) : null;
+              if (S.blocked) S.T = null;
               modules.COMPETITORS = { status: S.comps.length ? "ok" : "unavailable", note: S.comps.length ? "" : "Candidate sites did not look like direct competitors." };
             });
           });
@@ -178,7 +197,7 @@
         stageUI(done, "SEO", "waiting for Google PageSpeed (up to 60 s)");
         return Promise.race([psiP, sleep(75000).then(function () { S.psiError = "PageSpeed took too long"; return null; })]).then(function (psi) {
           S.psi = psi; S.tech = E.techChecks(S.crawl, S.B, psi, ev);
-          var siteText = S.crawl.pages.map(function (p) { return (p.title || "") + " " + (p.h1 || []).join(" ") + " " + ((p.headings || {}).h2 || []).join(" ") + " " + (p.metaDescription || ""); }).join(" ");
+          var siteText = S.blocked ? (S.B.snippetText || "") : S.crawl.pages.map(function (p) { return (p.title || "") + " " + (p.h1 || []).join(" ") + " " + ((p.headings || {}).h2 || []).join(" ") + " " + (p.metaDescription || ""); }).join(" ");
           var volP = P.seo && S.serpA ? callJ("seo", { jobId: jobId, keywords: S.serpA.filter(function (s) { return s.kind !== "brand" && s.kind !== "voice"; }).map(function (s) { return s.q; }), location: input.country || "India" }).then(function (j) { return j.ok ? j.items : null; }, function () { return null; }) : Promise.resolve(null);
           return volP.then(function (vol) { S.volumes = vol; S.kw = S.serpA ? E.keywordOpps(S.serpA, siteText, vol) : []; });
         });
@@ -214,10 +233,11 @@
         if (brand && brand.ourPos !== 1) extra.push({ key: "S_brand", detail: brand.ourPos ? "Your site is #" + brand.ourPos + " for your own name." : "Your site is not in the top 10 for your own name.", evidence: brand.evidence, label: "OBSERVED" });
         var lst = S.presence ? Object.keys(S.presence.listings).length : null;
         if (S.presence && S.presence.searched && B.local && lst < 2) extra.push({ key: "D_listings", detail: "Only " + lst + " listing platform(s) showed your business in search.", evidence: brand ? brand.evidence : [], label: "INFERRED" });
-        if (!Object.keys(B.socials).length) extra.push({ key: "D_social", detail: "No social profile links found on the site.", evidence: [], label: "OBSERVED" });
+        if (S.blocked) extra.push({ key: "W_blocked", detail: "Every request from FODO's reader got " + S.blocked.error + ". Search engines and AI assistants may be turned away the same way.", evidence: [ev.add({ type: "technical", claim: "The website refused FODO's reader", pageUrl: S.blocked.finalUrl, evidenceText: S.blocked.error + " (tried with FODO's own agent and a standard “compatible” agent" + ", with and without www)", label: "OBSERVED" })], label: "INFERRED" });
+        if (!S.blocked && !Object.keys(B.socials).length) extra.push({ key: "D_social", detail: "No social profile links found on the site.", evidence: [], label: "OBSERVED" });
         var hi = (S.kw || []).filter(function (k) { return k.opportunity === "High"; });
         if (hi.length) extra.push({ key: "K_gap", detail: hi.length + " high-opportunity search(es): " + hi.slice(0, 3).map(function (k) { return "“" + k.keyword + "”"; }).join(", ") + ".", evidence: [].concat.apply([], hi.slice(0, 3).map(function (k) { return k.evidence || []; })), label: "INFERRED" });
-        S.compMetrics = S.comps && S.comps.length ? E.competitiveMetrics(S.T, S.comps.map(function (c) { return c.profile; })) : [];
+        S.compMetrics = S.T && S.comps && S.comps.length ? E.competitiveMetrics(S.T, S.comps.map(function (c) { return c.profile; })) : [];
         var behind = S.compMetrics.filter(function (m) { return m.you < m.median; });
         if (behind.length >= 3) extra.push({ key: "M_compGap", detail: "Behind the competitor median on: " + behind.map(function (m) { return m.name.split(" — ")[0]; }).join(", ") + ".", evidence: [].concat.apply([], S.comps.map(function (c) { return c.evidence.slice(0, 1); })), label: "OBSERVED" });
         if (S.positioning && S.positioning.sameAsEveryone.length >= 2) extra.push({ key: "M_sameMessage", detail: "Your headline phrases also used by competitors: " + S.positioning.sameAsEveryone.slice(0, 5).map(function (x) { return "“" + x + "”"; }).join(", ") + ".", evidence: B.offer.evidence.concat(S.comps.slice(0, 2).map(function (c) { return c.evidence[0]; })), label: "INFERRED" });
@@ -225,6 +245,8 @@
         if (cmpl && cmpl.count >= 2) extra.push({ key: "V_complaint", detail: "Most common complaint theme in public text: “" + cmpl.theme + "” (" + cmpl.count + " mentions).", evidence: [].concat.apply([], cmpl.quotes.map(function (q) { return q.evidence || []; })).slice(0, 4), label: "INFERRED" });
         S.checks = checks;
         S.scores = E.scores(checks, { searchName: SN, serp: serpA, presence: S.presence, reviewCheck: S.reviewCheck, competitive: S.compMetrics, compCount: (S.comps || []).length });
+        if (S.blocked) ["conversion", "trust", "competitive"].forEach(function (k) { var a = S.scores.areas[k]; if (a && a.score == null) { a.quality = "UNAVAILABLE"; a.note = "Data unavailable — the website's pages could not be read."; } });
+        if (S.blocked) { var wa = S.scores.areas.website; wa.note = "Only Google PageSpeed — the pages themselves could not be read."; if (wa.score != null) wa.quality = "LOW"; }
         S.opps = E.opportunities(checks, extra, ev);
         S.top = E.pickTop(S.opps); S.plan = E.plan(S.opps);
       });
@@ -284,7 +306,7 @@
   }
   function assemble(jobId, S, ev, modules, ms) {
     var dq = {
-      "Business discovery": S.B.industry.label === "OBSERVED" ? "HIGH" : "MEDIUM", "Website crawl": S.crawl.pages.length >= 10 ? "HIGH" : S.crawl.pages.length >= 3 ? "MEDIUM" : "LOW", "Speed (PageSpeed)": S.psi ? "HIGH" : "UNAVAILABLE",
+      "Business discovery": S.B.industry.label === "OBSERVED" ? "HIGH" : "MEDIUM", "Website crawl": S.blocked ? "UNAVAILABLE" : S.crawl.pages.length >= 10 ? "HIGH" : S.crawl.pages.length >= 3 ? "MEDIUM" : "LOW", "Speed (PageSpeed)": S.psi ? "HIGH" : "UNAVAILABLE",
       "Market research": (S.serps || []).some(function (s) { return s.res; }) ? "MEDIUM" : "UNAVAILABLE", "Competitors": (S.comps || []).length >= 3 ? "MEDIUM" : (S.comps || []).length ? "LOW" : "UNAVAILABLE", "Customer voice": S.voice ? S.voice.quality : "UNAVAILABLE",
       "Search demand (volumes)": S.volumes ? "MEDIUM" : "UNAVAILABLE", "Digital presence": S.presence && S.presence.searched ? "MEDIUM" : "LOW", "AI visibility (sampled)": S.vis ? "LOW" : "UNAVAILABLE", "Competitor traffic": "UNAVAILABLE",
     };
@@ -294,7 +316,7 @@
     return {
       version: "xray-1", jobId: jobId, createdAt: new Date().toISOString(), durationMs: ms, input: S.input, providers: S.providers,
       business: S.B, scores: S.scores, checks: S.checks, opportunities: S.opps, top: { immediate: S.top.immediate.map(function (o) { return o.id; }), growth: S.top.growth.map(function (o) { return o.id; }), strategic: S.top.strategic.map(function (o) { return o.id; }) }, plan: S.plan,
-      crawl: { pages: c.pages.length, list: E.compact(c), robotsFound: c.robotsFound, sitemapFound: c.sitemapFound, sitemapUrls: c.sitemapUrls.length, skippedRobots: c.skippedRobots.length, errors: c.errors.length, limitsHit: c.limitsHit, durationMs: c.durationMs, broken: c.broken.slice(0, 30) },
+      crawl: { blocked: c.blocked || null, pages: c.blocked ? 0 : c.pages.length, list: E.compact(c), robotsFound: c.robotsFound, sitemapFound: c.sitemapFound, sitemapUrls: c.sitemapUrls.length, skippedRobots: c.skippedRobots.length, errors: c.errors.length, limitsHit: c.limitsHit, durationMs: c.durationMs, broken: c.broken.slice(0, 30) },
       psi: S.psi, psiError: S.psiError || "", serps: (S.serpA || []).map(function (s) { return { q: s.q, kind: s.kind, intent: s.intent, ok: s.ok, ourPos: s.ourPos, competitors: s.competitors.slice(0, 5), directories: s.directories.slice(0, 5), evidence: s.evidence }; }),
       keywords: S.kw || [], volumes: !!S.volumes, competitors: (S.comps || []).map(function (x) { var p = x.profile; return { name: x.name, domain: x.domain, url: x.url, source: x.source, reason: x.reason, confidence: x.confidence, score: x.score, overlaps: { search: x.overlaps.searchOverlap, service: x.overlaps.serviceOverlap, geo: x.overlaps.geoOverlap, positioning: x.overlaps.positioningSimilarity }, insights: x.insights, evidence: x.evidence,
         profile: { headline: p.headline, title: p.title, meta: p.meta, ctas: p.ctas, pricing: p.pricing, pricingSamples: p.pricingSamples, testimonials: p.testimonials, faq: p.faq, trust: p.trust, schema: p.schema, blog: p.blog, socials: p.socials, offerScore: p.offerScore, whatsapp: p.whatsapp } }; }),
@@ -327,6 +349,7 @@
     h += '<div class="xr-hero panel hud"><div><p class="eyebrow">YOUR BUSINESS X-RAY</p><h2 class="xr-name">' + esc(B.name.value) + '</h2><p class="muted">' + esc(r.input.url) + " · " + esc(new Date(r.createdAt).toLocaleString()) + " · " + r.crawl.pages + " pages read</p>" +
       '<div class="btn-row xr-acts"><button type="button" class="btn sm" data-x="pdf">Download PDF</button><button type="button" class="btn sm ghost" data-x="xlsx">Excel</button><button type="button" class="btn sm ghost" data-x="csv">Findings CSV</button><button type="button" class="btn sm ghost" data-x="plan">Action plan CSV</button><button type="button" class="btn sm ghost" data-x="share">Copy share link</button><button type="button" class="btn sm ghost" data-x="json">JSON</button></div></div>' +
       '<div class="xr-ring ' + tone(sc.overall) + '" style="--v:' + (sc.overall || 0) + '"><b>' + (sc.overall == null ? "—" : sc.overall) + '</b><small>/100</small></div><div class="xr-ring-l"><b>Overall Growth Health</b><span>' + esc(sc.status) + '</span><small class="muted">Based on ' + sc.basedOn + " of " + sc.of + " areas with data</small></div></div>";
+    if (r.crawl.blocked) h += '<div class="panel xr-limited" role="note"><span class="tag">LIMITED X-RAY</span><p><b>' + esc(r.business.domain) + " did not let FODO read its pages</b> (" + esc(r.crawl.blocked.error) + ") — many large sites block automated readers. This report uses what Google Search and Google PageSpeed show about the site, plus real competitors and public customer text. Page-level checks (titles, CTAs, forms, trust signals) are <b>Data unavailable</b>, not guessed.</p></div>";
     h += '<div class="grid g3 xr-big"><div class="panel"><span class="tag">BIGGEST PROBLEM</span>' + (first ? "<h3>" + esc(first.title) + '</h3><p class="muted">' + esc(first.description) + "</p>" + evBtn(first.evidence) : "<p>No major problem found.</p>") + '</div><div class="panel"><span class="tag hot">BIGGEST OPPORTUNITY</span>' + (growth ? "<h3>" + esc(growth.title) + '</h3><p class="muted">' + esc(growth.recommendation) + "</p>" + evBtn(growth.evidence) : "<p>—</p>") + '</div><div class="panel"><span class="tag">TOP 5 ACTIONS</span><ol class="xr-top5">' + top5.map(function (o) { return "<li><b>" + esc(o.title) + "</b><br><span class=\"muted\">" + esc(o.recommendation) + "</span></li>"; }).join("") + "</ol></div></div>";
     // 1 executive summary
     h += secH(1, "Executive Summary") + '<p class="lead">' + esc(syn.executiveSummary) + '</p><p class="mono muted">Written by: ' + esc(r.synthesisBy) + (r.synthesisDropped.length ? " · " + r.synthesisDropped.length + " AI statement(s) removed because they had no evidence" : "") + "</p>" +
@@ -343,7 +366,7 @@
     // 5 biggest problem
     h += secH(5, "Biggest Problem") + (first ? '<ul class="xr-opps">' + oppCard(first) + "</ul>" : "<p>None found.</p>") + "</section>";
     // 6 website
-    h += secH(6, "Website X-Ray", r.dataQuality["Website crawl"]) + '<p class="muted">' + r.crawl.pages + " pages read in " + (r.crawl.durationMs / 1000).toFixed(0) + " s · robots.txt " + (r.crawl.robotsFound ? "found" : "not found") + " · sitemap " + (r.crawl.sitemapFound ? "found (" + r.crawl.sitemapUrls + " URLs)" : "not found") + (r.crawl.skippedRobots ? " · " + r.crawl.skippedRobots + " URL(s) skipped because robots.txt disallows them" : "") + (r.crawl.limitsHit.length ? " · limit reached: " + r.crawl.limitsHit.join(", ") : "") + "</p>" +
+    h += secH(6, "Website X-Ray", r.dataQuality["Website crawl"]) + (r.crawl.blocked ? '<p class="muted">Pages: Data unavailable — the site answered ' + esc(r.crawl.blocked.error) + ".</p>" : "") + '<p class="muted"' + (r.crawl.blocked ? " hidden" : "") + ">" + r.crawl.pages + " pages read in " + (r.crawl.durationMs / 1000).toFixed(0) + " s · robots.txt " + (r.crawl.robotsFound ? "found" : "not found") + " · sitemap " + (r.crawl.sitemapFound ? "found (" + r.crawl.sitemapUrls + " URLs)" : "not found") + (r.crawl.skippedRobots ? " · " + r.crawl.skippedRobots + " URL(s) skipped because robots.txt disallows them" : "") + (r.crawl.limitsHit.length ? " · limit reached: " + r.crawl.limitsHit.join(", ") : "") + "</p>" +
       (r.psi ? psiBlock(r.psi) : '<p class="muted">Speed: ' + esc(r.psiError || "not measured") + ".</p>") + checksTable(r.checks.filter(function (c) { return c.area === "website"; })) + '<details class="xr-more"><summary>Every page read (' + r.crawl.list.length + ")</summary>" + pagesTable(r.crawl.list) + "</details></section>";
     // 7 SEO / search
     h += secH(7, "SEO / Search X-Ray", A.search.quality) + (r.keywords.length ? '<p class="muted">' + (r.volumes ? "Search volumes from DataForSEO (ESTIMATED by Google Ads data)." : "Search volume: Data unavailable (no SEO data provider). Opportunity labels are based on intent, relevance to your pages and whether competitors appear where you don't.") + "</p>" + kwTable(r.keywords) : '<p class="muted">' + esc(A.search.note) + "</p>") + "</section>";
@@ -353,7 +376,7 @@
     h += secH(9, "Customer Voice", r.dataQuality["Customer voice"]) + (r.voice ? voiceBlock(r.voice) : '<p class="muted">' + esc((r.modules.CUSTOMER_RESEARCH || {}).note || "Data unavailable.") + "</p>") + "</section>";
     // 10 offer & positioning
     var O = B.offer;
-    h += secH(10, "Offer & Positioning") + '<p>Offer Strength Score <b>' + O.score + "</b>/100 " + lbl("INFERRED") + ' — does the homepage say <i>who</i> it is for, the <i>problem</i>, the <i>outcome</i> and <i>why you</i>?</p><blockquote class="xr-q">' + esc(O.hero || "(no headline found)") + "</blockquote>" +
+    h += secH(10, "Offer & Positioning") + (O.score == null ? '<p class="muted">Offer Strength Score: Data unavailable — the homepage could not be read.</p>' : "") + '<p' + (O.score == null ? ' hidden' : "") + '>Offer Strength Score <b>' + O.score + "</b>/100 " + lbl("INFERRED") + ' — does the homepage say <i>who</i> it is for, the <i>problem</i>, the <i>outcome</i> and <i>why you</i>?</p><blockquote class="xr-q">' + esc(O.hero || "(no headline found)") + "</blockquote>" +
       '<ul class="xr-parts">' + ["audience", "problem", "outcome", "differentiation"].map(function (k) { var p = O.parts[k]; return '<li class="' + (p.found ? "ok" : "no") + '"><b>' + k + "</b> " + (p.found ? "“" + esc(p.match) + "”" : "not stated") + "</li>"; }).join("") + "</ul>" + evBtn(O.evidence) +
       (r.positioning ? "<h3>Where you sound like everyone else</h3>" + (r.positioning.sameAsEveryone.length ? "<p>" + r.positioning.sameAsEveryone.map(function (x) { return '<span class="chip">' + esc(x) + "</span>"; }).join(" ") + "</p>" : '<p class="muted">No headline phrases shared with most competitors.</p>') +
         "<h3>White space — claims no competitor makes</h3>" + (r.positioning.whiteSpace.length ? "<ul>" + r.positioning.whiteSpace.map(function (w) { return "<li><b>" + esc(w.claim) + "</b> — " + (w.youHave ? "you already make it: lead with it." : "nobody owns it yet: an opening if it is true for you.") + "</li>"; }).join("") + "</ul>" : '<p class="muted">Competitors cover all the common claims we check.</p>') + '<p class="muted">' + lbl("INFERRED") + " Compared with the " + r.competitors.length + " competitor(s) above.</p>" : '<p class="muted">Positioning comparison needs confirmed competitors.</p>') + "</section>";

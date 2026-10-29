@@ -16,6 +16,7 @@
 import { json, log, safeUrl, safeFetch, regDomain, retrying, cacheGet, cachePut, jobCreate, jobGet, jobUpdate, reportPut, reportGet, rowsPut,
   hashIp, counter, memCount, providers, rid, UA, STAGES, ROW_TABLES, outbound, normSearch } from "../../_lib/xray-core.js";
 
+const UA_COMPAT = "Mozilla/5.0 (compatible; FODO-BusinessXRay/1.0; +https://www.fodo.co.in/business-x-ray/)";
 const LIMITS = { MAX_PAGES: 50, MAX_DEPTH: 3, REQUEST_TIMEOUT: 15000, MAX_TOTAL_RUNTIME: 180000, MAX_QUERIES: 14, MAX_COMPETITORS: 5, MAX_FETCHES: 140 };
 const TEXTY = /^(text\/html|application\/xhtml\+xml|text\/plain|application\/xml|text\/xml|application\/rss\+xml|application\/atom\+xml)/i;
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
@@ -77,10 +78,18 @@ async function fetchPage(env, job, b, t0) {
   if (dom !== job.domain && (job.allow || []).indexOf(dom) < 0) return json({ ok: false, reason: "This X-Ray can only read the business's own site and its chosen competitors." }, 403);
   if (memCount(job.id + ":f", LIMITS.MAX_FETCHES)) return json({ ok: false, reason: "Page limit for this X-Ray reached." }, 429);
   try {
-    const { r, finalUrl, hops } = await safeFetch(u.url, { headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5", "accept-language": "en-IN,en;q=0.9" } }, { timeout: LIMITS.REQUEST_TIMEOUT, env });
+    const H = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5", "accept-language": "en-IN,en;q=0.9" };
+    let { r, finalUrl, hops } = await safeFetch(u.url, { headers: H }, { timeout: LIMITS.REQUEST_TIMEOUT, env }), retriedAs = "";
+    // bot protection often turns away unknown agents (403 / 429 / 503 / Cloudflare 52x). Try once more with a standard
+    // "compatible" agent string (still names FODO and links to this tool — like search-engine crawlers do).
+    if ([403, 406, 429, 503, 520, 521, 522, 523, 524, 525, 526, 530].indexOf(r.status) > -1) {
+      try { r.body && r.body.cancel(); } catch (e) {}
+      const r2 = await safeFetch(u.url, { headers: Object.assign({}, H, { "user-agent": UA_COMPAT, "upgrade-insecure-requests": "1" }) }, { timeout: LIMITS.REQUEST_TIMEOUT, env });
+      retriedAs = "compatible:" + r.status; ({ r, finalUrl, hops } = r2);
+    }
     const ct = r.headers.get("content-type") || "", len = +r.headers.get("content-length") || 0;
     const pick = {}; ["content-type", "content-length", "cache-control", "x-robots-tag", "server", "strict-transport-security", "content-security-policy", "x-frame-options", "last-modified", "content-language", "link"].forEach((k) => { const v = r.headers.get(k); if (v) pick[k] = v.slice(0, 300); });
-    const meta = { status: r.status, finalUrl, redirects: hops, headers: pick, ms: Date.now() - t0, contentType: ct };
+    const meta = { status: r.status, finalUrl, redirects: hops, headers: pick, ms: Date.now() - t0, contentType: ct, retriedAs };
     log({ job: job.id, route: "fetch", provider: "site", ok: r.ok, status: r.status, ms: meta.ms });
     if (!TEXTY.test(ct) || len > 4e6) { try { r.body && r.body.cancel(); } catch (e) {} return new Response("", { status: 200, headers: { "x-xray-meta": encodeURIComponent(JSON.stringify(Object.assign(meta, { skipped: !TEXTY.test(ct) ? "not a web page" : "too large" }))), "cache-control": "no-store" } }); }
     return new Response(r.body, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "x-xray-meta": encodeURIComponent(JSON.stringify(meta)), "cache-control": "no-store", "x-content-type-options": "nosniff" } });

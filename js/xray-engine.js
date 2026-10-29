@@ -384,6 +384,40 @@
     return B;
   };
 
+  /* ======================= limited mode: the site turns away automated readers ======================= */
+  E.emptyCrawl = function (start, blocked) {
+    return { start: start, pages: [{ url: start, finalUrl: blocked.finalUrl || start, status: blocked.status || 0, error: "blocked — " + (blocked.error || "HTTP " + blocked.status), depth: 0, redirects: [] }], robots: null, robotsFound: false, robotsStatus: 0,
+      sitemapFound: false, sitemapUrls: [], sitemapSource: "", skippedRobots: [], skippedExternal: 0, skippedNonHtml: [], errors: [{ url: start, error: blocked.error || "HTTP " + blocked.status }], limitsHit: [], durationMs: 0, linkStatus: {}, duplicates: [], inbound: {}, broken: [], blocked: blocked };
+  };
+  /* what Google shows about the site → a business record with the same shape as E.discover (most fields UNKNOWN) */
+  E.discoverFromSearch = function (input, domain, res, ev) {
+    input = input || {};
+    var web = (res && res.web) || [], own = web.filter(function (r) { return r.domain === domain; }), first = own[0], stem = domain.split(".")[0];
+    var f = function (v, label, evid, extra) { return Object.assign({ value: v, label: v == null || v === "" || (Array.isArray(v) && !v.length) ? "UNKNOWN" : label, evidence: evid || [] }, extra || {}); };
+    var snip = own.map(function (r) { return r.title + ". " + r.description + " " + (r.extra || []).join(". "); }).join(" ");
+    var sid = first ? [ev.add({ type: "business", claim: "How " + (res.providerName || "search") + " shows " + domain, sourceUrl: res.searchUrl, sourceName: res.providerName || "Search", pageUrl: first.url, evidenceText: own.slice(0, 3).map(function (r) { return r.title + " — " + r.description; }).join(" | "), label: "OBSERVED" })] : [];
+    var tname = first ? norm(first.title.split(/\s[|–—\-:•·]\s|:\s/)[0]) : "";
+    var name = input.name || (tname && tname.length <= 40 ? tname : "") || stem.charAt(0).toUpperCase() + stem.slice(1);
+    var B = {};
+    B.name = f(name, input.name ? "OBSERVED" : "INFERRED", input.name ? [ev.add({ type: "business", claim: "Business name given by you", sourceName: "Your input", evidenceText: input.name })] : sid);
+    B.description = f(first ? first.description : "", "OBSERVED", sid);
+    var ranked = INDUSTRIES.map(function (ind) { var m = snip.match(ind.re) || []; ind.re.lastIndex = 0; return { ind: ind, s: m.length, hits: uniq(m.map(low)).slice(0, 6) }; }).sort(function (a, b) { return b.s - a.s; });
+    if (input.industry) B.industry = f(input.industry, "OBSERVED", [ev.add({ type: "business", claim: "Industry given by you: " + input.industry, sourceName: "Your input", evidenceText: input.industry })], { id: (INDUSTRIES.filter(function (i) { var r = i.re.test(input.industry); i.re.lastIndex = 0; return r; })[0] || {}).id || "" });
+    else if (ranked[0] && ranked[0].s >= 1) B.industry = f(ranked[0].ind.label, "INFERRED", [ev.add({ type: "business", claim: "Industry inferred from search snippets: " + ranked[0].ind.label, sourceUrl: res.searchUrl, sourceName: res.providerName || "Search", evidenceText: "Words: " + ranked[0].hits.join(", "), label: "INFERRED" })], { id: ranked[0].ind.id });
+    else B.industry = f("", "UNKNOWN", [], { id: "" });
+    var cities = CITIES.filter(function (c) { return new RegExp("\\b" + c.replace(/ /g, "\\s") + "\\b", "i").test(snip); });
+    var locs = uniq([input.city].concat(cities)).filter(Boolean).slice(0, 6);
+    B.locations = f(locs, input.city ? "OBSERVED" : "INFERRED", locs.length ? sid : []); B.city = input.city || cities[0] || "";
+    B.services = f([], "UNKNOWN"); B.products = f([], "UNKNOWN"); B.pricing = f([], "UNKNOWN", [], { pages: [] }); B.usp = f([], "UNKNOWN");
+    B.audience = input.audience ? f(input.audience, "OBSERVED", []) : f("", "UNKNOWN");
+    B.model = f("", "UNKNOWN"); B.valueProp = f(first ? first.title : "", "OBSERVED", sid);
+    B.contacts = { phones: [], emails: [], whatsapp: [], address: "", evidence: [] }; B.socials = {}; B.schemaTypes = []; B.schemaChecks = [];
+    var none = { found: false, match: "", text: "" };
+    B.offer = { score: null, parts: { audience: none, problem: none, outcome: none, differentiation: none }, headline: "", hero: "", genericH1: false, evidence: [], label: "UNKNOWN" };
+    B.home = "https://" + domain + "/"; B.domain = domain; B.local = !!input.city || !!(INDUSTRIES.filter(function (i) { return i.id === B.industry.id; })[0] || {}).local; B.fromSearch = true; B.snippetText = snip;
+    return B;
+  };
+
   /* ======================= checks ======================= */
   // a check: { id, area, group, name, status: pass|warn|fail|na, score 0-100, weight, detail, evidence[], pages[], label }
   function chk(o) { return Object.assign({ status: "na", score: null, weight: 1, detail: "", evidence: [], pages: [], label: "OBSERVED" }, o); }
@@ -400,11 +434,21 @@
       field: m.LARGEST_CONTENTFUL_PAINT_MS ? { lcpMs: m.LARGEST_CONTENTFUL_PAINT_MS.percentile, lcpCat: m.LARGEST_CONTENTFUL_PAINT_MS.category, cls: m.CUMULATIVE_LAYOUT_SHIFT_SCORE ? m.CUMULATIVE_LAYOUT_SHIFT_SCORE.percentile / 100 : null, inpMs: m.INTERACTION_TO_NEXT_PAINT ? m.INTERACTION_TO_NEXT_PAINT.percentile : null, overall: le.overall_category } : null,
       screenshot: shot || "", fails: fails, fetchedAt: L.fetchTime };
   };
+  function psiChecks(psi, homeUrl, ev, add) {
+    if (psi) {
+      var pid = ev.add({ type: "performance", claim: "Google PageSpeed Insights (" + psi.strategy + ") for the homepage", sourceUrl: "https://pagespeed.web.dev/analysis?url=" + encodeURIComponent(psi.url || homeUrl), sourceName: "Google PageSpeed Insights", pageUrl: homeUrl, evidenceText: "Performance " + psi.performance + " · SEO " + psi.seo + " · Accessibility " + psi.accessibility + " · Best practices " + psi.bestPractices + (psi.labLcp ? " · LCP " + psi.labLcp : "") + (psi.field ? " · Real-user LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s (" + psi.field.lcpCat + ")" : " · no real-user (CrUX) data"), screenshotUrl: psi.screenshot ? "psi:screenshot" : "" });
+      add({ id: "P_perf", name: "Mobile speed (Lighthouse)", group: "Speed", status: band(psi.performance, 90, 50), score: psi.performance, weight: 3, detail: "Performance score " + psi.performance + "/100 on mobile" + (psi.labLcp ? ", largest content shows at " + psi.labLcp : "") + ".", evidence: [pid] });
+      if (psi.field) add({ id: "P_field", name: "Real-user speed (Chrome UX Report)", group: "Speed", status: psi.field.overall === "FAST" ? "pass" : psi.field.overall === "AVERAGE" ? "warn" : "fail", score: psi.field.overall === "FAST" ? 100 : psi.field.overall === "AVERAGE" ? 60 : 25, weight: 2, detail: "Real visitors: LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s" + (psi.field.inpMs ? ", INP " + psi.field.inpMs + " ms" : "") + (psi.field.cls != null ? ", CLS " + psi.field.cls : "") + " — " + psi.field.overall + ".", evidence: [pid] });
+      if (psi.seo != null) add({ id: "P_seo", name: "Lighthouse SEO", status: band(psi.seo, 90, 70), score: psi.seo, weight: 1, detail: "Lighthouse SEO score " + psi.seo + "/100.", evidence: [pid] });
+      if (psi.accessibility != null) add({ id: "P_a11y", name: "Accessibility (Lighthouse)", group: "Mobile", status: band(psi.accessibility, 90, 70), score: psi.accessibility, weight: 1, detail: "Accessibility score " + psi.accessibility + "/100" + (psi.fails.length ? "; issues include: " + psi.fails.slice(0, 3).map(function (f) { return f.title; }).join("; ") : "") + ".", evidence: [pid] });
+    }
+  }
   E.techChecks = function (crawl, B, psi, ev) {
     var C = [], pages = crawl.pages.filter(function (p) { return !p.error && p.title !== undefined && !(p.status >= 400); }), home = pages.filter(function (p) { return p.depth === 0; })[0] || pages[0], n = pages.length || 1;
     var add = function (o) { C.push(chk(Object.assign({ area: "website", group: "Technical SEO" }, o))); };
     var listPages = function (arr) { return arr.slice(0, 12).map(function (p) { return p.finalUrl || p.url; }); };
     var e = function (claim, txt, url, label) { return [ev.add({ type: "technical", claim: claim, pageUrl: url || (home && home.finalUrl), evidenceText: txt, label: label || "OBSERVED" })]; };
+    if (crawl.blocked) { psiChecks(psi, crawl.start, ev, add); return C; }   // pages could not be read: only Google's own speed test
     if (!home) { add({ id: "T_home", name: "Homepage reachable", status: "fail", score: 0, weight: 5, detail: "The homepage could not be loaded.", evidence: e("Homepage could not be loaded", (crawl.errors[0] || {}).error || "no answer", crawl.start) }); return C; }
     add({ id: "T_home", name: "Homepage loads", status: home.status === 200 ? "pass" : "fail", score: home.status === 200 ? 100 : 0, weight: 3, detail: "HTTP " + home.status + (home.redirects.length ? " after " + home.redirects.length + " redirect(s)" : ""), evidence: e("Homepage HTTP status " + home.status, (home.redirects || []).map(function (r) { return r.status + " " + r.from + " → " + r.to; }).join(" | ") || "no redirects", home.finalUrl) });
     var https = /^https:/.test(home.finalUrl);
@@ -444,13 +488,7 @@
     var mixed = pages.filter(function (p) { return p.mixedContent > 0; });
     if (https) add({ id: "T_mixed", name: "No insecure (http) files on https pages", status: mixed.length ? "warn" : "pass", score: mixed.length ? 50 : 100, weight: 1, group: "Security & trust", detail: mixed.length ? mixed.length + " page(s) load images/scripts over http." : "No mixed content found.", pages: listPages(mixed), evidence: mixed.length ? e("Mixed content", listPages(mixed).slice(0, 3).join(" | ")) : [] });
     add({ id: "T_og", name: "Social sharing tags", status: home.og.title && home.og.image ? "pass" : "warn", score: (home.og.title ? 50 : 0) + (home.og.image ? 50 : 0), weight: 1, group: "Content", detail: home.og.title && home.og.image ? "Open Graph title and image set." : "Missing og:" + (!home.og.title ? "title " : "") + (!home.og.image ? "image" : "") + " — shared links look plain on WhatsApp/LinkedIn.", evidence: e("Open Graph", JSON.stringify(home.og).slice(0, 300)) });
-    if (psi) {
-      var pid = ev.add({ type: "performance", claim: "Google PageSpeed Insights (" + psi.strategy + ") for the homepage", sourceUrl: "https://pagespeed.web.dev/analysis?url=" + encodeURIComponent(psi.url || home.finalUrl), sourceName: "Google PageSpeed Insights", pageUrl: home.finalUrl, evidenceText: "Performance " + psi.performance + " · SEO " + psi.seo + " · Accessibility " + psi.accessibility + " · Best practices " + psi.bestPractices + (psi.labLcp ? " · LCP " + psi.labLcp : "") + (psi.field ? " · Real-user LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s (" + psi.field.lcpCat + ")" : " · no real-user (CrUX) data"), screenshotUrl: psi.screenshot ? "psi:screenshot" : "" });
-      add({ id: "P_perf", name: "Mobile speed (Lighthouse)", group: "Speed", status: band(psi.performance, 90, 50), score: psi.performance, weight: 3, detail: "Performance score " + psi.performance + "/100 on mobile" + (psi.labLcp ? ", largest content shows at " + psi.labLcp : "") + ".", evidence: [pid] });
-      if (psi.field) add({ id: "P_field", name: "Real-user speed (Chrome UX Report)", group: "Speed", status: psi.field.overall === "FAST" ? "pass" : psi.field.overall === "AVERAGE" ? "warn" : "fail", score: psi.field.overall === "FAST" ? 100 : psi.field.overall === "AVERAGE" ? 60 : 25, weight: 2, detail: "Real visitors: LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s" + (psi.field.inpMs ? ", INP " + psi.field.inpMs + " ms" : "") + (psi.field.cls != null ? ", CLS " + psi.field.cls : "") + " — " + psi.field.overall + ".", evidence: [pid] });
-      if (psi.seo != null) add({ id: "P_seo", name: "Lighthouse SEO", status: band(psi.seo, 90, 70), score: psi.seo, weight: 1, detail: "Lighthouse SEO score " + psi.seo + "/100.", evidence: [pid] });
-      if (psi.accessibility != null) add({ id: "P_a11y", name: "Accessibility (Lighthouse)", group: "Mobile", status: band(psi.accessibility, 90, 70), score: psi.accessibility, weight: 1, detail: "Accessibility score " + psi.accessibility + "/100" + (psi.fails.length ? "; issues include: " + psi.fails.slice(0, 3).map(function (f) { return f.title; }).join("; ") : "") + ".", evidence: [pid] });
-    }
+    psiChecks(psi, home.finalUrl, ev, add);
     return C;
   };
 
@@ -819,6 +857,7 @@
     K_gap: ["Competitors appear for commercial searches you don't", "Search", 4, 3, 4, "Build pages that match these searches, starting with the High-opportunity ones.", "seo"],
     M_compGap: ["Competitors are ahead on visible basics", "Competitive", 4, 2, 3, "Close the listed gaps first — they are what buyers compare.", "competitors"],
     M_sameMessage: ["You say the same thing as competitors", "Positioning", 4, 3, 3, "Rewrite the hero around a claim competitors don't make (see white space).", "brand"],
+    W_blocked: ["Your website turns away automated visitors", "Website", 3, 2, 3, "Check your firewall / bot protection: Google, Bing and AI assistants (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot) must be able to read your pages, and real visitors on slow networks should never see an error page. Then run the X-Ray again for the full page checks.", "web"],
     V_complaint: ["Customers' top complaint in your market is unaddressed", "Market", 4, 2, 3, "Address the top complaint on your homepage and in your offer (with proof).", "brand"],
   };
   E.OPP = OPP;

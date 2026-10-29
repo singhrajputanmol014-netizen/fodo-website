@@ -1637,3 +1637,4 @@ html[data-theme=dark]{--xr-ok:#5BD394;--xr-acc:#B9B0FF;--xr-warn:#F2B45A;--xr-mi
 .xr-why,.xr-tool{color:var(--xr-acc)}
 .xr-p.p0{background:#B3261E;color:#fff}.xr-p.p1{background:#F2B45A;color:#111}.xr-p.p2{background:#4C3BCF;color:#fff}
 html:not([data-theme=dark]) .cf-status.ok{color:#0E6B39}
+.xr-limited{margin-top:14px;padding:16px 20px;border-color:color-mix(in srgb,var(--xr-warn) 55%,var(--line-3))}.xr-limited p{margin:8px 0 0}

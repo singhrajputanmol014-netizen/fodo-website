@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { webcrypto as wc, createHmac } from "node:crypto";
 import { onRequest as account } from "../functions/api/account/[[path]].js";
 import { onRequest as xray } from "../functions/api/xray/[[path]].js";
+import { onRequest as admin } from "../functions/api/admin/[[path]].js";
 import { PLANS, limitsFor, publicPlans } from "../functions/_lib/plans.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 
@@ -17,10 +18,10 @@ const kv = () => { const m = new Map(); return { get: async (k, t) => { const v 
 const SITE = "https://www.fodo.co.in";
 let cookie = "";
 const call = async (env, path, body, o = {}) => {
-  const isX = path.indexOf("xray/") === 0, p = isX ? path.slice(5) : path;
+  const isA = path.indexOf("admin/") === 0, isX = path.indexOf("xray/") === 0, p = isX ? path.slice(5) : isA ? path.slice(6) : path;
   const h = Object.assign({ "cf-connecting-ip": o.ip || "7.7.7.7", origin: o.origin || SITE }, body !== undefined ? { "content-type": "application/json" } : {}, o.cookie !== undefined ? (o.cookie ? { cookie: o.cookie } : {}) : cookie ? { cookie } : {}, o.headers || {});
-  const req = new Request(SITE + "/api/" + (isX ? "xray/" : "account/") + p, { method: body !== undefined ? "POST" : "GET", headers: h, body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body) });
-  const r = await (isX ? xray : account)({ request: req, env, params: { path: p.split("?")[0].split("/") } });
+  const req = new Request(SITE + "/api/" + (isX ? "xray/" : isA ? "admin/" : "account/") + p, { method: body !== undefined ? "POST" : "GET", headers: h, body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body) });
+  const r = await (isX ? xray : isA ? admin : account)({ request: req, env, params: { path: p.split("?")[0].split("/") } });
   const sc = r.headers.get("set-cookie"); if (sc && !o.noKeep) cookie = /Max-Age=0/.test(sc) ? "" : sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} return { status: r.status, j, sc };
 };
@@ -194,6 +195,43 @@ D.db.prepare("UPDATE acct_users SET plan='pro', plan_until='2099-01-01T00:00:00Z
 r = await call(aiEnv, "xray/start", { url: "spicehub.test" }, { ip: "5.5.5.8" });
 r = await call(aiEnv, "xray/edge", { jobId: r.j.jobId, kind: "fixPack", pack: { pages: [] } }, { ip: "5.5.5.8" }); ok(r.status === 402 && r.j.upgrade === "agency", "Pro plan: FODO Edge is Agency-only (402)");
 ok(PLANS.agency.features.filter((f) => ["fixPack", "battleCards", "roadmap90", "clientPitch"].indexOf(f) > -1).length === 4 && !PLANS.pro.features.some((f) => /fixPack|battleCards|roadmap90|clientPitch/.test(f)), "the 4 Edge tools exist only on Agency (and owner logins)");
+
+/* ---------- 11. v15 admin dashboard API ---------- */
+const ownerC = (await call(env, "google", { credential: await gToken({ sub: "own2", email: "singhrajputanmol014@gmail.com" }) }, { cookie: "", ip: "6.6.6.1", noKeep: false }), cookie);
+const proC = (await call(env, "google", { credential: await gToken({ sub: "pro9", email: "proguy@gmail.com" }) }, { cookie: "", ip: "6.6.6.2" }), cookie);
+r = await call(env, "admin/overview", undefined, { cookie: proC }); ok(r.status === 403 && r.j.forbidden, "normal user cannot open the admin dashboard");
+r = await call(env, "admin/overview", undefined, { cookie: ownerC });
+ok(r.j.ok && r.j.role === "owner" && r.j.users.total >= 6 && r.j.runs.total >= 5 && r.j.money.revenue >= 1499 && r.j.days.length === 30 && r.j.series.xrays.length === 30 && r.j.features.some((f) => f.kind === "xray_start") && r.j.funnel.signed === r.j.users.total, "owner overview: users " + r.j.users.total + ", X-Rays " + r.j.runs.total + ", revenue ₹" + r.j.money.revenue + ", 30-day series, feature usage, funnel");
+r = await call(env, "admin/users?q=rohit", undefined, { cookie: ownerC }); const rohit = r.j.items[0];
+ok(r.j.items.length === 1 && rohit.email === "rohit@gmail.com" && rohit.runs >= 3 && rohit.paid >= 1499, "user search: rohit@gmail.com with his X-Rays and payments");
+r = await call(env, "admin/user/" + rohit.id, undefined, { cookie: ownerC });
+ok(r.j.ok && r.j.usage.some((x) => x.kind === "xray_start") && r.j.usage.some((x) => x.kind === "login_google") && r.j.runs.length >= 3 && r.j.orders.length >= 2 && r.j.ledger.length, "user detail: feature-use counts, events, X-Rays, orders, credit history");
+r = await call(env, "admin/leads", undefined, { cookie: ownerC }); ok(r.j.ok && Array.isArray(r.j.items), "leads list (ran out of free X-Rays, not paid)");
+// viewer
+r = await call(env, "admin/viewers", { email: "proguy@gmail.com" }, { cookie: ownerC }); ok(r.j.ok, "owner adds a view-only teammate");
+r = await call(env, "admin/overview", undefined, { cookie: proC }); ok(r.j.ok && r.j.role === "viewer", "viewer can see the data");
+const pid = user("proguy@gmail.com").id, sid9 = user("someone@gmail.com").id;
+r = await call(env, "admin/user/" + sid9 + "/block", { blocked: true }, { cookie: proC }); ok(r.status === 403 && r.j.readOnly && !user("someone@gmail.com").blocked, "viewer cannot block anyone");
+r = await call(env, "admin/user/" + sid9 + "/grant", { type: "unlimited", on: true }, { cookie: proC }); ok(r.status === 403 && !user("someone@gmail.com").unlimited, "viewer cannot give features");
+// grants by owner
+r = await call(env, "admin/user/" + sid9 + "/grant", { type: "features", features: ["techStack", "fixPack", "nonsense"] }, { cookie: ownerC });
+ok(r.j.ok && r.j.features.join() === "techStack,fixPack", "owner gives single features free (unknown ones ignored)");
+const smC = (await call(env, "google", { credential: await gToken({ sub: "x9", email: "someone@gmail.com" }) }, { cookie: "", ip: "6.6.6.3" }), cookie);
+r = await call(env, "me", undefined, { cookie: smC }); ok(r.j.user.limits.features.indexOf("techStack") > -1 && r.j.user.limits.features.indexOf("fixPack") > -1 && r.j.user.plan === "free", "the user now has those features on the free plan");
+r = await call(env, "admin/user/" + sid9 + "/grant", { type: "credits", n: 5 }, { cookie: ownerC }); ok(r.j.ok && user("someone@gmail.com").pack_left === 5, "owner gives 5 X-Rays free");
+r = await call(env, "admin/user/" + sid9 + "/grant", { type: "plan", plan: "pro", days: 10 }, { cookie: ownerC }); const su = user("someone@gmail.com");
+ok(r.j.ok && su.plan === "pro" && su.monthly_left === 80 && Date.parse(su.plan_until) - Date.now() > 9 * 864e5 && Date.parse(su.plan_until) - Date.now() < 11 * 864e5, "owner gives Pro free for 10 days");
+r = await call(env, "admin/user/" + sid9 + "/grant", { type: "unlimited", on: true }, { cookie: ownerC });
+r = await call(env, "xray/start", { url: "spicehub.test" }, { cookie: smC, ip: "6.6.6.3" }); ok(r.j.ok && r.j.credit === "gift" && r.j.tier === "pro" && user("someone@gmail.com").monthly_left === 80 && r.j.limits.features.indexOf("fixPack") > -1, "unlimited user: X-Ray at Pro level, nothing spent, given features included");
+r = await call(env, "admin/user/" + sid9 + "/block", { blocked: true, note: "spam" }, { cookie: ownerC }); ok(r.j.ok && user("someone@gmail.com").blocked === 1, "owner blocks a user");
+r = await call(env, "me", undefined, { cookie: smC }); ok(r.j.user === null, "blocked user is logged out at once");
+r = await call(env, "google", { credential: await gToken({ sub: "x9", email: "someone@gmail.com" }) }, { cookie: "", ip: "6.6.6.3" }); ok(r.status === 403 && r.j.blocked, "blocked user cannot log in again");
+r = await call(env, "admin/user/" + user("anmol@fodo.co.in").id + "/block", { blocked: true }, { cookie: ownerC }); ok(r.status === 409, "owner logins cannot be blocked");
+r = await call(env, "admin/user/" + sid9 + "/block", { blocked: false }, { cookie: ownerC }); ok(!user("someone@gmail.com").blocked, "unblock");
+r = await call(env, "admin/user/" + sid9, undefined, { cookie: ownerC }); ok(r.j.events.some((e) => e.kind === "admin_grant") && r.j.events.some((e) => e.kind === "admin_block") && r.j.events.some((e) => e.kind === "blocked_try"), "every admin action is in the user's history");
+r = await call(env, "event", { kind: "export_pdf", detail: "spicehub.test" }, { cookie: ownerC }); ok(r.j.ok, "page reports a PDF download");
+r = await call(env, "event", { kind: "paid" }, { cookie: ownerC }); ok(r.status === 400, "the page cannot fake payment or login events");
+r = await call(env, "admin/viewers", { email: "proguy@gmail.com", remove: true }, { cookie: ownerC }); r = await call(env, "admin/overview", undefined, { cookie: proC }); ok(r.status === 403, "removed viewer loses access");
 
 function activeOf(email) { const u = user(email); return u.plan && u.plan !== "free" && Date.parse(u.plan_until) > Date.now() ? u.plan : "free"; }
 console.log(`\naccounts: ${pass}/${pass + fail} passed`); process.exit(fail ? 1 : 0);

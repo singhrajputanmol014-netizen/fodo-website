@@ -496,6 +496,8 @@
     var el = $("xr-report"); el.innerHTML = h; el.hidden = false;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  /* v15: tell the account which features were used in the browser (admin dashboard); silent, best effort */
+  var ping = function (kind, detail) { try { if (ACC && ACC.current()) ACC.api("event", { kind: kind, detail: detail || "" }); } catch (e) {} };
   /* ---------- v14 blocks ---------- */
   var copyBtn = function (id, label) { return '<button type="button" class="btn sm ghost xr-copy" data-copy="' + id + '">' + esc(label || "Copy") + "</button>"; };
   var edgeTag = '<span class="tag hot">FODO EDGE</span>';
@@ -547,7 +549,7 @@
     var c = e.clientPitch; if (c) h += '<div class="panel xr-edge-p"><h3>Client pitch — ready to send</h3>' + (c.error ? err(c) : '<p><b>Subject:</b> ' + esc(c.subject) + '</p><pre class="xr-code xr-mail" id="xr-pitch">' + esc("Subject: " + c.subject + "\n\n" + c.email) + "</pre>" + copyBtn("xr-pitch", "Copy email") + (c.proposal.length ? "<h4>Proposal outline</h4><ol>" + c.proposal.map(function (p) { return "<li><b>" + esc(p.phase) + "</b> — " + esc(p.what) + (p.outcome ? ' <span class="muted">→ ' + esc(p.outcome) + "</span>" : "") + "</li>"; }).join("") + "</ol>" : "")) + "</div>";
     return h + "</section>";
   }
-  document.addEventListener("click", function (e) { var b = e.target.closest(".xr-copy"); if (!b) return; var el = $(b.dataset.copy); if (!el) return; var t = el.textContent, done = function () { var o = b.textContent; b.textContent = "Copied ✓"; setTimeout(function () { b.textContent = o; }, 1800); };
+  document.addEventListener("click", function (e) { var b = e.target.closest(".xr-copy"); if (!b) return; var el = $(b.dataset.copy); if (!el) return; ping(b.dataset.copy === "xr-pitch" ? "copy_pitch" : "copy_schema", report && report.business.domain); var t = el.textContent, done = function () { var o = b.textContent; b.textContent = "Copied ✓"; setTimeout(function () { b.textContent = o; }, 1800); };
     if (X && X.copyText) X.copyText(t, "Copy").then(function (h) { if (h === "copied") done(); }); else if (navigator.clipboard) navigator.clipboard.writeText(t).then(done); });
   function synList(t, arr) { return arr && arr.length ? "<h3>" + t + "</h3><ul>" + arr.map(function (x) { return "<li>" + esc(x.text) + " " + evBtn(x.evidence, "Evidence") + "</li>"; }).join("") + "</ul>" : ""; }
   function checksTable(cs) { return '<table class="xr-t xr-checks"><thead><tr><th>Check</th><th>Result</th><th>Score</th><th>Why</th></tr></thead><tbody>' + cs.map(function (c) { return '<tr class="' + c.status + '"><td>' + esc(c.name) + "<br><small class=\"muted\">" + esc(c.group) + "</small></td><td><span class=\"xr-st " + c.status + "\">" + ({ pass: "Pass", warn: "Warning", fail: "Fail", na: "n/a" }[c.status]) + "</span> " + lbl(c.label) + "</td><td>" + (c.score == null ? "—" : c.score) + "</td><td>" + esc(c.detail) + " " + evBtn(c.evidence, "Evidence") + "</td></tr>"; }).join("") + "</tbody></table>"; }
@@ -622,7 +624,7 @@
       ].filter(Boolean), { title: "FODO Business X-Ray" }), fname("xlsx"), { kind: "Excel" });
     }
     if (k === "share") { var u = location.origin + ROOT + "business-x-ray/?r=" + report.jobId; (X.copyText ? X.copyText(u, "Copy the share link") : navigator.clipboard.writeText(u)).then(function (h) { if (h === "copied") { var o = b.textContent; b.textContent = "Link copied ✓"; setTimeout(function () { b.textContent = o; }, 2000); } }); }
-    track("xray_export", { kind: k });
+    track("xray_export", { kind: k }); ping(k === "share" ? "share" : "export_" + k, report.business.domain);
   });
   /* v13 white-label (Agency): the PDF carries the agency's name, colour and logo instead of FODO's */
   function whiteLabel() {

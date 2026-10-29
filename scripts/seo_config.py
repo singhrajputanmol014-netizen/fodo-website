@@ -106,4 +106,4 @@ ARTICLE_SERVICE = {"Growth": "cro", "Paid Media": "paid-advertising", "SEO": "se
                    "Brand": "brand-strategy", "Content": "content-marketing", "AI": "marketing-automation"}
 ARTICLE_UPDATED = "2026-10-28"   # date the articles were last reviewed (shown as dateModified)
 
-NOINDEX = {"/thank-you/", "/404.html", "/account/"}
+NOINDEX = {"/thank-you/", "/404.html", "/account/", "/admin/"}

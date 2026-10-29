@@ -12,7 +12,7 @@
  *   GET/POST team (Agency) · GET/POST clients (Agency) · POST brand (Agency white-label)
  *   POST webhook/cashfree       → signed Cashfree webhooks (payments + subscriptions)
  */
-import { isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
+import { logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
   verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, grantPlan, randId, nowIso, refundCredit } from "../../_lib/accounts.js";
 import { PLANS, PACKS, rank, has, publicPlans } from "../../_lib/plans.js";
 import { log, providers } from "../../_lib/xray-core.js";
@@ -43,7 +43,10 @@ export async function onRequest(ctx) {
     if (path === "profile" && m === "POST") return await profile(env, u, body);
     if (path === "history" && m === "GET") return await history(env, u, b, new URL(request.url).searchParams);
     if (path === "ledger" && m === "GET") { const r = await (await db(env)).prepare("SELECT kind, delta, note, created_at FROM acct_ledger WHERE user_id=?1 ORDER BY id DESC LIMIT 100").bind(b.id).all(); return json({ ok: true, items: r.results || [] }); }
-    if (path === "checkout" && m === "POST") return await checkout(request, env, u, b, body);
+    if (path === "checkout" && m === "POST") { const r = await checkout(request, env, u, b, body); if (r.status === 200) await logEvent(env, u.id, "checkout", (body.kind || "") + ":" + (body.item || "")); return r; }
+    // v15: the page reports feature use that happens in the browser (downloads, copies) — only known kinds, rate-limited
+    if (path === "event" && m === "POST") { const k = String(body.kind || ""); if (EVENT_KINDS.indexOf(k) < 0 || /^(login|paid|admin|xray_|checkout|blocked|limit)/.test(k)) return json({ ok: false }, 400);
+      if (await count(env, "ev:" + u.id + ":" + Math.floor(Date.now() / 3600e3), 300, 3700)) return json({ ok: false }, 429); await logEvent(env, u.id, k, clean(body.detail, 200)); return json({ ok: true }); }
     if (path === "verify" && m === "POST") return await verify(env, b, body);
     if (path === "cancel" && m === "POST") return await cancel(env, b);
     if (path === "team") return await team(env, u, b, m, body);
@@ -64,7 +67,9 @@ function config(env) {
 }
 
 /* ---------------- login ---------------- */
-async function signIn(env, request, u) { const cookie = await newSession(env, request, u.id); return json({ ok: true, user: publicUser(u, await billingUser(env, u)) }, 200, { "set-cookie": cookie }); }
+async function signIn(env, request, u, how) {
+  if (u.blocked && !isOwner(u)) { await logEvent(env, u.id, "blocked_try", how || ""); return json({ ok: false, blocked: true, reason: "This account has been blocked. Contact anmol@fodo.co.in if you think this is a mistake." }, 403); }
+  if (how) await logEvent(env, u.id, how, ""); const cookie = await newSession(env, request, u.id); return json({ ok: true, user: publicUser(u, await billingUser(env, u)) }, 200, { "set-cookie": cookie }); }
 async function google(request, env) {
   if (!env.GOOGLE_CLIENT_ID) return json({ ok: false, reason: "Google sign-in is not set up." }, 503);
   if (await count(env, "glogin:" + await ipHash(request), 30, 3600)) return json({ ok: false, reason: "Too many attempts. Try again later." }, 429);
@@ -86,7 +91,7 @@ async function google(request, env) {
     if (await count(env, "signup:" + await ipHash(request), 30, 86400)) return json({ ok: false, reason: "Too many new accounts from this network today." }, 429);
     u = await createUser(env, { email: g.email, name: g.name, picture: g.picture, google_sub: g.sub });
   }
-  return signIn(env, request, u);
+  return signIn(env, request, u, "login_google");
 }
 async function otpSend(request, env) {
   if (!env.RESEND_API_KEY) return json({ ok: false, reason: "Email login is not set up." }, 503);
@@ -112,7 +117,7 @@ async function otpVerify(request, env) {
   await d.prepare("DELETE FROM acct_otps WHERE email=?1").bind(email).run();
   let u = await userByEmail(env, email);
   if (!u) { if (await count(env, "signup:" + await ipHash(request), 30, 86400)) return json({ ok: false, reason: "Too many new accounts from this network today." }, 429); u = await createUser(env, { email }); }
-  return signIn(env, request, u);
+  return signIn(env, request, u, "login_email");
 }
 async function profile(env, u, b) {
   const name = clean(b.name, 80), phone = String(b.phone || "").replace(/[^\d+]/g, "");

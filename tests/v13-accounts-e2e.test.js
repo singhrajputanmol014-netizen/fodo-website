@@ -173,6 +173,33 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   const dl3 = p.waitForEvent("download", { timeout: 20000 }); await p.click('[data-x="pdf"]'); const op = fs.readFileSync(await (await dl3).path(), "latin1");
   ok(/FODO Edge/.test(op) && /Share of Google/.test(op) && /Tracking/.test(op), "owner PDF includes FODO Edge, share of voice and tracking");
 
+  /* ---------- v15 admin dashboard ---------- */
+  await p.goto(BASE + "/admin/"); await p.waitForSelector(".ad-kpis", { timeout: 15000 });
+  const kp = await p.$$eval(".ad-kpi", (k) => k.map((x) => x.textContent));
+  ok(kp.length === 6 && /users/.test(kp[0]) && /X-Rays run/.test(kp[2]) && /₹3,999/.test(kp[4]), "admin overview (owner): 6 KPIs incl. revenue ₹3,999 — " + kp[4].slice(0, 40));
+  ok(await p.isVisible(".ad-chart") && (await p.$$(".ad-funnel li")).length === 5 && /Owner · full control/.test(await p.textContent(".ad-role")), "admin: 30-day chart, funnel, owner role");
+  await p.click('a[data-tab="users"]'); await p.waitForSelector("#ad-ulist tr[data-u]");
+  await p.fill("#ad-uq", "rohit@"); await p.waitForFunction(() => document.querySelectorAll("#ad-ulist tr[data-u]").length === 1, null, { timeout: 8000 });
+  await p.click("#ad-ulist tr[data-u]"); await p.waitForSelector(".ad-user");
+  const ut = await p.textContent("#ad-view"); ok(/rohit@example\.com/.test(ut) && /Started an X-Ray/.test(ut) && /Paid/.test(ut) && /Downloaded PDF/.test(ut), "admin user page: what Rohit used (X-Rays, PDF download, payment)");
+  await p.fill("#ad-gn", "7"); await p.click("#ad-gnb"); await p.waitForSelector(".ad-toast"); await p.waitForTimeout(600);
+  ok(/7 X-Rays added/.test(await p.textContent(".ad-toast")) && /Given free by FODO/.test(await p.textContent("#ad-view")), "owner gives 7 X-Rays free from the dashboard");
+  await p.click("#ad-view .ad-feats input[value=\"techStack\"]", { force: true }).catch(async () => { await p.click(".ad-fx summary"); await p.check('.ad-feats input[value="techStack"]'); });
+  if (!(await p.isChecked('.ad-feats input[value="techStack"]'))) { await p.click(".ad-fx summary"); await p.check('.ad-feats input[value="techStack"]'); }
+  await p.click("#ad-fsave"); await p.waitForTimeout(900); ok(/features?/.test(await p.textContent("#ad-view")) && await p.isChecked('.ad-feats input[value="techStack"]'), "owner gives a single feature (tech stack) free");
+  p.once("dialog", (dg) => dg.accept("test block")); await p.click("#ad-blk"); await p.waitForTimeout(900);
+  ok(/Unblock/.test(await p.textContent("#ad-blk")) && /Blocked/.test(await p.textContent(".ad-user")), "owner blocks a user from the dashboard");
+  await p.click("#ad-blk"); await p.waitForTimeout(900); ok(/Block this user/.test(await p.textContent("#ad-blk")), "and unblocks");
+  for (const t of ["xrays", "leads", "payments", "activity", "team"]) { await p.click('a[data-tab="' + t + '"]'); await p.waitForTimeout(600); }
+  ok(/singhrajputanmol014@gmail\.com/.test(await p.textContent("#ad-view")) && await p.$("#ad-vf"), "team page: owners listed, owner can add viewers");
+  await p.setViewportSize({ width: 390, height: 844 }); await p.click('a[data-tab="overview"]'); await p.waitForSelector(".ad-kpis");
+  ok(await p.evaluate(() => getComputedStyle(document.querySelector(".ad-nav")).position === "fixed" && document.documentElement.scrollWidth <= 390), "phone: bottom tab bar, no sideways scrolling");
+  await p.setViewportSize({ width: 1440, height: 950 });
+  const c9 = await newCtx(b), p9 = await c9.newPage(); await p9.goto(BASE + "/admin/"); await p9.waitForTimeout(300);
+  await p9.evaluate(() => fetch("/api/account/test-login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "random.customer@gmail.com" }) })); await p9.reload(); await p9.waitForSelector(".ad-gate");
+  ok(/only for the FODO team/.test(await p9.textContent(".ad-gate")) && !(await p9.$(".ad-kpis")), "a normal customer login sees no admin data");
+  await c9.close();
+
   /* ---------- hygiene ---------- */
   const leak = SECRETS.filter((s) => bodies.some((t) => t.indexOf(s) > -1));
   ok(!leak.length, "no secret ever reaches the browser (" + bodies.length + " responses scanned)" + (leak.length ? ": " + leak : ""));

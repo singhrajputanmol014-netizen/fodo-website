@@ -123,3 +123,39 @@ An owner login:
 Owner access needs the 6-digit email code, or a Google login where Google is authoritative for the address (Gmail, or Workspace). A Google account that merely lists the address is refused.
 
 Every owner X-Ray is logged in the ledger with 0 credits.
+
+## Admin dashboard (v15) — www.fodo.co.in/admin/
+The admin dashboard is a separate app with its own FODO-design shell and no site menu. It is never indexed (noindex, robots Disallow, X-Frame-Options DENY).
+
+**Who can open it:**
+- Owners (`OWNER_EMAILS`) can see everything and change everything.
+- Viewers added under Team are read-only.
+- Any other login gets "only for the FODO team" and sees no data. The server checks this on every `/api/admin/*` call.
+
+**Sections:**
+
+| Section | Shows |
+|---|---|
+| Overview | KPIs: users, active today and this week, X-Rays, paying users, revenue, sign-up → paid. 30-day columns for X-Rays, sign-ups, logins and revenue. Funnel: signed up → 1st X-Ray → 2+ → ran out → paid. Feature use in the last 30 days, users by plan, most X-Rayed sites, latest activity. |
+| Users | Search and filter by paying, given free or blocked. CSV export. |
+| User page | What they used (counts per feature), their X-Rays (with links to the report), payments, credit history, activity and team. Owner controls below. |
+| X-Rays | Every account run, with search and CSV. |
+| Leads | People who ran out of free X-Rays and have not paid, with email and WhatsApp buttons and CSV. |
+| Payments | All orders, with CSV. |
+| Activity | Latest events. |
+| Team | Viewers. |
+
+**Owner controls on a user page:**
+- **Block / unblock:** blocking ends their sessions, refuses login (403) and stops X-Rays. Owners cannot be blocked.
+- **Give a plan free for N days**, or remove the plan.
+- **Give or take back X-Rays.**
+- **Unlimited X-Rays:** nothing is deducted, and the run level is the user's plan (at least Starter).
+- **Give single features free**, on top of the plan. Any feature id from `plans.js` works, FODO Edge included.
+
+Every admin action is written to the user's history.
+
+**Data:**
+- `acct_events` holds every login, X-Ray start and finish, refund, "ran out", checkout, payment, Edge tool, link check and authority call.
+- Downloads and copies are reported by the page via `POST /api/account/event`. Only known kinds are accepted, at most 300 per hour, and the page cannot fake login or payment events.
+- New columns (`blocked`, `unlimited`, `extra_features`, `admin_note`, and `acct_runs.features`) are added automatically to the live D1 database on first use.
+- `acct_admins` holds the viewers.

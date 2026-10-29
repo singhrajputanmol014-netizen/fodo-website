@@ -27,9 +27,21 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS acct_runs (job_id TEXT PRIMARY KEY, user_id TEXT, owner_id TEXT, domain TEXT, url TEXT, tier TEXT, credit TEXT, client_id TEXT, score INTEGER, status TEXT, created_at TEXT)",
   "CREATE INDEX IF NOT EXISTS acct_runs_owner ON acct_runs(owner_id, created_at)",
   "CREATE TABLE IF NOT EXISTS acct_counters (k TEXT PRIMARY KEY, n INTEGER, exp INTEGER)",
+  // v15 admin: what each user did, and who may open the admin dashboard read-only
+  "CREATE TABLE IF NOT EXISTS acct_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, kind TEXT, detail TEXT, created_at TEXT)",
+  "CREATE INDEX IF NOT EXISTS acct_events_user ON acct_events(user_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS acct_events_time ON acct_events(created_at)",
+  "CREATE TABLE IF NOT EXISTS acct_admins (email TEXT PRIMARY KEY, role TEXT, added_by TEXT, added_at TEXT)",
 ];
+// columns added after v13 went live (ALTER fails harmlessly when the column already exists)
+const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT"];
 let ready = null;
-export async function db(env) { const d = env.XRAY_DB; if (!d) return null; if (!ready) ready = d.batch(DDL.map((s) => d.prepare(s))).catch((e) => { ready = null; throw e; }); await ready; return d; }
+export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
+  if (!ready) ready = d.batch(DDL.map((s) => d.prepare(s))).then(async () => { for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } }).catch((e) => { ready = null; throw e; });
+  await ready; return d; }
+/* v15: activity log for the admin dashboard — never throws, never blocks the request */
+export const EVENT_KINDS = ["login_google", "login_email", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block"];
+export async function logEvent(env, userId, kind, detail) { try { if (!userId || !accountsOn(env)) return; await (await db(env)).prepare("INSERT INTO acct_events (user_id, kind, detail, created_at) VALUES (?1,?2,?3,?4)").bind(userId, kind, String(detail == null ? "" : detail).slice(0, 300), nowIso()).run(); } catch (e) {} }
 export async function count(env, key, limit, ttlSec) {   // true when over the limit
   const d = await db(env), now = Date.now();
   const r = await d.prepare("INSERT INTO acct_counters (k, n, exp) VALUES (?1, 1, ?2) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN exp < ?3 THEN 1 ELSE n + 1 END, exp = CASE WHEN exp < ?3 THEN ?2 ELSE exp END RETURNING n").bind(key, now + ttlSec * 1000, now).first();
@@ -45,7 +57,8 @@ export async function sessionUser(env, request) {
   const t = cookieOf(request, COOKIE); if (!/^[a-z0-9]{40}$/.test(t)) return null;
   const d = await db(env), s = await d.prepare("SELECT * FROM acct_sessions WHERE token_hash=?1").bind(await sha256(t)).first();
   if (!s || s.expires_at < Date.now()) return null;
-  return await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(s.user_id).first();
+  const u = await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(s.user_id).first();
+  return u && u.blocked && !isOwner(u) ? null : u;   // a blocked account is logged out everywhere
 }
 export async function newSession(env, request, userId) {
   const t = randId(40), d = await db(env);
@@ -78,23 +91,28 @@ export async function billingUser(env, u) {
    and Google login counts only when Google is authoritative for the address, so nobody else can sign in as these. */
 export const OWNER_EMAILS = ["anmol@fodo.co.in", "singhrajputanmol014@gmail.com"];
 export const isOwner = (u) => !!(u && u.email && OWNER_EMAILS.indexOf(String(u.email).toLowerCase()) > -1);
+export const isUnlimited = (u) => isOwner(u) || !!(u && u.unlimited);
+export const extraFeatures = (u) => { try { const a = JSON.parse((u && u.extra_features) || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch (e) { return []; } };
+/* plan limits + any features an owner gave this account for free */
+export function limitsForUser(tier, b) { const L = limitsFor(tier), x = extraFeatures(b); x.forEach((f) => { if (L.features.indexOf(f) < 0) L.features.push(f); }); if (L.features.indexOf("externalLinks") > -1 && !L.LINKCHECK) L.LINKCHECK = 80; return L; }
 export const activePlan = (u) => isOwner(u) ? "agency" : u && u.plan && u.plan !== "free" && u.plan_until && Date.parse(u.plan_until) > Date.now() ? u.plan : "free";
 export function publicUser(u, owner) {
   const b = owner || u, plan = activePlan(b);
   if (isOwner(b)) return { id: u.id, email: u.email, name: u.name, picture: u.picture, phone: u.phone || "", plan, planName: "Owner", planUntil: null, unlimited: true,
-    credits: { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" }, team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsFor("agency"), brand: b.brand ? JSON.parse(b.brand) : null };
+    credits: { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" }, team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsFor("agency"), admin: true, brand: b.brand ? JSON.parse(b.brand) : null };
   return { id: u.id, email: u.email, name: u.name, picture: u.picture, phone: u.phone || "", plan, planName: PLANS[plan].name, planUntil: plan === "free" ? null : b.plan_until,
-    credits: { monthly: plan === "free" ? 0 : b.monthly_left, packs: b.pack_left, free: b.free_left, total: (plan === "free" ? 0 : b.monthly_left) + b.pack_left + (plan === "free" ? b.free_left : 0) },
-    team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsFor(spendTier(b, plan)), brand: b.brand ? JSON.parse(b.brand) : null };
+    credits: b.unlimited ? { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" } : { monthly: plan === "free" ? 0 : b.monthly_left, packs: b.pack_left, free: b.free_left, total: (plan === "free" ? 0 : b.monthly_left) + b.pack_left + (plan === "free" ? b.free_left : 0) },
+    team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsForUser(spendTier(b, plan), b), unlimited: !!b.unlimited || undefined, brand: b.brand ? JSON.parse(b.brand) : null };
 }
 const spendTier = (b, plan) => plan !== "free" ? plan : b.pack_left > 0 ? "starter" : "free";
 
 /* ---------------- credits ---------------- */
 /* take one X-Ray. Order: this month's plan X-Rays → packs → free ones. Atomic (UPDATE … WHERE n > 0). → { tier, kind } | null */
 /* quick look (no spend) so an empty account hears "pick a plan" before any hourly limit */
-export function hasCredit(b) { if (isOwner(b)) return true; const plan = activePlan(b); return (plan !== "free" && b.monthly_left > 0) || b.pack_left > 0 || (plan === "free" && b.free_left > 0); }
+export function hasCredit(b) { if (isUnlimited(b)) return true; const plan = activePlan(b); return (plan !== "free" && b.monthly_left > 0) || b.pack_left > 0 || (plan === "free" && b.free_left > 0); }
 export async function spendCredit(env, b, jobId) {
   const d = await db(env), plan = activePlan(b);
+  if (!isOwner(b) && b.unlimited) { await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'gift',0,?2,'X-Ray (free — given by FODO)',?3)").bind(b.id, "run:" + jobId, nowIso()).run(); return { tier: spendTier(b, plan) === "free" ? "starter" : spendTier(b, plan), kind: "gift" }; }
   if (isOwner(b)) { await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'owner',0,?2,'X-Ray (owner access, free)',?3)").bind(b.id, "run:" + jobId, nowIso()).run(); return { tier: "agency", kind: "owner" }; }
   const tryCol = async (col) => { const r = await d.prepare(`UPDATE acct_users SET ${col} = ${col} - 1 WHERE id=?1 AND ${col} > 0 RETURNING ${col}`).bind(b.id).first(); return !!r; };
   let kind = null, tier = "free";
@@ -198,6 +216,7 @@ export async function settleOrder(env, orderId) {
   if (cfo.order_status !== "PAID") { await d.prepare("UPDATE acct_orders SET status=?2 WHERE order_id=?1").bind(orderId, cfo.order_status || "ACTIVE").run(); return { ok: false, status: cfo.order_status }; }
   if (Math.abs(+cfo.order_amount - o.amount) > 0.01) { log({ route: "settle", ok: false, err: "amount mismatch", order: orderId }); return { ok: false, reason: "amount mismatch" }; }
   const upd = await d.prepare("UPDATE acct_orders SET status='PAID', paid_at=?2, cf_order_id=?3 WHERE order_id=?1 AND status != 'PAID'").bind(orderId, nowIso(), String(cfo.cf_order_id || "")).run();
+  if (upd.meta && upd.meta.changes) await logEvent(env, o.user_id, "paid", o.kind + ":" + o.item + ":" + o.amount);
   if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
   return { ok: true, order: Object.assign(o, { status: "PAID" }) };
 }

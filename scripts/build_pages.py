@@ -615,6 +615,14 @@ for key,(route,path,title,desc,body,depth,extra,scripts) in pages.items():
     out = os.path.join(ROOT,"index.html") if key=="home" else os.path.join(ROOT,path.strip("/"),"index.html")
     os.makedirs(os.path.dirname(out),exist_ok=True)
     open(out,"w").write(shell(route,path,title,desc,body,depth,extra,scripts))
+# ---- ADMIN (/admin/) — v15 team dashboard: its own app shell in the FODO design (no site menu), never indexed ----
+_V = str(int(__import__("time").time())); os.makedirs(os.path.join(ROOT, "admin"), exist_ok=True)
+open(os.path.join(ROOT, "admin", "index.html"), "w").write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FODO Admin</title><meta name="robots" content="noindex, nofollow"><meta name="fodo-root" content="/"><meta name="theme-color" content="#0f0f16">
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+{THEMEJS}<link rel="stylesheet" href="/css/styles.css?v={_V}"><link rel="stylesheet" href="/css/theme-glass.css?v={_V}c"><link rel="stylesheet" href="/css/studio.css?v={_V}"><link rel="stylesheet" href="/css/admin.css?v={_V}"></head>
+<body class="ad-body"><div id="adm" class="ad-app"><div class="ad-load">Loading the FODO dashboard…</div></div><noscript><p style="padding:24px">The dashboard needs JavaScript.</p></noscript>
+<script src="/js/account.js?v={_V}" defer></script><script src="/js/admin.js?v={_V}" defer></script></body></html>""")
 # 404
 open(os.path.join(ROOT,"404.html"),"w").write(shell("404","/404.html","Page not found — FODO","This page has moved or never existed. Find your way back to FODO.",
  '<section class="hero hero-lens hero-404"><div class="container"><p class="eyebrow">Error 404</p><div class="lens-stage" data-lens><h1 class="lens-type">This page went digitally <span class="fade">out.</span></h1><p class="lens-type lens-copy" aria-hidden="true">This page went digitally <span class="fade">out.</span></p><span class="lens-ring" aria-hidden="true"></span></div><div class="hero-foot"><div class="hero-copy"><p class="lead">It may have moved. Here is where to go instead.</p><div class="btn-row"><a class="btn" href="/">Home</a><a class="btn ghost" href="/services/">Services</a><a class="btn ghost" href="/#growth-lab">Growth Lab</a><a class="btn ghost" href="/contact/">Contact</a><a class="btn ghost" href="/contact/?mode=audit">Free Growth Audit</a></div></div></div></div></section>',0).replace(f'<link rel="canonical" href="{SITE}/404.html">','<meta name="robots" content="noindex">').replace('content="./"','content="/"').replace('href="./','href="/').replace('src="./','src="/'))
@@ -631,9 +639,9 @@ for _p in pages.values():
 json.dump(_seen, open(_LMF, "w"), indent=0, sort_keys=True)
 def _prio(u): return "1.0" if u == "/" else "0.9" if u in ("/services/", "/contact/") else "0.8" if u.startswith("/services/") else "0.7" if u.startswith(("/locations/", "/industries/", "/insights/")) else "0.6"
 open(os.path.join(ROOT,"sitemap.xml"),"w").write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "".join(f"  <url><loc>{SITE}{u}</loc><lastmod>{v[1]}</lastmod><priority>{_prio(u)}</priority></url>\n" for u, v in sorted(_seen.items(), key=lambda kv: (kv[0] != "/", kv[0]))) + "</urlset>\n")
-open(os.path.join(ROOT,"robots.txt"),"w").write(f"# FODO — {SITE}\nUser-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /scripts/\nDisallow: /tests/\nDisallow: /docs/\n\nSitemap: {SITE}/sitemap.xml\n")
+open(os.path.join(ROOT,"robots.txt"),"w").write(f"# FODO — {SITE}\nUser-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin/\nDisallow: /scripts/\nDisallow: /tests/\nDisallow: /docs/\n\nSitemap: {SITE}/sitemap.xml\n")
 # keep project notes, scripts and tests out of search results (Cloudflare Pages _headers)
-open(os.path.join(ROOT,"_headers"),"w").write("/account/*\n  X-Robots-Tag: noindex\n  Cache-Control: no-store\n/scripts/*\n  X-Robots-Tag: noindex\n/tests/*\n  X-Robots-Tag: noindex\n/docs/*\n  X-Robots-Tag: noindex\n/data/*\n  X-Robots-Tag: noindex\n/thank-you/*\n  X-Robots-Tag: noindex\n" + "".join(f"/{_f}\n  X-Robots-Tag: noindex\n" for _f in sorted(os.listdir(ROOT)) if _f.endswith(".md")))
+open(os.path.join(ROOT,"_headers"),"w").write("/account/*\n  X-Robots-Tag: noindex\n  Cache-Control: no-store\n/admin/*\n  X-Robots-Tag: noindex, nofollow\n  Cache-Control: no-store\n  X-Frame-Options: DENY\n/scripts/*\n  X-Robots-Tag: noindex\n/tests/*\n  X-Robots-Tag: noindex\n/docs/*\n  X-Robots-Tag: noindex\n/data/*\n  X-Robots-Tag: noindex\n/thank-you/*\n  X-Robots-Tag: noindex\n" + "".join(f"/{_f}\n  X-Robots-Tag: noindex\n" for _f in sorted(os.listdir(ROOT)) if _f.endswith(".md")))
 open(os.path.join(ROOT,"_redirects"),"w").write("/growth-lab/ /#growth-lab 301\n/free-growth-audit/ /contact/?mode=audit 301\n/book-a-call/ /contact/?mode=call 301\n/founder/ /about/#founder 301\n/growth-system/ /about/#growth-system 301\n/privacy/ /legal/#privacy 301\n/terms/ /legal/#terms 301\n/disclaimer/ /legal/#disclaimer 301\n/cookies/ /legal/#cookies 301\n")
 # ---- site search index (v6): data/search-index.json, read by js/search.js ----
 import re as _re2, html as _html2

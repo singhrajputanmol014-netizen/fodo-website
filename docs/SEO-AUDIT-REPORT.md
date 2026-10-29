@@ -2,7 +2,7 @@
 
 Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
-**87 HTML pages · 84 sitemap URLs · 0 errors · 0 warnings · 5 notes**
+**88 HTML pages · 84 sitemap URLs · 0 errors · 0 warnings · 5 notes**
 
 ## Issues
 
@@ -20,6 +20,7 @@ Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/404.html` | 21 | 65 | 1 | 30 | — | Page not found — FODO |
 | `/about/` | 46 | 140 | 1 | 394 | BreadcrumbList,Person | About FODO — Founder Anmol Singh &amp; How We Work |
 | `/account/` | 30 | 118 | 1 | 8 | BreadcrumbList | Your Growth Lab Account | FODO |
+| `/admin/` | 10 | 0 | 0 | 6 | — | FODO Admin |
 | `/business-x-ray/` | 59 | 144 | 1 | 364 | BreadcrumbList | Business X-Ray — Free Website &amp; Competitor Diagnosis | FODO |
 | `/competitor-finder/` | 57 | 150 | 1 | 526 | BreadcrumbList | Competitor Finder — Any Business, Brand or Startup | FODO |
 | `/contact/` | 48 | 150 | 1 | 37 | BreadcrumbList | Contact FODO — Free Growth Audit &amp; Strategy Call |

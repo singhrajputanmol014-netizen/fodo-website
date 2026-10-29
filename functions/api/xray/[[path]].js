@@ -18,13 +18,15 @@
  * server would not fit, the browser has plenty. The server keeps the keys, blocks unsafe addresses, limits and stores. */
 import { json, log, safeUrl, safeFetch, regDomain, retrying, cacheGet, cachePut, jobCreate, jobGet, jobUpdate, reportPut, reportGet, rowsPut,
   hashIp, counter, memCount, providers, rid, UA, STAGES, ROW_TABLES, outbound, normSearch } from "../../_lib/xray-core.js";
-import { accountsOn, sessionUser, billingUser, spendCredit, hasCredit, refundCredit, activePlan, db as acctDb, count as acctCount, nowIso } from "../../_lib/accounts.js";
+import { accountsOn, sessionUser, billingUser, spendCredit, hasCredit, refundCredit, limitsForUser, logEvent, activePlan, db as acctDb, count as acctCount, nowIso } from "../../_lib/accounts.js";
 import { PLANS, limitsFor } from "../../_lib/plans.js";
 /* per-job limits: the plan the X-Ray was paid with (accounts on), else the free defaults */
 async function jobLimits(env, job) {
   if (!accountsOn(env)) return LIMITS;
-  const r = await (await acctDb(env)).prepare("SELECT tier FROM acct_runs WHERE job_id=?1").bind(job.id).first();
-  return Object.assign({}, LIMITS, limitsFor(r ? r.tier : "free"));
+  const r = await (await acctDb(env)).prepare("SELECT tier, features FROM acct_runs WHERE job_id=?1").bind(job.id).first();
+  const L = Object.assign({}, LIMITS, limitsFor(r ? r.tier : "free"));
+  if (r && r.features) { try { const f = JSON.parse(r.features); if (Array.isArray(f)) { L.features = f; if (f.indexOf("externalLinks") > -1 && !L.LINKCHECK) L.LINKCHECK = 80; } } catch (e) {} }
+  return L;
 }
 const over = (env, job, k, limit) => accountsOn(env) ? counter(env, "job:" + job.id + ":" + k, limit, 4 * 3600) : Promise.resolve(memCount(job.id + ":" + k, limit));
 
@@ -77,7 +79,7 @@ async function start(request, env) {
     if (!user) return json({ ok: false, login: true, reason: "Log in (it's free) to run a Business X-Ray — your first " + PLANS.free.xrays + " are on us." }, 401);
     owner = await billingUser(env, user);
     const plan = activePlan(owner);
-    if (!hasCredit(owner)) return json({ ok: false, upgrade: true, reason: plan === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402);
+    if (!hasCredit(owner)) { await logEvent(env, user.id, "limit_hit", regDomain(u.host)); return json({ ok: false, upgrade: true, reason: plan === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402); }
     if (await acctCount(env, "xrh:" + owner.id + ":" + hour, PLANS[plan].perHour, 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour on the " + PLANS[plan].name + " plan. Please try again a little later." }, 429);
   } else if (await counter(env, `xr:rl:${ip}:${hour}`, parseInt(env.XRAY_PER_HOUR || "4", 10), 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour. Please try again a little later." }, 429);
   if (await counter(env, `xr:day:${day}`, parseInt(env.XRAY_PER_DAY || "60", 10), 90000)) return json({ ok: false, reason: "Today's free X-Rays are used up. Please try again tomorrow." }, 429);
@@ -86,10 +88,11 @@ async function start(request, env) {
   if (owner) {
     credit = await spendCredit(env, owner, id);
     if (!credit) return json({ ok: false, upgrade: true, reason: activePlan(owner) === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402);
-    limits = Object.assign({}, LIMITS, limitsFor(credit.tier));
+    limits = Object.assign({}, LIMITS, limitsForUser(credit.tier, owner));
     const client = String(b.client || "").replace(/[^a-z0-9_]/gi, "").slice(0, 20) || null;
-    await (await acctDb(env)).prepare("INSERT INTO acct_runs (job_id, user_id, owner_id, domain, url, tier, credit, client_id, status, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'running',?9)")
-      .bind(id, user.id, owner.id, regDomain(u.host), u.url, credit.tier, credit.kind, client, nowIso()).run();
+    await (await acctDb(env)).prepare("INSERT INTO acct_runs (job_id, user_id, owner_id, domain, url, tier, credit, client_id, status, created_at, features) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'running',?9,?10)")
+      .bind(id, user.id, owner.id, regDomain(u.host), u.url, credit.tier, credit.kind, client, nowIso(), JSON.stringify(limits.features)).run();
+    await logEvent(env, user.id, "xray_start", regDomain(u.host) + " · " + credit.tier);
   }
   const job = await jobCreate(env, { id, url: u.url, domain: regDomain(u.host), input, status: "queued", stage: "DISCOVERY", progress: 0, completed: [], allow: [], ip_hash: ip });
   log({ job: job.id, route: "start", ok: true, domain: job.domain, tier: credit ? credit.tier : "anon" });
@@ -311,6 +314,7 @@ async function edge(env, job, b, t0) {
     const o = parseObj(a.text); if (!o) return json({ ok: false, reason: "The AI answer could not be read. Try again." }, 502);
     const out = checkEdge(kind, o, pack);
     log({ job: job.id, route: "edge", kind, ok: true, model: a.model, ms: Date.now() - t0 });
+    const ru = await (await acctDb(env)).prepare("SELECT user_id, domain FROM acct_runs WHERE job_id=?1").bind(job.id).first(); if (ru) await logEvent(env, ru.user_id, "edge_" + kind, ru.domain);
     return json({ ok: true, kind, model: a.model, result: out });
   } catch (e) { log({ job: job.id, route: "edge", kind, ok: false, err: String(e.message) }); return json({ ok: false, reason: "AI did not answer. Try again." }, 502); }
 }
@@ -333,7 +337,7 @@ async function refund(env, job) {
   if (!run || run.status !== "running" || Date.now() - Date.parse(run.created_at) > 20 * 60e3) return json({ ok: false, reason: "This X-Ray cannot be refunded." }, 409);
   const f = await d.prepare("SELECT n, exp FROM xray_counters WHERE k=?1").bind("job:" + job.id + ":f").first(), s = await d.prepare("SELECT n FROM xray_counters WHERE k=?1").bind("job:" + job.id + ":s").first();
   if ((f && f.n > 6) || (s && s.n > 1)) return json({ ok: false, reason: "The X-Ray already did its research, so it counts." }, 409);
-  const ok = await refundCredit(env, run); log({ job: job.id, route: "refund", ok });
+  const ok = await refundCredit(env, run); log({ job: job.id, route: "refund", ok }); if (ok) await logEvent(env, run.user_id, "xray_refund", run.domain);
   return json({ ok, refunded: ok });
 }
 async function linkcheck(env, job, b) {
@@ -363,7 +367,8 @@ async function saveReport(request, env) {
   const text = await request.text();
   if (text.length > 5e6 || text.charAt(0) !== "{" || text.indexOf('"jobId":"' + id + '"') < 0) return json({ ok: false, reason: "Not a report for this job." }, 400);
   const ok = await reportPut(env, id, text);
-  if (accountsOn(env)) { const m = /"overall":(\d+|null)/.exec(text); await (await acctDb(env)).prepare("UPDATE acct_runs SET status='COMPLETE', score=?2 WHERE job_id=?1").bind(id, m && m[1] !== "null" ? +m[1] : null).run(); }
+  if (accountsOn(env)) { const m = /"overall":(\d+|null)/.exec(text); await (await acctDb(env)).prepare("UPDATE acct_runs SET status='COMPLETE', score=?2 WHERE job_id=?1").bind(id, m && m[1] !== "null" ? +m[1] : null).run();
+    const ru = await (await acctDb(env)).prepare("SELECT user_id, domain FROM acct_runs WHERE job_id=?1").bind(id).first(); if (ru) await logEvent(env, ru.user_id, "xray_done", ru.domain + (m ? " · score " + m[1] : "")); }
   await jobUpdate(env, job, { status: "COMPLETE", stage: "COMPLETE", progress: 100, completed: STAGES.slice() });
   log({ job: id, route: "report", ok, bytes: text.length });
   return json({ ok, url: "/business-x-ray/?r=" + id });

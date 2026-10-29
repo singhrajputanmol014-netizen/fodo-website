@@ -170,6 +170,19 @@ http.createServer((req, res) => {
     if (parts[3] === "orders" && parts[4]) { const o = ORDERS[decodeURIComponent(parts[4])]; return send(res, o ? 200 : 404, "application/json", JSON.stringify(o || { message: "order not found" })); }
     return send(res, 404, "application/json", "{}");
   }
+  /* v14: stand-in for Workers AI — answers the FODO Edge prompts with JSON built from the data it was sent (plus one made-up page,
+     competitor and opportunity id each, which the server must drop) */
+  if (first === "_ai") return body((j) => {
+    const sys = (j && j.messages && j.messages[0].content) || "", user = (j && j.messages && j.messages[1] && j.messages[1].content) || "";
+    let d = {}; try { d = JSON.parse(user.slice(user.indexOf("{"))); } catch (e) {}
+    calls.ai = (calls.ai || []).concat([sys.slice(0, 40)]);
+    let out = "Here are some well-known options: Tandoor Tales and Curry House.";
+    if (/copywriter/.test(sys)) out = JSON.stringify({ pages: (d.pages || []).map((p) => ({ url: p.url, title: "Better title for " + (p.title || "").slice(0, 30), meta: "A clearer meta description that says who it is for and what to do next. Order online or book a table today.", h1: "Clear headline for " + (p.h1 || "this page").slice(0, 40) })).concat([{ url: "https://invented.test/x", title: "x", meta: "x", h1: "x" }]), headlines: ["Headline one", "Headline two", "Headline three"], faq: [{ q: "Do you deliver?", a: "Yes, as stated on the site." }], cta: "Book a table" });
+    else if (/competitive strategist/.test(sys)) out = "Sure! " + JSON.stringify({ cards: (d.competitors || []).map((c) => ({ domain: c.domain, theyWinOn: ["Prices shown"], youWinOn: ["Testimonials"], howToWin: ["Show prices", "Add reviews", "Speed up"], talkTrack: "We show our menu and prices openly." })).concat([{ domain: "invented-rival.test", theyWinOn: ["x"], youWinOn: [], howToWin: [], talkTrack: "x" }]) });
+    else if (/growth consultant/.test(sys)) { const ids = (d.opportunities || []).map((o) => o.id); out = JSON.stringify({ months: [1, 2, 3].map((m) => ({ month: m, goal: "Goal " + m, weeks: [1, 2, 3, 4].map((w) => ({ week: w, focus: "Focus " + w, tasks: ["Task a", "Task b"], opportunities: [ids[(m * 4 + w) % Math.max(1, ids.length)], "O999"], kpi: "Leads" })) })) }); }
+    else if (/agency founder/.test(sys)) { const ids = (d.opportunities || []).map((o) => o.id); out = JSON.stringify({ subject: "3 quick wins for " + ((d.business || {}).name || "you"), email: "Hi,\n\nI ran an X-Ray of your website.\n\nThanks", findings: [{ text: "Finding one", opportunity: ids[0] }, { text: "Finding two", opportunity: "O999" }], proposal: [{ phase: "Fix", what: "Fix basics", outcome: "Clearer site" }] }); }
+    send(res, 200, "application/json", JSON.stringify({ response: out }));
+  });
   if (first === "_opr") { if (req.headers["api-opr"] !== "opr_test_KEY") return send(res, 401, "application/json", "{}"); const ds = u.searchParams.getAll("domains[]"); calls.opr.push(ds);
     return send(res, 200, "application/json", JSON.stringify({ status_code: 200, response: ds.map((d, i) => ({ status_code: 200, domain: d, page_rank_decimal: (4.5 - i * 0.7).toFixed(2), rank: String(100000 * (i + 1)) })) })); }
   if (first === "_serper") {

@@ -13,7 +13,7 @@
       .then(function (r) { return r.json().catch(function () { return { ok: false, reason: "The account service did not answer (" + r.status + ")." }; }).then(function (j) { j._status = r.status; return j; }); }, function () { return { ok: false, reason: "No connection. Check your internet and try again.", _status: 0 }; });
   };
   var config = function () { return cfgP = cfgP || api("config").then(function (j) { return j.ok ? j : { enabled: false, plans: [], packs: [] }; }); };
-  var set = function (u) { user = u || null; subs.forEach(function (f) { try { f(user); } catch (e) {} }); chip(); return user; };
+  var known = false, set = function (u) { user = u || null; known = true; subs.forEach(function (f) { try { f(user); } catch (e) {} }); chip(); return user; };
   var me = function (force) { if (force || !meP) meP = config().then(function (c) { return c.enabled ? api("me").then(function (j) { return set(j.user); }) : set(null); }); return meP; };
   var load = function (src, test) { return new Promise(function (ok, no) { if (test()) return ok(); var s = document.createElement("script"); s.src = src; s.async = true; s.onload = function () { ok(); }; s.onerror = function () { no(new Error("Could not load " + src.split("/")[2])); }; document.head.appendChild(s); }); };
 
@@ -96,20 +96,24 @@
   }
 
   /* ---------- header chip (pages that load this file) ---------- */
+  /* header: between the menu links (… Contact) and the search icon; menu (☰): the last item */
   function chip() {
-    var h = document.querySelector("#site-header .container"); if (!h) return;
-    var c = h.querySelector(".acct-chip");
     config().then(function (cf) {
-      if (!cf.enabled) { if (c) c.remove(); return; }
-      if (!c) { c = document.createElement("a"); c.className = "acct-chip"; var cta = h.querySelector(".header-cta"); h.insertBefore(c, cta || h.querySelector(".burger")); }
-      c.href = ROOT + "account/";
-      if (user) { c.innerHTML = '<span class="acct-dot" aria-hidden="true">' + esc((user.name || user.email).charAt(0).toUpperCase()) + "</span><span>" + esc(user.planName) + " · " + user.credits.total + " X-Ray" + (user.credits.total === 1 ? "" : "s") + "</span>"; c.setAttribute("aria-label", "Your account: " + user.planName + " plan, " + user.credits.total + " X-Rays left"); c.onclick = null; }
-      else { c.textContent = "Log in"; c.removeAttribute("aria-label"); c.onclick = function (e) { e.preventDefault(); login().catch(function () {}); }; }
+      var h = document.querySelector("#site-header .container"), dr = document.getElementById("drawer");
+      [h, dr].forEach(function (host, i) {
+        if (!host) return;
+        var c = host.querySelector(i ? ".acct-drawer" : ".acct-chip");
+        if (!cf.enabled) { if (c) c.remove(); return; }
+        if (!c) { c = document.createElement("a"); c.className = i ? "acct-drawer" : "acct-chip"; if (i) host.appendChild(c); else host.insertBefore(c, host.querySelector("#search-open") || host.querySelector(".header-cta") || host.querySelector(".burger")); }
+        c.href = ROOT + "account/";
+        if (user) { var t = esc(user.planName) + " · " + user.credits.total + " X-Ray" + (user.credits.total === 1 ? "" : "s"); c.innerHTML = '<span class="acct-dot" aria-hidden="true">' + esc((user.name || user.email).charAt(0).toUpperCase()) + "</span><span>" + (i ? "My account · " + t : t) + "</span>"; c.setAttribute("aria-label", "Your account: " + user.planName + " plan, " + user.credits.total + " X-Rays left"); c.onclick = null; }
+        else { c.innerHTML = '<span class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span>' + (i ? "Log in / Sign up — 2 free X-Rays" : "Log in") + "</span>"; c.setAttribute("aria-label", "Log in"); c.onclick = function (e) { e.preventDefault(); var d = document.getElementById("drawer"); if (d && d.classList.contains("open")) { d.classList.remove("open"); document.body.classList.remove("locked"); } login().catch(function () {}); }; }
+      });
     });
   }
 
   window.FODO_ACCOUNT = { config: config, me: me, login: login, logout: logout, api: api, checkout: checkout, close: close, esc: esc, inr: inr,
-    onChange: function (f) { subs.push(f); }, history: function (q) { return api("history" + (q ? "?" + new URLSearchParams(q) : "")); },
+    onChange: function (f) { subs.push(f); if (known) try { f(user); } catch (e) {} },   /* late subscribers get the current user straight away */ history: function (q) { return api("history" + (q ? "?" + new URLSearchParams(q) : "")); },
     current: function () { return user; } };
   var start = function () { me(); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();

@@ -86,3 +86,28 @@ New sections, each shown only when its level includes it. Every one is evidence-
 | Client folders, bulk X-Ray | Agency | — | Client folders, and a bulk run of up to 20 sites one after another. |
 
 On the Free level the report keeps the score, biggest problem, top 3 fixes, 30-day plan and all evidence. The other sections show their counts plus a "See plans" card.
+
+## v14 — more data per plan + FODO Edge
+- Every report:
+  - six key numbers at the top;
+  - a sticky section menu;
+  - competitor cards with a match score.
+- Starter and above get a side-by-side matrix of you and every competitor (offer, prices, reviews, FAQ, blog, WhatsApp, trust, schema, socials).
+
+| Level | Adds | Label |
+|---|---|---|
+| Growth | Share of Google's first page: points by position (1 = 30 … 10 = 3), shared across the market searches | INFERRED |
+| Growth | Keyword → page map: the best-matching page for each search, or "create a page" | INFERRED |
+| Pro | Tracking & ads readiness: analytics, GTM, Meta, Google Ads and LinkedIn pixels, chat, consent and Search Console, compared with what competitors run | OBSERVED |
+| Pro | Ready-to-paste JSON-LD, built only from details found on the site | — |
+| Pro | Links to each competitor's Meta, Google and LinkedIn ad libraries | — |
+| Agency + owner logins (FODO Edge) | AI Fix Pack: titles, metas, H1s, headlines, FAQ, CTA | AI draft |
+| Agency + owner logins (FODO Edge) | Competitor battle cards | AI draft |
+| Agency + owner logins (FODO Edge) | 90-day roadmap | AI draft |
+| Agency + owner logins (FODO Edge) | Client pitch email + proposal | AI draft |
+
+**How FODO Edge runs:**
+- It uses `/api/xray/edge` (kind = `fixPack`, `battleCards`, `roadmap90` or `clientPitch`) and runs only with accounts on, at Agency level.
+- The server drops any page URL, competitor domain or opportunity ID that was not in the pack it sent, and labels the result "AI draft".
+- It is capped at 2 calls per tool per X-Ray.
+- Test world: `XRAY_TEST_AI` points the AI binding at the fixture server's `/_ai`. It only works with `XRAY_TEST_MODE=1`.

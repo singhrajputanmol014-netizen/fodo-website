@@ -180,5 +180,20 @@ r = await call(env, "otp/send", { email: "anmol@fodo.co.in" }, { cookie: "", ip:
 r = await call(env, "otp/verify", { email: "anmol@fodo.co.in", code: oc }, { ip: "5.5.5.6" }); ok(r.j.ok && r.j.user.unlimited && r.j.user.planName === "Owner", "anmol@fodo.co.in via email code → Owner");
 r = await call(env, "google", { credential: await gToken({ sub: "x9", email: "someone@gmail.com" }) }, { cookie: "", ip: "5.5.5.7" }); ok(r.j.ok && !r.j.user.unlimited && r.j.user.plan === "free", "any other email stays on the normal plans");
 
+/* ---------- 10. v14 FODO Edge: Agency/owner only, AI output checked against the pack ---------- */
+const aiEnv = Object.assign({}, env, { AI: { run: async (m, inp) => ({ response: JSON.stringify(/copywriter/.test(inp.messages[0].content) ? { pages: [{ url: "https://spicehub.test/", title: "T", meta: "M", h1: "H" }, { url: "https://made-up.test/", title: "x", meta: "x", h1: "x" }], headlines: ["a"], faq: [], cta: "Go" } : { months: [{ month: 1, goal: "g", weeks: [{ week: 1, focus: "f", tasks: ["t"], opportunities: ["O1", "O77"], kpi: "k" }] }] }) }) } });
+await call(aiEnv, "google", { credential: await gToken({ sub: "own2", email: "singhrajputanmol014@gmail.com" }) }, { cookie: "", ip: "5.5.5.5" });
+r = await call(aiEnv, "xray/start", { url: "spicehub.test" }, { ip: "5.5.5.5" }); const ej = r.j.jobId;
+r = await call(aiEnv, "xray/edge", { jobId: ej, kind: "fixPack", pack: { pages: [{ url: "https://spicehub.test/" }] } }, { ip: "5.5.5.5" });
+ok(r.j.ok && r.j.result.pages.length === 1 && r.j.result.pages[0].url === "https://spicehub.test/", "Edge Fix Pack (owner): page the AI made up is dropped");
+r = await call(aiEnv, "xray/edge", { jobId: ej, kind: "roadmap90", pack: { opportunities: [{ id: "O1" }] } }, { ip: "5.5.5.5" });
+ok(r.j.ok && r.j.result.months[0].weeks[0].opportunities.join() === "O1", "Edge roadmap: only real opportunity ids kept");
+r = await call(aiEnv, "xray/edge", { jobId: ej, kind: "nope", pack: {} }, { ip: "5.5.5.5" }); ok(r.status === 400, "unknown Edge tool refused");
+r = await call(aiEnv, "google", { credential: await gToken({ sub: "pro9", email: "proguy@gmail.com" }) }, { cookie: "", ip: "5.5.5.8" });
+D.db.prepare("UPDATE acct_users SET plan='pro', plan_until='2099-01-01T00:00:00Z', monthly_left=80 WHERE email='proguy@gmail.com'").run();
+r = await call(aiEnv, "xray/start", { url: "spicehub.test" }, { ip: "5.5.5.8" });
+r = await call(aiEnv, "xray/edge", { jobId: r.j.jobId, kind: "fixPack", pack: { pages: [] } }, { ip: "5.5.5.8" }); ok(r.status === 402 && r.j.upgrade === "agency", "Pro plan: FODO Edge is Agency-only (402)");
+ok(PLANS.agency.features.filter((f) => ["fixPack", "battleCards", "roadmap90", "clientPitch"].indexOf(f) > -1).length === 4 && !PLANS.pro.features.some((f) => /fixPack|battleCards|roadmap90|clientPitch/.test(f)), "the 4 Edge tools exist only on Agency (and owner logins)");
+
 function activeOf(email) { const u = user(email); return u.plan && u.plan !== "free" && Date.parse(u.plan_until) > Date.now() ? u.plan : "free"; }
 console.log(`\naccounts: ${pass}/${pass + fail} passed`); process.exit(fail ? 1 : 0);

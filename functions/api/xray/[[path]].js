@@ -34,7 +34,9 @@ const TEXTY = /^(text\/html|application\/xhtml\+xml|text\/plain|application\/xml
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 
 export async function onRequest(ctx) {
-  const { request, env, params } = ctx, t0 = Date.now();
+  const { request, params } = ctx, t0 = Date.now();
+  // offline test world only (XRAY_TEST_MODE is never set on the live site): AI answers come from a stand-in server
+  const env = ctx.env.XRAY_TEST_MODE === "1" && ctx.env.XRAY_TEST_AI ? Object.assign({}, ctx.env, { AI: { run: (model, inp) => fetch(ctx.env.XRAY_TEST_AI, { method: "POST", body: JSON.stringify(inp) }).then((r) => r.json()) } }) : ctx.env;
   const path = [].concat(params.path || []), route = path[0] || "", method = request.method;
   try {
     if (route === "health" && method === "GET") return json({ ok: true, service: "business-x-ray", version: "1.0", providers: providers(env), limits: LIMITS });
@@ -53,6 +55,7 @@ export async function onRequest(ctx) {
     if (route === "psi") return await psi(env, job, body, t0);
     if (route === "seo") return await seo(env, job, body, t0);
     if (route === "ai") return await ai(env, job, body, t0);
+    if (route === "edge") return await edge(env, job, body, t0);
     if (route === "refund") return await refund(env, job);
     if (route === "linkcheck") return await linkcheck(env, job, body);
     if (route === "authority") return await authority(env, job, body);
@@ -277,6 +280,51 @@ async function ai(env, job, b, t0) {
     log({ job: job.id, route: "ai", mode, provider: "workers-ai", model: a.model, ok: true, dropped: dropped.length, ms: Date.now() - t0 });
     return json({ ok: true, mode, model: a.model, synthesis: out, dropped });
   } catch (e) { log({ job: job.id, route: "ai", ok: false, err: String(e.message) }); return json({ ok: false, reason: "AI did not answer." }, 502); }
+}
+
+/* ---------- v14 FODO Edge (Agency + owner logins): AI Fix Pack, battle cards, 90-day roadmap, client pitch.
+   Every answer is JSON, checked against what was sent: page URLs, competitor domains and opportunity IDs that were not in the
+   research pack are dropped, so the AI cannot invent pages, rivals or findings. Text is drafting help, labelled "AI draft". ---------- */
+const EDGE = {
+  fixPack: { feature: "fixPack", max: 2200,
+    prompt: `You are a senior SEO + conversion copywriter. For each page in PAGES write better copy that keeps every fact true (do not invent prices, numbers, awards, years or claims that are not in the data).
+Return JSON only: {"pages":[{"url":"<exact url from PAGES>","title":"<= 60 chars, main search phrase + brand","meta":"140-158 chars with a clear benefit and call to action","h1":"clear headline: who it is for + outcome"}],"headlines":["3 homepage hero headline options"],"faq":[{"q":"question real buyers ask","a":"short answer using only facts in the data"}],"cta":"one better call-to-action button text"}. Max 8 pages, 5 FAQ.` },
+  battleCards: { feature: "battleCards", max: 2200,
+    prompt: `You are a competitive strategist. Using ONLY the facts in the data, write one battle card per competitor in COMPETITORS.
+Return JSON only: {"cards":[{"domain":"<exact domain from COMPETITORS>","theyWinOn":["max 3, from their advantages"],"youWinOn":["max 3, from your strengths or their weaknesses"],"howToWin":["3 concrete actions"],"talkTrack":"2-3 sentences a salesperson can say when a buyer mentions this competitor — no false claims"}]}.` },
+  roadmap90: { feature: "roadmap90", max: 2200,
+    prompt: `You are a growth consultant. Turn OPPORTUNITIES into a 90-day plan (12 weeks) in sensible order: quick fixes first, then growth, then strategic work.
+Return JSON only: {"months":[{"month":1,"goal":"one line","weeks":[{"week":1,"focus":"short","tasks":["max 3 concrete tasks"],"opportunities":["ids from OPPORTUNITIES"],"kpi":"what to measure"}]}]} with 3 months and 4 weeks each. Use only opportunity ids that exist.` },
+  clientPitch: { feature: "clientPitch", max: 1600,
+    prompt: `You are an agency founder writing to a prospective client about the X-Ray of their website. Friendly, specific, no hype, no guarantees, no invented numbers.
+Return JSON only: {"subject":"email subject","email":"120-180 word email that names 3 findings and offers a call","findings":[{"text":"finding in plain words","opportunity":"id from OPPORTUNITIES"}],"proposal":[{"phase":"name","what":"what we will do","outcome":"expected outcome in words, no numbers you were not given"}]} with 3 findings and 3 phases.` },
+};
+async function edge(env, job, b, t0) {
+  const kind = String(b.kind || ""), E = EDGE[kind]; if (!E) return json({ ok: false, reason: "Unknown tool." }, 400);
+  if (!accountsOn(env)) return json({ ok: false, upgrade: "agency", reason: "FODO Edge tools need a Growth Lab account." }, 402);
+  const L = await jobLimits(env, job); if (L.features.indexOf(E.feature) < 0) return json({ ok: false, upgrade: "agency", reason: "FODO Edge tools are part of the Agency plan." }, 402);
+  if (!env.AI) return json({ ok: false, disabled: true, reason: "AI is not connected." }, 503);
+  if (await over(env, job, "edge:" + kind, 2)) return json({ ok: false, reason: "Limit for this tool reached on this X-Ray." }, 429);
+  const pack = b.pack || {}, data = JSON.stringify(pack); if (data.length > 40000) return json({ ok: false, reason: "Research pack too large." }, 413);
+  try {
+    const a = await runAI(env, [{ role: "system", content: E.prompt + "\nAnswer in English. Output one JSON object and nothing else." }, { role: "user", content: "DATA (JSON):\n" + data }], E.max);
+    const o = parseObj(a.text); if (!o) return json({ ok: false, reason: "The AI answer could not be read. Try again." }, 502);
+    const out = checkEdge(kind, o, pack);
+    log({ job: job.id, route: "edge", kind, ok: true, model: a.model, ms: Date.now() - t0 });
+    return json({ ok: true, kind, model: a.model, result: out });
+  } catch (e) { log({ job: job.id, route: "edge", kind, ok: false, err: String(e.message) }); return json({ ok: false, reason: "AI did not answer. Try again." }, 502); }
+}
+const cl = (s, n) => clean(typeof s === "string" ? s : "", n), arr = (a, n) => (Array.isArray(a) ? a : []).slice(0, n);
+function checkEdge(kind, o, pack) {
+  if (kind === "fixPack") { const urls = new Set(arr(pack.pages, 12).map((p) => String(p.url)));
+    return { pages: arr(o.pages, 8).filter((p) => p && urls.has(String(p.url))).map((p) => ({ url: String(p.url), title: cl(p.title, 70), meta: cl(p.meta, 170), h1: cl(p.h1, 120) })),
+      headlines: arr(o.headlines, 3).map((h) => cl(h, 120)).filter(Boolean), faq: arr(o.faq, 5).map((f) => ({ q: cl(f && f.q, 160), a: cl(f && f.a, 400) })).filter((f) => f.q && f.a), cta: cl(o.cta, 40) }; }
+  if (kind === "battleCards") { const doms = new Set(arr(pack.competitors, 12).map((c) => String(c.domain)));
+    return { cards: arr(o.cards, 10).filter((c) => c && doms.has(String(c.domain))).map((c) => ({ domain: String(c.domain), theyWinOn: arr(c.theyWinOn, 3).map((x) => cl(x, 160)).filter(Boolean), youWinOn: arr(c.youWinOn, 3).map((x) => cl(x, 160)).filter(Boolean), howToWin: arr(c.howToWin, 3).map((x) => cl(x, 200)).filter(Boolean), talkTrack: cl(c.talkTrack, 500) })) }; }
+  const ids = new Set(arr(pack.opportunities, 40).map((x) => String(x.id)));
+  if (kind === "roadmap90") return { months: arr(o.months, 3).map((m, mi) => ({ month: mi + 1, goal: cl(m && m.goal, 140), weeks: arr(m && m.weeks, 4).map((w, wi) => ({ week: mi * 4 + wi + 1, focus: cl(w && w.focus, 80), tasks: arr(w && w.tasks, 3).map((t) => cl(t, 180)).filter(Boolean), opportunities: arr(w && w.opportunities, 4).map(String).filter((x) => ids.has(x)), kpi: cl(w && w.kpi, 120) })) })) };
+  return { subject: cl(o.subject, 120), email: String(o.email || "").replace(/[<>]/g, "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, 1800), findings: arr(o.findings, 3).map((f) => ({ text: cl(f && f.text, 220), opportunity: ids.has(String(f && f.opportunity)) ? String(f.opportunity) : null })).filter((f) => f.text),
+    proposal: arr(o.proposal, 4).map((p) => ({ phase: cl(p && p.phase, 60), what: cl(p && p.what, 240), outcome: cl(p && p.outcome, 200) })).filter((p) => p.phase) };
 }
 
 async function refund(env, job) {

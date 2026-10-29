@@ -18,7 +18,7 @@ const envMap = () => { const src = fs.readFileSync(path.join(__dirname, "xray-fi
   return JSON.stringify(Object.assign(m, { "instagram.com": F + "/_ext404", "facebook.com": F + "/_ext200", "api.resend.com": F + "/_resend", "sandbox.cashfree.com": F + "/_cf", "openpagerank.com": F + "/_opr" })); };
 const start = () => { stop(); sh("bash", ["-c", "curl -s --noproxy '*' -m 2 " + F + "/_calls >/dev/null && pkill -f '[x]ray-fixtures/server.js'; sleep 0.5; true"]);
   const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER, STATE, MAPX: envMap(),
-    EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding RESEND_API_KEY=re_test_KEY --binding MAIL_FROM=login@fodo.test --binding CASHFREE_APP_ID=CF_TEST_APP --binding CASHFREE_SECRET_KEY=CF_TEST_SECRET --binding CASHFREE_ENV=sandbox --binding OPR_API_KEY=opr_test_KEY" });
+    EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding RESEND_API_KEY=re_test_KEY --binding MAIL_FROM=login@fodo.test --binding CASHFREE_APP_ID=CF_TEST_APP --binding CASHFREE_SECRET_KEY=CF_TEST_SECRET --binding CASHFREE_ENV=sandbox --binding OPR_API_KEY=opr_test_KEY --binding XRAY_TEST_AI=" + F + "/_ai" });
   if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
 const calls = () => fetch(F + "/_calls").then((r) => r.json());
 const bodies = [];
@@ -63,6 +63,10 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   await p.goto(BASE + "/business-x-ray/"); await p.waitForTimeout(600);
   ok(/Log in free/.test(await p.textContent("#xr-note")), "X-Ray form says: log in free for the first 2");
   ok((await p.textContent(".acct-chip")).trim() === "Log in", "header shows Log in");
+  ok(await p.evaluate(() => { const c = document.querySelector("#site-header .acct-chip"); return !!c && c.nextElementSibling && c.nextElementSibling.id === "search-open" && /Contact/.test(c.previousElementSibling.textContent); }), "v14: login sits between the menu (… Contact) and the search icon");
+  ok(await p.evaluate(() => { const d = document.getElementById("drawer"); return !!d && d.lastElementChild.classList.contains("acct-drawer") && /Log in/.test(d.lastElementChild.textContent); }), "v14: login is the last item in the ☰ menu");
+  await p.goto(BASE + "/"); await p.waitForTimeout(700); ok(await p.isVisible("#site-header .acct-chip"), "v14: login button on the home page too");
+  await p.goto(BASE + "/business-x-ray/"); await p.waitForTimeout(600);
   await runX(p, "spicehub.test", { stay: true, login: true });
   await p.waitForSelector(".acct-dlg #acct-email", { timeout: 15000 });
   ok(/Log in \(it.s free\) to run a Business X-Ray/.test(await p.textContent(".acct-dlg")), "Run without login → login dialog with the server's reason");
@@ -104,13 +108,18 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
 
   /* ---------- Pro X-Ray ---------- */
   x = await runX(p, "spicehub.test"); const R = x.r;
+  if (!R) console.log("  status:", x.status);
   ok(/X-Ray complete/.test(x.status) && R.tier === "pro" && R.limits.pages === 300, "Pro X-Ray runs at Pro level (300 pages max)");
   ok(R.techStack && R.techStack.some((t) => t.name === "WhatsApp chat link") && R.techStack.some((t) => t.name === "Schema.org data"), "tech stack read from the homepage: " + (R.techStack || []).map((t) => t.name).join(", "));
   ok(R.extLinks && R.extLinks.checked >= 2 && R.extLinks.broken.some((l) => /instagram\.com/.test(l.url) && l.status === 404) && !R.extLinks.broken.some((l) => /facebook/.test(l.url)), "outgoing links checked: dead Instagram link found (404), Facebook OK");
   ok(R.opportunities.some((o) => o.key === "X_extBroken"), "broken outgoing link became an opportunity");
   ok(R.authority && R.authority[0].domain === "spicehub.test" && R.authority[0].rank === 4.5, "domain authority from Open PageRank (ESTIMATED): " + JSON.stringify(R.authority && R.authority[0]));
   ok(R.compare && !R.compare.none && R.compare.tierBefore === "free" && typeof R.compare.overallBefore === "number", "compared with the earlier (free) X-Ray of the same site");
-  ok(await p.isVisible(".xr-compare") && await p.$('[data-x="pdf"]') && !(await p.$$(".xr-lock")).length, "Pro report: compare panel, downloads on, nothing locked");
+  const proLocks = await p.$$eval(".xr-lock", (l) => l.map((e) => e.textContent));
+  ok(await p.isVisible(".xr-compare") && await p.$('[data-x="pdf"]') && proLocks.length === 1 && /FODO Edge/.test(proLocks[0]), "Pro report: compare panel, downloads on, only FODO Edge (Agency) locked");
+  ok(R.sov && R.sov.rows.some((x) => x.you) && R.kwMap && R.kwMap.length && R.tracking && R.tracking.rows.length >= 7 && R.schema && /application\/ld\+json/.test(R.schema.code) && R.ads && R.ads.length === R.competitors.length && R.matrix && R.matrix.cols[0].you, "Pro: share of voice, keyword→page map, tracking audit, schema code, ad-library links, competitor matrix");
+  ok(!R.edge, "Pro: FODO Edge not run (Agency only)");
+  ok(await p.isVisible(".xr-matrix") && await p.isVisible(".xr-sov") && await p.isVisible(".xr-nav") && (await p.$$(".xr-nums li")).length === 6, "report: key numbers, section menu, side-by-side matrix and share-of-voice bars shown");
   ok(R.competitors.every((c) => c.pagesRead >= 1) && R.competitors.some((c) => c.pagesRead >= 2), "deep competitor crawl: extra pages per competitor (" + R.competitors.map((c) => c.domain + ":" + c.pagesRead).join(", ") + ")");
   const dl = p.waitForEvent("download", { timeout: 20000 }); await p.click('[data-x="pdf"]'); const pdfF = await (await dl).path(); const pdf = fs.readFileSync(pdfF, "latin1");
   ok(/^%PDF-1\.4/.test(pdf) && /Technology stack/.test(pdf) && /Domain authority/.test(pdf) && /Since the last X-Ray/.test(pdf), "PDF includes the Pro sections");
@@ -147,6 +156,22 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   ok(/\/DCTDecode/.test(wl) && /\/Im1 Do/.test(wl) && /Acme Digital/.test(wl) && !/FODO Business X-Ray/.test(wl) && !/FODO tool:/.test(wl) && /Producer \(PDF\)/.test(wl), "white-label PDF: agency logo embedded, agency name, no FODO branding");
   const cl = await p.evaluate(() => window.FODO_ACCOUNT.history({ client: document.getElementById("xr-client").value }).then((j) => j.items.length));
   ok(cl === 1, "the X-Ray is filed in the client folder");
+
+  /* ---------- v14 owner login: everything, including FODO Edge ---------- */
+  await ctx.close(); ctx = await newCtx(b); p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(e.message));
+  await p.goto(BASE + "/business-x-ray/"); await p.waitForTimeout(300);
+  await p.evaluate(() => fetch("/api/account/test-login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "singhrajputanmol014@gmail.com" }) }));
+  await p.reload(); await p.waitForTimeout(800);
+  ok(/Owner · ∞/.test(await p.textContent(".acct-chip")), "owner login: header says Owner · ∞");
+  x = await runX(p, "spicehub.test", { stay: true }); const O = x.r;
+  ok(O.tier === "agency" && O.edge && ["fixPack", "battleCards", "roadmap90", "clientPitch"].every((k) => O.edge[k] && !O.edge[k].error), "owner X-Ray: all 4 FODO Edge tools ran");
+  ok(O.edge.fixPack.pages.length && O.edge.fixPack.pages.every((pg) => /spicehub\.test/.test(pg.url)) && !O.edge.fixPack.pages.some((pg) => /privacy/.test(pg.url)), "Fix Pack: only real pages (the AI's made-up page was dropped), no legal pages");
+  ok(O.edge.battleCards.cards.every((c) => O.competitors.some((k) => k.domain === c.domain)), "battle cards: only real competitors (the made-up rival was dropped)");
+  ok(O.edge.roadmap90.months.length === 3 && O.edge.roadmap90.months.every((m) => m.weeks.every((w) => w.opportunities.every((id) => O.opportunities.some((o) => o.id === id)))), "roadmap: 3 months, only real opportunity ids");
+  ok(await p.isVisible("#xr-edge") && !(await p.$$(".xr-lock")).length && /Copy email/.test(await p.textContent("#xr-edge")), "owner report: FODO Edge section shown, nothing locked anywhere");
+  const before2 = await p.evaluate(() => window.FODO_ACCOUNT.me(true).then((u) => u.credits.total)); ok(before2 === "∞", "owner: still unlimited after the run");
+  const dl3 = p.waitForEvent("download", { timeout: 20000 }); await p.click('[data-x="pdf"]'); const op = fs.readFileSync(await (await dl3).path(), "latin1");
+  ok(/FODO Edge/.test(op) && /Share of Google/.test(op) && /Tracking/.test(op), "owner PDF includes FODO Edge, share of voice and tracking");
 
   /* ---------- hygiene ---------- */
   const leak = SECRETS.filter((s) => bodies.some((t) => t.indexOf(s) > -1));

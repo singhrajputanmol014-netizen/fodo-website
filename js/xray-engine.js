@@ -929,6 +929,80 @@
     var keep = []; topics.forEach(function (x) { if (keep.length < 12 && !keep.some(function (k) { return k.topic.indexOf(x) > -1 || x.indexOf(k.topic) > -1; })) keep.push({ topic: x, count: seen[x].length, of: comps.length, competitors: seen[x].map(function (c) { return c.domain; }), evidence: [].concat.apply([], seen[x].map(function (c) { return (c.evidence || []).slice(0, 1); })) }); });
     return { topics: keep, compared: comps.length };
   };
+  /* ---------- v14 Growth: search share of voice — position-weighted share of the first page across your market searches (INFERRED) ---------- */
+  var POSW = function (p) { return p === 1 ? 30 : p === 2 ? 16 : p === 3 ? 11 : p <= 5 ? 6 : p <= 10 ? 3 : 0; };
+  E.shareOfVoice = function (serpA, target, comps) {
+    var list = (serpA || []).filter(function (s) { return s.ok && s.kind !== "brand" && s.kind !== "voice"; }); if (!list.length) return null;
+    var pts = {}, add = function (d, p) { pts[d] = (pts[d] || 0) + POSW(p); };
+    list.forEach(function (s) { if (s.ourPos) add(target, s.ourPos); s.competitors.forEach(function (c) { add(c.domain, c.pos); }); });
+    var named = {}; (comps || []).forEach(function (c) { named[c.domain] = c.name; });
+    var total = Object.keys(pts).reduce(function (a, k) { return a + pts[k]; }, 0) || 1;
+    var rows = Object.keys(pts).map(function (d) { return { domain: d, name: d === target ? "You" : named[d] || d, you: d === target, share: Math.round(1000 * pts[d] / total) / 10, appearances: list.filter(function (s) { return d === target ? s.ourPos : s.competitors.some(function (c) { return c.domain === d; }); }).length }; })
+      .sort(function (a, b) { return b.share - a.share; });
+    if (!rows.some(function (r) { return r.you; })) rows.push({ domain: target, name: "You", you: true, share: 0, appearances: 0 });
+    return { searches: list.length, rows: rows.filter(function (r, i) { return i < 8 || r.you; }) };
+  };
+  /* ---------- v14 Growth: keyword → page map — the page of yours that best matches each search, or "create a page" (INFERRED) ---------- */
+  E.keywordMap = function (kw, pages) {
+    pages = (pages || []).filter(function (p) { return !p.error && !(p.status >= 400) && p.title !== undefined; }); if (!pages.length || !(kw || []).length) return [];
+    return kw.map(function (k) {
+      var t = low(k.keyword).replace(/["']/g, "").split(/\s+/).filter(function (w) { return w.length > 2 && !STOPW.test(w) && !/^(best|price|pricing|reviews?|near|how|choose|trends|alternatives|20\d\d)$/.test(w); });
+      var best = null, bs = 0;
+      pages.forEach(function (p) { var head = low([p.title, (p.h1 || []).join(" "), p.metaDescription].join(" ")), body = low((p.text || "").slice(0, 8000));
+        var sc = t.reduce(function (a, w) { return a + (head.indexOf(w) > -1 ? 2 : body.indexOf(w) > -1 ? 0.5 : 0); }, 0) / Math.max(1, t.length * 2); if (sc > bs) { bs = sc; best = p; } });
+      var fit = bs >= 0.75 ? "Strong" : bs >= 0.4 ? "Weak" : "None";
+      return { keyword: k.keyword, intent: k.intent, ourPos: k.ourPos, page: fit === "None" ? null : best.finalUrl, pageTitle: fit === "None" ? "" : best.title, fit: fit,
+        action: fit === "Strong" ? (k.ourPos ? "Keep improving this page" : "This page fits — strengthen its title, H1 and internal links") : fit === "Weak" ? "Rewrite this page's title and H1 around the search, or add a section" : "Create a dedicated page for this search" };
+    });
+  };
+  /* ---------- v14 Pro: tracking & ads readiness — from the tech stack of you and every competitor (OBSERVED) ---------- */
+  E.trackingAudit = function (mine, compTech, html) {
+    var has = function (list, re) { return (list || []).some(function (t) { return re.test(t.name); }); }, code = String(html || "");
+    var C = Object.keys(compTech || {}), n = function (re) { return C.filter(function (d) { return has(compTech[d], re); }).length; };
+    var rows = [
+      ["Analytics (GA4, Clarity, Hotjar…)", /Analytics 4|Universal|Clarity|Hotjar|Mixpanel|Plausible|Matomo|Segment|Yandex/, "Without analytics you can't see which pages or ads bring customers."],
+      ["Google Tag Manager", /Tag Manager/, "Lets you add and change tracking without touching the site code."],
+      ["Meta (Facebook/Instagram) Pixel", /Meta \(Facebook\) Pixel/, "Needed to retarget visitors and to measure Meta ad conversions."],
+      ["Google Ads tag", /Google Ads tag/, "Needed to measure and optimise Google Ads conversions."],
+      ["LinkedIn Insight Tag", /LinkedIn Insight/, "B2B retargeting and conversion tracking on LinkedIn."],
+      ["Chat / WhatsApp on the site", /WhatsApp|Intercom|Tawk|Crisp|Zendesk|Freshworks|Tidio|LiveChat|Drift|SalesIQ|WATI/, "Visitors with questions can reach you before they leave."],
+      ["Cookie consent", /Cookie consent/, "Needed in many markets before ad pixels may load."],
+    ].map(function (r) { return { item: r[0], you: has(mine, r[1]), competitors: n(r[1]), of: C.length, why: r[2] }; });
+    rows.push({ item: "Google Search Console verified", you: /google-site-verification/i.test(code) ? true : null, competitors: null, of: C.length, why: "Shows which searches you appear for. (Verified by DNS is invisible to us — check your account if this says unknown.)" });
+    var gaps = rows.filter(function (r) { return r.you === false && r.competitors > 0; }).map(function (r) { return r.item + " — " + r.competitors + " of " + r.of + " competitors use it"; });
+    return { rows: rows, gaps: gaps };
+  };
+  /* ---------- v14 Pro: ready-to-paste JSON-LD built only from details found on the site (nothing invented) ---------- */
+  E.schemaCode = function (B, input) {
+    var url = "https://" + B.domain + "/", o = { "@context": "https://schema.org", "@type": B.local ? "LocalBusiness" : "Organization", name: B.name.value, url: url };
+    if (B.description && B.description.value) o.description = clip(B.description.value, 250);
+    if (B.contacts.phones[0]) o.telephone = B.contacts.phones[0];
+    if (B.contacts.emails[0]) o.email = B.contacts.emails[0];
+    if (B.contacts.address) o.address = { "@type": "PostalAddress", streetAddress: clip(B.contacts.address, 160), addressCountry: (input && input.country) || undefined };
+    var so = Object.keys(B.socials || {}).map(function (k) { return B.socials[k]; }); if (so.length) o.sameAs = so;
+    if (B.services && B.services.value && B.services.value.length) o.makesOffer = B.services.value.slice(0, 6).map(function (x) { return { "@type": "Offer", itemOffered: { "@type": "Service", name: x } }; });
+    var site = { "@context": "https://schema.org", "@type": "WebSite", name: B.name.value, url: url };
+    var missing = ["telephone", "email", "address", "sameAs"].filter(function (k) { return !o[k]; });
+    return { code: '<script type="application/ld+json">\n' + JSON.stringify(o, null, 2) + "\n</script>\n" + '<script type="application/ld+json">\n' + JSON.stringify(site, null, 2) + "\n</script>", type: o["@type"], missing: missing, existing: B.schemaTypes || [] };
+  };
+  /* ---------- v14 Pro: competitor ad libraries — public, official transparency pages (opening them shows their live ads) ---------- */
+  var CC = { India: "IN", "United States": "US", "United Kingdom": "GB", UAE: "AE", Canada: "CA", Australia: "AU", Singapore: "SG", "Saudi Arabia": "SA", Qatar: "QA", Germany: "DE", France: "FR", "New Zealand": "NZ", "South Africa": "ZA" };
+  E.adLinks = function (comps, country) {
+    var cc = CC[country] || "ALL";
+    return (comps || []).map(function (c) { return { name: c.name, domain: c.domain,
+      meta: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=" + cc + "&q=" + encodeURIComponent(c.name) + "&search_type=keyword_unordered",
+      google: "https://adstransparency.google.com/?region=" + (cc === "ALL" ? "anywhere" : cc) + "&domain=" + encodeURIComponent(c.domain),
+      linkedin: "https://www.linkedin.com/ad-library/search?companyName=" + encodeURIComponent(c.name) }; });
+  };
+  /* ---------- v14 competitor matrix — you vs every competitor on the same visible basics (OBSERVED) ---------- */
+  E.compMatrix = function (T, comps, extra) {
+    if (!T || !(comps || []).length) return null;
+    extra = extra || {};
+    var cols = [{ name: "You", domain: extra.domain, p: T, you: true }].concat(comps.map(function (c) { return { name: c.name, domain: c.domain, p: c.profile }; }));
+    var rows = [["Offer strength (0–100)", function (p) { return p.offerScore == null ? null : p.offerScore; }, "num"], ["Prices shown", function (p) { return !!p.pricing; }], ["Testimonials / reviews", function (p) { return !!p.testimonials; }], ["FAQ", function (p) { return !!p.faq; }],
+      ["Blog / articles", function (p) { return !!p.blog; }], ["WhatsApp", function (p) { return !!p.whatsapp; }], ["Trust signals", function (p) { return (p.trust || []).length; }, "num"], ["Structured data (schema)", function (p) { return (p.schema || []).length > 0; }], ["Social profiles linked", function (p) { return (p.socials || []).length; }, "num"]];
+    return { cols: cols.map(function (c) { return { name: c.name, domain: c.domain, you: !!c.you }; }), rows: rows.map(function (r) { return { name: r[0], num: r[2] === "num", values: cols.map(function (c) { try { return r[1](c.p || {}); } catch (e) { return null; } }) }; }) };
+  };
   /* small page records for the report (the full text stays in the browser) */
   E.compact = function (crawl) {
     return crawl.pages.map(function (p) { return { url: p.url, finalUrl: p.finalUrl, status: p.status, error: p.error || "", type: p.type || "", title: p.title || "", meta: p.metaDescription || "", h1: (p.h1 || [])[0] || "", words: p.wordCount || 0, canonical: p.canonical || "", noindex: !!p.noindex, depth: p.depth, schema: (p.schemaTypes || []).slice(0, 5), redirects: (p.redirects || []).length }; });

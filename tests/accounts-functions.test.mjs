@@ -6,6 +6,7 @@ import { webcrypto as wc, createHmac } from "node:crypto";
 import { onRequest as account } from "../functions/api/account/[[path]].js";
 import { onRequest as xray } from "../functions/api/xray/[[path]].js";
 import { onRequest as admin } from "../functions/api/admin/[[path]].js";
+import { onRequestPost as beacon } from "../functions/api/t.js";
 import { PLANS, limitsFor, publicPlans } from "../functions/_lib/plans.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 
@@ -32,10 +33,12 @@ const pubJwk = Object.assign(await wc.subtle.exportKey("jwk", kp.publicKey), { k
 const b64u = (b) => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 async function gToken(claims, kid) { const h = b64u(JSON.stringify({ alg: "RS256", kid: kid || "k1", typ: "JWT" })), p = b64u(JSON.stringify(Object.assign({ iss: "https://accounts.google.com", aud: "gid.apps.googleusercontent.com", exp: Math.floor(Date.now() / 1000) + 600, email_verified: true }, claims)));
   const sig = await wc.subtle.sign("RSASSA-PKCS1-v1_5", kp.privateKey, new TextEncoder().encode(h + "." + p)); return h + "." + p + "." + b64u(new Uint8Array(sig)); }
-const mails = [], cfCalls = [], CF = { orders: {}, subs: {} };
+const waSent = [], mails = [], cfCalls = [], CF = { orders: {}, subs: {} };
 globalThis.fetch = async (u, o = {}) => {
   u = String(u);
   if (/googleapis\.com\/oauth2\/v3\/certs/.test(u)) return new Response(JSON.stringify({ keys: [pubJwk] }));
+  if (/graph\.facebook\.com\/v21\.0\/PHONEID\/messages/.test(u)) { waSent.push(JSON.parse(o.body)); return new Response('{"messages":[{"id":"wamid.1"}]}'); }
+  if (/securetoken@system\.gserviceaccount\.com/.test(u)) return new Response(JSON.stringify({ keys: [Object.assign({}, pubJwk, { kid: "fb1" })] }));
   if (/api\.resend\.com\/emails/.test(u)) { const b = JSON.parse(o.body); mails.push(b); return new Response(JSON.stringify({ id: "m1" })); }
   if (/sandbox\.cashfree\.com\/pg/.test(u)) {
     cfCalls.push({ u, m: o.method, h: o.headers, b: o.body ? JSON.parse(o.body) : null });
@@ -232,6 +235,68 @@ r = await call(env, "admin/user/" + sid9, undefined, { cookie: ownerC }); ok(r.j
 r = await call(env, "event", { kind: "export_pdf", detail: "spicehub.test" }, { cookie: ownerC }); ok(r.j.ok, "page reports a PDF download");
 r = await call(env, "event", { kind: "paid" }, { cookie: ownerC }); ok(r.status === 400, "the page cannot fake payment or login events");
 r = await call(env, "admin/viewers", { email: "proguy@gmail.com", remove: true }, { cookie: ownerC }); r = await call(env, "admin/overview", undefined, { cookie: proC }); ok(r.status === 403, "removed viewer loses access");
+
+/* ---------- 12. v16: Firebase logins (Facebook, phone, …), admin role, website traffic ---------- */
+const fbEnv = Object.assign({}, env, { FIREBASE_API_KEY: "AIza-test", FIREBASE_PROJECT_ID: "fodo-513118", FIREBASE_PROVIDERS: "facebook,phone,microsoft" });
+const fbTok = (claims) => gToken(Object.assign({ iss: "https://securetoken.google.com/fodo-513118", aud: "fodo-513118", email_verified: false }, claims), "fb1");
+r = await call(fbEnv, "config"); ok(r.j.firebase && r.j.firebase.projectId === "fodo-513118" && r.j.firebase.providers.join() === "facebook,phone,microsoft", "config lists the extra login options (public Firebase ids only)");
+r = await call(fbEnv, "firebase", { idToken: await fbTok({ sub: "fbu1", phone_number: "+919876501234", firebase: { sign_in_provider: "phone" } }) }, { cookie: "", ip: "4.4.4.1" });
+const phoneUser = D.db.prepare("SELECT * FROM acct_users WHERE fb_uid='fbu1'").get();
+ok(r.j.ok && phoneUser && phoneUser.email === null && phoneUser.phone === "9876501234" && phoneUser.login_via === "phone" && r.j.user.credits.free === 2, "phone OTP login → new account without email, 2 free X-Rays");
+r = await call(fbEnv, "firebase", { idToken: await fbTok({ sub: "fbu1", phone_number: "+919876501234", firebase: { sign_in_provider: "phone" } }) }, { cookie: "", ip: "4.4.4.1" }); ok(r.j.ok && r.j.user.id === phoneUser.id, "same phone logs into the same account");
+r = await call(fbEnv, "firebase", { idToken: await fbTok({ sub: "fbu2", email: "rohit@gmail.com", firebase: { sign_in_provider: "facebook.com" } }) }, { cookie: "", ip: "4.4.4.1" }); ok(r.status === 409, "Facebook with an unverified email can't take over an existing account");
+r = await call(fbEnv, "firebase", { idToken: await fbTok({ sub: "fbu3", email: "newfb@gmail.com", name: "FB Person", firebase: { sign_in_provider: "facebook.com" } }) }, { cookie: "", ip: "4.4.4.1" });
+ok(r.j.ok && D.db.prepare("SELECT email FROM acct_users WHERE fb_uid='fbu3'").get().email === null && r.j.user.name === "FB Person", "Facebook login with an unverified email: account created without storing that email");
+r = await call(fbEnv, "firebase", { idToken: await fbTok({ sub: "fbu4", email: "rohit@gmail.com", email_verified: true, firebase: { sign_in_provider: "microsoft.com" } }) }, { cookie: "", ip: "4.4.4.1" }); ok(r.j.ok && r.j.user.email === "rohit@gmail.com", "Microsoft login with a verified email joins the existing account");
+r = await call(fbEnv, "firebase", { idToken: (await fbTok({ sub: "fbu5", firebase: { sign_in_provider: "phone" } })).replace(/.$/, "A") }, { cookie: "", ip: "4.4.4.1" }); ok(r.status === 401, "tampered Firebase token refused");
+r = await call(Object.assign({}, fbEnv, { FIREBASE_PROJECT_ID: "other-project" }), "firebase", { idToken: await fbTok({ sub: "fbu6", firebase: { sign_in_provider: "phone" } }) }, { cookie: "", ip: "4.4.4.1" }); ok(r.status === 401, "token from another Firebase project refused");
+r = await call(env, "admin/events?limit=20", undefined, { cookie: ownerC }); ok(r.j.items.some((e) => e.kind === "login_phone") && r.j.items.some((e) => e.kind === "login_facebook"), "admin activity shows phone and Facebook logins");
+// admin role: full control, set by an owner
+r = await call(env, "admin/viewers", { email: "proguy@gmail.com", role: "admin" }, { cookie: ownerC }); ok(r.j.ok, "owner makes someone an admin");
+r = await call(env, "admin/overview", undefined, { cookie: proC }); ok(r.j.role === "admin", "that person opens the dashboard as admin");
+r = await call(env, "admin/user/" + sid9 + "/grant", { type: "credits", n: 3 }, { cookie: proC }); ok(r.j.ok, "admin can give X-Rays");
+r = await call(env, "admin/viewers", { email: "intern@gmail.com", role: "viewer" }, { cookie: proC }); ok(r.j.ok, "admin can add team members");
+r = await call(env, "admin/viewers", { email: "anmol@fodo.co.in", remove: true }, { cookie: proC }); ok(r.status === 409, "nobody can remove or change an owner");
+r = await call(env, "admin/user/" + user("anmol@fodo.co.in").id + "/block", { blocked: true }, { cookie: proC }); ok(r.status === 409, "admin cannot block an owner");
+r = await call(env, "admin/viewers", { email: "proguy@gmail.com", remove: true }, { cookie: ownerC });
+// website traffic
+const hit = async (body, o) => { o = o || {}; const req = new Request(SITE + "/api/t", { method: "POST", headers: { "user-agent": o.ua || "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) AppleWebKit Mobile Safari/604.1", "cf-connecting-ip": o.ip || "8.8.4.4", origin: SITE }, body: JSON.stringify(body) }); Object.defineProperty(req, "cf", { value: { country: o.c || "IN", city: o.city || "New Delhi" } }); return (await beacon({ request: req, env })).status; };
+ok(await hit({ t: "pv", p: "/", r: "https://www.google.com/", q: "", w: 390, l: "en-IN" }) === 204, "beacon answers 204");
+await hit({ t: "pv", p: "/services/seo/", r: "https://www.fodo.co.in/", w: 390 });
+await hit({ t: "ev", p: "/services/seo/", e: [["whatsapp_click", "hero"], ["made_up", "x"]] });
+await hit({ t: "time", p: "/services/seo/", s: 42 });
+await hit({ t: "pv", p: "/", r: "https://chatgpt.com/", w: 1440 }, { ip: "1.2.3.4", ua: "Mozilla/5.0 (Windows NT 10.0) Chrome/130 Safari/537", c: "AE", city: "Dubai" });
+await hit({ t: "pv", p: "/business-x-ray/", r: "", q: "?utm_source=instagram&utm_medium=social&utm_campaign=diwali", w: 390 }, { ip: "5.6.7.8" });
+await hit({ t: "pv", p: "/", r: "" }, { ua: "Googlebot/2.1 (+http://www.google.com/bot.html)", ip: "66.249.1.1" });
+r = await call(env, "admin/traffic?days=7", undefined, { cookie: ownerC }); const TD = r.j.dims, g = (k, key) => ((TD[k] || []).filter((x) => x.k === key)[0] || {}).n || 0;
+ok(r.j.ok && g("uv", "all") === 3 && g("pv", "all") === 4 && g("ses", "all") === 3, "traffic: 3 visitors, 4 page views, 3 visits (the bot is not counted, IP not stored)");
+ok(g("src", "Google") === 1 && g("src", "ChatGPT") === 1 && g("src", "instagram") + g("src", "Instagram") === 1 && g("ch", "AI assistants") === 1 && g("ch", "Search") === 1 && g("ch", "Social") === 1, "sources: Google (search), ChatGPT (AI assistant), Instagram campaign (social)");
+ok(g("camp", "diwali · instagram") === 1 && g("country", "AE") === 1 && g("city", "Dubai, AE") === 1 && g("device", "Mobile") === 2 && g("device", "Desktop") === 1, "campaign, country, city and device counted");
+ok(g("ev", "whatsapp_click") === 1 && !g("ev", "made_up") && g("conv_src", "Google") === 1 && g("tsum", "/services/seo/") === 42 && g("entry", "/") === 2, "WhatsApp click credited to Google; time on page; entry pages; unknown events ignored");
+ok(r.j.live.now === 3 && r.j.series.uv.length === 7, "live visitors (last 5 min) + daily series");
+ok(!JSON.stringify(D.db.prepare("SELECT * FROM web_vis").all()).match(/8\.8\.4\.4|1\.2\.3\.4/), "no IP address stored anywhere");
+r = await call(env, "admin/traffic?days=7", undefined, { cookie: smC }); ok(r.status === 401 || r.status === 403, "traffic data is admin-only");
+
+/* ---------- 13. v16.1 free WhatsApp login (visitor sends a code; incoming messages are free) ---------- */
+const waEnv = Object.assign({}, env, { WA_NUMBER: "91 78270 07676", WA_PHONE_ID: "PHONEID", WA_TOKEN: "WATOKEN", WA_APP_SECRET: "WASECRET", WA_VERIFY_TOKEN: "verify-me" });
+r = await call(waEnv, "config"); ok(r.j.whatsapp === true && JSON.stringify(r.j).indexOf("WATOKEN") < 0 && JSON.stringify(r.j).indexOf("WASECRET") < 0, "config: WhatsApp login on, no WhatsApp secrets shown");
+const wv = await account({ request: new Request(SITE + "/api/account/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=12345"), env: waEnv, params: { path: ["webhook", "whatsapp"] } });
+ok(wv.status === 200 && (await wv.text()) === "12345", "Meta webhook verification answered");
+r = await call(waEnv, "wa/start", {}, { cookie: "", ip: "3.3.3.1" }); const W = r.j;
+ok(W.ok && /^[A-Z2-9]{6}$/.test(W.code) && W.link.indexOf("https://wa.me/917827007676?text=FODO%20LOGIN%20" + W.code) === 0 && W.poll.length === 40, "start: code " + W.code + " and a wa.me link to FODO's number");
+r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); ok(r.j.waiting, "before the message: waiting");
+const waHook = (obj, secret) => { const raw = JSON.stringify(obj); return account({ request: new Request(SITE + "/api/account/webhook/whatsapp", { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=" + createHmac("sha256", secret || "WASECRET").update(raw).digest("hex") }, body: raw }), env: waEnv, params: { path: ["webhook", "whatsapp"] } }); };
+const msgOf = (from, text) => ({ object: "whatsapp_business_account", entry: [{ changes: [{ value: { messages: [{ from, type: "text", text: { body: text } }] } }] }] });
+ok((await waHook(msgOf("919811122233", "FODO LOGIN " + W.code), "wrong")).status === 401, "webhook with a wrong signature is ignored");
+r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); ok(r.j.waiting, "…so still waiting");
+ok((await waHook(msgOf("919811122233", "FODO LOGIN " + W.code.toLowerCase() + " — please log me in"))).status === 200 && waSent.length === 1 && waSent[0].to === "919811122233" && /logged in/.test(waSent[0].text.body), "signed message from WhatsApp → number verified, free reply sent");
+r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); const wu = D.db.prepare("SELECT * FROM acct_users WHERE wa_phone='919811122233'").get();
+ok(r.j.ok && /^fodo_s=/.test(r.sc || "") && wu && wu.phone === "9811122233" && wu.email === null && r.j.user.credits.free === 2, "poll → logged in with the WhatsApp number, new account with 2 free X-Rays");
+r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); ok(r.status === 409, "a code logs in only once");
+r = await call(waEnv, "wa/start", {}, { cookie: "", ip: "3.3.3.1" }); await waHook(msgOf("919811122233", "FODO LOGIN " + r.j.code)); const again = await call(waEnv, "wa/poll", { poll: r.j.poll }, { cookie: "", ip: "3.3.3.1" });
+ok(again.j.ok && again.j.user.id === wu.id, "same WhatsApp number → same account next time");
+r = await call(waEnv, "wa/poll", { poll: "x".repeat(40) }, { cookie: "", ip: "3.3.3.1" }); ok(r.status === 410, "unknown poll token refused");
+r = await call(env, "wa/start", {}, { cookie: "", ip: "3.3.3.1" }); ok(r.status === 503, "without WhatsApp settings the option is off");
 
 function activeOf(email) { const u = user(email); return u.plan && u.plan !== "free" && Date.parse(u.plan_until) > Date.now() ? u.plan : "free"; }
 console.log(`\naccounts: ${pass}/${pass + fail} passed`); process.exit(fail ? 1 : 0);

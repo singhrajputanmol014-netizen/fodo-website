@@ -80,3 +80,21 @@ html:not([data-theme=dark]) .ad-tag.bad{color:#B3261E}
 .ad-app p,.ad-app small,.ad-app li,.ad-app td,.ad-app span,.ad-app label{letter-spacing:normal}
 .ad-main>div.panel,.ad-grid2>div.panel,.ad-grid3>div.panel{margin-bottom:16px}
 .ad-plan.t-o{color:#fff;background:#4C3BCF;border-color:#4C3BCF}.ad-plan{vertical-align:middle}
+/* v16 */
+.ad-xall{margin-right:4px}.ad-live{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;min-width:0}
+.ad-live i,.ad-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3DDC84;box-shadow:0 0 0 0 rgba(61,220,132,.6);animation:adp 2s infinite}
+@keyframes adp{70%{box-shadow:0 0 0 8px rgba(61,220,132,0)}100%{box-shadow:0 0 0 0 rgba(61,220,132,0)}}
+@media (prefers-reduced-motion:reduce){.ad-live i,.ad-dot{animation:none}}
+.ad-kpi small .up,.ad-kpi .up{color:var(--xr-ok)}.ad-kpi .down{color:#FF6B6B}html:not([data-theme=dark]) .ad-kpi .down{color:#B3261E}
+.ad-kpi.live b{color:var(--xr-ok)}
+.ad-in{padding:10px 12px;border-radius:10px;border:1px solid var(--line-3,var(--line));background:var(--panel);color:var(--text);font:inherit;min-width:0}
+.ad-dlg .cfx-box{max-width:440px}.ad-dlg h3{margin:0 0 8px}.ad-dlg .ad-in{width:100%;margin:6px 0 14px}.ad-dl2{display:block;font-size:13px;font-weight:600;margin-top:10px}
+@media (min-width:700px){.ad-dlg{align-items:center}.ad-dlg .cfx-box{border-radius:18px}}
+.ad-ins ul{list-style:none;padding:0;margin:0;display:grid;gap:10px}.ad-ins li{padding:10px 12px 10px 14px;border-radius:12px;border-left:4px solid #8B7BFF;background:color-mix(in srgb,var(--text) 4%,transparent);font-size:14px;line-height:1.45}
+.ad-ins li.warn{border-color:#FFC857}.ad-ins li.ok{border-color:#3DDC84}
+.ad-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ad-mt{width:100%;border-collapse:collapse;font-size:13.5px}.ad-mt th{text-align:left;font:600 11px/1.2 var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 8px;border-bottom:1px solid var(--line-3,var(--line))}
+.ad-mt td{padding:8px;border-bottom:1px solid color-mix(in srgb,var(--line-3,var(--line)) 55%,transparent);white-space:nowrap}.ad-mt td:first-child{white-space:normal;word-break:break-word;max-width:320px}.ad-mt a{color:var(--text)}
+.ad-mt tr:last-child td{border-bottom:0}.ad-tt{max-height:520px;overflow:auto}.ad-note{font-size:12.5px;margin:0 0 10px}
+.ad-team li{grid-template-columns:minmax(0,1fr) auto auto}
+@media (max-width:1000px){.ad-xall{display:none}.ad-live{display:none}}

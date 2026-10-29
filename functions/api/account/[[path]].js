@@ -12,10 +12,10 @@
  *   GET/POST team (Agency) · GET/POST clients (Agency) · POST brand (Agency white-label)
  *   POST webhook/cashfree       → signed Cashfree webhooks (payments + subscriptions)
  */
-import { logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
-  verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, grantPlan, randId, nowIso, refundCredit } from "../../_lib/accounts.js";
+import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
+  verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
 import { PLANS, PACKS, rank, has, publicPlans } from "../../_lib/plans.js";
-import { log, providers } from "../../_lib/xray-core.js";
+import { log, providers, outbound } from "../../_lib/xray-core.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const SITE = (request) => new URL(request.url).origin;
@@ -26,11 +26,15 @@ export async function onRequest(ctx) {
     if (path === "config" && m === "GET") return config(env);
     if (!accountsOn(env)) return json({ ok: false, disabled: true, reason: "Accounts are not switched on yet." }, 503);
     if (path === "webhook/cashfree" && m === "POST") return await webhook(request, env);
+    if (path === "webhook/whatsapp") return await waWebhook(request, env, m);
     if (m === "POST" && (!sameOrigin(request) || !/json/.test(request.headers.get("content-type") || ""))) return json({ ok: false, reason: "Bad request." }, 403);
     if (path === "me" && m === "GET") { const u = await sessionUser(env, request); if (!u) return json({ ok: true, user: null });
       const ob = await billingUser(env, u), pu = publicUser(u, ob), sub = await (await db(env)).prepare("SELECT plan FROM acct_subs WHERE user_id=?1 AND status='ACTIVE' LIMIT 1").bind(ob.id).first();
       pu.autoRenew = sub ? sub.plan : null; pu.owner = ob.id === u.id; return json({ ok: true, user: pu }); }
     if (path === "google" && m === "POST") return await google(request, env);
+    if (path === "firebase" && m === "POST") return await firebaseLogin(request, env);
+    if (path === "wa/start" && m === "POST") return await waStart(request, env);
+    if (path === "wa/poll" && m === "POST") return await waPoll(request, env);
     if (path === "otp/send" && m === "POST") return await otpSend(request, env);
     if (path === "otp/verify" && m === "POST") return await otpVerify(request, env);
     // offline test world only (XRAY_TEST_MODE is never set on the live site): sign in as any email, optionally on a plan
@@ -61,7 +65,10 @@ export async function onRequest(ctx) {
 
 function config(env) {
   const on = accountsOn(env), P = providers(env);
-  return json(Object.assign({ ok: true, enabled: on, google: on && env.GOOGLE_CLIENT_ID ? env.GOOGLE_CLIENT_ID : "", email: on && !!env.RESEND_API_KEY, payments: on && cfOn(env),
+  const fbp = String(env.FIREBASE_PROVIDERS || "facebook,phone,microsoft,email").split(",").map((x) => x.trim()).filter((x) => /^(facebook|phone|microsoft|apple|email|github|x)$/.test(x));
+  return json(Object.assign({ ok: true, enabled: on, google: on && env.GOOGLE_CLIENT_ID ? env.GOOGLE_CLIENT_ID : "",
+    whatsapp: on && waOn(env),
+    firebase: on && firebaseOn(env) ? { apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN || env.FIREBASE_PROJECT_ID + ".firebaseapp.com", projectId: env.FIREBASE_PROJECT_ID, providers: fbp } : null, email: on && !!env.RESEND_API_KEY, payments: on && cfOn(env),
     autoRenew: on && cfOn(env) && env.CASHFREE_SUBSCRIPTIONS === "1", mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox", testMode: env.XRAY_TEST_MODE === "1" },
     publicPlans({ seo: !!P.seo, authority: !!env.OPR_API_KEY })), 200, { "cache-control": "public, max-age=60" });
 }
@@ -70,6 +77,80 @@ function config(env) {
 async function signIn(env, request, u, how) {
   if (u.blocked && !isOwner(u)) { await logEvent(env, u.id, "blocked_try", how || ""); return json({ ok: false, blocked: true, reason: "This account has been blocked. Contact anmol@fodo.co.in if you think this is a mistake." }, 403); }
   if (how) await logEvent(env, u.id, how, ""); const cookie = await newSession(env, request, u.id); return json({ ok: true, user: publicUser(u, await billingUser(env, u)) }, 200, { "set-cookie": cookie }); }
+/* ---------- v16.1 free mobile-number login with WhatsApp ("reverse OTP") ----------
+   1) the page asks for a code  2) the visitor sends "FODO LOGIN <code>" to FODO's WhatsApp number (one tap on the phone, QR on a computer)
+   3) Meta's WhatsApp Cloud API calls our webhook with the sender's number — WhatsApp has already verified it — and the message is free
+   4) the page (which holds a secret poll token) is logged in. Needs WA_NUMBER, WA_PHONE_ID, WA_TOKEN, WA_APP_SECRET, WA_VERIFY_TOKEN. */
+const WA_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+async function waStart(request, env) {
+  if (!waOn(env)) return json({ ok: false, reason: "WhatsApp login is not set up yet." }, 503);
+  if (await count(env, "wastart:" + await ipHash(request), 20, 3600)) return json({ ok: false, reason: "Too many tries. Try again later." }, 429);
+  const d = await db(env), code = randId(6, WA_ALPHA), poll = randId(40), now = Date.now();
+  await d.prepare("INSERT INTO acct_wa (code, poll_hash, created, expires) VALUES (?1,?2,?3,?4)").bind(code, await sha256(poll), now, now + 10 * 60e3).run();
+  if (Math.random() < 0.1) await d.prepare("DELETE FROM acct_wa WHERE expires < ?1").bind(now - 864e5).run();
+  const text = "FODO LOGIN " + code + " — please log me in to fodo.co.in";
+  return json({ ok: true, code, poll, link: "https://wa.me/" + String(env.WA_NUMBER).replace(/\D/g, "") + "?text=" + encodeURIComponent(text), expires: now + 10 * 60e3 });
+}
+async function waPoll(request, env) {
+  if (!waOn(env)) return json({ ok: false }, 503);
+  const b = await request.json().catch(() => ({})), d = await db(env);
+  const r = await d.prepare("SELECT * FROM acct_wa WHERE poll_hash=?1").bind(await sha256(String(b.poll || ""))).first();
+  if (!r || r.expires < Date.now()) return json({ ok: false, expired: true, reason: "This login code has expired. Start again." }, 410);
+  if (!r.phone) return json({ ok: true, waiting: true });
+  const claim = await d.prepare("UPDATE acct_wa SET used=1 WHERE code=?1 AND used=0").bind(r.code).run();
+  if (!claim.meta || !claim.meta.changes) return json({ ok: false, reason: "This code was already used." }, 409);
+  const full = r.phone, last10 = full.slice(-10);
+  let u = await d.prepare("SELECT * FROM acct_users WHERE wa_phone=?1").bind(full).first();
+  if (!u) { if (await count(env, "signup:" + await ipHash(request), 30, 86400)) return json({ ok: false, reason: "Too many new accounts from this network today." }, 429);
+    u = await createUser(env, { email: null, name: "" }); }
+  await d.prepare("UPDATE acct_users SET wa_phone=?2, login_via='whatsapp', phone=COALESCE(NULLIF(phone,''), ?3) WHERE id=?1").bind(u.id, full, /^91/.test(full) ? last10 : "+" + full).run();
+  u = await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(u.id).first();
+  return signIn(env, request, u, "login_whatsapp");
+}
+async function waWebhook(request, env, m) {
+  const url = new URL(request.url);
+  if (m === "GET") return url.searchParams.get("hub.mode") === "subscribe" && env.WA_VERIFY_TOKEN && url.searchParams.get("hub.verify_token") === env.WA_VERIFY_TOKEN ? new Response(url.searchParams.get("hub.challenge") || "", { status: 200 }) : new Response("forbidden", { status: 403 });
+  if (!waOn(env)) return json({ ok: false }, 503);
+  const raw = await request.text(), sig = (request.headers.get("x-hub-signature-256") || "").replace(/^sha256=/, "");
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.WA_APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = [...new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw)))].map((x) => x.toString(16).padStart(2, "0")).join("");
+  let diff = mac.length === sig.length ? 0 : 1; for (let i = 0; i < mac.length && i < sig.length; i++) diff |= mac.charCodeAt(i) ^ sig.charCodeAt(i);
+  if (diff) return json({ ok: false, reason: "bad signature" }, 401);
+  let body = {}; try { body = JSON.parse(raw); } catch (e) {}
+  const d = await db(env), msgs = [];
+  (body.entry || []).forEach((e) => (e.changes || []).forEach((c) => ((c.value && c.value.messages) || []).forEach((x) => msgs.push(x))));
+  for (const x of msgs) {
+    const from = String(x.from || "").replace(/\D/g, ""), txt = String((x.text && x.text.body) || (x.button && x.button.text) || ""), mm = /FODO\s*LOGIN\s*([A-Z2-9]{6})/i.exec(txt);
+    if (!from || !mm) continue;
+    const upd = await d.prepare("UPDATE acct_wa SET phone=?2 WHERE code=?1 AND phone IS NULL AND expires > ?3").bind(mm[1].toUpperCase(), from, Date.now()).run();
+    const ok = upd.meta && upd.meta.changes;
+    try { await outbound(env)("https://graph.facebook.com/v21.0/" + env.WA_PHONE_ID + "/messages", { method: "POST", headers: { authorization: "Bearer " + env.WA_TOKEN, "content-type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: ok ? "✅ Done — go back to fodo.co.in, you are logged in. If you did not just try to log in, ignore this message." : "This login code has expired or was already used. Start again on fodo.co.in." } }), signal: AbortSignal.timeout(8000) }); } catch (e) {}
+  }
+  return json({ ok: true });
+}
+/* v16: Facebook, phone OTP, Microsoft, Apple, email link … through Firebase Authentication */
+const FB_KIND = { "facebook.com": "login_facebook", phone: "login_phone", "microsoft.com": "login_microsoft", "apple.com": "login_apple", password: "login_email_link", emailLink: "login_email_link", "github.com": "login_github", "twitter.com": "login_x" };
+async function firebaseLogin(request, env) {
+  if (!firebaseOn(env)) return json({ ok: false, reason: "These login options are not set up yet." }, 503);
+  if (await count(env, "fblogin:" + await ipHash(request), 40, 3600)) return json({ ok: false, reason: "Too many attempts. Try again later." }, 429);
+  const b = await request.json().catch(() => ({}));
+  let f; try { f = await verifyFirebase(env, b.idToken); } catch (e) { return json({ ok: false, reason: "Login could not be verified (" + e.message + ")." }, 401); }
+  const d = await db(env), last10 = f.phone.replace(/\D/g, "").slice(-10);
+  let u = await d.prepare("SELECT * FROM acct_users WHERE fb_uid=?1").bind(f.uid).first();
+  if (!u && f.email) { const byMail = await userByEmail(env, f.email);
+    if (byMail && !f.emailVerified) return json({ ok: false, reason: "An account with " + f.email + " already exists. Log in once with Google or the email code to use it." }, 409);
+    if (byMail) u = byMail; }
+  // no linking by phone number: the number on a profile is typed in, not verified, so it can't prove who owns an account
+  if (!u) {
+    if (await count(env, "signup:" + await ipHash(request), 30, 86400)) return json({ ok: false, reason: "Too many new accounts from this network today." }, 429);
+    u = await createUser(env, { email: f.email && f.emailVerified ? f.email : null, name: f.name, picture: f.picture });
+  }
+  await d.prepare("UPDATE acct_users SET fb_uid=?2, login_via=?3, phone=COALESCE(NULLIF(phone,''), NULLIF(?4,'')), name=COALESCE(NULLIF(name,''), NULLIF(?5,'')), picture=COALESCE(NULLIF(picture,''), NULLIF(?6,'')) WHERE id=?1")
+    .bind(u.id, f.uid, f.provider, /^\+91/.test(f.phone) ? last10 : f.phone, f.name, f.picture).run();
+  u = await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(u.id).first();
+  return signIn(env, request, u, FB_KIND[f.provider] || "login_other");
+}
 async function google(request, env) {
   if (!env.GOOGLE_CLIENT_ID) return json({ ok: false, reason: "Google sign-in is not set up." }, 503);
   if (await count(env, "glogin:" + await ipHash(request), 30, 3600)) return json({ ok: false, reason: "Too many attempts. Try again later." }, 429);

@@ -32,15 +32,17 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS acct_events_user ON acct_events(user_id, created_at)",
   "CREATE INDEX IF NOT EXISTS acct_events_time ON acct_events(created_at)",
   "CREATE TABLE IF NOT EXISTS acct_admins (email TEXT PRIMARY KEY, role TEXT, added_by TEXT, added_at TEXT)",
+  // v16.1 free phone login: the visitor sends a code to FODO on WhatsApp (incoming messages are free)
+  "CREATE TABLE IF NOT EXISTS acct_wa (code TEXT PRIMARY KEY, poll_hash TEXT, phone TEXT, created INTEGER, expires INTEGER, used INTEGER DEFAULT 0)",
 ];
 // columns added after v13 went live (ALTER fails harmlessly when the column already exists)
-const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT"];
+const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT"];
 let ready = null;
 export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
   if (!ready) ready = d.batch(DDL.map((s) => d.prepare(s))).then(async () => { for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } }).catch((e) => { ready = null; throw e; });
   await ready; return d; }
 /* v15: activity log for the admin dashboard — never throws, never blocks the request */
-export const EVENT_KINDS = ["login_google", "login_email", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block"];
+export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block"];
 export async function logEvent(env, userId, kind, detail) { try { if (!userId || !accountsOn(env)) return; await (await db(env)).prepare("INSERT INTO acct_events (user_id, kind, detail, created_at) VALUES (?1,?2,?3,?4)").bind(userId, kind, String(detail == null ? "" : detail).slice(0, 300), nowIso()).run(); } catch (e) {} }
 export async function count(env, key, limit, ttlSec) {   // true when over the limit
   const d = await db(env), now = Date.now();
@@ -100,7 +102,7 @@ export function publicUser(u, owner) {
   const b = owner || u, plan = activePlan(b);
   if (isOwner(b)) return { id: u.id, email: u.email, name: u.name, picture: u.picture, phone: u.phone || "", plan, planName: "Owner", planUntil: null, unlimited: true,
     credits: { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" }, team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsFor("agency"), admin: true, brand: b.brand ? JSON.parse(b.brand) : null };
-  return { id: u.id, email: u.email, name: u.name, picture: u.picture, phone: u.phone || "", plan, planName: PLANS[plan].name, planUntil: plan === "free" ? null : b.plan_until,
+  return { id: u.id, email: u.email || "", name: u.name || (u.email ? "" : u.phone || ""), picture: u.picture, phone: u.phone || "", plan, planName: PLANS[plan].name, planUntil: plan === "free" ? null : b.plan_until,
     credits: b.unlimited ? { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" } : { monthly: plan === "free" ? 0 : b.monthly_left, packs: b.pack_left, free: b.free_left, total: (plan === "free" ? 0 : b.monthly_left) + b.pack_left + (plan === "free" ? b.free_left : 0) },
     team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsForUser(spendTier(b, plan), b), unlimited: !!b.unlimited || undefined, brand: b.brand ? JSON.parse(b.brand) : null };
 }
@@ -176,6 +178,30 @@ export async function verifyGoogle(env, token) {
   const authoritative = !!email && body.email_verified === true && (/@gmail\.com$/.test(email) || !!body.hd);
   return { sub: String(body.sub), email, authoritative, name: String(body.name || "").slice(0, 80), picture: /^https:\/\//.test(body.picture || "") ? body.picture.slice(0, 300) : "" };
 }
+
+/* ---------------- v16 more ways to log in: Firebase Authentication (Facebook, phone OTP, Microsoft, Apple, email link …) ----------------
+   The browser signs in with Firebase; we verify Firebase's ID token here (RS256, Google's securetoken keys, aud = project id). */
+const FB_KEYS = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+let fbJwks = null, fbAt = 0;
+export const firebaseOn = (env) => !!(env.FIREBASE_API_KEY && env.FIREBASE_PROJECT_ID);
+export async function verifyFirebase(env, token) {
+  if (!firebaseOn(env)) throw new Error("not set up");
+  const parts = String(token || "").split("."); if (parts.length !== 3) throw new Error("bad token");
+  const head = JSON.parse(new TextDecoder().decode(b64u(parts[0]))), body = JSON.parse(new TextDecoder().decode(b64u(parts[1])));
+  if (head.alg !== "RS256") throw new Error("bad alg");
+  if (!fbJwks || Date.now() - fbAt > 3600e3) { const r = await outbound(env)(FB_KEYS, { signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error("keys " + r.status); fbJwks = (await r.json()).keys || []; fbAt = Date.now(); }
+  const jwk = fbJwks.filter((k) => k.kid === head.kid)[0]; if (!jwk) throw new Error("unknown key");
+  const key = await crypto.subtle.importKey("jwk", { kty: "RSA", n: jwk.n, e: jwk.e, alg: "RS256", ext: true }, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+  if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64u(parts[2]), enc.encode(parts[0] + "." + parts[1])))) throw new Error("bad signature");
+  if (body.aud !== env.FIREBASE_PROJECT_ID) throw new Error("wrong audience");
+  if (body.iss !== "https://securetoken.google.com/" + env.FIREBASE_PROJECT_ID) throw new Error("wrong issuer");
+  if (!body.exp || body.exp * 1000 < Date.now() || !body.sub) throw new Error("expired");
+  const fbp = (body.firebase && body.firebase.sign_in_provider) || "", email = cleanEmail(body.email);
+  return { uid: String(body.sub), provider: fbp, email, emailVerified: body.email_verified === true, phone: /^\+\d{8,15}$/.test(body.phone_number || "") ? body.phone_number : "",
+    name: String(body.name || "").slice(0, 80), picture: /^https:\/\//.test(body.picture || "") ? body.picture.slice(0, 300) : "" };
+}
+export const waOn = (env) => !!(env.WA_NUMBER && env.WA_TOKEN && env.WA_PHONE_ID && env.WA_APP_SECRET);
+export const displayName = (u) => (u && (u.name || u.email || u.phone)) || "User";
 
 /* ---------------- email one-time code (Resend) ---------------- */
 export async function sendMail(env, to, subject, html, text) {

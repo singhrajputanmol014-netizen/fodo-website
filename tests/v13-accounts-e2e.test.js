@@ -10,7 +10,7 @@ const { spawnSync } = require("child_process");
 const fs = require("fs"), path = require("path"), os = require("os");
 const BASE = "http://localhost:8788", F = "http://127.0.0.1:9300";
 const WRANGLER = process.env.WRANGLER, STATE = path.join(os.tmpdir(), "v13-state-" + process.pid);
-const SECRETS = ["CF_TEST_SECRET", "re_test_KEY", "opr_test_KEY", "sk-test-SECRET-123"];
+const SECRETS = ["CF_TEST_SECRET", "re_test_KEY", "opr_test_KEY", "sk-test-SECRET-123", "wa_test_TOKEN", "wa_test_SECRET"];
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 const sh = (cmd, args, env) => spawnSync(cmd, args, { env: Object.assign({}, process.env, env || {}), encoding: "utf8" });
 const stop = () => { sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 8788|[w]orkerd serve'); do kill $p; done; sleep 1; true"]); };
@@ -18,7 +18,7 @@ const envMap = () => { const src = fs.readFileSync(path.join(__dirname, "xray-fi
   return JSON.stringify(Object.assign(m, { "instagram.com": F + "/_ext404", "facebook.com": F + "/_ext200", "api.resend.com": F + "/_resend", "sandbox.cashfree.com": F + "/_cf", "openpagerank.com": F + "/_opr" })); };
 const start = () => { stop(); sh("bash", ["-c", "curl -s --noproxy '*' -m 2 " + F + "/_calls >/dev/null && pkill -f '[x]ray-fixtures/server.js'; sleep 0.5; true"]);
   const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER, STATE, MAPX: envMap(),
-    EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding RESEND_API_KEY=re_test_KEY --binding MAIL_FROM=login@fodo.test --binding CASHFREE_APP_ID=CF_TEST_APP --binding CASHFREE_SECRET_KEY=CF_TEST_SECRET --binding CASHFREE_ENV=sandbox --binding OPR_API_KEY=opr_test_KEY --binding XRAY_TEST_AI=" + F + "/_ai" });
+    EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding RESEND_API_KEY=re_test_KEY --binding MAIL_FROM=login@fodo.test --binding CASHFREE_APP_ID=CF_TEST_APP --binding CASHFREE_SECRET_KEY=CF_TEST_SECRET --binding CASHFREE_ENV=sandbox --binding OPR_API_KEY=opr_test_KEY --binding XRAY_TEST_AI=" + F + "/_ai --binding FIREBASE_API_KEY=AIza-test --binding FIREBASE_PROJECT_ID=fodo-test --binding FIREBASE_PROVIDERS=facebook,phone,microsoft --binding WA_NUMBER=917827007676 --binding WA_PHONE_ID=PID --binding WA_TOKEN=wa_test_TOKEN --binding WA_APP_SECRET=wa_test_SECRET --binding WA_VERIFY_TOKEN=v" });
   if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
 const calls = () => fetch(F + "/_calls").then((r) => r.json());
 const bodies = [];
@@ -70,6 +70,9 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   await runX(p, "spicehub.test", { stay: true, login: true });
   await p.waitForSelector(".acct-dlg #acct-email", { timeout: 15000 });
   ok(/Log in \(it.s free\) to run a Business X-Ray/.test(await p.textContent(".acct-dlg")), "Run without login → login dialog with the server's reason");
+  ok(await p.isVisible('[data-prov="facebook"]') && await p.isVisible('[data-prov="microsoft"]') && await p.isVisible("#acct-phone summary"), "v16: login also offers Facebook, Microsoft and mobile-number OTP");
+  await p.click("#acct-wa"); await p.waitForSelector("#acct-wabox:not([hidden])", { timeout: 10000 });
+  const wab = await p.textContent("#acct-wabox"); ok(/Your code: [A-Z2-9]{6}/.test(wab) && /Scan with your phone|Open WhatsApp/.test(wab) && /Waiting for your WhatsApp message/.test(await p.textContent("#acct-msg")), "v16.1: free WhatsApp login shows a code + QR/link and waits");
   await p.fill("#acct-email", "Rohit@Example.com"); await p.click("#acct-go");
   await p.waitForFunction(() => !document.getElementById("acct-codebox").hidden, null, { timeout: 15000 });
   const mail = (await calls()).mails.slice(-1)[0], code = (/(\d{6})/.exec(mail.subject) || [])[1];
@@ -187,9 +190,15 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   await p.click("#ad-view .ad-feats input[value=\"techStack\"]", { force: true }).catch(async () => { await p.click(".ad-fx summary"); await p.check('.ad-feats input[value="techStack"]'); });
   if (!(await p.isChecked('.ad-feats input[value="techStack"]'))) { await p.click(".ad-fx summary"); await p.check('.ad-feats input[value="techStack"]'); }
   await p.click("#ad-fsave"); await p.waitForTimeout(900); ok(/features?/.test(await p.textContent("#ad-view")) && await p.isChecked('.ad-feats input[value="techStack"]'), "owner gives a single feature (tech stack) free");
-  p.once("dialog", (dg) => dg.accept("test block")); await p.click("#ad-blk"); await p.waitForTimeout(900);
+  await p.click("#ad-blk"); await p.waitForSelector(".ad-dlg #ad-di"); await p.fill("#ad-di", "test block"); await p.click(".ad-dlg [data-ok]"); await p.waitForTimeout(900);
   ok(/Unblock/.test(await p.textContent("#ad-blk")) && /Blocked/.test(await p.textContent(".ad-user")), "owner blocks a user from the dashboard");
-  await p.click("#ad-blk"); await p.waitForTimeout(900); ok(/Block this user/.test(await p.textContent("#ad-blk")), "and unblocks");
+  await p.click("#ad-blk"); await p.waitForSelector(".ad-dlg [data-ok]"); await p.click(".ad-dlg [data-ok]"); await p.waitForTimeout(900); ok(/Block this user/.test(await p.textContent("#ad-blk")), "and unblocks (in-page dialog, works on phones too)");
+  await p.click('a[data-tab="traffic"]'); await p.waitForSelector("#t-ch", { timeout: 15000 });
+  const tv = await p.textContent("#ad-view"); ok(/visitors/.test(tv) && /What to work on/.test(tv) && (await p.$$("#t-page tbody tr")).length >= 3 && /\/business-x-ray\//.test(await p.textContent("#t-page")), "v16 traffic: visitors, pages seen in this test (incl. /business-x-ray/), what-to-work-on tips");
+  ok(/X-Rays started/.test(await p.textContent("#t-ev")), "traffic: site actions (X-Ray started) counted from the page");
+  const dlx = p.waitForEvent("download", { timeout: 20000 }); await p.click("#ad-txls"); const xl = await (await dlx).path(); ok(fs.statSync(xl).size > 2000 && /^PK/.test(fs.readFileSync(xl, "latin1").slice(0, 2)), "traffic Excel export downloads");
+  await p.click('a[data-tab="team"]'); await p.waitForSelector("#ad-vr"); await p.fill("#ad-ve", "boss2@agency.test"); await p.selectOption("#ad-vr", "admin"); await p.click("#ad-vf button"); await p.waitForSelector(".ad-dlg [data-ok]"); await p.click(".ad-dlg [data-ok]"); await p.waitForTimeout(900);
+  ok(/boss2@agency\.test/.test(await p.textContent("#ad-view")) && /Make view-only/.test(await p.textContent("#ad-view")), "owner makes another email an admin from the Team page");
   for (const t of ["xrays", "leads", "payments", "activity", "team"]) { await p.click('a[data-tab="' + t + '"]'); await p.waitForTimeout(600); }
   ok(/singhrajputanmol014@gmail\.com/.test(await p.textContent("#ad-view")) && await p.$("#ad-vf"), "team page: owners listed, owner can add viewers");
   await p.setViewportSize({ width: 390, height: 844 }); await p.click('a[data-tab="overview"]'); await p.waitForSelector(".ad-kpis");

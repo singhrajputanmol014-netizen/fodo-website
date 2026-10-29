@@ -45,7 +45,7 @@ Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/insights/social-content-pillars/` | 49 | 158 | 1 | 396 | Article,BreadcrumbList | How to Choose Social Media Content Pillars | FODO |
 | `/insights/traffic-vs-customers/` | 51 | 144 | 1 | 430 | Article,BreadcrumbList | Why More Traffic Doesn&#x27;t Mean More Customers | FODO |
 | `/insights/useful-marketing-dashboard/` | 54 | 152 | 1 | 375 | Article,BreadcrumbList | What a Useful Marketing Dashboard Should Answer | FODO |
-| `/legal/` | 50 | 155 | 1 | 942 | BreadcrumbList | Privacy Policy, Cookies, Terms &amp; Disclaimer | FODO |
+| `/legal/` | 50 | 155 | 1 | 1018 | BreadcrumbList | Privacy Policy, Cookies, Terms &amp; Disclaimer | FODO |
 | `/locations/` | 40 | 131 | 1 | 223 | BreadcrumbList | Where We Work — India &amp; Worldwide | FODO |
 | `/locations/australia/` | 57 | 150 | 1 | 484 | BreadcrumbList,FAQPage,Service | Digital Marketing Agency for Australian Businesses | FODO |
 | `/locations/bengaluru/` | 54 | 144 | 1 | 523 | BreadcrumbList,FAQPage,Service | Digital Marketing Agency for Bengaluru Startups | FODO |

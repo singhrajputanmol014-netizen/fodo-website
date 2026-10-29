@@ -1706,3 +1706,14 @@ html:not([data-theme=dark]) .cf-status.ok{color:#0E6B39}
 .xr-battle{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.xr-card{border:1px solid var(--line-3);border-radius:14px;padding:14px}.xr-card h4{margin:0 0 8px}
 .xr-road{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}@media (max-width:900px){.xr-road{grid-template-columns:1fr}}.xr-road h4{margin:8px 0}.xr-road ol{padding-left:18px;display:grid;gap:8px}
 .xr-faq dt{font-weight:700;margin-top:8px}.xr-faq dd{margin:2px 0 0}
+/* §37 v16 login: Google button without the white box in dark mode; more ways to log in */
+.acct-g,.acct-g iframe{color-scheme:light}
+.acct-g iframe{border-radius:999px!important}
+.acct-prov{display:grid;gap:8px;margin:0 0 12px}
+.acct-pb{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:44px;padding:10px 16px;border-radius:999px;border:1px solid var(--line-3);background:transparent;color:var(--text);font:600 15px/1 inherit;cursor:pointer}
+.acct-pb span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--pc);color:#fff;font-weight:800;font-size:13px}
+.acct-pb:hover{border-color:var(--pc)}
+.acct-alt{margin:8px 0;border:1px solid var(--line-3);border-radius:14px;padding:10px 14px}.acct-alt summary{cursor:pointer;font-weight:600;font-size:14px}.acct-alt .acct-f{margin-top:10px}
+.acct-cc{display:flex;align-items:center;gap:8px}.acct-cc span{font-weight:700}.acct-cc input{flex:1}
+.acct-wa{margin-bottom:10px}.acct-wabox{border:1px solid color-mix(in srgb,#25D366 45%,var(--line-3));border-radius:14px;padding:12px 14px;margin:0 0 12px;text-align:center}.acct-wabox p{margin:0 0 10px;font-size:14px}
+.acct-qr{display:inline-block;padding:10px;background:#fff;border-radius:12px;margin:4px auto 8px}.acct-qr img,.acct-qr canvas{display:block}.acct-wago{background:#25D366!important;color:#06240f!important;border-color:#25D366!important}

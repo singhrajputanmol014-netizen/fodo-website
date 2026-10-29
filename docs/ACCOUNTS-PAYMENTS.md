@@ -159,3 +159,100 @@ Every admin action is written to the user's history.
 - Downloads and copies are reported by the page via `POST /api/account/event`. Only known kinds are accepted, at most 300 per hour, and the page cannot fake login or payment events.
 - New columns (`blocked`, `unlimited`, `extra_features`, `admin_note`, and `acct_runs.features`) are added automatically to the live D1 database on first use.
 - `acct_admins` holds the viewers.
+
+## v16 — more login options, admin roles, live data, website traffic
+
+### More ways to log in: Firebase Authentication
+Facebook, mobile-number OTP, Microsoft, Apple, GitHub and X are offered through Firebase Authentication. Email login links also come through Firebase when Resend is not set up.
+
+**Settings:**
+
+| Name | Value |
+|---|---|
+| `FIREBASE_API_KEY` | Public web API key, from Firebase → Project settings → Your apps → Web app |
+| `FIREBASE_PROJECT_ID` | e.g. `fodo-513118` |
+| `FIREBASE_AUTH_DOMAIN` | Optional. Default `<project>.firebaseapp.com` |
+| `FIREBASE_PROVIDERS` | Optional. Comma list from `facebook,phone,microsoft,apple,github,x,email`. Default `facebook,phone,microsoft,email` |
+
+**How the server handles a Firebase login (`/api/account/firebase`):**
+- It verifies the Firebase ID token: RS256, Google's securetoken keys, `aud` = project id, `iss` = `https://securetoken.google.com/<project>`.
+- It links to an existing account only by Firebase uid or by a **verified** email. Facebook emails are often unverified, so they are not stored and not used to take over an account.
+- Phone-only users have no email. Their phone is stored, but it is never used to link accounts, because a profile phone number is typed in, not verified.
+
+**Firebase console setup:**
+- Authentication → Sign-in method → enable each provider.
+- Authorized domains → add `www.fodo.co.in` and `fodo.co.in`.
+- Facebook needs a Meta app ID and secret, and the Firebase OAuth redirect URI added in the Meta app.
+- Phone OTP costs per SMS in India and may need the Blaze plan.
+
+### Google button white box
+In dark mode the Google button showed a white box around it. It is fixed with `color-scheme: light` on its iframe.
+
+### Admin dashboard
+- **Block and other actions:** the confirmation boxes are now in-page dialogs. Some phone browsers block the browser's own pop-up boxes, which is why Block did nothing.
+- **Roles:** owner, **admin** (full control, can add other admins and viewers, cannot touch owners) and viewer.
+- **Live:** Overview, Traffic and Activity refresh every 20 seconds while open.
+- **Export all:** one Excel file with Summary, Users (all), X-Rays, Payments, Leads, Activity (5,000) and Traffic (90 days, every dimension). Every table also has its own CSV button.
+
+### Website traffic (first-party, every visitor)
+- **Collection:**
+  - `js/insights.js` is on every page except /admin/. It sends page views, the referrer and UTM tags, screen width, key clicks (from `FODO_TRACK`) and visible time on the page to `POST /api/t`.
+  - The beacon is ignored when the browser sends Do-Not-Track.
+- **Storage (`functions/_lib/traffic.js`):**
+  - A visitor is counted once a day by `sha256(salt + day + IP + user agent)`. The IP is never stored.
+  - Bots and crawlers are dropped.
+  - A visitor is capped at 600 hits a day.
+- **Tables (D1):**
+  - `web_daily` (day × dimension × key): pages, entry pages, sources, channels, referrers, campaigns, countries, cities, devices, browsers, systems, languages, new/returning, actions, actions by source/channel/page, and time on page.
+  - `web_vis`: visitors of the last 3 days.
+  - `web_live`: the last 3 hours, used for "on the site now".
+  - Daily totals are kept for 400 days.
+- **Channels:** Search, Social, AI assistants (ChatGPT, Perplexity, Gemini, Claude, Copilot), Referral, Direct, Paid ads (gclid / utm cpc), Email and Campaign.
+- **What to work on:** rules over the same numbers. They cover:
+  - the share of direct, search, social and AI traffic;
+  - mobile share;
+  - the action rate;
+  - the best-converting source;
+  - pages with views but no actions;
+  - pages people leave fast;
+  - international share;
+  - the trend vs the previous period.
+- **Optional setting:** `TRAFFIC_SALT` is a secret that makes the daily visitor code impossible to guess.
+- **Cost:** each page view is about 12 D1 writes. The free plan allows 100,000 writes a day, which is roughly 8,000 page views a day.
+
+## v16.1 — free login options
+
+| Option | Cost | Needs |
+|---|---|---|
+| Google | free | done |
+| **WhatsApp (mobile number)** | **free** | WhatsApp Cloud API (Meta) |
+| Facebook, Microsoft, email link | free up to 50,000 users a month | Firebase (Spark, no card) |
+| Email 6-digit code | free up to 3,000 emails a month | Resend |
+| Phone SMS OTP (Firebase) | about $0.07 per SMS in India, Blaze plan | skip — use WhatsApp instead |
+| Apple | $99 a year (Apple Developer) | skip |
+
+### How WhatsApp login works ("reverse OTP")
+1. The page calls `POST /api/account/wa/start` and gets a 6-character code, a `wa.me` link to FODO's number and a secret poll token. The code expires in 10 minutes.
+2. The visitor sends "FODO LOGIN CODE…":
+   - on a phone with one tap;
+   - on a computer by scanning the QR code (qrcodejs from cdnjs).
+3. Meta posts the message to `POST /api/account/webhook/whatsapp`.
+   - The `X-Hub-Signature-256` is checked with `WA_APP_SECRET`.
+   - The sender's number has already been verified by WhatsApp.
+   - FODO replies within the customer-service window, which is free.
+4. The page polls `POST /api/account/wa/poll`. The first poll after the message logs the visitor in, and each code works only once.
+   - Accounts are matched by `wa_phone`, the WhatsApp-verified number, never by a typed-in number.
+
+**Settings:**
+
+| Name | Value |
+|---|---|
+| `WA_NUMBER` | The WhatsApp Business number, e.g. `917827007676` |
+| `WA_PHONE_ID` | Phone number ID from the Meta app |
+| `WA_TOKEN` | Permanent system-user token (secret) |
+| `WA_APP_SECRET` | Meta app secret (secret) |
+| `WA_VERIFY_TOKEN` | Any word you choose, also entered in Meta's webhook settings |
+
+**Webhook:** set the callback URL to `https://www.fodo.co.in/api/account/webhook/whatsapp` and subscribe to `messages`.
+
+The number used with the Cloud API cannot stay on the normal WhatsApp app at the same time, so use a separate SIM.

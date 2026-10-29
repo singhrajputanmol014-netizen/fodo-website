@@ -273,7 +273,7 @@
   bform.addEventListener("submit", function (e) { e.preventDefault(); runBrand(); });
   var WAPI = "https://www.wikidata.org/w/api.php?format=json&origin=*&";
   var wget = function (params, ms) { return fetchT(WAPI + params, {}, ms || 20000).then(function (r) { if (!r.ok) throw new Error("wikidata " + r.status); return r.json(); }); };
-  var GENERIC = { Q4830453: 1, Q783794: 1, Q6881511: 1, Q891723: 1, Q43229: 1, Q167037: 1, Q1589009: 1, Q18388277: 1, Q155076: 1, Q219577: 1, Q658255: 1, Q778575: 1, Q431289: 1, Q1137109: 1, Q163740: 1, Q2659904: 1, Q4120211: 1, Q5621421: 1, Q1664720: 1, Q15911314: 1, Q3918: 1, Q31855: 1, Q7210356: 1, Q21980538: 1 };
+  var GENERIC = { Q4830453: 1, Q783794: 1, Q6881511: 1, Q891723: 1, Q43229: 1, Q167037: 1, Q1589009: 1, Q18388277: 1, Q155076: 1, Q219577: 1, Q658255: 1, Q778575: 1, Q431289: 1, Q1137109: 1, Q163740: 1, Q2659904: 1, Q4120211: 1, Q5621421: 1, Q1664720: 1, Q15911314: 1, Q3918: 1, Q31855: 1, Q7210356: 1, Q21980538: 1, Q35127: 1, Q620615: 1, Q19967801: 1, Q1032372: 1, Q15633587: 1, Q60747379: 1, Q131524: 1, Q1153191: 1, Q484652: 1, Q2085381: 1, Q1616075: 1, Q7275: 1, Q1137109: 1, Q11032: 1, Q7397: 1, Q1668024: 1, Q166142: 1 };
   function claimVals(ent, p) {
     var cs = (ent.claims || {})[p] || []; var pref = cs.filter(function (c) { return c.rank === "preferred"; }); cs = (pref.length ? pref : cs).filter(function (c) { return c.rank !== "deprecated" && c.mainsnak && c.mainsnak.datavalue; });
     return cs.map(function (c) { var v = c.mainsnak.datavalue.value; return { v: v, q: c.qualifiers || {} }; });
@@ -299,23 +299,34 @@
   }
   var label = function (e) { return e && e.labels && e.labels.en ? e.labels.en.value : ""; };
   function searchIds(stmts, country) {
-    // one CirrusSearch per statement, sorted by how linked-to (well known) each company is
+    // one CirrusSearch per statement (well-known companies first). A list is worth more when it is specific (few hits):
+    // "online food ordering" (300 companies) says more than "retail" (40,000). Very broad "type" lists are dropped.
     return Promise.all(stmts.map(function (s) {
       var q = "haswbstatement:" + s + (country ? " haswbstatement:P17=" + country : "");
-      return wget("action=query&list=search&srnamespace=0&srlimit=500&srprop=&srsort=incoming_links_desc&srsearch=" + encodeURIComponent(q), 20000)
-        .then(function (j) { return ((j.query || {}).search || []).map(function (x) { return x.title; }); }, function () { return []; });
+      return wget("action=query&list=search&srnamespace=0&srlimit=500&srprop=&srinfo=totalhits&srsort=incoming_links_desc&srsearch=" + encodeURIComponent(q), 20000)
+        .then(function (j) { var ids = ((j.query || {}).search || []).map(function (x) { return x.title; }); return { s: s, ids: ids, total: ((j.query || {}).searchinfo || {}).totalhits || ids.length }; }, function () { return { s: s, ids: [], total: 0 }; });
     })).then(function (lists) {
-      var score = {}, order = [];
-      lists.forEach(function (l, li) { l.forEach(function (id, rank) { if (!/^Q\d+$/.test(id)) return; if (!(id in score)) { score[id] = 0; order.push(id); } score[id] += 1000 - Math.min(999, rank) + (li < 3 ? 2000 : 0); }); });
-      return order.sort(function (a, b) { return score[b] - score[a]; }).map(function (id) { return { id: id, score: score[id] }; });
+      var score = {}, hits = {}, order = [];
+      lists.filter(function (l) { return l.ids.length && !(/^P31=/.test(l.s) && l.total > 3000); }).forEach(function (l) {
+        var w = Math.max(0.25, Math.min(1.5, 3 / Math.log10(l.total + 10))) * (/^P452=/.test(l.s) ? 1 : 0.6);
+        l.ids.forEach(function (id, rank) { if (!/^Q\d+$/.test(id)) return; if (!(id in score)) { score[id] = 0; hits[id] = 0; order.push(id); } score[id] += w * (1000 - Math.min(999, rank * 2)); hits[id]++; });
+      });
+      order.forEach(function (id) { score[id] += (hits[id] - 1) * 800; });   // in several industry/type lists → closer competitor
+      return order.sort(function (a, b) { return score[b] - score[a]; }).map(function (id) { return { id: id, score: Math.round(score[id]) }; });
     });
   }
   var BRAND_PAGE = 200;
+  var groupOf = function (e) { return ids(e, "P749").concat(ids(e, "P127"), ids(e, "P355")); };   // parent, owned by, subsidiaries
+  var lastSeed = null;
   function brandRecords(o) {
       var L = function (list) { return list.map(function (x) { return label(o.labs[x]); }).filter(Boolean); };
-      var res = [];
+      var res = [], S = o.s || lastSeed || {}, sid = (o.seed && o.seed.id) || S.id || "", sCountry = ids(S, "P17"), sGroup = groupOf(S);
+      if (o.s) lastSeed = Object.assign({ id: sid }, o.s);
+      o.dropped = o.dropped || { closed: 0, group: 0 };
       o.found.forEach(function (f) {
         var e = o.ents[f.id]; if (!e || e.missing !== undefined) return;
+        if (claimVals(e, "P576").length || claimVals(e, "P582").length) { o.dropped.closed++; return; }                  // dissolved / ended
+        var g = groupOf(e); if (sid && (g.indexOf(sid) > -1 || sGroup.indexOf(f.id) > -1 || g.some(function (x) { return sGroup.indexOf(x) > -1; }))) { o.dropped.group++; return; }   // same group, not a competitor
         var name = label(e); if (!name) return;
         var hqIds = ids(e, "P159"), hqC = coord(e) || (o.cc && o.cc[f.id]) || (f.lat != null ? { lat: f.lat, lng: f.lng } : null);
         var ex = claimVals(e, "P414"), tick = ex.map(function (x) { var t = (x.q.P249 || [])[0]; return t && t.datavalue ? t.datavalue.value : ""; }).filter(Boolean);
@@ -328,7 +339,8 @@
           exchange: L(ex.map(function (x) { return x.v && x.v.id; }).filter(Boolean)).slice(0, 2).join(", "), ticker: tick.slice(0, 2).join(", "), products: L(ids(e, "P1056")).slice(0, 6).join(", "),
           twitter: h("P2002", "https://x.com/"), instagram: h("P2003", "https://instagram.com/"), facebook: h("P2013", "https://facebook.com/"), linkedin: h("P4264", "https://www.linkedin.com/company/"), youtube: h("P2397", "https://www.youtube.com/channel/"),
           wikipedia: e.sitelinks && e.sitelinks.enwiki ? e.sitelinks.enwiki.url || "https://en.wikipedia.org/wiki/" + encodeURIComponent(e.sitelinks.enwiki.title.replace(/ /g, "_")) : "",
-          via: f.via || "", wikidata: "https://www.wikidata.org/wiki/" + f.id, lat: hqC ? hqC.lat : null, lng: hqC ? hqC.lng : null, score: f.score + (e.sitelinks && e.sitelinks.enwiki ? 500 : 0) };
+          via: f.via || "", wikidata: "https://www.wikidata.org/wiki/" + f.id, lat: hqC ? hqC.lat : null, lng: hqC ? hqC.lng : null,
+          score: f.score + (e.sitelinks && e.sitelinks.enwiki ? 500 : 0) + (sCountry.length && ids(e, "P17").some(function (c) { return sCountry.indexOf(c) > -1; }) ? 1200 : 0) };   // same market as the brand
         p.mapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(name + (p.hq ? ", " + p.hq : ""));
         res.push(p);
       });
@@ -344,17 +356,25 @@
     if (bplace && bplace.lat != null) return Promise.resolve(bplace);
     return lib().then(function (m) { return m.freePlaces(fetchT, {}).geocode(t); }).then(function (c) { if (!c) throw Object.assign(new Error("place"), { reason: "That city or region was not found — pick one from the suggestions." }); return Object.assign({ value: t }, c); });
   }
-  var COMPANY_TYPES = "P31=Q4830453|P31=Q783794|P31=Q6881511|P31=Q891723|P31=Q1589009|P31=Q21980538|P31=Q18388277|P31=Q167037|P31=Q1058914|P31=Q2085381|P31=Q1616075|P31=Q7275|P31=Q210167";
-  var STOP = /^(a|an|the|of|and|for|in|on|by|with|to|from|company|companies|business|startup|start|up|based|brand|firm|private|public|limited|ltd|inc|indian|american|british|chinese|german|french|japanese|global|online|multinational|headquartered|founded|which|that|is|its|an?)$/i;
-  function keywordIds(text, country) {    // companies whose Wikidata description/name matches the words ("food delivery", "pet food" …)
-    var w = String(text || "").toLowerCase().replace(/[^a-z0-9ऀ-ॿ\s-]+/g, " ").split(/\s+/).filter(function (x) { return x.length > 2 && !STOP.test(x); }).slice(0, 4);
-    if (!w.length) return Promise.resolve([]);
-    var q = w.join(" ") + " haswbstatement:" + COMPANY_TYPES + (country ? " haswbstatement:P17=" + country : "");
-    return wget("action=query&list=search&srnamespace=0&srlimit=150&srprop=&srsearch=" + encodeURIComponent(q), 15000)
-      .then(function (j) { return ((j.query || {}).search || []).map(function (x, i) { return { id: x.title, score: 900 - Math.min(899, i * 6) }; }).filter(function (x) { return /^Q\d+$/.test(x.id); }); });
+  var COMPANY_TYPES = "P31=Q4830453|P31=Q783794|P31=Q6881511|P31=Q891723|P31=Q1589009|P31=Q21980538|P31=Q18388277|P31=Q167037|P31=Q1058914|P31=Q210167|P31=Q131524";
+  var STOP = /^(a|an|the|of|and|for|in|on|by|with|to|from|company|companies|business|businesses|startup|start|up|based|brand|brands|firm|private|public|limited|ltd|inc|llc|pvt|group|indian|american|british|chinese|german|french|japanese|global|online|multinational|international|leading|largest|biggest|popular|headquartered|founded|which|that|is|its|it|was|are|provider|service|services|operator|owner|subsidiary|conglomerate|listed|unicorn|website|app|platform|chain|maker|manufacturer|retailer|\d+)$/i;
+  function phrases(text) {   // "Indian multinational restaurant aggregator and food delivery company" → ["restaurant aggregator", "food delivery"]
+    var parts = String(text || "").toLowerCase().replace(/[^a-z0-9ऀ-ॿ\s-]+/g, " , ").split(/\s+/), out = [], run = [];
+    var flush = function () { if (run.length >= 2) for (var i = 0; i < run.length - 1; i++) out.push(run[i] + " " + run[i + 1]); else if (run.length === 1 && run[0].length > 4) out.push(run[0]); run = []; };
+    parts.forEach(function (w) { if (!w || w === "," || STOP.test(w) || w.length < 3) flush(); else run.push(w); }); flush();
+    return uniqStr(out).sort(function (a, b) { return (b.indexOf(" ") > -1) - (a.indexOf(" ") > -1); }).slice(0, 3);
+  }
+  var uniqStr = function (a) { var s = {}; return a.filter(function (x) { if (s[x]) return false; s[x] = 1; return true; }); };
+  function keywordIds(text, country) {    // companies whose Wikidata name/description contains the same phrase ("food delivery", "pet food" …)
+    var ph = phrases(text); if (!ph.length) return Promise.resolve([]);
+    return Promise.all(ph.map(function (p, pi) {
+      var q = (p.indexOf(" ") > -1 ? '"' + p + '"' : p) + " haswbstatement:" + COMPANY_TYPES + (country ? " haswbstatement:P17=" + country : "");
+      return wget("action=query&list=search&srnamespace=0&srlimit=100&srprop=&srsearch=" + encodeURIComponent(q), 15000)
+        .then(function (j) { return ((j.query || {}).search || []).map(function (x, i) { return { id: x.title, score: (900 - Math.min(899, i * 8)) * (pi ? 0.8 : 1) }; }).filter(function (x) { return /^Q\d+$/.test(x.id); }); }, function () { return []; });
+    })).then(function (lists) { return [].concat.apply([], lists); });
   }
   function aiSuggest(seed, q, cname, city) {
-    return fetchT(ROOT + "api/brand-ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brand: seed ? seed.label : q, description: seed ? seed.sub : "", country: cname, city: city }) }, 45000)
+    return fetchT(ROOT + "api/brand-ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brand: seed ? seed.label : q, description: seed ? seed.sub : "", industry: (seed && seed.industries || []).join(", "), country: cname || (seed && seed.country) || "", city: city, web: true }) }, 50000)
       .then(function (r) { return r.json().catch(function () { return {}; }); }).then(function (j) { if (!j.ok) throw new Error(j.reason || "ai"); return j.items || []; });
   }
   function verifyAI(items, seedName) {   // look each AI name up on Wikidata; keep the ones that match a company there
@@ -364,7 +384,7 @@
       var x = items[k++]; if (!x) return Promise.resolve();
       return wget("action=wbsearchentities&language=en&uselang=en&type=item&limit=3&search=" + encodeURIComponent(x.name), 10000).then(function (j) {
         var hit = (j.search || []).filter(function (s) { var a = nrm(s.label), b = nrm(x.name); return (a === b || a.indexOf(b) === 0 || b.indexOf(a) === 0) && !/human|person|film|song|album|novel|television|village|river|species|given name|family name|disambiguation/i.test(s.description || ""); })[0];
-        if (hit) out.ids.push({ id: hit.id, score: 2600 - out.ids.length * 10, ai: x }); else out.loose.push(x);
+        if (hit) out.ids.push({ id: hit.id, score: (x.source ? 3000 : 2400) - out.ids.length * 10, ai: x, web: !!x.source }); else out.loose.push(x);
       }, function () { out.loose.push(x); }).then(worker);
     };
     return Promise.all([worker(), worker(), worker(), worker()]).then(function () { return out; });
@@ -399,7 +419,7 @@
       return Promise.all([seedEnt, L1, L2, L3]).then(function (a) {
         var s = a[0], score = {}, via = {}, aiInfo = {}, order = [];
         var add = function (list, tag) { list.forEach(function (x) { if (seed && x.id === seed.id) return; if (!(x.id in score)) { score[x.id] = 0; order.push(x.id); via[x.id] = []; } score[x.id] += x.score; if (via[x.id].indexOf(tag) < 0) via[x.id].push(tag); if (x.ai) aiInfo[x.id] = x.ai; }); };
-        add(a[1], "Same industry"); add(a[2], "Similar description"); add(a[3].ids, "AI + Wikidata");
+        add(a[1], "Same industry"); add(a[2], "Similar description"); add(a[3].ids.filter(function (x) { return x.web; }), "Google results + AI"); add(a[3].ids.filter(function (x) { return !x.web; }), "AI + Wikidata");
         order.forEach(function (id) { if (via[id].length > 1) score[id] += 1500 * (via[id].length - 1); });   // found by two layers → very likely a real competitor
         var found = order.sort(function (x, y) { return score[y] - score[x]; }).map(function (id) { return { id: id, score: score[id], via: via[id].join(", "), ai: aiInfo[id] }; });
         var total = found.length, loose = a[3].loose;
@@ -428,13 +448,13 @@
       // AI names that are not on Wikidata: shown, clearly labelled, checked through their website
       if (!o.loc) o.loose.forEach(function (x, i) {
         if (res.some(function (p) { return nrm(p.name) === nrm(x.name); })) return;
-        res.push({ mode: "brand", id: "ai:" + nrm(x.name).replace(/ /g, "-"), name: x.name, description: x.why || "", website: x.website || "", country: x.country || "", via: "AI suggestion — verify", unverified: true, score: 1200 - i,
+        res.push({ mode: "brand", id: "ai:" + nrm(x.name).replace(/ /g, "-"), name: x.name, description: x.why || "", website: x.website || "", country: x.country || "", via: x.source ? "Named in Google results — not on Wikidata" : "AI suggestion — verify", sourceUrl: x.source || "", unverified: !x.source, score: (x.source ? 1500 : 1200) - i,
           mapsUrl: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(x.name), lat: null, lng: null });
       });
       res.sort(function (a, b) { return b.score - a.score; });
       var s = o.s, seedInfo = { id: o.seed.id, label: label(s) || o.seed.label, sub: (s.descriptions && s.descriptions.en && s.descriptions.en.value) || o.seed.sub, industries: L(ids(s, "P452")), country: L(ids(s, "P17")).join(", "), website: strs(s, "P856")[0] || "", founded: year(s, "P571"), missing: !o.seed.id };
       var where = [o.loc ? "HQ within " + rkm + " km of " + (o.loc.value || blIn.value) : "", country ? cname : ""].filter(Boolean).join(", ") || "Worldwide";
-      return { ok: true, mode: "brand", type: seedInfo.label, area: where, seed: seedInfo, loc: o.loc, results: res, rest: o.rest || [], total: Math.max(o.total || 0, res.length), source: "wikidata" };
+      return { ok: true, mode: "brand", type: seedInfo.label, area: where, seed: seedInfo, loc: o.loc, results: res, rest: o.rest || [], total: Math.max((o.total || 0) - (o.dropped ? o.dropped.closed + o.dropped.group : 0), res.length), source: "wikidata", dropped: o.dropped };
     }).then(function (j) { show(j); }, function (e) {
       busy = false; data = null; view = [];
       setStatus(e && e.reason ? e.reason : "Wikidata did not answer right now — please try again in a minute.", "warn"); ver(e && e.message);
@@ -462,7 +482,8 @@
     if (n) { addToSheet(j); paint(true); } else { list.innerHTML = '<li class="cf-empty">Nothing listed here yet. Try a wider search.</li>'; $("cf-more").hidden = true; }
     pins(); insight(); brandMoreUI();
     $("cf-gmatch").hidden = !google || !n;
-    if (j.mode === "brand" && j.total > n) setStatus(status.textContent + " · showing the " + n + " best-known of " + j.total.toLocaleString("en-IN") + " found", "ok");
+    if (j.mode === "brand" && j.total > n) setStatus(status.textContent + " · showing the " + n + " closest of " + j.total.toLocaleString("en-IN") + " found", "ok");
+    if (j.mode === "brand" && j.dropped && (j.dropped.closed || j.dropped.group)) setStatus(status.textContent + " · left out " + [j.dropped.closed && j.dropped.closed + " closed", j.dropped.group && j.dropped.group + " from the same group"].filter(Boolean).join(" and "), "ok");
     if (n) autoEnrich(j.results);
   }
   filt.addEventListener("input", function () { paint(true); });
@@ -546,7 +567,7 @@
       (p.rating != null && p.rating !== "" ? '<span class="cf-rate"><b>' + (+p.rating).toFixed(1) + '</b> <span aria-hidden="true">' + stars(p.rating) + '</span> <span class="muted">(' + (p.reviews || 0).toLocaleString("en-IN") + " Google reviews)</span></span>" : "") +
       (facts.length ? '<dl class="cf-facts">' + facts.map(function (f) { return "<div><dt>" + f[0] + "</dt><dd>" + esc(f[1]) + "</dd></div>"; }).join("") + "</dl>" : "") + contacts(p) +
       '<p class="cf-flags">' + (p.unverified ? '<span class="cf-flag warn">AI suggestion — verify</span>' : p.via ? '<span class="cf-flag">' + esc(p.via) + "</span>" : "") + (!p.website ? '<span class="cf-flag warn">No website listed</span>' : "") + "</p>" +
-      '<div class="cf-acts">' + link(p.website, "Website ↗", "") + '<a class="btn sm ghost" href="' + esc(p.mapsUrl) + '" target="_blank" rel="noopener noreferrer">Google Maps</a>' + link(p.wikipedia, "Wikipedia") +
+      '<div class="cf-acts">' + link(p.website, "Website ↗", "") + (p.sourceUrl ? link(p.sourceUrl, "Where it was named") : "") + '<a class="btn sm ghost" href="' + esc(p.mapsUrl) + '" target="_blank" rel="noopener noreferrer">Google Maps</a>' + link(p.wikipedia, "Wikipedia") +
       '<a class="btn sm ghost" href="https://www.google.com/search?q=' + encodeURIComponent(p.name + " company") + '" target="_blank" rel="noopener noreferrer">Google it</a>' +
       (p.linkedin ? "" : '<a class="btn sm ghost" href="https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(p.name) + '" target="_blank" rel="noopener noreferrer">LinkedIn</a>') +
       (p.lat != null ? '<button type="button" class="btn sm ghost" data-show="' + p._i + '">Show HQ on map</button>' : "") + "</div></div></li>";

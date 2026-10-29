@@ -14,7 +14,7 @@ def shell(route, path, title, desc, body, depth, extra_head="", scripts=()):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <title>{title}</title><meta name="description" content="{desc}"><meta name="fodo-root" content="{r}">
 <link rel="canonical" href="{SITE}{path}"><meta property="og:title" content="{title}"><meta property="og:description" content="{desc}"><meta property="og:type" content="{"article" if route=="article" else "website"}"><meta property="og:site_name" content="FODO"><meta property="og:locale" content="en_IN"><meta property="og:url" content="{SITE}{path}"><meta property="og:image" content="{SITE}/assets/og-fodo.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{desc}"><meta name="twitter:image" content="{SITE}/assets/og-fodo.jpg"><meta name="twitter:image:alt" content="FODO — Fear Of Digitally Out ?"><meta name="robots" content="{"noindex, follow" if path in ("/thank-you/","/404.html") else "index, follow, max-image-preview:large, max-snippet:-1"}">
-<link rel="icon" href="{r}assets/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="{r}assets/apple-touch-icon.png"><meta name="theme-color" content="#0f0f16">
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="{r}assets/favicon.svg" type="image/svg+xml"><link rel="icon" href="{r}assets/favicon-192.png" type="image/png" sizes="192x192"><link rel="apple-touch-icon" href="{r}assets/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#0f0f16">
 <link rel="preload" href="{r}assets/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="{r}assets/fonts/inter-tight-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="{r}assets/fonts/inter-tight-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 {THEMEJS}<link rel="stylesheet" href="{r}css/styles.css?v={V}"><link rel="stylesheet" href="{r}css/theme-glass.css?v={V}c"><link rel="stylesheet" href="{r}css/studio.css?v={V}">{INTROJS}{extra_head}</head>
 <body data-route="{route}" data-path="{path}">{INTRO}<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><a class="skip" href="#main">Skip to content</a>
@@ -25,7 +25,7 @@ def shell(route, path, title, desc, body, depth, extra_head="", scripts=()):
 STATIC_FOOTER = ('<nav class="container" aria-label="Site" style="padding:24px 0"><p><b>FODO — Fear Of Digitally Out ?</b> · Based in New Delhi. Built for ambitious brands worldwide.</p><ul>'
   + "".join(f'<li><a href="__R__{u}">{t}</a></li>' for u, t in [("", "Home"), ("services/", "Services"), ("industries/", "Industries"), ("work/", "Work"), ("insights/", "Insights"), ("about/", "About"),
      ("pricing/", "Pricing"), ("faq/", "FAQ"), ("reviews/", "Reviews"), ("contact/", "Contact"), ("locations/", "Where we work"), ("locations/delhi/", "Delhi"), ("locations/uae/", "UAE"), ("locations/uk/", "UK"), ("locations/usa/", "USA"),
-     ("competitor-finder/", "Competitor Finder"), ("growth-score/", "Growth Score"), ("roi-calculator/", "ROI Calculator"), ("marketing-quiz/", "Marketing Quiz"), ("fodo-challenge/", "FODO Challenge"),
+     ("business-x-ray/", "Business X-Ray"), ("competitor-finder/", "Competitor Finder"), ("growth-score/", "Growth Score"), ("roi-calculator/", "ROI Calculator"), ("marketing-quiz/", "Marketing Quiz"), ("fodo-challenge/", "FODO Challenge"),
      ("teardowns/", "Ad Teardowns"), ("templates/", "Templates"), ("resources/", "Checklists"), ("founding-programme/", "Founding Programme"), ("legal/", "Privacy &amp; Terms")])
   + '</ul><p>anmol@fodo.co.in · +91 7827007676 · 65 M Block, New Roshanpura, Najafgarh, New Delhi 110043, India</p></nav>')
 # 3D background starts after the page has loaded and the browser is idle, so it never competes with first paint (v9 performance)
@@ -54,6 +54,7 @@ def hero(eyebrow, h1, lead, ctas=A, visual=None, index=None):
 def sec(num, h2, inner, cls=""):
     return f'<section class="{cls}"><div class="container"><div class="section-head reveal"><h2>{h2}</h2><span class="section-num">{num}</span></div>{inner}</div></section>'
 LAB_CARDS = """<div class="grid g4" id="growth-lab">
+<a class="panel hud xr-labcard" data-route="xray" href="business-x-ray/"><span class="tag hot">NEW · DIAGNOSTIC</span><h3 style="margin-top:12px">Business X-Ray</h3><p class="muted" style="font-size:14px;margin:0">Enter a website: we crawl it, research the market and real competitors, and show the biggest problem, the biggest opportunity and a 30-day plan — with evidence for every finding.</p><span class="panel-line"></span></a>
 <a class="panel hud" data-route="score" href="#"><span class="tag hot">SELF-ASSESSMENT</span><h3 style="margin-top:12px">Growth Score</h3><p class="muted" style="font-size:14px;margin:0">10 questions → a 0–100 score with your biggest opportunity and risk.</p><span class="panel-line"></span></a>
 <a class="panel hud" data-route="roi" href="#"><span class="tag hot">ESTIMATE</span><h3 style="margin-top:12px">ROI Calculator</h3><p class="muted" style="font-size:14px;margin:0">Illustrative scenario maths in INR — live as you type.</p><span class="panel-line"></span></a>
 <a class="panel hud" data-route="quiz" href="#"><span class="tag hot">10 QUESTIONS</span><h3 style="margin-top:12px">Marketing Quiz</h3><p class="muted" style="font-size:14px;margin:0">Test your instincts across ads, SEO, brand, conversion and analytics.</p><span class="panel-line"></span></a>
@@ -544,6 +545,41 @@ pages["competitors"] = ("competitors", "/competitor-finder/", T("Competitor Find
       + '<p class="muted" style="max-width:72ch;margin-top:20px">Local listings come from OpenStreetMap, Geoapify and Google Maps (when connected), searched together; brand data comes from Wikidata and AI suggestions that are checked before they are shown as confirmed. Google Maps details are shown here only and are not put in the download, as Google’s terms require — the sheet keeps the Google Maps link. Details belong to each business and may be out of date — check the live listing or website before acting. FODO does not keep your searches; your sheet stays in this browser. On a phone, downloads open a save/share panel so the file lands in Files.</p>'),
  1, LD(crumbs_ld([("Home", "/"), ("Competitor Finder", "/competitor-finder/")])), ("cf-export", "competitor-finder",))
 
+# ---- BUSINESS X-RAY (/business-x-ray/) — the Growth Lab's diagnostic hub. Engine: js/xray-engine.js + js/xray.js, server: functions/api/xray/ ----
+XR_COUNTRIES = ["India", "United States", "United Kingdom", "UAE", "Canada", "Australia", "Singapore", "Saudi Arabia", "Qatar", "Germany", "France", "New Zealand", "South Africa"]
+XR_STEPS = [("Understand", "Reads your site and works out what you sell, to whom and where — from your own pages and structured data."),
+            ("Crawl", "Up to 50 pages: titles, headings, links, schema, forms, calls to action, prices, reviews, FAQs, contact details. robots.txt is respected."),
+            ("Research", "Live searches for your category and city, competitors that show up, public reviews and discussions, Google PageSpeed."),
+            ("Compare", "Up to 5 real competitors read the same way, so the comparison is like-for-like."),
+            ("Prioritise", "Every issue becomes an opportunity scored by impact × confidence × urgency ÷ effort — then a 30-day plan.")]
+pages["xray"] = ("xray", "/business-x-ray/", T("Business X-Ray — Free Website & Competitor Diagnosis | FODO"),
+ D_("Enter a website: FODO crawls up to 50 pages, checks search, speed, conversion and trust, compares real competitors and gives an evidence-backed 30-day plan."),
+ hero("Business X-Ray", "See what's really happening inside your business.",
+      "Enter a website. FODO reads it, researches the market and real competitors, and shows what is wrong, what you are missing and what to do first — with the evidence behind every finding.",
+      '<a class="btn" href="#xr-form">Run Business X-Ray</a><a class="btn ghost" href="#xr-how">How it works</a>',
+      visual=ASIDE("What you get", [("Overall Growth Health score", "#xr-how"), ("Biggest problem & opportunity", "#xr-how"), ("Competitors compared", "#xr-how"), ("30-day action plan", "#xr-how"), ("Evidence for every finding", "#xr-how")]))
+ + '<section class="cf-sec xr-sec-form" id="xr-form-sec"><div class="container">'
+ + '<form class="cf-form panel hud" id="xr-form" autocomplete="off" novalidate><div class="cf-fields xr-fields">'
+ + '<div class="cf-f xr-f-url"><label for="xr-url">Website address</label><input id="xr-url" name="url" type="text" inputmode="url" placeholder="e.g. yourbusiness.com" required maxlength="300" autocapitalize="off" spellcheck="false"></div>'
+ + '<div class="cf-f"><label for="xr-industry">Industry <span class="muted">(optional)</span></label><input id="xr-industry" name="industry" placeholder="e.g. Dental clinic, SaaS" maxlength="80"></div>'
+ + '<div class="cf-f"><label for="xr-city">Location <span class="muted">(optional)</span></label><input id="xr-city" name="city" placeholder="e.g. Dwarka, New Delhi" maxlength="80"></div></div>'
+ + '<details class="xr-opt"><summary>More details <span class="muted">(optional — improves competitor and search research)</span></summary><div class="cf-fields xr-fields2">'
+ + '<div class="cf-f"><label for="xr-name">Business name</label><input id="xr-name" name="name" maxlength="80"></div>'
+ + '<div class="cf-f"><label for="xr-country">Country</label><select id="xr-country" name="country"><option value="">Detect from the website</option>' + "".join(f'<option value="{X(c)}">{X(c)}</option>' for c in XR_COUNTRIES) + '</select></div>'
+ + '<div class="cf-f"><label for="xr-product">Main product / service</label><input id="xr-product" name="product" maxlength="120" placeholder="e.g. root canal treatment"></div>'
+ + '<div class="cf-f"><label for="xr-audience">Target audience</label><input id="xr-audience" name="audience" maxlength="120" placeholder="e.g. families in West Delhi"></div></div></details>'
+ + '<div class="btn-row" style="margin:16px 0 0"><button class="btn" type="submit" id="xr-run">Run Business X-Ray</button></div>'
+ + '<p class="muted cf-note">Free X-Ray: up to 50 pages and 5 competitors. It takes 1–4 minutes — keep this tab open; the progress below is the real state of the job. FODO only reads public pages and never logs in anywhere.</p></form>'
+ + '<p class="cf-status" id="xr-status" role="status" aria-live="polite"></p>'
+ + '<div class="xr-progress panel" id="xr-progress" hidden><div class="xr-barbox" role="progressbar" aria-label="X-Ray progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="xr-bar"></i></div><p class="mono muted" id="xr-pct"></p><ol class="xr-stages" id="xr-stages"></ol></div>'
+ + '<div class="xr-report" id="xr-report" hidden></div>'
+ + '<div class="cfx" id="xr-evd" hidden><div class="cfx-back" data-evx></div><div class="cfx-box xr-evd-box" role="dialog" aria-modal="true" aria-labelledby="xr-evd-t"><button type="button" class="cfx-close xr-evd-x" data-evx aria-label="Close">×</button><h3 id="xr-evd-t">Why did FODO say this?</h3><div class="xr-evd-b"></div></div></div>'
+ + '</div></section>'
+ + sec("01", "How the X-Ray works", '<ol class="steps-line reveal" id="xr-how">' + "".join(f"<li><b>{X(a)}</b><span>{X(b)}</span></li>" for a, b in XR_STEPS) + '</ol>'
+      + '<p class="muted" style="max-width:74ch;margin-top:20px">Data first, AI last: every score is calculated from checks you can open, and every finding links to the page, search result or report it came from. Labels show how sure we are — <b>OBSERVED</b> (seen), <b>INFERRED</b> (derived by a rule), <b>ESTIMATED</b> (third-party estimate) or <b>UNKNOWN</b>. If a source is not available, the report says “Data unavailable” instead of guessing. Search results come from Google (via Serper), speed from Google PageSpeed Insights, maps from OpenStreetMap/Geoapify, and the written summary from an AI that may only use the evidence it is given.</p>'
+      + '<div class="btn-row" style="margin-top:18px"><a class="btn ghost" href="../competitor-finder/">Competitor Finder</a><a class="btn ghost" href="../growth-score/">Growth Score</a><a class="btn ghost" href="../roi-calculator/">ROI Calculator</a><a class="btn" data-route="contact" href="#">Talk to FODO about your X-Ray</a></div>'),
+ 1, LD(crumbs_ld([("Home", "/"), ("Business X-Ray", "/business-x-ray/")])), ("cf-export", "xray-engine", "xray",))
+
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "seo_chunk.py")).read())
 # ---- write ----
 for key,(route,path,title,desc,body,depth,extra,scripts) in pages.items():
@@ -574,8 +610,8 @@ open(os.path.join(ROOT,"_redirects"),"w").write("/growth-lab/ /#growth-lab 301\n
 import re as _re2, html as _html2
 def _txt(h): return _re2.sub(r"\s+", " ", _html2.unescape(_re2.sub(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", " ", h, flags=_re2.S))).strip()
 _CAT = [("/services/", "Service"), ("/locations/", "Location"), ("/industries/", "Industry"), ("/work/", "Work"), ("/insights/", "Insight"),
-        ("/growth-score/", "Tool"), ("/roi-calculator/", "Tool"), ("/fodo-challenge/", "Tool"), ("/marketing-quiz/", "Tool"), ("/competitor-finder/", "Tool"), ("/templates/", "Free resource"), ("/resources/", "Free resource")]
-_KW = {"/pricing/": "price prices cost rate rates fees kitna charges package plans budget", "/contact/": "contact call phone whatsapp email address book audit meeting baat",
+        ("/growth-score/", "Tool"), ("/roi-calculator/", "Tool"), ("/fodo-challenge/", "Tool"), ("/marketing-quiz/", "Tool"), ("/competitor-finder/", "Tool"), ("/business-x-ray/", "Tool"), ("/templates/", "Free resource"), ("/resources/", "Free resource")]
+_KW = {"/business-x-ray/": "x-ray xray audit website check analyse analysis diagnosis seo audit competitor report business health score free audit kya galat hai", "/pricing/": "price prices cost rate rates fees kitna charges package plans budget", "/contact/": "contact call phone whatsapp email address book audit meeting baat",
        "/competitor-finder/": "competitor competitors rivals nearby near me google maps listing local area search map brand startup company industry export excel sheet csv", "/services/seo/": "google rank ranking search engine pe aana top",
        "/services/paid-advertising/": "ads advertising meta facebook instagram google ads ppc", "/founding-programme/": "founding partner offer discount early",
        "/growth-score/": "score test check assessment", "/roi-calculator/": "roi return calculator profit", "/templates/": "template calendar brief report download free",

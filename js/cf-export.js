@@ -7,7 +7,8 @@
        2. "Download" — the file is handed to /api/export and opened as a normal web download (works in every browser);
        3. "Copy for Google Sheets" — with a select-and-copy box when the clipboard is blocked.
    • The sheet is kept in IndexedDB (hundreds of MB allowed) instead of localStorage (5 MB, failed silently before).
-   window.FODO_EXPORT = { xlsx, csv, tsv, deliver, copyText, store, isPhone, inApp } */
+   • PDF reports are written here too (text PDF with headings and page numbers — not a screenshot).
+   window.FODO_EXPORT = { xlsx, pdf, csv, tsv, deliver, copyText, store, isPhone, inApp } */
 (function () {
   "use strict";
   var ROOT = (window.FODO_UTIL && window.FODO_UTIL.root) || "/";
@@ -79,6 +80,64 @@
     ];
     sheets.forEach(function (s, i) { files.push(f("xl/worksheets/sheet" + (i + 1) + ".xml", sheetXML(s))); });
     return zip(files);
+  }
+
+
+  /* ---------- PDF (text, not a screenshot): A4, Helvetica, real headings/lists/tables, page numbers ----------
+     blocks: { h1 } { h2 } { h3 } { p, muted?, bold? } { li: [..] } { kv: [[k, v], ..] } { rule: true } { gap: n } { pill: text, color: [r,g,b] } */
+  var HW = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  var WIN = { "€": 128, "‚": 130, "…": 133, "‘": 145, "’": 146, "“": 147, "”": 148, "•": 149, "–": 150, "—": 151, "™": 153, " ": 32 };
+  function winAnsi(s) {   // → array of byte codes; characters outside WinAnsi are spelled out or become "?"
+    s = String(s == null ? "" : s).replace(/₹/g, "Rs.").replace(/[★☆]/g, "*").replace(/[→➜]/g, "->").replace(/[✓✔]/g, "v").replace(/[✕✖×]/g, "x").replace(/[≤]/g, "<=").replace(/[≥]/g, ">=").replace(/[​-‏﻿]/g, "");
+    var out = []; for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i), ch = s.charAt(i); if (c === 9 || c === 10 || c === 13) out.push(32); else if (c >= 32 && c < 127) out.push(c); else if (WIN[ch]) out.push(WIN[ch]); else if (c >= 160 && c <= 255) out.push(c); else if (c >= 0xd800 && c < 0xdc00) { if (out[out.length - 1] !== 63) out.push(63); i++; } else if (out[out.length - 1] !== 63) out.push(63); }
+    return out;
+  }
+  var cw = function (b, bold) { var w = b >= 32 && b < 127 ? HW[b - 32] : b === 150 ? 556 : b === 151 ? 1000 : b === 149 ? 350 : b === 133 ? 1000 : b >= 145 && b <= 148 ? 333 : 556; return bold ? w * 1.06 : w; };
+  function pdf(blocks, meta) {
+    meta = meta || {};
+    var W = 595.28, H = 841.89, M = 48, y = 0, pages = [], cur = null, accent = meta.accent || [0.30, 0.23, 0.81];
+    var newPage = function () { cur = []; pages.push(cur); y = H - M; };
+    var esc8 = function (bytes) { return bytes.map(function (b) { return b === 40 || b === 41 || b === 92 ? "\\" + String.fromCharCode(b) : b < 32 || b > 126 ? "\\" + ("00" + b.toString(8)).slice(-3) : String.fromCharCode(b); }).join(""); };
+    var width = function (bytes, size, bold) { var w = 0; bytes.forEach(function (b) { w += cw(b, bold); }); return w * size / 1000; };
+    var wrap = function (text, size, bold, maxW) {
+      var words = winAnsi(text), lines = [], line = [], lw = 0, word = [], ww = 0, sp = cw(32, bold) * size / 1000;
+      var flushWord = function () { if (!word.length) return; if (line.length && lw + sp + ww > maxW) { lines.push(line); line = []; lw = 0; } if (ww > maxW) { /* very long word: hard-break */ var part = []; var pw = 0; word.forEach(function (b) { var bw = cw(b, bold) * size / 1000; if (pw + bw > maxW) { lines.push(part); part = []; pw = 0; } part.push(b); pw += bw; }); line = part; lw = pw; } else { if (line.length) { line.push(32); lw += sp; } line = line.concat(word); lw += ww; } word = []; ww = 0; };
+      words.forEach(function (b) { if (b === 32) flushWord(); else { word.push(b); ww += cw(b, bold) * size / 1000; } });
+      flushWord(); if (line.length) lines.push(line); return lines.length ? lines : [[]];
+    };
+    var text = function (x, bytes, size, bold, rgb) { cur.push((rgb ? rgb.map(function (v) { return v.toFixed(3); }).join(" ") + " rg " : "0.11 0.11 0.14 rg ") + "BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + x.toFixed(2) + " " + y.toFixed(2) + " Td (" + esc8(bytes) + ") Tj ET"); };
+    var need = function (h) { if (y - h < M) newPage(); };
+    var para = function (t, size, bold, rgb, indent, lead) { var maxW = W - 2 * M - (indent || 0), lines = wrap(t, size, bold, maxW), lh = size * (lead || 1.38); lines.forEach(function (l) { need(lh); y -= lh; text(M + (indent || 0), l, size, bold, rgb); }); };
+    newPage();
+    blocks.forEach(function (b) {
+      if (b.h1) { need(40); para(b.h1, 20, true, accent, 0, 1.2); y -= 6; }
+      else if (b.h2) { need(46); y -= 10; para(b.h2, 14, true, accent); cur.push(accent.map(function (v) { return v.toFixed(3); }).join(" ") + " RG 0.6 w " + M + " " + (y - 5).toFixed(2) + " m " + (W - M) + " " + (y - 5).toFixed(2) + " l S"); y -= 8; }
+      else if (b.h3) { need(30); y -= 4; para(b.h3, 11.5, true); }
+      else if (b.p != null) { para(b.p, b.size || 10, !!b.bold, b.muted ? [0.42, 0.43, 0.48] : null); y -= 3; }
+      else if (b.li) { b.li.forEach(function (it) { var lines = wrap(it, 10, false, W - 2 * M - 14); lines.forEach(function (l, i) { need(14); y -= 14; if (!i) text(M + 2, [149], 10, false, accent); text(M + 14, l, 10, false); }); y -= 2; }); y -= 3; }
+      else if (b.kv) { b.kv.forEach(function (row) { var k = winAnsi(row[0]), kw = 150, lines = wrap(row[1], 10, false, W - 2 * M - kw); lines.forEach(function (l, i) { need(14); y -= 14; if (!i) text(M, k, 9.5, true, [0.35, 0.36, 0.42]); text(M + kw, l, 10, false); }); y -= 2; }); y -= 2; }
+      else if (b.pill) { need(22); y -= 18; var t = winAnsi(b.pill), tw = width(t, 9, true); var c = b.color || accent; cur.push(c.map(function (v) { return v.toFixed(3); }).join(" ") + " rg " + M + " " + (y - 4).toFixed(2) + " " + (tw + 12).toFixed(2) + " 15 re f"); text(M + 6, t, 9, true, [1, 1, 1]); y -= 4; }
+      else if (b.rule) { need(12); y -= 6; cur.push("0.85 0.86 0.9 RG 0.5 w " + M + " " + y.toFixed(2) + " m " + (W - M) + " " + y.toFixed(2) + " l S"); y -= 6; }
+      else if (b.gap) { y -= b.gap; }
+    });
+    // footer + page numbers
+    var foot = winAnsi(meta.footer || "");
+    pages.forEach(function (pg, i) { var n = winAnsi("Page " + (i + 1) + " of " + pages.length); pg.push("0.5 0.5 0.55 rg BT /F1 8 Tf " + M + " 24 Td (" + esc8(foot) + ") Tj ET"); pg.push("0.5 0.5 0.55 rg BT /F1 8 Tf " + (W - M - width(n, 8, false)).toFixed(2) + " 24 Td (" + esc8(n) + ") Tj ET"); });
+    // assemble objects
+    var objs = [], add = function (o) { objs.push(o); return objs.length; };
+    var catalog = add(""), pagesId = add(""), f1 = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"), f2 = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+    var kids = [];
+    pages.forEach(function (pg) { var content = pg.join("\n"), cId = add("<< /Length " + enc.encode(content).length + " >>\nstream\n" + content + "\nendstream"); kids.push(add("<< /Type /Page /Parent " + pagesId + " 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /Font << /F1 " + f1 + " 0 R /F2 " + f2 + " 0 R >> >> /Contents " + cId + " 0 R >>")); });
+    objs[catalog - 1] = "<< /Type /Catalog /Pages " + pagesId + " 0 R >>";
+    objs[pagesId - 1] = "<< /Type /Pages /Kids [" + kids.map(function (k) { return k + " 0 R"; }).join(" ") + "] /Count " + kids.length + " >>";
+    var info = add("<< /Title (" + esc8(winAnsi(meta.title || "FODO report")) + ") /Producer (FODO) /Creator (FODO Business X-Ray) >>");
+    var head = "%PDF-1.4\n%âãÏÓ\n", parts = [head], offs = [], pos = enc.encode(head).length;
+    // the binary comment line must be real bytes: write it as latin-1
+    parts[0] = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10]); pos = parts[0].length;
+    objs.forEach(function (o, i) { var str = (i + 1) + " 0 obj\n" + o + "\nendobj\n", b = enc.encode(str); offs.push(pos); parts.push(b); pos += b.length; });
+    var xref = "xref\n0 " + (objs.length + 1) + "\n0000000000 65535 f \n" + offs.map(function (o) { return ("000000000" + o).slice(-10) + " 00000 n \n"; }).join("") + "trailer\n<< /Size " + (objs.length + 1) + " /Root " + catalog + " 0 R /Info " + info + " 0 R >>\nstartxref\n" + pos + "\n%%EOF";
+    parts.push(enc.encode(xref));
+    return new Blob(parts, { type: "application/pdf" });
   }
 
   /* ---------- CSV / TSV ---------- */
@@ -187,5 +246,5 @@
     set: function (k, v) { return db().then(function (d) { return new Promise(function (res, rej) { var t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = function () { res(true); }; t.onerror = function () { rej(t.error); }; t.onabort = function () { rej(t.error); }; }); }).catch(function () { try { localStorage.setItem("fodo-" + k, JSON.stringify(v)); return true; } catch (e) { return false; } }); },
   };
 
-  window.FODO_EXPORT = { xlsx: xlsx, csv: csv, tsv: tsv, deliver: deliver, copyText: copyText, store: store, isPhone: isPhone, inApp: inApp, anchorDownload: anchorDownload, close: closeDlg, crc32: crc32 };
+  window.FODO_EXPORT = { xlsx: xlsx, pdf: pdf, csv: csv, tsv: tsv, deliver: deliver, copyText: copyText, store: store, isPhone: isPhone, inApp: inApp, anchorDownload: anchorDownload, close: closeDlg, crc32: crc32 };
 })();

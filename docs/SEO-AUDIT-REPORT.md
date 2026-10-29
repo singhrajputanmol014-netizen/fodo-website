@@ -1,8 +1,8 @@
 # FODO — SEO audit report
 
-Generated 2026-10-28 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
+Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
-**84 HTML pages · 82 sitemap URLs · 0 errors · 0 warnings · 5 notes**
+**85 HTML pages · 83 sitemap URLs · 0 errors · 0 warnings · 5 notes**
 
 ## Issues
 
@@ -16,9 +16,10 @@ Generated 2026-10-28 by `scripts/seo_audit.py` from the built files. Canonical h
 
 | URL | Title len | Desc len | H1 | Static words | Schema | Title |
 |---|---|---|---|---|---|---|
-| `/` | 59 | 155 | 1 | 1298 | Organization,Person,ProfessionalService,WebSite | FODO — Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
+| `/` | 59 | 155 | 1 | 1333 | Organization,Person,ProfessionalService,WebSite | FODO — Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
 | `/404.html` | 21 | 65 | 1 | 30 | — | Page not found — FODO |
 | `/about/` | 46 | 140 | 1 | 394 | BreadcrumbList,Person | About FODO — Founder Anmol Singh &amp; How We Work |
+| `/business-x-ray/` | 59 | 156 | 1 | 366 | BreadcrumbList | Business X-Ray — Free Website &amp; Competitor Diagnosis | FODO |
 | `/competitor-finder/` | 57 | 150 | 1 | 526 | BreadcrumbList | Competitor Finder — Any Business, Brand or Startup | FODO |
 | `/contact/` | 48 | 150 | 1 | 37 | BreadcrumbList | Contact FODO — Free Growth Audit &amp; Strategy Call |
 | `/faq/` | 49 | 155 | 1 | 609 | BreadcrumbList | FAQ — Services, Process &amp; Pricing Approach | FODO |

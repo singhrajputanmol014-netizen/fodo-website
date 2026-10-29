@@ -14,7 +14,7 @@ TAGLINE = "Fear Of Digitally Out ?"
 POSITIONING = "Based in New Delhi. Built for ambitious brands worldwide."
 LOCALE = "en_IN"
 OG_IMAGE = SITE + "/assets/og-fodo.jpg"
-LOGO = SITE + "/assets/apple-touch-icon.png"
+LOGO = SITE + "/assets/favicon-512.png"
 
 # Confirmed contact data (same values as js/config.js)
 EMAIL = "anmol@fodo.co.in"

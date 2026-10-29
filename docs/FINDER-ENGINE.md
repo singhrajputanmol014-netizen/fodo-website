@@ -35,3 +35,13 @@ Check what's on: open `https://www.fodo.co.in/api/competitors?health=1` → `{"v
 - `functions/_lib/finder-common.js` — rate limit, cache key, hedged fetch
 - `functions/api/osm.js`, `geo.js`, `brand-ai.js`, `export.js`, `competitors.js`
 - Tests: `tests/finder-v11-functions.test.mjs`, `tests/v11-finder.test.js`, `tests/v8-finder.test.js`, `tests/competitors-function.test.mjs`
+
+## v12 — better brand & startup competitors
+- Industry lists are weighted by how specific they are (a list of 120 companies counts more than one of 40,000); very broad "type"
+  lists (website, mobile app, brand, startup …) are never used — they returned every website before.
+- Keyword layer searches quoted phrases from the brand's description ("food delivery", "restaurant aggregator"), not every word.
+- Closed companies (dissolved / end date) and the brand's own group (parent, owner, subsidiaries) are left out, and the status says so.
+- Companies from the brand's own country rank higher.
+- With `SERPER_API_KEY` set, the AI layer is grounded in two Google searches ("<brand> competitors", "<brand> alternatives"):
+  a name is shown as "found in Google results" only if that result's text really contains it, with a link to where it was named.
+  Costs 2 Serper searches per new brand (results cached 7 days).

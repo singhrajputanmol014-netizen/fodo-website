@@ -7,7 +7,7 @@
  * The bytes are stored in KV untouched (no CPU spent) and expire on their own. Nothing else is kept. */
 import { json, limited } from "../_lib/finder-common.js";
 
-const TYPES = { "text/csv": ".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx", "text/tab-separated-values": ".tsv" };
+const TYPES = { "text/csv": ".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx", "text/tab-separated-values": ".tsv", "application/pdf": ".pdf", "application/json": ".json" };
 
 export async function onRequestPost({ request, env }) {
   const kv = env.CHAT_KV; if (!kv) return json({ ok: false, reason: "Download service not available." }, 503);

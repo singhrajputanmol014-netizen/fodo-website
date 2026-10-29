@@ -1,0 +1,3 @@
+# shared settings for the offline X-Ray world (sourced by tests)
+F=http://127.0.0.1:9300
+MAP='{"spicehub.test":"'$F'/spicehub.test","flowdesk.test":"'$F'/flowdesk.test","aromaco.test":"'$F'/aromaco.test","brightpixel.test":"'$F'/brightpixel.test","smilecare.test":"'$F'/smilecare.test","blockedco.test":"'$F'/blockedco.test","www.blockedco.test":"'$F'/blockedco.test","shyco.test":"'$F'/shyco.test","tandoortales.test":"'$F'/tandoortales.test","curryhouse.test":"'$F'/curryhouse.test","autotask.test":"'$F'/autotask.test","zapflow.test":"'$F'/zapflow.test","glowcandles.test":"'$F'/glowcandles.test","growthlabs.test":"'$F'/growthlabs.test","adcraft.test":"'$F'/adcraft.test","google.serper.dev":"'$F'/_serper","www.googleapis.com":"'$F'/_psi"}'

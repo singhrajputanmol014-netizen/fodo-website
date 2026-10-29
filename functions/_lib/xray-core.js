@@ -189,6 +189,7 @@ export function providers(env) {
     search: env.SERPER_API_KEY ? "serper" : env.BRAVE_API_KEY ? "brave" : null,
     searchName: env.SERPER_API_KEY ? "Google Search (via Serper)" : env.BRAVE_API_KEY ? "Brave Search" : "",
     seo: env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD ? "dataforseo" : null,
+    authority: env.OPR_API_KEY ? "openpagerank" : null,
     performance: "pagespeed",
     places: env.GEOAPIFY_KEY ? "geoapify" : null,
     ai: env.AI ? "workers-ai" : null,

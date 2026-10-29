@@ -67,3 +67,22 @@ xray_scores, xray_counters` — no secrets stored. Reports also kept in KV for 9
 - Competitor traffic and Google Business Profile insights are never shown (no legitimate public source).
 - The PDF uses the standard Helvetica font: non-Latin text (e.g. Hindi) appears as "?". Excel/CSV keep it.
 - If the visitor closes the tab mid-run the job stops (the browser runs the stages); it can be started again.
+
+## v13 — plans and paid sections
+With `ACCOUNTS_ENABLED=1` the X-Ray needs a login and runs at the level of the credit it used (see `docs/ACCOUNTS-PAYMENTS.md`).
+`/api/xray/start` returns `limits` (pages, competitors, pages per competitor, searches, AI questions, runtime, link checks) and `features`. The page applies them, and the server enforces them again.
+
+New sections, each shown only when its level includes it. Every one is evidence-labelled like the rest of the report.
+
+| Section | Level | Label | What it is |
+|---|---|---|---|
+| Since your last X-Ray | Growth+ | — | Area scores before → now, issues fixed and issues new. The earlier report comes from the account history. |
+| Content gap | Growth+ | INFERRED | Topics in the titles, headings and menus of at least a third of the competitors (minimum 2) that never appear on your pages. |
+| Technology stack | Pro+ | OBSERVED | CMS, framework, analytics, ad pixels, chat/CRM, payments and hosting, matched in the homepage code and response headers. "Not detected" ≠ "not used". |
+| Competitor deep-crawl | Pro+ | — | Up to 6 pages per competitor: pricing, services, about, reviews, FAQ, blog, contact. |
+| Outgoing links | Pro+ | OBSERVED | Up to 80 external links checked via `/api/xray/linkcheck`. 404, 410, 5xx and no answer count as broken. 401, 403, 429 and 999 count as "refused automated checks", not broken. |
+| Domain authority | Pro+ | ESTIMATED | Open PageRank 0–10 via `/api/xray/authority`, needs `OPR_API_KEY`. It is not Moz DA or Ahrefs DR, and it does not list backlinks. |
+| White-label PDF | Agency | — | The agency's name, colour and JPEG logo (embedded with DCTDecode), with no FODO branding. |
+| Client folders, bulk X-Ray | Agency | — | Client folders, and a bulk run of up to 20 sites one after another. |
+
+On the Free level the report keeps the score, biggest problem, top 3 fixes, 30-day plan and all evidence. The other sections show their counts plus a "See plans" card.

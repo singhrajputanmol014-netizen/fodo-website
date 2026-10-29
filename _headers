@@ -1,3 +1,6 @@
+/account/*
+  X-Robots-Tag: noindex
+  Cache-Control: no-store
 /scripts/*
   X-Robots-Tag: noindex
 /tests/*

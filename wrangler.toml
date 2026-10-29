@@ -14,6 +14,7 @@ id = "dc36f659051342a39608e79046ae2d44"
 # Business X-Ray storage (Cloudflare D1). Until this is filled in, X-Ray reports are kept in CHAT_KV instead (works, fewer tables).
 # 1) Cloudflare dashboard → Storage & Databases → D1 → Create database → name: fodo-xray
 # 2) copy its Database ID, remove the "# " in front of the 4 lines below and paste the ID. Tables are created automatically.
+# The same database holds Growth Lab accounts, plans and payments (v13) — they switch on with ACCOUNTS_ENABLED=1 (docs/ACCOUNTS-PAYMENTS.md).
 # [[d1_databases]]
 # binding = "XRAY_DB"
 # database_name = "fodo-xray"

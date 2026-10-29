@@ -1,0 +1,125 @@
+# Growth Lab accounts, plans and payments (v13)
+
+Login, a free allowance, 5 paid levels, X-Ray packs and Cashfree payments for the Growth Lab.
+It all stays **off** until `ACCOUNTS_ENABLED=1` and the D1 database `XRAY_DB` are both set. While it is off, the site works exactly as in v12.2: the X-Ray is anonymous and fair-use limited.
+
+## What a visitor sees
+
+| Where | Accounts off (now) | Accounts on |
+|---|---|---|
+| Business X-Ray | runs without login | "Log in (it's free)" → Google or a 6-digit email code → the X-Ray starts |
+| Free allowance | hourly/daily limits per network | 2 X-Rays per account (lifetime), free-level limits |
+| Report | full | Free plan: score, biggest problem, top 3 fixes, 30-day plan and evidence. Detail sections are locked with a "See plans" card. |
+| Downloads | all | Starter and above (the share link stays free) |
+| Competitor Finder | open | search open; downloading the sheet needs a free login |
+| Header | — | "Log in" chip, or "Plan · N X-Rays" linking to /account/ |
+
+## Plans (single source of truth: `functions/_lib/plans.js`)
+
+| Plan | ₹/month | X-Rays | Pages | Competitors | Pages per competitor | Adds |
+|---|---|---|---|---|---|---|
+| Free | 0 | 2 (lifetime) | 15 | 2 | 2 | basic report |
+| Starter | 499 | 10 | 50 | 5 | 2 | full report, PDF/Excel/CSV/JSON, history |
+| Growth | 1,499 | 30 | 150 | 8 | 3 | compare with last X-Ray, content gap, deeper customer voice, search volume* |
+| Pro | 3,999 | 80 | 300 | 10 | 6 | tech stack, competitor deep-crawl, broken outgoing links, domain authority* |
+| Agency | 9,999 | 250 | 500 | 10 | 6 | white-label PDF, 5 team seats, client folders, bulk X-Ray (20 sites) |
+
+\* A feature that needs a data provider is not shown or sold until that provider is connected:
+- Search volume needs DataForSEO (`DATAFORSEO_LOGIN` and `DATAFORSEO_PASSWORD`). It is paid and has not been tested live.
+- Domain authority needs a free Open PageRank key (`OPR_API_KEY`).
+
+Packs never expire and run at your plan's level (at least Starter): 5 X-Rays for ₹299, 20 for ₹999, 60 for ₹2,499.
+
+The price on `/plans/` without JavaScript is a copy (`LAB_PLANS` in `scripts/build_pages.py`). `tests/v13-plans.test.mjs` fails if that copy and `plans.js` differ, so change both together.
+
+## How credits work
+
+- An X-Ray uses one credit, taken atomically, in this order: this month's plan X-Rays, then packs, then free ones. The level a run gets comes from the credit it used.
+- `start` returns:
+  - 401 `{login:true}` when nobody is logged in;
+  - 402 `{upgrade:true}` when no credit is left (checked before the hourly limit);
+  - 429 when the hourly limit is reached (2, 6, 10, 20 or 40 per hour, by plan).
+- The server enforces every limit: pages and fetches, searches, competitor reads, AI questions, link checks, authority and search volume. The browser only decides what to show. Locked report sections are a display choice, and the data behind them is never collected on lower levels.
+- Refund: when a site cannot be read at all (≤ 6 fetches, ≤ 1 search, under 20 minutes), the page calls `/api/xray/refund` and the credit comes back once.
+- Monthly plans last 30 days from payment. Unused monthly X-Rays do not roll over. Paying again for the same plan resets the month. A smaller plan cannot be bought while a bigger one is active.
+
+## Payments (Cashfree)
+
+- **One month at a time (default).** The server creates the order (`POST /pg/orders`, API version `2025-01-01`, idempotency key = order id), and the browser opens Cashfree Checkout.
+  - Cashfree sends the visitor back to `/account/?order_id=…`.
+  - The page calls `/api/account/verify`. The server re-reads the order from Cashfree, checks that it is PAID and that the amount equals the price, and only then credits it.
+  - Coming back to the page proves nothing on its own.
+- **Webhook:** `POST /api/account/webhook/cashfree`.
+  - The signature (HMAC-SHA256 of timestamp + raw body, keyed with the secret key) must match. Timestamps older than 24 hours are refused.
+  - The webhook credits through the same path as verify. A ledger row with a unique `ref` makes double credit impossible, whether it is verify plus webhook or a repeated webhook.
+- **Auto-renew (optional, `CASHFREE_SUBSCRIPTIONS=1`):** uses Cashfree Subscriptions (periodic monthly plan, first charge at sign-up).
+  - The first month is granted when the mandate turns ACTIVE.
+  - Renewals are granted on `SUBSCRIPTION_PAYMENT_SUCCESS`, except the AUTH payment.
+  - "Stop auto-renew" on /account/ cancels the mandate.
+  - Not tested against a live Cashfree account. Switch it on only after a sandbox run.
+- The mobile number is needed by Cashfree (10 digits). It is asked for at checkout and saved to the profile.
+
+## Login
+
+- **Google:** the Google Identity Services button.
+  - The server verifies the RS256 ID token with Google's keys, and checks `aud` = `GOOGLE_CLIENT_ID`, the issuer and expiry.
+  - A Google login is linked to an existing email account only when Google is authoritative for that address (Gmail, or a verified Workspace address). Otherwise it answers 409 and asks for the email code.
+- **Email code:** 6 digits, sent with Resend.
+  - Stored only as a hash, valid 10 minutes, 5 tries.
+  - One code per minute per email (5 per hour), and 30 per hour per network.
+  - 30 new accounts per network per day. Indian mobile networks put many people behind one address, so the network limits stay generous.
+- **Session:** an `fodo_s` cookie (HttpOnly, Secure, SameSite=Lax, 30 days).
+  - It is stored as a SHA-256 hash in D1.
+  - Every POST must be JSON and from the same origin (CSRF).
+
+## D1 tables (created automatically on first use)
+
+| Table | Holds |
+|---|---|
+| `acct_users` | plan, `plan_until`, `monthly_left`, `pack_left`, `free_left`, brand |
+| `acct_sessions` | sessions |
+| `acct_otps` | email codes |
+| `acct_ledger` | every credit or debit; `ref` is UNIQUE |
+| `acct_orders` | orders |
+| `acct_subs` | subscriptions |
+| `acct_team` | team members |
+| `acct_clients` | client folders |
+| `acct_runs` | one row per X-Ray: owner, user, tier, credit, client, status, score |
+| `acct_counters` | rate limits |
+
+## Settings (Cloudflare → Pages → fodo-website → Settings → Variables and secrets, Production)
+
+| Name | Type | Value |
+|---|---|---|
+| `ACCOUNTS_ENABLED` | Variable | `1` (the master switch) |
+| `GOOGLE_CLIENT_ID` | Variable | `…apps.googleusercontent.com` |
+| `RESEND_API_KEY` | Secret | `re_…` |
+| `MAIL_FROM` | Variable | `FODO <login@fodo.co.in>` (domain verified in Resend) |
+| `CASHFREE_APP_ID` | Secret | Cashfree App ID |
+| `CASHFREE_SECRET_KEY` | Secret | Cashfree Secret Key (also signs webhooks) |
+| `CASHFREE_ENV` | Variable | `sandbox` first, then `production` |
+| `CASHFREE_SUBSCRIPTIONS` | Variable | `1` only to offer auto-renew (optional) |
+| `OPR_API_KEY` | Secret | Open PageRank key (optional, enables domain authority) |
+
+The D1 binding `XRAY_DB` is set in `wrangler.toml`. Uncomment its block and paste the database ID.
+
+## Tests
+
+| Command | What it checks |
+|---|---|
+| `node tests/accounts-functions.test.mjs` | 64 checks: real SQLite as D1, real RS256 Google tokens, mocked Resend and Cashfree, signed webhooks, double-credit and tampered-amount cases, team and white-label |
+| `node tests/v13-accounts-e2e.test.js` | 45 checks: the real pages on the local Pages runtime with accounts on. Email code login → free runs → 402 → buy Pro → payment return → Pro report → refund → Agency white-label PDF, clients, bulk |
+| `node tests/v13-plans.test.mjs` | the HTML price copy equals the server's prices |
+| `node tests/xray-e2e.test.js` | 116 checks: unchanged with accounts off |
+
+## FODO owner logins
+`anmol@fodo.co.in` and `singhrajputanmol014@gmail.com` are owner logins, listed in `OWNER_EMAILS` in `functions/_lib/accounts.js`. To add another address, put it in that list.
+
+An owner login:
+- gets every feature at Agency level and unlimited X-Rays;
+- is never charged, and checkout is refused for it;
+- shows as "Owner" on the account page.
+
+Owner access needs the 6-digit email code, or a Google login where Google is authoritative for the address (Gmail, or Workspace). A Google account that merely lists the address is refused.
+
+Every owner X-Ray is logged in the ledger with 0 credits.

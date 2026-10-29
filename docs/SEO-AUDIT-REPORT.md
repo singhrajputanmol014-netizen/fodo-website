@@ -2,7 +2,7 @@
 
 Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
-**85 HTML pages · 83 sitemap URLs · 0 errors · 0 warnings · 5 notes**
+**87 HTML pages · 84 sitemap URLs · 0 errors · 0 warnings · 5 notes**
 
 ## Issues
 
@@ -19,7 +19,8 @@ Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/` | 59 | 155 | 1 | 1333 | Organization,Person,ProfessionalService,WebSite | FODO — Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
 | `/404.html` | 21 | 65 | 1 | 30 | — | Page not found — FODO |
 | `/about/` | 46 | 140 | 1 | 394 | BreadcrumbList,Person | About FODO — Founder Anmol Singh &amp; How We Work |
-| `/business-x-ray/` | 59 | 156 | 1 | 366 | BreadcrumbList | Business X-Ray — Free Website &amp; Competitor Diagnosis | FODO |
+| `/account/` | 30 | 118 | 1 | 8 | BreadcrumbList | Your Growth Lab Account | FODO |
+| `/business-x-ray/` | 59 | 144 | 1 | 364 | BreadcrumbList | Business X-Ray — Free Website &amp; Competitor Diagnosis | FODO |
 | `/competitor-finder/` | 57 | 150 | 1 | 526 | BreadcrumbList | Competitor Finder — Any Business, Brand or Startup | FODO |
 | `/contact/` | 48 | 150 | 1 | 37 | BreadcrumbList | Contact FODO — Free Growth Audit &amp; Strategy Call |
 | `/faq/` | 49 | 155 | 1 | 609 | BreadcrumbList | FAQ — Services, Process &amp; Pricing Approach | FODO |
@@ -43,7 +44,7 @@ Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/insights/social-content-pillars/` | 49 | 158 | 1 | 396 | Article,BreadcrumbList | How to Choose Social Media Content Pillars | FODO |
 | `/insights/traffic-vs-customers/` | 51 | 144 | 1 | 430 | Article,BreadcrumbList | Why More Traffic Doesn&#x27;t Mean More Customers | FODO |
 | `/insights/useful-marketing-dashboard/` | 54 | 152 | 1 | 375 | Article,BreadcrumbList | What a Useful Marketing Dashboard Should Answer | FODO |
-| `/legal/` | 50 | 155 | 1 | 616 | BreadcrumbList | Privacy Policy, Cookies, Terms &amp; Disclaimer | FODO |
+| `/legal/` | 50 | 155 | 1 | 942 | BreadcrumbList | Privacy Policy, Cookies, Terms &amp; Disclaimer | FODO |
 | `/locations/` | 40 | 131 | 1 | 223 | BreadcrumbList | Where We Work — India &amp; Worldwide | FODO |
 | `/locations/australia/` | 57 | 150 | 1 | 484 | BreadcrumbList,FAQPage,Service | Digital Marketing Agency for Australian Businesses | FODO |
 | `/locations/bengaluru/` | 54 | 144 | 1 | 523 | BreadcrumbList,FAQPage,Service | Digital Marketing Agency for Bengaluru Startups | FODO |
@@ -66,6 +67,7 @@ Generated 2026-10-29 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/locations/usa/` | 49 | 150 | 1 | 514 | BreadcrumbList,FAQPage,Service | Digital Marketing Agency for US Businesses | FODO |
 | `/locations/west-delhi/` | 45 | 138 | 1 | 409 | BreadcrumbList,FAQPage,ProfessionalService | Digital Marketing Agency in West Delhi | FODO |
 | `/marketing-quiz/` | 51 | 135 | 1 | 27 | BreadcrumbList | Digital Marketing Quiz — Test Your Instincts | FODO |
+| `/plans/` | 48 | 148 | 1 | 401 | BreadcrumbList,FAQPage | Growth Lab Plans — Business X-Ray Pricing | FODO |
 | `/pricing/` | 49 | 136 | 1 | 437 | BreadcrumbList,FAQPage | How Pricing Works — FODO Digital Marketing Agency |
 | `/resources/` | 44 | 149 | 1 | 292 | BreadcrumbList | Free Marketing Checklists &amp; Resources | FODO |
 | `/reviews/` | 39 | 148 | 1 | 69 | BreadcrumbList | FODO Reviews — Verified Client Feedback |

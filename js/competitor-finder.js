@@ -778,7 +778,10 @@
     return X.xlsx(out, { title: "FODO Competitor Sheet " + stamp() });
   }
   var csvBlob = function () { return X ? X.csv(csvRows()) : new Blob(["﻿" + toCSV()], { type: "text/csv;charset=utf-8" }); };
-  var save = function (blob, name, kind) { if (X) return X.deliver(blob, name, { kind: kind }); var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 800); return Promise.resolve("download"); };
+  // v13: with Growth Lab accounts switched on, downloading the sheet needs a free login (searching stays open to everyone)
+  var gate = function () { var A = window.FODO_ACCOUNT; if (!A) return Promise.resolve(true); return A.config().then(function (c) { if (!c.enabled) return true; return A.me().then(function (u) { return u || A.login("Log in (free) to download your competitor sheet. Searching stays open to everyone."); }).then(function () { return true; }); }); };
+  var save0 = function (blob, name, kind) { if (X) return X.deliver(blob, name, { kind: kind }); var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 800); return Promise.resolve("download"); };
+  var save = function (blob, name, kind) { return gate().then(function () { return save0(blob, name, kind); }, function () { return "cancelled"; }); };
   $("cf-x-csv").addEventListener("click", function () { var b = this; save(csvBlob(), "FODO-competitors-" + stamp() + ".csv", "CSV").then(function (h) { if (h === "download") flash(b, "Downloaded ✓"); }); });
   $("cf-x-copy").addEventListener("click", function () {
     var b = this, t = toTSV();

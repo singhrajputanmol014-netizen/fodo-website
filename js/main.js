@@ -26,7 +26,7 @@
   const routes = {
     home:P(""), about:P("about/"), services:P("services/"), industries:P("industries/"), work:P("work/"), insights:P("insights/"), resources:P("resources/"),
     lab:P("#growth-lab"), score:P("growth-score/"), roi:P("roi-calculator/"), game:P("fodo-challenge/"), quiz:P("marketing-quiz/"),
-    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), competitors:P("competitor-finder/"), xray:P("business-x-ray/"), legal:P("legal/"), thanks:P("thank-you/")
+    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), competitors:P("competitor-finder/"), xray:P("business-x-ray/"), plans:P("plans/"), account:P("account/"), legal:P("legal/"), thanks:P("thank-you/")
   };
   U.routes = routes;
   const here = (document.body.dataset.route==="service"?"services":document.body.dataset.route) || "";
@@ -57,7 +57,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="${routes.work}"${cur("work")}>Work</a><a href="${routes.reviews}"${cur("reviews")}>Reviews</a><a href="${routes.services}"${cur("services")}>Services</a>
         <div class="sub"><button class="sub-btn" type="button" aria-expanded="false" aria-haspopup="true">Growth Lab <span aria-hidden="true">▾</span></button>
-          <div class="sub-menu"><a href="${routes.lab}"${cur("lab")}>Growth Lab</a><a href="${routes.xray}"${cur("xray")}>Business X-Ray</a><a href="${routes.score}"${cur("score")}>Growth Score</a><a href="${routes.roi}"${cur("roi")}>ROI Calculator</a><a href="${routes.competitors}"${cur("competitors")}>Competitor Finder</a><a href="${routes.game}"${cur("game")}>FODO Challenge</a><a href="${routes.quiz}"${cur("quiz")}>Marketing Quiz</a></div></div>
+          <div class="sub-menu"><a href="${routes.lab}"${cur("lab")}>Growth Lab</a><a href="${routes.xray}"${cur("xray")}>Business X-Ray</a><a href="${routes.score}"${cur("score")}>Growth Score</a><a href="${routes.roi}"${cur("roi")}>ROI Calculator</a><a href="${routes.competitors}"${cur("competitors")}>Competitor Finder</a><a href="${routes.plans}"${cur("plans")}>Plans &amp; pricing</a><a href="${routes.game}"${cur("game")}>FODO Challenge</a><a href="${routes.quiz}"${cur("quiz")}>Marketing Quiz</a></div></div>
         <a href="${routes.about}"${cur("about")}>About</a><a href="${routes.insights}"${cur("insights")}>Insights</a><a href="${routes.contact}"${cur("contact")}>Contact</a>
       </nav>
       <button class="search-btn" type="button" id="search-open" aria-label="Search the site" title="Search (Ctrl K)" aria-haspopup="dialog">${ico.search}</button><button class="theme-btn" type="button" id="theme-toggle" aria-label="Toggle dark / light mode" title="Dark / light"><span class="tb-sun">${ico.sun}</span><span class="tb-moon">${ico.moon}</span></button><a class="btn header-cta" href="${routes.contact}">Let's talk</a>
@@ -72,7 +72,7 @@
     const grp=(t,items,cls)=>`<div class="dgrp"><span class="dlabel">${t}</span><div class="${cls||"dlist"}">${items.map(l=>`<a href="${routes[l[1]]}" class="${l[2]||""}"${cur(l[1])}>${l[0]}</a>`).join("")}</div></div>`;
     d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}" aria-label="FODO — Fear Of Digitally Out ? — home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
       <nav aria-label="Mobile">${grp("Explore",[["Home","home"],["About","about"],["Services","services"],["Industries","industries"],["Work","work"],["Insights","insights"]])}
-      ${grp("Growth Lab",[["Business X-Ray","xray","hot"],["Competitor Finder","competitors"],["Growth Score","score"],["ROI Calculator","roi"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
+      ${grp("Growth Lab",[["Business X-Ray","xray","hot"],["Competitor Finder","competitors"],["Lab plans","plans"],["Growth Score","score"],["ROI Calculator","roi"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
       ${grp("More",[["Pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Where we work","locations"],["FAQ","faq"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
       <a class="btn" href="${routes.contact}">Let's talk</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
     document.body.appendChild(d);

@@ -1,0 +1,22 @@
+// Ops checks: metrics counters, /api/stats auth, emergency switches. Run: node tests/ops.test.mjs
+import * as chat from "../functions/api/chat.js";
+import * as stats from "../functions/api/stats.js";
+import * as voice from "../functions/api/voice-session.js";
+let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
+const O = "https://www.fodo.co.in";
+const store = new Map(); const KV = { async get(k) { return store.get(k) || null; }, async put(k, v) { store.set(k, v); } };
+const env = { AI: { async run() { return { response: "Hi from AI" }; } }, CHAT_KV: KV, STATS_TOKEN: "s3cret" };
+const post = (b, ip) => new Request(O + "/api/chat", { method: "POST", headers: { origin: O, "content-type": "application/json", "cf-connecting-ip": ip || "1.2.3.4" }, body: JSON.stringify(b) });
+await chat.onRequestPost({ request: post({ message: "What is SEO?" }), env });
+await chat.onRequestPost({ request: post({ message: "hi" }, "5.5.5.5"), env: { ...env, AI: { async run() { throw new Error("4006: daily free allocation"); } } } });
+const day = "m:" + new Date().toISOString().slice(0, 10); const m = JSON.parse(store.get(day));
+ok(m.requests === 2 && m.ok === 1 && m.fallback_quota === 1, "counters " + JSON.stringify(m));
+ok(!JSON.stringify([...store.values()]).includes("SEO"), "no message text stored");
+const g = async (h, q = "") => { const r = await stats.onRequestGet({ request: new Request(O + "/api/stats" + q, { headers: h || {} }), env }); return { s: r.status, j: await r.json() }; };
+ok((await g()).s === 401, "stats needs token");
+const r = await g({ authorization: "Bearer s3cret" }, "?days=3"); ok(r.s === 200 && r.j.days.length === 3 && r.j.days[0].fallback_rate === 0.5 && r.j.ai === true, "stats ok " + JSON.stringify(r.j.days[0]));
+const d = await chat.onRequestPost({ request: post({ message: "hi" }, "9.9.9.9"), env: { ...env, BOT_AI_DISABLED: "1" } }); ok(d.status === 503 && (await d.json()).code === "disabled", "AI kill switch");
+const h = await (await chat.onRequestGet({ request: new Request(O + "/api/chat"), env: { ...env, BOT_AI_DISABLED: "1" } })).json(); ok(h.ai === false, "health reports ai:false when disabled");
+const v = await voice.onRequestPost({ request: new Request(O + "/api/voice-session", { method: "POST", headers: { origin: O, "content-type": "application/json" }, body: "{}" }), env: { OPENAI_API_KEY: "k", VOICE_DISABLED: "1" } });
+ok(v.status === 503 && (await v.json()).reason === "disabled", "voice kill switch");
+console.log(`ops: ${pass}/${pass + fail} passed`); process.exit(fail ? 1 : 0);

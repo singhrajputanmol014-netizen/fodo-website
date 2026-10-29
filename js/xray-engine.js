@@ -858,6 +858,8 @@
     M_compGap: ["Competitors are ahead on visible basics", "Competitive", 4, 2, 3, "Close the listed gaps first — they are what buyers compare.", "competitors"],
     M_sameMessage: ["You say the same thing as competitors", "Positioning", 4, 3, 3, "Rewrite the hero around a claim competitors don't make (see white space).", "brand"],
     W_blocked: ["Your website turns away automated visitors", "Website", 3, 2, 3, "Check your firewall / bot protection: Google, Bing and AI assistants (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot) must be able to read your pages, and real visitors on slow networks should never see an error page. Then run the X-Ray again for the full page checks.", "web"],
+    X_extBroken: ["Links to other websites are broken", "Website", 2, 1, 2, "Update or remove the outgoing links listed — broken links lose visitors and look neglected.", "web"],
+    G_contentGap: ["Competitors cover topics you don't", "Content", 3, 3, 3, "Add a page or section for the topics most competitors cover (only those you really offer), starting with the ones most of them share.", "seo"],
     V_complaint: ["Customers' top complaint in your market is unaddressed", "Market", 4, 2, 3, "Address the top complaint on your homepage and in your offer (with proof).", "brand"],
   };
   E.OPP = OPP;
@@ -894,6 +896,38 @@
     ];
     weeks.forEach(function (w) { w.items = w.items.map(function (o) { return { opportunity: o.id, problem: o.title, action: o.recommendation, expectedImpact: o.impact >= 4 ? "High" : o.impact === 3 ? "Medium" : "Low", evidence: o.evidence, tool: o.tool }; }); });
     return weeks;
+  };
+  /* ---------- v13: technology stack — read from the page code and response headers (OBSERVED; "not detected" ≠ "not used") ---------- */
+  var TECH = [
+    ["CMS / site builder", [["WordPress", /\/wp-content\/|\/wp-includes\/|<meta[^>]+generator[^>]+wordpress/i], ["WooCommerce", /woocommerce/i], ["Elementor", /elementor-/i], ["Divi", /et_pb_|\/Divi\//], ["Shopify", /cdn\.shopify\.com|Shopify\.theme|x-shopify/i], ["Wix", /static\.wixstatic\.com|x-wix-request-id|wix-bolt/i], ["Squarespace", /static1\.squarespace\.com|squarespace-cdn/i], ["Webflow", /data-wf-page|webflow\.js|assets\.website-files\.com/i], ["Framer", /framerusercontent\.com|data-framer-/i], ["Drupal", /Drupal\.settings|\/sites\/default\/files\//], ["Joomla", /\/media\/jui\/|<meta[^>]+generator[^>]+joomla/i], ["Magento", /Magento_|mage\/cookies/], ["Ghost", /<meta[^>]+generator[^>]+ghost/i], ["Hostinger Website Builder", /zyrosite\.com|zyro\.com/i], ["GoDaddy Website Builder", /img1\.wsimg\.com|godaddy-website-builder/i], ["Blogger", /blogger\.com\/static|\.blogspot\.com/i], ["HubSpot CMS", /hs-sites\.com|hubspot-cms/i], ["Zoho Sites", /zohosites|sites\.zoho/i]]],
+    ["Framework", [["Next.js", /__NEXT_DATA__|\/_next\/static\//], ["Nuxt", /__NUXT__|\/_nuxt\//], ["Gatsby", /___gatsby/], ["Angular", /ng-version=/], ["React", /data-reactroot|react-dom(\.production)?\.min\.js/], ["Vue", /data-v-[0-9a-f]{6,}|vue(\.runtime)?(\.global)?(\.prod)?\.js/], ["Astro", /astro-island|data-astro-/], ["Tailwind CSS", /tailwind(css)?[.-]/i], ["Bootstrap", /bootstrap(\.min)?\.(css|js)/i], ["jQuery", /jquery(-\d[\d.]*)?(\.min)?\.js/i]]],
+    ["Analytics", [["Google Analytics 4", /gtag\/js\?id=G-|['"]G-[A-Z0-9]{6,}['"]/], ["Google Analytics (Universal)", /['"]UA-\d{4,}-\d+['"]|google-analytics\.com\/analytics\.js/], ["Google Tag Manager", /googletagmanager\.com\/gtm\.js|GTM-[A-Z0-9]{4,}/], ["Microsoft Clarity", /clarity\.ms\/tag/], ["Hotjar", /static\.hotjar\.com|hotjar\.com\/c\/hotjar/], ["Mixpanel", /cdn\.mxpnl\.com|mixpanel\.init/], ["Segment", /cdn\.segment\.com/], ["Plausible", /plausible\.io\/js/], ["Matomo", /matomo\.js|piwik\.js/], ["Yandex Metrica", /mc\.yandex\.ru/]]],
+    ["Ad pixels", [["Meta (Facebook) Pixel", /connect\.facebook\.net\/[^"']*fbevents|fbq\(\s*['"]init/], ["Google Ads tag", /googleadservices\.com|['"]AW-\d{6,}['"]/], ["LinkedIn Insight Tag", /snap\.licdn\.com|_linkedin_partner_id/], ["TikTok Pixel", /analytics\.tiktok\.com/], ["X (Twitter) Pixel", /static\.ads-twitter\.com|twq\(/], ["Pinterest Tag", /pintrk\(|s\.pinimg\.com\/ct\//], ["Snap Pixel", /sc-static\.net\/scevent/], ["Microsoft Ads UET", /bat\.bing\.com/]]],
+    ["Chat & CRM", [["WhatsApp chat link", /wa\.me\/|api\.whatsapp\.com\/send/], ["HubSpot", /js\.hs-scripts\.com|js\.hsforms\.net|hs-analytics/], ["Intercom", /widget\.intercom\.io|intercomSettings/], ["Tawk.to", /embed\.tawk\.to/], ["Crisp", /client\.crisp\.chat/], ["Zendesk", /static\.zdassets\.com|zopim/], ["Freshworks", /wchat\.freshchat\.com|freshworks\.com\/widget|fw-cdn\.com/], ["Tidio", /code\.tidio\.co/], ["LiveChat", /cdn\.livechatinc\.com/], ["Drift", /js\.driftt\.com/], ["Zoho SalesIQ", /salesiq\.zoho/], ["WATI / Interakt / Gallabox", /wati\.io|interakt\.(ai|shop)|gallabox/i], ["Calendly", /assets\.calendly\.com|calendly\.com\//]]],
+    ["Payments", [["Razorpay", /checkout\.razorpay\.com|razorpay\.com\/payment-button/], ["Cashfree", /sdk\.cashfree\.com|payments\.cashfree\.com/], ["PayU", /payu\.in|payumoney/i], ["Stripe", /js\.stripe\.com/], ["PayPal", /paypal\.com\/sdk\/js|paypalobjects\.com/], ["Instamojo", /instamojo\.com/], ["PhonePe", /mercury\.phonepe\.com|phonepe\.com\/pg/]]],
+    ["Hosting / CDN", [["Cloudflare", /^cf-ray:|^server: ?cloudflare/im], ["Vercel", /^x-vercel-id:|^server: ?vercel/im], ["Netlify", /^x-nf-request-id:|^server: ?netlify/im], ["Amazon CloudFront", /^x-amz-cf-id:/im], ["Fastly", /^x-served-by: ?cache-|fastly/im], ["Akamai", /akamai/im], ["Hostinger", /^server: ?hcdn|^x-powered-by:.*hostinger|^platform: ?hostinger/im], ["LiteSpeed server", /^server: ?litespeed/im], ["Nginx", /^server: ?nginx/im], ["Apache", /^server: ?apache/im]]],
+    ["Other", [["Google Fonts", /fonts\.googleapis\.com/], ["Font Awesome", /font-?awesome/i], ["reCAPTCHA", /google\.com\/recaptcha|grecaptcha/], ["Cookie consent (Cookiebot / OneTrust)", /consent\.cookiebot\.com|cdn\.cookielaw\.org|onetrust/i], ["Schema.org data", /application\/ld\+json/], ["Google Maps embed", /google\.com\/maps\/embed|maps\.googleapis\.com/], ["YouTube embed", /youtube\.com\/embed|youtube-nocookie\.com/], ["Mailchimp", /list-manage\.com|chimpstatic\.com/]]],
+  ];
+  E.techStack = function (html, headers) {
+    var code = String(html || "").slice(0, 3e6), hd = Object.keys(headers || {}).map(function (k) { return k + ": " + headers[k]; }).join("\n"), out = [];
+    var gen = (/<meta[^>]+name=["']generator["'][^>]+content=["']([^"']{2,60})/i.exec(code) || [])[1];
+    TECH.forEach(function (g) { g[1].forEach(function (t) { var re = t[1], hit = g[0] === "Hosting / CDN" ? re.test(hd) : re.test(code) || (/x-shopify|x-wix/.test(re.source) && re.test(hd)); if (hit) out.push({ cat: g[0], name: t[0] }); }); });
+    if (gen && !out.some(function (x) { return low(gen).indexOf(low(x.name).split(" ")[0]) > -1; })) out.push({ cat: "CMS / site builder", name: "Generator tag: " + clip(gen, 50) });
+    return out;
+  };
+  E.TECH_CATS = TECH.map(function (g) { return g[0]; });
+  /* ---------- v13: content gap — topics (from competitors' titles, headings and menus) that most competitors cover and your pages never mention ---------- */
+  var GENERIC = /^(home|contact|about|menu|login|log|sign|cart|privacy|policy|terms|cookie|cookies|blog|read|more|learn|click|shop|account|search|page|new|get|free|best|view|all|our|your|us|we|com|www|https|http|india|delhi|call|email|book|now|today|best|top|services|service|solutions|company|team|careers|faq|faqs|help|support|news|offers|offer|online|app|download|year|years|work|why|how|what|who|where)$/;
+  E.contentGap = function (ourText, comps) {
+    comps = (comps || []).filter(function (c) { return c && c.profile; }); if (comps.length < 2) return { topics: [], compared: comps.length };
+    var own = " " + low(ourText || "").replace(/[^a-z0-9ऀ-ॿ\s]/g, " ").replace(/\s+/g, " ") + " ", seen = {};
+    var brandBits = {}; comps.forEach(function (c) { [c.domain.split(".")[0]].concat(low(c.name).split(/\s+/)).forEach(function (w) { if (w) brandBits[w] = 1; }); });
+    comps.forEach(function (c) { var t = (c.profile.terms || []).concat((c.profile.bigrams || []).slice(0, 40)); uniq(t).forEach(function (x) { (seen[x] = seen[x] || []).push(c); }); });
+    var need = Math.max(2, Math.ceil(comps.length / 3));
+    var topics = Object.keys(seen).filter(function (x) { var w = x.split(" "); return seen[x].length >= need && !w.some(function (y) { return GENERIC.test(y) || brandBits[y] || y.length < 3; }) && own.indexOf(" " + x + " ") < 0 && !(w.length === 1 && own.indexOf(" " + x) > -1); })
+      .sort(function (a, b) { return seen[b].length - seen[a].length || b.split(" ").length - a.split(" ").length; });
+    var keep = []; topics.forEach(function (x) { if (keep.length < 12 && !keep.some(function (k) { return k.topic.indexOf(x) > -1 || x.indexOf(k.topic) > -1; })) keep.push({ topic: x, count: seen[x].length, of: comps.length, competitors: seen[x].map(function (c) { return c.domain; }), evidence: [].concat.apply([], seen[x].map(function (c) { return (c.evidence || []).slice(0, 1); })) }); });
+    return { topics: keep, compared: comps.length };
   };
   /* small page records for the report (the full text stays in the browser) */
   E.compact = function (crawl) {

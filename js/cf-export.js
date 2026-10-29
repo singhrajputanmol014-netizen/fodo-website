@@ -120,21 +120,32 @@
       else if (b.rule) { need(12); y -= 6; cur.push("0.85 0.86 0.9 RG 0.5 w " + M + " " + y.toFixed(2) + " m " + (W - M) + " " + y.toFixed(2) + " l S"); y -= 6; }
       else if (b.gap) { y -= b.gap; }
     });
+    // v13 white-label logo (JPEG bytes): top-right of every page
+    var logo = null;
+    if (meta.logo && meta.logo.length > 4 && meta.logo[0] === 0xff && meta.logo[1] === 0xd8) {
+      var L = meta.logo, i = 2, lw = 0, lh = 0, comps = 3;
+      while (i < L.length - 9) { if (L[i] !== 0xff) { i++; continue; } var mk = L[i + 1], len = (L[i + 2] << 8) | L[i + 3]; if (mk >= 0xc0 && mk <= 0xcf && mk !== 0xc4 && mk !== 0xc8 && mk !== 0xcc) { lh = (L[i + 5] << 8) | L[i + 6]; lw = (L[i + 7] << 8) | L[i + 8]; comps = L[i + 9]; break; } i += 2 + len; }
+      if (lw && lh && (comps === 1 || comps === 3)) { var dh = 26, dw = Math.min(150, lw * dh / lh); dh = dw * lh / lw; logo = { bytes: L, w: lw, h: lh, gray: comps === 1, dw: dw, dh: dh };
+        pages.forEach(function (pg) { pg.unshift("q " + dw.toFixed(2) + " 0 0 " + dh.toFixed(2) + " " + (W - M - dw).toFixed(2) + " " + (H - 16 - dh).toFixed(2) + " cm /Im1 Do Q"); }); }
+    }
     // footer + page numbers
     var foot = winAnsi(meta.footer || "");
     pages.forEach(function (pg, i) { var n = winAnsi("Page " + (i + 1) + " of " + pages.length); pg.push("0.5 0.5 0.55 rg BT /F1 8 Tf " + M + " 24 Td (" + esc8(foot) + ") Tj ET"); pg.push("0.5 0.5 0.55 rg BT /F1 8 Tf " + (W - M - width(n, 8, false)).toFixed(2) + " 24 Td (" + esc8(n) + ") Tj ET"); });
     // assemble objects
     var objs = [], add = function (o) { objs.push(o); return objs.length; };
     var catalog = add(""), pagesId = add(""), f1 = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"), f2 = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
-    var kids = [];
-    pages.forEach(function (pg) { var content = pg.join("\n"), cId = add("<< /Length " + enc.encode(content).length + " >>\nstream\n" + content + "\nendstream"); kids.push(add("<< /Type /Page /Parent " + pagesId + " 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /Font << /F1 " + f1 + " 0 R /F2 " + f2 + " 0 R >> >> /Contents " + cId + " 0 R >>")); });
+    var kids = [], im = logo ? add({ head: "<< /Type /XObject /Subtype /Image /Width " + logo.w + " /Height " + logo.h + " /ColorSpace /" + (logo.gray ? "DeviceGray" : "DeviceRGB") + " /BitsPerComponent 8 /Filter /DCTDecode /Length " + logo.bytes.length + " >>\nstream\n", bin: logo.bytes, tail: "\nendstream" }) : 0;
+    pages.forEach(function (pg) { var content = pg.join("\n"), cId = add("<< /Length " + enc.encode(content).length + " >>\nstream\n" + content + "\nendstream"); kids.push(add("<< /Type /Page /Parent " + pagesId + " 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /Font << /F1 " + f1 + " 0 R /F2 " + f2 + " 0 R >>" + (im ? " /XObject << /Im1 " + im + " 0 R >>" : "") + " >> /Contents " + cId + " 0 R >>")); });
     objs[catalog - 1] = "<< /Type /Catalog /Pages " + pagesId + " 0 R >>";
     objs[pagesId - 1] = "<< /Type /Pages /Kids [" + kids.map(function (k) { return k + " 0 R"; }).join(" ") + "] /Count " + kids.length + " >>";
-    var info = add("<< /Title (" + esc8(winAnsi(meta.title || "FODO report")) + ") /Producer (FODO) /Creator (FODO Business X-Ray) >>");
+    var info = add("<< /Title (" + esc8(winAnsi(meta.title || "FODO report")) + ") /Producer (" + (meta.whiteLabel ? "PDF" : "FODO") + ") /Creator (" + esc8(winAnsi(meta.whiteLabel ? "Website X-Ray" : "FODO Business X-Ray")) + ") >>");
     var head = "%PDF-1.4\n%âãÏÓ\n", parts = [head], offs = [], pos = enc.encode(head).length;
     // the binary comment line must be real bytes: write it as latin-1
     parts[0] = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10]); pos = parts[0].length;
-    objs.forEach(function (o, i) { var str = (i + 1) + " 0 obj\n" + o + "\nendobj\n", b = enc.encode(str); offs.push(pos); parts.push(b); pos += b.length; });
+    objs.forEach(function (o, i) {
+      offs.push(pos);
+      if (typeof o === "object") { var hb = enc.encode((i + 1) + " 0 obj\n" + o.head), tb = enc.encode(o.tail + "\nendobj\n"); parts.push(hb, o.bin, tb); pos += hb.length + o.bin.length + tb.length; return; }
+      var b = enc.encode((i + 1) + " 0 obj\n" + o + "\nendobj\n"); parts.push(b); pos += b.length; });
     var xref = "xref\n0 " + (objs.length + 1) + "\n0000000000 65535 f \n" + offs.map(function (o) { return ("000000000" + o).slice(-10) + " 00000 n \n"; }).join("") + "trailer\n<< /Size " + (objs.length + 1) + " /Root " + catalog + " 0 R /Info " + info + " 0 R >>\nstartxref\n" + pos + "\n%%EOF";
     parts.push(enc.encode(xref));
     return new Blob(parts, { type: "application/pdf" });

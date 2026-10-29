@@ -11,10 +11,22 @@
  *   POST /api/xray/report     (header x-job: id, body: report JSON)  → stores the finished report
  *   POST /api/xray/rows       {jobId, kind, rows[]}  → normalised D1 tables (pages, evidence, findings …) when D1 is bound
  *   GET  /api/xray/report/:id → the stored report (shareable link)
+ *   POST /api/xray/refund     {jobId}        → gives the X-Ray credit back if the site could not be read at all (accounts on)
+ *   POST /api/xray/linkcheck  {jobId, urls[]} → status of outgoing links (Pro+)
+ *   POST /api/xray/authority  {jobId, domains[]} → Open PageRank domain authority (Pro+, needs OPR_API_KEY)
  * Why the browser does the analysis: Cloudflare's free plan gives a request ~10 ms of CPU — parsing 50 web pages on the
  * server would not fit, the browser has plenty. The server keeps the keys, blocks unsafe addresses, limits and stores. */
 import { json, log, safeUrl, safeFetch, regDomain, retrying, cacheGet, cachePut, jobCreate, jobGet, jobUpdate, reportPut, reportGet, rowsPut,
   hashIp, counter, memCount, providers, rid, UA, STAGES, ROW_TABLES, outbound, normSearch } from "../../_lib/xray-core.js";
+import { accountsOn, sessionUser, billingUser, spendCredit, hasCredit, refundCredit, activePlan, db as acctDb, count as acctCount, nowIso } from "../../_lib/accounts.js";
+import { PLANS, limitsFor } from "../../_lib/plans.js";
+/* per-job limits: the plan the X-Ray was paid with (accounts on), else the free defaults */
+async function jobLimits(env, job) {
+  if (!accountsOn(env)) return LIMITS;
+  const r = await (await acctDb(env)).prepare("SELECT tier FROM acct_runs WHERE job_id=?1").bind(job.id).first();
+  return Object.assign({}, LIMITS, limitsFor(r ? r.tier : "free"));
+}
+const over = (env, job, k, limit) => accountsOn(env) ? counter(env, "job:" + job.id + ":" + k, limit, 4 * 3600) : Promise.resolve(memCount(job.id + ":" + k, limit));
 
 const UA_COMPAT = "Mozilla/5.0 (compatible; FODO-BusinessXRay/1.0; +https://www.fodo.co.in/business-x-ray/)";
 const LIMITS = { MAX_PAGES: 50, MAX_DEPTH: 3, REQUEST_TIMEOUT: 15000, MAX_TOTAL_RUNTIME: 180000, MAX_QUERIES: 14, MAX_COMPETITORS: 5, MAX_FETCHES: 140 };
@@ -41,6 +53,9 @@ export async function onRequest(ctx) {
     if (route === "psi") return await psi(env, job, body, t0);
     if (route === "seo") return await seo(env, job, body, t0);
     if (route === "ai") return await ai(env, job, body, t0);
+    if (route === "refund") return await refund(env, job);
+    if (route === "linkcheck") return await linkcheck(env, job, body);
+    if (route === "authority") return await authority(env, job, body);
     if (route === "rows") { const kind = String(body.kind || ""); if (!ROW_TABLES[kind] || !Array.isArray(body.rows)) return json({ ok: false, reason: "Bad rows." }, 400); const n = await rowsPut(env, job.id, kind, body.rows); return json({ ok: true, stored: n }); }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
@@ -53,12 +68,29 @@ async function start(request, env) {
   const b = await request.json().catch(() => null); if (!b) return json({ ok: false, reason: "Send JSON." }, 400);
   const u = safeUrl(b.url); if (!u.ok) return json({ ok: false, reason: u.reason }, 400);
   const ip = await hashIp(request), hour = Math.floor(Date.now() / 3600e3), day = new Date().toISOString().slice(0, 10);
-  if (await counter(env, `xr:rl:${ip}:${hour}`, parseInt(env.XRAY_PER_HOUR || "4", 10), 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour. Please try again a little later." }, 429);
+  let user = null, owner = null;
+  if (accountsOn(env)) {
+    user = await sessionUser(env, request);
+    if (!user) return json({ ok: false, login: true, reason: "Log in (it's free) to run a Business X-Ray — your first " + PLANS.free.xrays + " are on us." }, 401);
+    owner = await billingUser(env, user);
+    const plan = activePlan(owner);
+    if (!hasCredit(owner)) return json({ ok: false, upgrade: true, reason: plan === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402);
+    if (await acctCount(env, "xrh:" + owner.id + ":" + hour, PLANS[plan].perHour, 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour on the " + PLANS[plan].name + " plan. Please try again a little later." }, 429);
+  } else if (await counter(env, `xr:rl:${ip}:${hour}`, parseInt(env.XRAY_PER_HOUR || "4", 10), 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour. Please try again a little later." }, 429);
   if (await counter(env, `xr:day:${day}`, parseInt(env.XRAY_PER_DAY || "60", 10), 90000)) return json({ ok: false, reason: "Today's free X-Rays are used up. Please try again tomorrow." }, 429);
   const input = { url: u.url, name: clean(b.name, 80), industry: clean(b.industry, 80), country: clean(b.country, 40), city: clean(b.city, 80), product: clean(b.product, 120), audience: clean(b.audience, 120) };
-  const job = await jobCreate(env, { id: rid(), url: u.url, domain: regDomain(u.host), input, status: "queued", stage: "DISCOVERY", progress: 0, completed: [], allow: [], ip_hash: ip });
-  log({ job: job.id, route: "start", ok: true, domain: job.domain });
-  return json({ ok: true, jobId: job.id, status: "queued", providers: providers(env), limits: LIMITS, stages: STAGES });
+  const id = rid(); let limits = LIMITS, credit = null;
+  if (owner) {
+    credit = await spendCredit(env, owner, id);
+    if (!credit) return json({ ok: false, upgrade: true, reason: activePlan(owner) === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402);
+    limits = Object.assign({}, LIMITS, limitsFor(credit.tier));
+    const client = String(b.client || "").replace(/[^a-z0-9_]/gi, "").slice(0, 20) || null;
+    await (await acctDb(env)).prepare("INSERT INTO acct_runs (job_id, user_id, owner_id, domain, url, tier, credit, client_id, status, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'running',?9)")
+      .bind(id, user.id, owner.id, regDomain(u.host), u.url, credit.tier, credit.kind, client, nowIso()).run();
+  }
+  const job = await jobCreate(env, { id, url: u.url, domain: regDomain(u.host), input, status: "queued", stage: "DISCOVERY", progress: 0, completed: [], allow: [], ip_hash: ip });
+  log({ job: job.id, route: "start", ok: true, domain: job.domain, tier: credit ? credit.tier : "anon" });
+  return json({ ok: true, jobId: job.id, status: "queued", providers: providers(env), limits, tier: credit ? credit.tier : null, credit: credit ? credit.kind : null, stages: STAGES });
 }
 async function status(env, id) {
   const j = await jobGet(env, id); if (!j) return json({ ok: false, reason: "Job not found." }, 404);
@@ -67,7 +99,7 @@ async function status(env, id) {
 async function progress(env, job, b) {
   const stage = STAGES.indexOf(b.stage) > -1 ? b.stage : job.stage;
   const done = Array.isArray(b.completedModules) ? b.completedModules.filter((x) => STAGES.indexOf(x) > -1).slice(0, 12) : job.completed;
-  const allow = Array.isArray(b.allow) ? b.allow.map((d) => regDomain(String(d).toLowerCase().replace(/^https?:\/\//, "").split("/")[0])).filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)).slice(0, 10) : job.allow;
+  const allow = Array.isArray(b.allow) ? b.allow.map((d) => regDomain(String(d).toLowerCase().replace(/^https?:\/\//, "").split("/")[0])).filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)).slice(0, 16) : job.allow;
   await jobUpdate(env, job, { stage, status: stage === "COMPLETE" ? "COMPLETE" : "running", progress: Math.max(0, Math.min(100, b.progress | 0)), completed: done, allow, note: clean(b.note, 300) });
   return json({ ok: true });
 }
@@ -76,7 +108,7 @@ async function fetchPage(env, job, b, t0) {
   const u = safeUrl(b.url); if (!u.ok) return json({ ok: false, reason: u.reason, blocked: true }, 400);
   const dom = regDomain(u.host);
   if (dom !== job.domain && (job.allow || []).indexOf(dom) < 0) return json({ ok: false, reason: "This X-Ray can only read the business's own site and its chosen competitors." }, 403);
-  if (memCount(job.id + ":f", LIMITS.MAX_FETCHES)) return json({ ok: false, reason: "Page limit for this X-Ray reached." }, 429);
+  if (await over(env, job, "f", (await jobLimits(env, job)).MAX_FETCHES)) return json({ ok: false, reason: "Page limit for this X-Ray reached." }, 429);
   try {
     const H = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5", "accept-language": "en-IN,en;q=0.9" };
     let { r, finalUrl, hops } = await safeFetch(u.url, { headers: H }, { timeout: LIMITS.REQUEST_TIMEOUT, env }), retriedAs = "";
@@ -88,7 +120,7 @@ async function fetchPage(env, job, b, t0) {
       retriedAs = "compatible:" + r.status; ({ r, finalUrl, hops } = r2);
     }
     const ct = r.headers.get("content-type") || "", len = +r.headers.get("content-length") || 0;
-    const pick = {}; ["content-type", "content-length", "cache-control", "x-robots-tag", "server", "strict-transport-security", "content-security-policy", "x-frame-options", "last-modified", "content-language", "link"].forEach((k) => { const v = r.headers.get(k); if (v) pick[k] = v.slice(0, 300); });
+    const pick = {}; ["content-type", "content-length", "cache-control", "x-robots-tag", "server", "strict-transport-security", "content-security-policy", "x-frame-options", "last-modified", "content-language", "link", "x-powered-by", "cf-ray", "x-vercel-id", "x-nf-request-id", "x-amz-cf-id", "x-served-by", "x-shopify-stage", "x-wix-request-id", "via", "x-generator"].forEach((k) => { const v = r.headers.get(k); if (v) pick[k] = v.slice(0, 300); });
     const meta = { status: r.status, finalUrl, redirects: hops, headers: pick, ms: Date.now() - t0, contentType: ct, retriedAs };
     log({ job: job.id, route: "fetch", provider: "site", ok: r.ok, status: r.status, ms: meta.ms });
     if (!TEXTY.test(ct) || len > 4e6) { try { r.body && r.body.cancel(); } catch (e) {} return new Response("", { status: 200, headers: { "x-xray-meta": encodeURIComponent(JSON.stringify(Object.assign(meta, { skipped: !TEXTY.test(ct) ? "not a web page" : "too large" }))), "cache-control": "no-store" } }); }
@@ -107,7 +139,7 @@ async function search(env, job, b, t0) {
   const gl = CC[String(b.country || "").toLowerCase()] || "";
   const ckey = prov + "|" + gl + "|" + q.toLowerCase();
   const hit = await cacheGet("search", ckey); if (hit) { log({ job: job.id, route: "search", provider: prov, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); }
-  if (memCount(job.id + ":s", LIMITS.MAX_QUERIES + 2)) return json({ ok: false, reason: "Search limit for this X-Ray reached." }, 429);
+  if (await over(env, job, "s", (await jobLimits(env, job)).MAX_QUERIES + 3)) return json({ ok: false, reason: "Search limit for this X-Ray reached." }, 429);
   if (await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || env.BRAVE_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
   const out = outbound(env);
   try {
@@ -144,7 +176,8 @@ async function seo(env, job, b, t0) {
   if (!(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD)) return json({ ok: false, disabled: true, reason: "SEO data provider not configured." }, 503);
   const kws = (Array.isArray(b.keywords) ? b.keywords : []).map((k) => clean(k, 80).toLowerCase()).filter(Boolean).slice(0, 20);
   if (!kws.length) return json({ ok: false, reason: "No keywords." }, 400);
-  if (memCount(job.id + ":seo", 2)) return json({ ok: false, reason: "SEO limit for this X-Ray reached." }, 429);
+  if (accountsOn(env) && (await jobLimits(env, job)).features.indexOf("volume") < 0) return json({ ok: false, upgrade: "growth", reason: "Search volume is part of Growth and above." }, 402);
+  if (await over(env, job, "seo", 2)) return json({ ok: false, reason: "SEO limit for this X-Ray reached." }, 429);
   const task = [{ keywords: kws, language_code: "en", location_name: clean(b.location, 60) || "India" }];
   try {
     const { r } = await retrying(() => outbound(env)("https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live", { method: "POST", headers: { authorization: "Basic " + btoa(env.DATAFORSEO_LOGIN + ":" + env.DATAFORSEO_PASSWORD), "content-type": "application/json" }, body: JSON.stringify(task), signal: AbortSignal.timeout(30000) }), { tries: 2 });
@@ -225,9 +258,10 @@ async function runAI(env, messages, max) {
 async function ai(env, job, b, t0) {
   if (!env.AI) return json({ ok: false, disabled: true, reason: "AI is not connected." }, 503);
   const mode = b.mode === "visibility" ? "visibility" : "synthesis", pack = b.pack || {};
-  if (memCount(job.id + ":ai:" + mode, mode === "visibility" ? 2 : 3)) return json({ ok: false, reason: "AI limit for this X-Ray reached." }, 429);
+  if (await over(env, job, "ai:" + mode, mode === "visibility" ? 2 : 3)) return json({ ok: false, reason: "AI limit for this X-Ray reached." }, 429);
+  const AIQ = accountsOn(env) ? (await jobLimits(env, job)).AI_QUESTIONS : 4;
   if (mode === "visibility") {
-    const qs = (Array.isArray(pack.questions) ? pack.questions : []).map((q) => clean(q, 160)).filter(Boolean).slice(0, 5);
+    const qs = (Array.isArray(pack.questions) ? pack.questions : []).map((q) => clean(q, 160)).filter(Boolean).slice(0, AIQ);
     if (!qs.length) return json({ ok: false, reason: "No questions." }, 400);
     const answers = await Promise.all(qs.map((q) => runAI(env, [{ role: "system", content: "You are a helpful assistant. Answer the user's question directly. When recommending businesses, name specific real businesses and their websites if you know them." }, { role: "user", content: q }], 600)
       .then((a) => ({ q, answer: clean(a.text, 3000), model: a.model }), () => ({ q, answer: "", error: "no answer" }))));
@@ -245,12 +279,43 @@ async function ai(env, job, b, t0) {
   } catch (e) { log({ job: job.id, route: "ai", ok: false, err: String(e.message) }); return json({ ok: false, reason: "AI did not answer." }, 502); }
 }
 
+async function refund(env, job) {
+  if (!accountsOn(env)) return json({ ok: false, reason: "Nothing to refund." }, 400);
+  const d = await acctDb(env), run = await d.prepare("SELECT * FROM acct_runs WHERE job_id=?1").bind(job.id).first();
+  if (!run || run.status !== "running" || Date.now() - Date.parse(run.created_at) > 20 * 60e3) return json({ ok: false, reason: "This X-Ray cannot be refunded." }, 409);
+  const f = await d.prepare("SELECT n, exp FROM xray_counters WHERE k=?1").bind("job:" + job.id + ":f").first(), s = await d.prepare("SELECT n FROM xray_counters WHERE k=?1").bind("job:" + job.id + ":s").first();
+  if ((f && f.n > 6) || (s && s.n > 1)) return json({ ok: false, reason: "The X-Ray already did its research, so it counts." }, 409);
+  const ok = await refundCredit(env, run); log({ job: job.id, route: "refund", ok });
+  return json({ ok, refunded: ok });
+}
+async function linkcheck(env, job, b) {
+  const L = await jobLimits(env, job); if (accountsOn(env) && !L.LINKCHECK) return json({ ok: false, upgrade: "pro", reason: "Outgoing link checks are part of Pro and above." }, 402);
+  const urls = (Array.isArray(b.urls) ? b.urls : []).map(String).filter((x) => safeUrl(x).ok).slice(0, 40);
+  if (await over(env, job, "lc", Math.ceil((L.LINKCHECK || 40) / 40))) return json({ ok: false, reason: "Link-check limit for this X-Ray reached." }, 429);
+  const out = {}, list = urls.slice(); let i = 0;
+  const worker = async () => { while (i < list.length) { const u = list[i++]; try { const { r } = await safeFetch(u, { method: "GET", headers: { "user-agent": UA, accept: "text/html,*/*;q=0.5" } }, { timeout: 8000, env }); out[u] = r.status; try { r.body && r.body.cancel(); } catch (e) {} } catch (e) { out[u] = e.code === "blocked" ? -1 : 0; } } };
+  await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+  return json({ ok: true, status: out });
+}
+async function authority(env, job, b) {
+  const L = await jobLimits(env, job); if (accountsOn(env) && L.features.indexOf("authority") < 0) return json({ ok: false, upgrade: "pro", reason: "Domain authority is part of Pro and above." }, 402);
+  if (!env.OPR_API_KEY) return json({ ok: false, disabled: true, reason: "Domain authority provider not configured." }, 503);
+  if (await over(env, job, "opr", 2)) return json({ ok: false, reason: "Limit reached." }, 429);
+  const doms = (Array.isArray(b.domains) ? b.domains : []).map((x) => regDomain(String(x).toLowerCase())).filter((x) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(x)).slice(0, 20);
+  if (!doms.length) return json({ ok: false, reason: "No domains." }, 400);
+  try {
+    const { r } = await retrying(() => outbound(env)("https://openpagerank.com/api/v1.0/getPageRank?" + doms.map((x) => "domains%5B%5D=" + encodeURIComponent(x)).join("&"), { headers: { "API-OPR": env.OPR_API_KEY }, signal: AbortSignal.timeout(12000) }), { tries: 2 });
+    const j = await r.json(), items = (j.response || []).map((x) => ({ domain: x.domain, rank: x.page_rank_decimal == null || x.page_rank_decimal === "" ? null : +x.page_rank_decimal, globalRank: x.rank ? +x.rank : null, found: x.status_code === 200 }));
+    return json({ ok: r.ok, provider: "Open PageRank", items });
+  } catch (e) { return json({ ok: false, reason: "Authority provider did not answer." }, 502); }
+}
 async function saveReport(request, env) {
   const id = request.headers.get("x-job") || "", job = await jobGet(env, id); if (!job) return json({ ok: false, reason: "Unknown job." }, 404);
   const len = +request.headers.get("content-length") || 0; if (len > 5e6) return json({ ok: false, reason: "Report too large." }, 413);
   const text = await request.text();
   if (text.length > 5e6 || text.charAt(0) !== "{" || text.indexOf('"jobId":"' + id + '"') < 0) return json({ ok: false, reason: "Not a report for this job." }, 400);
   const ok = await reportPut(env, id, text);
+  if (accountsOn(env)) { const m = /"overall":(\d+|null)/.exec(text); await (await acctDb(env)).prepare("UPDATE acct_runs SET status='COMPLETE', score=?2 WHERE job_id=?1").bind(id, m && m[1] !== "null" ? +m[1] : null).run(); }
   await jobUpdate(env, job, { status: "COMPLETE", stage: "COMPLETE", progress: 100, completed: STAGES.slice() });
   log({ job: id, route: "report", ok, bytes: text.length });
   return json({ ok, url: "/business-x-ray/?r=" + id });

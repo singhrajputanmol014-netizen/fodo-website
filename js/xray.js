@@ -13,6 +13,11 @@
   var STAGES = [["DISCOVERY", "Understanding the business"], ["CRAWLING", "Reading the website"], ["MARKET_RESEARCH", "Researching the market"], ["COMPETITORS", "Finding & comparing competitors"], ["CUSTOMER_RESEARCH", "Listening to customers"], ["SEO", "Search & technical check"], ["CONVERSION", "Conversion, trust & presence"], ["OPPORTUNITIES", "Scoring & prioritising"], ["SYNTHESIS", "Writing the diagnosis"]];
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   var busy = false, report = null, log = [];
+  /* v13 plans: the server sends this X-Ray's limits + features with the job (accounts on). No limits = accounts off = the classic free X-Ray. */
+  var ACC = window.FODO_ACCOUNT, BASE = Object.assign({}, E.CFG), me = null, curJob = null;
+  var hasF = function (rep, f) { return !rep || !rep.features || rep.features.indexOf(f) > -1; };
+  var PLAN_OF = { fullReport: "Starter", export: "Starter", history: "Starter", compare: "Growth", contentGap: "Growth", moreVoice: "Growth", volume: "Growth", techStack: "Pro", deepCompetitors: "Pro", externalLinks: "Pro", authority: "Pro", whiteLabel: "Agency", clients: "Agency", bulk: "Agency" };
+  var lockCard = function (what, f) { return '<div class="panel xr-lock" role="note"><span class="tag">' + esc(PLAN_OF[f] || "Starter").toUpperCase() + ' PLAN</span><p><b>' + esc(what) + "</b> " + "is part of the " + esc(PLAN_OF[f] || "Starter") + ' plan and above. The findings above are real and complete; this section shows the full detail.</p><a class="btn sm" href="' + ROOT + 'plans/">See plans</a></div>'; };
 
   /* ---------- server calls (retry with backoff on network / 5xx; never on 4xx limits) ---------- */
   function call(path, body, opt) {
@@ -50,27 +55,42 @@
   }
 
   /* ---------- the job ---------- */
-  function run() {
-    if (busy) return;
+  function upsell(t) { var u = $("xr-up"); u.innerHTML = "<p><b>" + esc(t) + '</b></p><div class="btn-row"><a class="btn" href="' + ROOT + 'plans/">See plans &amp; packs</a></div>'; u.hidden = false; }
+  function run(over) {
+    if (busy) return Promise.resolve(null);
     var input = { url: $("xr-url").value.trim(), industry: $("xr-industry").value.trim(), city: $("xr-city").value.trim(), name: $("xr-name").value.trim(), country: $("xr-country").value, product: $("xr-product").value.trim(), audience: $("xr-audience").value.trim() };
-    if (!input.url) { status("Enter the website address to X-Ray.", "warn"); $("xr-url").focus(); return; }
-    busy = true; log = []; $("xr-run").disabled = true; $("xr-report").hidden = true; $("xr-report").innerHTML = "";
+    if (over) input = Object.assign(input, over);
+    if (!input.url) { status("Enter the website address to X-Ray.", "warn"); $("xr-url").focus(); return Promise.resolve(null); }
+    if ($("xr-client") && $("xr-client").value) input.client = $("xr-client").value;
+    busy = true; log = []; curJob = null; $("xr-run").disabled = true; $("xr-report").hidden = true; $("xr-report").innerHTML = ""; $("xr-up").hidden = true;
     status("Starting the X-Ray…", "busy");
-    callJ("start", input, { tries: 2 }).then(function (j) {
+    var begin = function (again) { return callJ("start", input, { tries: 2 }).then(function (j) {
+      if (j._status === 401 && j.login && ACC && !again) { status("Log in to run the X-Ray — it's free.", "busy"); return ACC.login(j.reason).then(function () { return begin(true); }, function () { throw Object.assign(new Error("Log in (free) to run a Business X-Ray."), { user: true }); }); }
+      return j; }); };
+    return begin(false).then(function (j) {
+      if (j._status === 402 && j.upgrade) { upsell(j.reason); throw Object.assign(new Error(j.reason), { user: true, quiet: true }); }
       if (!j.ok) throw Object.assign(new Error(j.reason || "Could not start"), { user: true });
+      curJob = j.jobId; if (ACC && j.credit) ACC.me(true);
       track("xray_start", { domain: E.domainOf(input.url.indexOf("://") < 0 ? "https://" + input.url : input.url) });
       return execute(j, Object.assign(input, { url: j.jobId && input.url }));
     }).then(function (rep) {
       busy = false; $("xr-run").disabled = false; report = rep; render(rep); status(rep.crawl.blocked ? "Limited X-Ray complete — the site blocked FODO's reader (" + rep.crawl.blocked.error + "), so this uses Google Search and PageSpeed data. " + rep.opportunities.length + " opportunities found." : "X-Ray complete — " + rep.crawl.pages + " pages read, " + rep.opportunities.length + " opportunities found.", "ok"); track("xray_complete", { score: rep.scores.overall });
       try { history.replaceState(null, "", location.pathname + "?r=" + rep.jobId); } catch (e) {}
+      return rep;
     }, function (e) {
       busy = false; $("xr-run").disabled = false;
       status(e.user ? e.message : "The X-Ray stopped: " + (e.message || "unknown error") + ". Please try again.", "warn"); track("xray_fail", {});
+      // the site could not be read at all → give the X-Ray credit back (the server checks that almost nothing was used)
+      if (curJob && e.refundable && ACC) callJ("refund", { jobId: curJob }, { tries: 1 }).then(function (j) { if (j.refunded) { status(e.message + " Your X-Ray credit was returned.", "warn"); ACC.me(true); } }, function () {});
+      return null;
     });
   }
 
   function execute(job, input) {
     var jobId = job.jobId, P = job.providers || {}, ev = new E.Evidence(), done = [], modules = {}, fetcher = makeFetcher(jobId), t0 = Date.now();
+    var L = job.limits || null, FE = L ? L.features : null, has = function (f) { return !FE || FE.indexOf(f) > -1; };
+    E.CFG = Object.assign({}, BASE, L ? { MAX_PAGES: L.MAX_PAGES, MAX_COMPETITORS: L.MAX_COMPETITORS, MAX_QUERIES: L.MAX_QUERIES, MAX_TOTAL_RUNTIME: L.MAX_TOTAL_RUNTIME } : {});
+    var COMP_PAGES = L ? L.COMP_PAGES : 2, AIQ = L ? L.AI_QUESTIONS : 4;
     var startUrl = (/^https?:\/\//i.test(input.url) ? input.url : "https://" + input.url);
     var S = { input: input, providers: P }, SN = P.searchName || "search";
     var progress = function (stage, note, allow) { return callJ("progress", { jobId: jobId, stage: stage, progress: Math.round(done.length / STAGES.length * 100), completedModules: done, allow: allow, note: note || "" }, { tries: 1 }).catch(function () {}); };
@@ -103,13 +123,13 @@
             stageUI(done, "DISCOVERY", S.quick.name.value + " · limited X-Ray (site blocks automated readers)");
           });
         }
-        S.firstUrl = r.finalUrl;
+        S.firstUrl = r.finalUrl; S.homeRaw = { body: r.body, headers: r.headers };
         var pg = E.parsePage(r.body, startUrl, r); pg.depth = 0;
         S.quick = E.discover({ pages: [pg] }, input, new E.Evidence());
         stageUI(done, "DISCOVERY", S.quick ? (S.quick.name.value + (S.quick.industry.value ? " · " + S.quick.industry.value : "")) : "");
       });
     }).then(function () {
-      if (modules.DISCOVERY && modules.DISCOVERY.status === "error") throw Object.assign(new Error(modules.DISCOVERY.note), { user: true });
+      if (modules.DISCOVERY && modules.DISCOVERY.status === "error") throw Object.assign(new Error(modules.DISCOVERY.note), { user: true, refundable: true });
       return stage("CRAWLING", function () {
         if (S.blocked) {
           S.crawl = E.emptyCrawl(E.normUrl(startUrl), S.blocked); S.B = E.discoverFromSearch(input, E.domainOf(startUrl), S.blockSerp, ev); S.country = input.country || E.guessCountry(S.B, startUrl);
@@ -141,7 +161,7 @@
         }).catch(function () { return []; });
         return placesP.then(function (places) {
           S.places = places;
-          var cands = E.candidates(S.serpA || [], target, places, SN).slice(0, 8);
+          var cands = E.candidates(S.serpA || [], target, places, SN).slice(0, Math.max(8, E.CFG.MAX_COMPETITORS + 4));
           if (!cands.length) { modules.COMPETITORS = { status: "unavailable", note: P.search ? "No competitor websites showed up in the searches." : "Needs a search provider or map listings." }; S.comps = []; return; }
           return progress("COMPETITORS", "", cands.map(function (c) { return c.domain; })).then(function () {
             var T = S.blocked ? { terms: E._terms(B.snippetText || B.name.value, 50), bigrams: [], text: E._u.low(B.snippetText || "") } : E.compProfile(S.crawl.pages.filter(function (p) { return !p.error; }).slice(0, 3)), maxS = cands[0].score, res = [], i = 0;
@@ -153,13 +173,16 @@
               return fetcher(home).then(function (r) {
                 if (r.error || r.status >= 400 || !r.body) return;
                 var hp = E.parsePage(r.body, home, r); hp.depth = 0;
-                var extra = hp.internalLinks.filter(function (l) { return /pric|plans|servic|product|solution/.test(l.url); }).map(function (l) { return l.url; })[0];
-                return (extra ? fetcher(extra).then(function (r2) { return r2.body && !r2.error ? [hp, E.parsePage(r2.body, extra, r2)] : [hp]; }) : Promise.resolve([hp])).then(function (pages) {
+                var pats = [/pric|plans|packag/, /servic|product|solution|treatment|menu|course/, /about|why-|story/, /review|testimon|case|work|portfolio/, /faq|help/, /blog|insight|article|resource/, /contact/], picked = [];
+                pats.forEach(function (re) { var l = hp.internalLinks.filter(function (x) { return re.test(x.url) && picked.indexOf(x.url) < 0 && E.normUrl(x.url) !== E.normUrl(home); })[0]; if (l) picked.push(l.url); });
+                picked = picked.slice(0, Math.max(0, COMP_PAGES - 1));
+                if (has("techStack")) (S.compTech = S.compTech || {})[c.domain] = E.techStack(r.body, r.headers);
+                return Promise.all(picked.map(function (u2) { return fetcher(u2).then(function (r2) { return r2.body && !r2.error && !(r2.status >= 400) ? E.parsePage(r2.body, u2, r2) : null; }); })).then(function (more) { return [hp].concat(more.filter(Boolean)); }).then(function (pages) {
                   var C = E.compProfile(pages); if (!C) return;
                   var cmp = E.compareCompetitor(T, C, c, B.city, maxS), ins = S.blocked ? { advantages: [], weaknesses: [], opportunity: "Your own pages could not be read, so a side-by-side comparison was not possible. What they show: " + ([C.pricing && "prices", C.testimonials && "testimonials", C.faq && "an FAQ", C.blog && "a blog"].filter(Boolean).join(", ") || "none of prices, testimonials, FAQ or blog") + "." } : E.compInsights(T, C);
                   var nm = (hp.og.site_name || (hp.title || "").split(/\s[|–—\-:]\s/).pop() || c.domain).trim().slice(0, 60);
                   var evid = ev.add({ type: "competitor", claim: nm + " (" + c.domain + ") — " + cmp.reason, sourceUrl: C.url, sourceName: c.sources.join(" + ") + " + their website", pageUrl: C.url, evidenceText: "Headline: “" + (C.headline || "—") + "” · Title: " + C.title, label: "OBSERVED" });
-                  res.push({ name: nm, domain: c.domain, url: C.url, source: c.sources, reason: cmp.reason, confidence: cmp.confidence, score: cmp.score, overlaps: cmp, profile: C, insights: ins, queries: c.queries, evidence: [evid].concat((c.evidence || []).slice(0, 2)) });
+                  res.push({ pagesRead: pages.length, name: nm, domain: c.domain, url: C.url, source: c.sources, reason: cmp.reason, confidence: cmp.confidence, score: cmp.score, overlaps: cmp, profile: C, insights: ins, queries: c.queries, evidence: [evid].concat((c.evidence || []).slice(0, 2)) });
                 });
               }).then(worker, worker);
             };
@@ -167,6 +190,7 @@
               S.comps = res.filter(function (c) { return c.score >= 25 || c.overlaps.serviceOverlap >= 0.06; }).sort(function (a, b) { return b.score - a.score; }).slice(0, E.CFG.MAX_COMPETITORS);
               S.positioning = S.comps.length && !S.blocked ? E.positioning(T, S.comps.map(function (c) { return c.profile; })) : null;
               if (S.blocked) S.T = null;
+              if (has("contentGap") && !S.blocked && S.comps.length >= 2) S.gap = E.contentGap(S.crawl.pages.filter(function (p) { return !p.error; }).map(function (p) { return [p.title, p.metaDescription, (p.h1 || []).join(" "), ((p.headings || {}).h2 || []).join(" "), ((p.headings || {}).h3 || []).join(" "), (p.text || "").slice(0, 20000)].join(" "); }).join(" "), S.comps);
               modules.COMPETITORS = { status: S.comps.length ? "ok" : "unavailable", note: S.comps.length ? "" : "Candidate sites did not look like direct competitors." };
             });
           });
@@ -182,6 +206,7 @@
         });
         if (!P.search) { S.voice = E.voice(items); modules.CUSTOMER_RESEARCH = { status: items.length ? "partial" : "unavailable", note: "Public reviews and discussions need a search provider." }; return; }
         var qs = S.queries.filter(function (q) { return q.kind === "voice"; });
+        if (has("moreVoice") && L) { var nm0 = B.name.value, svc0 = (input.product || B.services.value[0] || B.industry.value || "").trim(); [nm0 + " complaints", nm0 + " customer experience", svc0 && svc0 + " problems customers face"].filter(Boolean).forEach(function (q) { if (!qs.some(function (x) { return x.q.toLowerCase() === q.toLowerCase(); })) qs.push({ q: q, kind: "voice" }); }); }
         return Promise.all(qs.map(function (q) { return search(q.q).then(function (res) {
           if (!res) return;
           res.web.filter(function (r) { return !res.discussions.some(function (d) { return d.url === r.url; }); }).concat(res.discussions.map(function (d) { return { url: d.url, description: [d.question, d.description, d.top].join(". "), host: d.domain, title: d.title, forum: d.forum }; })).concat(res.faq.map(function (f) { return { url: f.url, description: f.question + " " + f.answer, host: f.domain, title: f.question }; })).forEach(function (r) {
@@ -198,8 +223,20 @@
         return Promise.race([psiP, sleep(75000).then(function () { S.psiError = "PageSpeed took too long"; return null; })]).then(function (psi) {
           S.psi = psi; S.tech = E.techChecks(S.crawl, S.B, psi, ev);
           var siteText = S.blocked ? (S.B.snippetText || "") : S.crawl.pages.map(function (p) { return (p.title || "") + " " + (p.h1 || []).join(" ") + " " + ((p.headings || {}).h2 || []).join(" ") + " " + (p.metaDescription || ""); }).join(" ");
-          var volP = P.seo && S.serpA ? callJ("seo", { jobId: jobId, keywords: S.serpA.filter(function (s) { return s.kind !== "brand" && s.kind !== "voice"; }).map(function (s) { return s.q; }), location: input.country || "India" }).then(function (j) { return j.ok ? j.items : null; }, function () { return null; }) : Promise.resolve(null);
-          return volP.then(function (vol) { S.volumes = vol; S.kw = S.serpA ? E.keywordOpps(S.serpA, siteText, vol) : []; });
+          var volP = P.seo && has("volume") && S.serpA ? callJ("seo", { jobId: jobId, keywords: S.serpA.filter(function (s) { return s.kind !== "brand" && s.kind !== "voice"; }).map(function (s) { return s.q; }), location: input.country || "India" }).then(function (j) { return j.ok ? j.items : null; }, function () { return null; }) : Promise.resolve(null);
+          if (has("techStack") && S.homeRaw) S.techStack = E.techStack(S.homeRaw.body, S.homeRaw.headers);
+          var lcP = Promise.resolve(null);
+          if (has("externalLinks") && !S.blocked && (!L || L.LINKCHECK)) {
+            var ext = {}; S.crawl.pages.forEach(function (p) { (p.externalLinks || []).forEach(function (l) { if (/^https?:\/\//i.test(l.url) && !/^https?:\/\/(wa\.me|api\.whatsapp\.com)/i.test(l.url)) (ext[l.url.split("#")[0]] = ext[l.url.split("#")[0]] || []).push(p.finalUrl); }); });
+            var urls = Object.keys(ext).slice(0, L ? L.LINKCHECK : 40), chunks = []; for (var ci = 0; ci < urls.length; ci += 40) chunks.push(urls.slice(ci, ci + 40));
+            stageUI(done, "SEO", "checking " + urls.length + " outgoing links");
+            lcP = chunks.reduce(function (pr, ch) { return pr.then(function (acc) { return callJ("linkcheck", { jobId: jobId, urls: ch }, { tries: 1, timeout: 60000 }).then(function (j) { return j.ok ? Object.assign(acc, j.status) : acc; }, function () { return acc; }); }); }, Promise.resolve({})).then(function (stt) {
+              var bad = Object.keys(stt).filter(function (u) { var c = stt[u]; return c === 0 || c === 404 || c === 410 || c >= 500; }), shy = Object.keys(stt).filter(function (u) { var c = stt[u]; return c === 401 || c === 403 || c === 429 || c === 999; });
+              S.extLinks = { checked: Object.keys(stt).length, found: Object.keys(ext).length, broken: bad.map(function (u) { return { url: u, status: stt[u], on: ext[u].slice(0, 3) }; }), refused: shy.length };
+            });
+          }
+          var auP = has("authority") && P.authority ? callJ("authority", { jobId: jobId, domains: [S.B.domain].concat((S.comps || []).map(function (c) { return c.domain; })) }, { tries: 1, timeout: 20000 }).then(function (j) { S.authority = j.ok ? j.items : null; }, function () {}) : Promise.resolve();
+          return Promise.all([volP, lcP, auP]).then(function (x) { var vol = x[0]; S.volumes = vol; S.kw = S.serpA ? E.keywordOpps(S.serpA, siteText, vol) : []; });
         });
       });
     }).then(function () {
@@ -242,6 +279,8 @@
         if (behind.length >= 3) extra.push({ key: "M_compGap", detail: "Behind the competitor median on: " + behind.map(function (m) { return m.name.split(" — ")[0]; }).join(", ") + ".", evidence: [].concat.apply([], S.comps.map(function (c) { return c.evidence.slice(0, 1); })), label: "OBSERVED" });
         if (S.positioning && S.positioning.sameAsEveryone.length >= 2) extra.push({ key: "M_sameMessage", detail: "Your headline phrases also used by competitors: " + S.positioning.sameAsEveryone.slice(0, 5).map(function (x) { return "“" + x + "”"; }).join(", ") + ".", evidence: B.offer.evidence.concat(S.comps.slice(0, 2).map(function (c) { return c.evidence[0]; })), label: "INFERRED" });
         var cmpl = S.voice && S.voice.complaints[0];
+        if (S.extLinks && S.extLinks.broken.length) { var bl = S.extLinks.broken; extra.push({ key: "X_extBroken", detail: bl.length + " of " + S.extLinks.checked + " outgoing links checked do not work: " + bl.slice(0, 3).map(function (b) { return b.url.replace(/^https?:\/\//, "").slice(0, 60) + " (" + (b.status || "no answer") + ")"; }).join(", ") + ".", pages: [].concat.apply([], bl.map(function (b) { return b.on; })).filter(function (v, i, a) { return a.indexOf(v) === i; }), evidence: [ev.add({ type: "technical", claim: "Outgoing links that returned an error", pageUrl: bl[0].on[0], evidenceText: bl.slice(0, 10).map(function (b) { return b.url + " → " + (b.status || "no answer"); }).join(" · "), label: "OBSERVED" })], label: "OBSERVED" }); }
+        if (S.gap && S.gap.topics.length >= 3) extra.push({ key: "G_contentGap", detail: S.gap.topics.length + " topics most competitors cover but your pages never mention: " + S.gap.topics.slice(0, 5).map(function (t) { return "“" + t.topic + "”"; }).join(", ") + ".", evidence: [].concat.apply([], S.gap.topics.slice(0, 4).map(function (t) { return t.evidence; })).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 6), label: "INFERRED" });
         if (cmpl && cmpl.count >= 2) extra.push({ key: "V_complaint", detail: "Most common complaint theme in public text: “" + cmpl.theme + "” (" + cmpl.count + " mentions).", evidence: [].concat.apply([], cmpl.quotes.map(function (q) { return q.evidence || []; })).slice(0, 4), label: "INFERRED" });
         S.checks = checks;
         S.scores = E.scores(checks, { searchName: SN, serp: serpA, presence: S.presence, reviewCheck: S.reviewCheck, competitive: S.compMetrics, compCount: (S.comps || []).length });
@@ -267,7 +306,9 @@
           keywords: (S.kw || []).map(function (k) { return { keyword: k.keyword, intent: k.intent, opportunity: k.opportunity, ourPosition: k.ourPos }; }),
           unavailable: Object.keys(modules).filter(function (k) { return modules[k].status !== "ok"; }).map(function (k) { return k + ": " + modules[k].note; }).concat(S.psi ? [] : ["PageSpeed: " + (S.psiError || "unavailable")]), evidence: evid };
         var ids = evid.map(function (x) { return x.id; }).concat(S.opps.map(function (o) { return o.id; }));
-        var vqs = S.queries.filter(function (q) { return q.kind === "category" || q.kind === "best"; }).slice(0, 4).map(function (q) { return /^best /i.test(q.q) ? "What are the " + q.q + "? Please recommend specific businesses." : "Which businesses would you recommend for " + q.q + "?"; });
+        var vqs = S.queries.filter(function (q) { return q.kind === "category" || q.kind === "best"; }).map(function (q) { return /^best /i.test(q.q) ? "What are the " + q.q + "? Please recommend specific businesses." : "Which businesses would you recommend for " + q.q + "?"; });
+        if (AIQ > vqs.length) S.queries.filter(function (q) { return q.kind === "pricing" || q.kind === "alternatives" || q.kind === "problem"; }).forEach(function (q) { vqs.push(q.kind === "alternatives" ? "What are good " + q.q + "? Name specific businesses." : q.kind === "pricing" ? "Who offers good value for " + q.q.replace(/ price| pricing/i, "") + "? Name specific businesses." : q.q.replace(/^how to choose /i, "Which provider should I choose for ") + "? Name specific businesses."); });
+        vqs = vqs.slice(0, AIQ);
         return Promise.all([
           callJ("ai", { jobId: jobId, mode: "synthesis", pack: { ids: ids, data: data } }, { tries: 2, timeout: 80000 }).then(function (j) { S.syn = j.ok ? j.synthesis : null; S.synDropped = j.dropped || []; S.synModel = j.model || ""; if (!j.ok) modules.SYNTHESIS = { status: "unavailable", note: j.reason || "AI unavailable — rules-based summary shown." }; }, function () { modules.SYNTHESIS = { status: "unavailable", note: "AI did not answer — rules-based summary shown." }; }),
           vqs.length ? callJ("ai", { jobId: jobId, mode: "visibility", pack: { questions: vqs } }, { tries: 1, timeout: 80000 }).then(function (j) { S.vis = j.ok ? E.visibility(j.answers, B, (S.comps || []).map(function (c) { return { name: c.name, domain: c.domain }; })) : null; }, function () { S.vis = null; }) : null,
@@ -275,6 +316,12 @@
       });
     }).then(function () {
       var rep = assemble(jobId, S, ev, modules, Date.now() - t0);
+      rep.tier = L ? L.tier : null; rep.features = FE; rep.limits = L ? { pages: L.MAX_PAGES, competitors: L.MAX_COMPETITORS, compPages: COMP_PAGES } : null; E.CFG = Object.assign({}, BASE);
+      return (has("compare") && ACC && L ? ACC.history({ domain: rep.business.domain }).then(function (h) {
+        var prev = (h.items || []).filter(function (x) { return x.job_id !== jobId && x.status === "COMPLETE"; })[0]; if (!prev) { rep.compare = { none: true }; return; }
+        return call("report/" + encodeURIComponent(prev.job_id), undefined, { tries: 1 }).then(function (r) { return r.ok ? r.json() : null; }).then(function (old) { if (old && old.scores) rep.compare = compareReports(old, rep); }, function () {});
+      }, function () {}) : Promise.resolve()).then(function () { return rep; });
+    }).then(function (rep) {
       stageUI(done, null); status("Saving your report…", "busy");
       var txt = JSON.stringify(rep);
       var rows = P.storage === "d1" ? Promise.all([
@@ -292,6 +339,16 @@
     var id = (JSON.parse(body) || {}).jobId;
     return fetch(ROOT + "api/xray/report", { method: "POST", headers: { "content-type": "application/json", "x-job": id }, body: body });
   };
+
+  /* ---------- v13: compare with the last X-Ray of the same site ---------- */
+  function compareReports(old, rep) {
+    var A0 = old.scores.areas || {}, A1 = rep.scores.areas, k = function (o) { return o.key || o.title; };
+    var t0 = (old.opportunities || []).map(k), t1 = rep.opportunities.map(k);
+    return { previousJob: old.jobId, previousDate: old.createdAt, overallBefore: old.scores.overall, overallNow: rep.scores.overall, pagesBefore: old.crawl ? old.crawl.pages : null, pagesNow: rep.crawl.pages, tierBefore: old.tier || null,
+      areas: Object.keys(A1).map(function (a) { return { name: A1[a].name, before: A0[a] ? A0[a].score : null, now: A1[a].score }; }),
+      fixed: (old.opportunities || []).filter(function (o) { return t1.indexOf(k(o)) < 0; }).map(function (o) { return o.title; }),
+      added: rep.opportunities.filter(function (o) { return t0.indexOf(k(o)) < 0; }).map(function (o) { return o.title; }) };
+  }
 
   /* ---------- the report object ---------- */
   function rulesSummary(S) {
@@ -314,11 +371,12 @@
     var srcs = {}; ev.list.forEach(function (e) { var k = e.sourceUrl || e.pageUrl; if (k && !srcs[k]) srcs[k] = { url: k, name: e.sourceName, retrievedAt: e.retrievedAt }; });
     var c = S.crawl;
     return {
+      techStack: S.techStack || null, compTech: S.compTech || null, contentGap: S.gap || null, extLinks: S.extLinks || null, authority: S.authority || null,
       version: "xray-1", jobId: jobId, createdAt: new Date().toISOString(), durationMs: ms, input: S.input, providers: S.providers,
       business: S.B, scores: S.scores, checks: S.checks, opportunities: S.opps, top: { immediate: S.top.immediate.map(function (o) { return o.id; }), growth: S.top.growth.map(function (o) { return o.id; }), strategic: S.top.strategic.map(function (o) { return o.id; }) }, plan: S.plan,
       crawl: { blocked: c.blocked || null, pages: c.blocked ? 0 : c.pages.length, list: E.compact(c), robotsFound: c.robotsFound, sitemapFound: c.sitemapFound, sitemapUrls: c.sitemapUrls.length, skippedRobots: c.skippedRobots.length, errors: c.errors.length, limitsHit: c.limitsHit, durationMs: c.durationMs, broken: c.broken.slice(0, 30) },
       psi: S.psi, psiError: S.psiError || "", serps: (S.serpA || []).map(function (s) { return { q: s.q, kind: s.kind, intent: s.intent, ok: s.ok, ourPos: s.ourPos, competitors: s.competitors.slice(0, 5), directories: s.directories.slice(0, 5), evidence: s.evidence }; }),
-      keywords: S.kw || [], volumes: !!S.volumes, competitors: (S.comps || []).map(function (x) { var p = x.profile; return { name: x.name, domain: x.domain, url: x.url, source: x.source, reason: x.reason, confidence: x.confidence, score: x.score, overlaps: { search: x.overlaps.searchOverlap, service: x.overlaps.serviceOverlap, geo: x.overlaps.geoOverlap, positioning: x.overlaps.positioningSimilarity }, insights: x.insights, evidence: x.evidence,
+      keywords: S.kw || [], volumes: !!S.volumes, competitors: (S.comps || []).map(function (x) { var p = x.profile; return { name: x.name, pagesRead: x.pagesRead || 1, domain: x.domain, url: x.url, source: x.source, reason: x.reason, confidence: x.confidence, score: x.score, overlaps: { search: x.overlaps.searchOverlap, service: x.overlaps.serviceOverlap, geo: x.overlaps.geoOverlap, positioning: x.overlaps.positioningSimilarity }, insights: x.insights, evidence: x.evidence,
         profile: { headline: p.headline, title: p.title, meta: p.meta, ctas: p.ctas, pricing: p.pricing, pricingSamples: p.pricingSamples, testimonials: p.testimonials, faq: p.faq, trust: p.trust, schema: p.schema, blog: p.blog, socials: p.socials, offerScore: p.offerScore, whatsapp: p.whatsapp } }; }),
       compMetrics: S.compMetrics || [], positioning: S.positioning, target: S.T ? { offerScore: S.T.offerScore, pricing: S.T.pricing, testimonials: S.T.testimonials, faq: S.T.faq, trust: S.T.trust, blog: S.T.blog } : null,
       voice: S.voice ? { needs: S.voice.needs, complaints: S.voice.complaints, objections: S.voice.objections, triggers: S.voice.triggers, positive: S.voice.positive, snippets: S.voice.snippets, quality: S.voice.quality, marketOpportunity: S.voice.marketOpportunity } : null,
@@ -343,12 +401,18 @@
   var oppById = function (r, id) { return r.opportunities.filter(function (o) { return o.id === id; })[0]; };
   function secH(n, t, q) { return '<section class="xr-sec" id="xr-s' + n + '"><div class="xr-sec-h"><span class="section-num">' + ("0" + n).slice(-2) + "</span><h2>" + esc(t) + "</h2>" + (q ? dqB(q) : "") + "</div>"; }
   function render(r) {
-    var B = r.business, sc = r.scores, A = sc.areas, syn = r.synthesis, h = "";
+    var B = r.business, sc = r.scores, A = sc.areas, syn = r.synthesis, h = "", full = hasF(r, "fullReport"), paid = function (f) { return !!r.features && !hasF(r, f); };
     var first = r.opportunities[0], growth = r.top.growth.map(function (id) { return oppById(r, id); }).filter(Boolean)[0] || r.opportunities[1];
     var top5 = (syn.doFirst && syn.doFirst.length ? syn.doFirst.map(function (id) { return oppById(r, id); }).filter(Boolean) : []).concat(r.opportunities).filter(function (o, i, a) { return a.indexOf(o) === i; }).slice(0, 5);
     h += '<div class="xr-hero panel hud"><div><p class="eyebrow">YOUR BUSINESS X-RAY</p><h2 class="xr-name">' + esc(B.name.value) + '</h2><p class="muted">' + esc(r.input.url) + " · " + esc(new Date(r.createdAt).toLocaleString()) + " · " + r.crawl.pages + " pages read</p>" +
-      '<div class="btn-row xr-acts"><button type="button" class="btn sm" data-x="pdf">Download PDF</button><button type="button" class="btn sm ghost" data-x="xlsx">Excel</button><button type="button" class="btn sm ghost" data-x="csv">Findings CSV</button><button type="button" class="btn sm ghost" data-x="plan">Action plan CSV</button><button type="button" class="btn sm ghost" data-x="share">Copy share link</button><button type="button" class="btn sm ghost" data-x="json">JSON</button></div></div>' +
+      (r.tier ? '<p class="xr-tier"><span class="tag">' + esc(r.tier.toUpperCase()) + " X-RAY</span> up to " + r.limits.pages + " pages · " + r.limits.competitors + " competitors</p>" : "") +
+      (hasF(r, "export") ? '<div class="btn-row xr-acts"><button type="button" class="btn sm" data-x="pdf">Download PDF</button><button type="button" class="btn sm ghost" data-x="xlsx">Excel</button><button type="button" class="btn sm ghost" data-x="csv">Findings CSV</button><button type="button" class="btn sm ghost" data-x="plan">Action plan CSV</button><button type="button" class="btn sm ghost" data-x="share">Copy share link</button><button type="button" class="btn sm ghost" data-x="json">JSON</button></div></div>'
+        : '<div class="btn-row xr-acts"><button type="button" class="btn sm ghost" data-x="share">Copy share link</button><a class="btn sm" href="' + ROOT + 'plans/">Unlock PDF &amp; Excel downloads</a></div></div>') +
       '<div class="xr-ring ' + tone(sc.overall) + '" style="--v:' + (sc.overall || 0) + '"><b>' + (sc.overall == null ? "—" : sc.overall) + '</b><small>/100</small></div><div class="xr-ring-l"><b>Overall Growth Health</b><span>' + esc(sc.status) + '</span><small class="muted">Based on ' + sc.basedOn + " of " + sc.of + " areas with data</small></div></div>";
+    if (r.compare && !r.compare.none) { var cm = r.compare, dl = function (a, b) { return a == null || b == null ? "" : b - a > 0 ? ' <b class="xr-plus">+' + (b - a) + "</b>" : b - a < 0 ? ' <b class="xr-minus">' + (b - a) + "</b>" : ' <span class="muted">±0</span>'; };
+      h += '<div class="panel hud xr-compare"><span class="tag hot">SINCE YOUR LAST X-RAY</span><p>Compared with ' + esc(new Date(cm.previousDate).toLocaleDateString()) + ': overall <b>' + (cm.overallBefore == null ? "—" : cm.overallBefore) + " → " + (cm.overallNow == null ? "—" : cm.overallNow) + "</b>" + dl(cm.overallBefore, cm.overallNow) + (cm.tierBefore && cm.tierBefore !== r.tier ? ' <small class="muted">(the earlier X-Ray ran on the ' + esc(cm.tierBefore) + " level, so it read a different number of pages)</small>" : "") + '</p><ul class="xr-cmp">' + cm.areas.map(function (a) { return "<li><span>" + esc(a.name) + "</span> " + (a.before == null ? "—" : a.before) + " → " + (a.now == null ? "—" : a.now) + dl(a.before, a.now) + "</li>"; }).join("") + "</ul>" +
+        '<div class="grid g2"><div><h3>Fixed since then (' + cm.fixed.length + ")</h3>" + (cm.fixed.length ? "<ul>" + cm.fixed.slice(0, 10).map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ul>" : '<p class="muted">None of the earlier issues have gone yet.</p>') + "</div><div><h3>New since then (" + cm.added.length + ")</h3>" + (cm.added.length ? "<ul>" + cm.added.slice(0, 10).map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ul>" : '<p class="muted">No new issues.</p>') + "</div></div></div>"; }
+    else if (r.compare && r.compare.none) h += '<p class="muted xr-compare-none">This is your first X-Ray of ' + esc(B.domain) + " — run it again after you make changes to see what improved.</p>";
     if (r.crawl.blocked) h += '<div class="panel xr-limited" role="note"><span class="tag">LIMITED X-RAY</span><p><b>' + esc(r.business.domain) + " did not let FODO read its pages</b> (" + esc(r.crawl.blocked.error) + ") — many large sites block automated readers. This report uses what Google Search and Google PageSpeed show about the site, plus real competitors and public customer text. Page-level checks (titles, CTAs, forms, trust signals) are <b>Data unavailable</b>, not guessed.</p></div>";
     h += '<div class="grid g3 xr-big"><div class="panel"><span class="tag">BIGGEST PROBLEM</span>' + (first ? "<h3>" + esc(first.title) + '</h3><p class="muted">' + esc(first.description) + "</p>" + evBtn(first.evidence) : "<p>No major problem found.</p>") + '</div><div class="panel"><span class="tag hot">BIGGEST OPPORTUNITY</span>' + (growth ? "<h3>" + esc(growth.title) + '</h3><p class="muted">' + esc(growth.recommendation) + "</p>" + evBtn(growth.evidence) : "<p>—</p>") + '</div><div class="panel"><span class="tag">TOP 5 ACTIONS</span><ol class="xr-top5">' + top5.map(function (o) { return "<li><b>" + esc(o.title) + "</b><br><span class=\"muted\">" + esc(o.recommendation) + "</span></li>"; }).join("") + "</ol></div></div>";
     // 1 executive summary
@@ -367,13 +431,17 @@
     h += secH(5, "Biggest Problem") + (first ? '<ul class="xr-opps">' + oppCard(first) + "</ul>" : "<p>None found.</p>") + "</section>";
     // 6 website
     h += secH(6, "Website X-Ray", r.dataQuality["Website crawl"]) + (r.crawl.blocked ? '<p class="muted">Pages: Data unavailable — the site answered ' + esc(r.crawl.blocked.error) + ".</p>" : "") + '<p class="muted"' + (r.crawl.blocked ? " hidden" : "") + ">" + r.crawl.pages + " pages read in " + (r.crawl.durationMs / 1000).toFixed(0) + " s · robots.txt " + (r.crawl.robotsFound ? "found" : "not found") + " · sitemap " + (r.crawl.sitemapFound ? "found (" + r.crawl.sitemapUrls + " URLs)" : "not found") + (r.crawl.skippedRobots ? " · " + r.crawl.skippedRobots + " URL(s) skipped because robots.txt disallows them" : "") + (r.crawl.limitsHit.length ? " · limit reached: " + r.crawl.limitsHit.join(", ") : "") + "</p>" +
-      (r.psi ? psiBlock(r.psi) : '<p class="muted">Speed: ' + esc(r.psiError || "not measured") + ".</p>") + checksTable(r.checks.filter(function (c) { return c.area === "website"; })) + '<details class="xr-more"><summary>Every page read (' + r.crawl.list.length + ")</summary>" + pagesTable(r.crawl.list) + "</details></section>";
+      (r.psi ? psiBlock(r.psi) : '<p class="muted">Speed: ' + esc(r.psiError || "not measured") + ".</p>") + checksTable(r.checks.filter(function (c) { return c.area === "website"; })) + '<details class="xr-more"><summary>Every page read (' + r.crawl.list.length + ")</summary>" + pagesTable(r.crawl.list) + "</details>" +
+      (r.techStack ? "<h3>Technology stack</h3>" + techBlock(r.techStack) + '<p class="muted">' + lbl("OBSERVED") + " Read from your homepage code and server headers. “Not detected” does not prove a tool is missing — some load only after a click or consent.</p>" : paid("techStack") ? lockCard("Technology stack (CMS, analytics, ad pixels, chat, payments)", "techStack") : "") +
+      (r.extLinks ? "<h3>Outgoing links</h3>" + (r.extLinks.broken.length ? '<table class="xr-t"><thead><tr><th>Link</th><th>Answer</th><th>Found on</th></tr></thead><tbody>' + r.extLinks.broken.map(function (b) { return '<tr><td><a href="' + esc(b.url) + '" target="_blank" rel="noopener noreferrer nofollow">' + esc(b.url.slice(0, 80)) + "</a></td><td>" + (b.status || "no answer") + "</td><td>" + b.on.map(function (u) { return esc(u.replace(/^https?:\/\/(www\.)?/, "")); }).join("<br>") + "</td></tr>"; }).join("") + "</tbody></table>" : "<p>All " + r.extLinks.checked + " outgoing links checked answer normally.</p>") + '<p class="muted">' + r.extLinks.checked + " of " + r.extLinks.found + " outgoing links checked" + (r.extLinks.refused ? " · " + r.extLinks.refused + " site(s) refused automated checks (e.g. LinkedIn) — not counted as broken" : "") + ".</p>" : paid("externalLinks") ? lockCard("Broken outgoing links check", "externalLinks") : "") + "</section>";
     // 7 SEO / search
-    h += secH(7, "SEO / Search X-Ray", A.search.quality) + (r.keywords.length ? '<p class="muted">' + (r.volumes ? "Search volumes from DataForSEO (ESTIMATED by Google Ads data)." : "Search volume: Data unavailable (no SEO data provider). Opportunity labels are based on intent, relevance to your pages and whether competitors appear where you don't.") + "</p>" + kwTable(r.keywords) : '<p class="muted">' + esc(A.search.note) + "</p>") + "</section>";
+    h += secH(7, "SEO / Search X-Ray", A.search.quality) + (r.keywords.length ? (full ? '<p class="muted">' + (r.volumes ? "Search volumes from DataForSEO (ESTIMATED by Google Ads data)." : "Search volume: Data unavailable" + (paid("volume") ? " on this plan." : " (no SEO data provider).") + " Opportunity labels are based on intent, relevance to your pages and whether competitors appear where you don't.") + "</p>" + kwTable(r.keywords) : "<p>" + r.keywords.length + " searches checked · " + r.keywords.filter(function (k) { return k.opportunity === "High"; }).length + " high-opportunity.</p>" + lockCard("The full keyword table (position, competitors, opportunity for every search)", "fullReport")) : '<p class="muted">' + esc(A.search.note) + "</p>") +
+      (r.contentGap ? "<h3>Content gap</h3>" + (r.contentGap.topics.length ? '<p class="muted">' + lbl("INFERRED") + " Topics from the titles, headings and menus of " + r.contentGap.compared + " competitors that your pages never mention. Only add the ones you really offer.</p><table class='xr-t'><thead><tr><th>Topic</th><th>Covered by</th><th>Competitors</th></tr></thead><tbody>" + r.contentGap.topics.map(function (t) { return "<tr><td><b>" + esc(t.topic) + "</b></td><td>" + t.count + " of " + t.of + "</td><td>" + esc(t.competitors.join(", ")) + " " + evBtn(t.evidence, "Evidence") + "</td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">No clear gaps: the topics competitors share already appear on your pages.</p>') : paid("contentGap") ? lockCard("Content gap (topics competitors cover that you don't)", "contentGap") : "") + "</section>";
     // 8 competitors
-    h += secH(8, "Competitor X-Ray", r.dataQuality.Competitors) + (r.competitors.length ? '<div class="xr-comps">' + r.competitors.map(compCard).join("") + "</div>" + (r.compMetrics.length ? "<h3>You vs competitor median</h3>" + '<ul class="xr-bars">' + r.compMetrics.map(function (m) { return "<li><span>" + esc(m.name) + '</span><i style="--v:' + m.score + '" class="' + tone(m.score) + '"></i></li>'; }).join("") + "</ul>" : "") : '<p class="muted">' + esc((r.modules.COMPETITORS || {}).note || "No competitors confirmed.") + "</p>") + '<p><a class="xr-tool" href="' + ROOT + 'competitor-finder/">Find every local or brand competitor in Competitor Finder →</a></p></section>';
+    h += secH(8, "Competitor X-Ray", r.dataQuality.Competitors) + (r.competitors.length ? (full ? '<div class="xr-comps">' + r.competitors.map(function (c) { return compCard(c, r.compTech && r.compTech[c.domain]); }).join("") + "</div>" : '<ul class="xr-comp-mini">' + r.competitors.map(function (c) { return "<li><b>" + esc(c.name) + '</b> <small class="muted">' + esc(c.domain) + "</small> — " + esc(c.reason) + "</li>"; }).join("") + "</ul>" + lockCard("Competitor details (their headline, prices, trust signals, advantages and weaknesses)", "fullReport")) +
+      (r.authority && r.authority.length ? "<h3>Domain authority</h3><table class='xr-t'><thead><tr><th>Website</th><th>Open PageRank (0–10)</th><th>Global rank</th></tr></thead><tbody>" + r.authority.map(function (a) { return "<tr" + (a.domain === B.domain ? ' class="xr-you"' : "") + "><td>" + esc(a.domain) + (a.domain === B.domain ? " (you)" : "") + "</td><td>" + (a.rank == null ? "Data unavailable" : a.rank.toFixed(1) + " " + lbl("ESTIMATED")) + "</td><td>" + (a.globalRank ? "#" + a.globalRank.toLocaleString("en-IN") : "—") + "</td></tr>"; }).join("") + '</tbody></table><p class="muted">Open PageRank is a free estimate built from links between websites (Common Crawl). It is not Moz DA or Ahrefs DR, and it does not list individual backlinks.</p>' : paid("authority") ? lockCard("Domain authority for you and every competitor", "authority") : "") + (r.compMetrics.length ? "<h3>You vs competitor median</h3>" + '<ul class="xr-bars">' + r.compMetrics.map(function (m) { return "<li><span>" + esc(m.name) + '</span><i style="--v:' + m.score + '" class="' + tone(m.score) + '"></i></li>'; }).join("") + "</ul>" : "") : '<p class="muted">' + esc((r.modules.COMPETITORS || {}).note || "No competitors confirmed.") + "</p>") + '<p><a class="xr-tool" href="' + ROOT + 'competitor-finder/">Find every local or brand competitor in Competitor Finder →</a></p></section>';
     // 9 customer voice
-    h += secH(9, "Customer Voice", r.dataQuality["Customer voice"]) + (r.voice ? voiceBlock(r.voice) : '<p class="muted">' + esc((r.modules.CUSTOMER_RESEARCH || {}).note || "Data unavailable.") + "</p>") + "</section>";
+    h += secH(9, "Customer Voice", r.dataQuality["Customer voice"]) + (r.voice ? (full ? voiceBlock(r.voice) : "<p>" + r.voice.snippets + " public snippets read · " + (r.voice.needs || []).length + " needs and " + (r.voice.complaints || []).length + " complaint themes found.</p>" + lockCard("Customer quotes, complaints, buying triggers and objections", "fullReport")) : '<p class="muted">' + esc((r.modules.CUSTOMER_RESEARCH || {}).note || "Data unavailable.") + "</p>") + "</section>";
     // 10 offer & positioning
     var O = B.offer;
     h += secH(10, "Offer & Positioning") + (O.score == null ? '<p class="muted">Offer Strength Score: Data unavailable — the homepage could not be read.</p>' : "") + '<p' + (O.score == null ? ' hidden' : "") + '>Offer Strength Score <b>' + O.score + "</b>/100 " + lbl("INFERRED") + ' — does the homepage say <i>who</i> it is for, the <i>problem</i>, the <i>outcome</i> and <i>why you</i>?</p><blockquote class="xr-q">' + esc(O.hero || "(no headline found)") + "</blockquote>" +
@@ -385,10 +453,10 @@
     // 12 digital presence
     h += secH(12, "Digital Presence", r.dataQuality["Digital presence"]) + presenceBlock(r) + "</section>";
     // 13 AI visibility
-    h += secH(13, "AI Visibility", r.dataQuality["AI visibility (sampled)"]) + (r.visibility ? '<p><b>Sampled AI visibility:</b> ' + r.visibility.tested + " questions tested · your brand appeared in " + r.visibility.brandIn + " · competitors appeared in " + r.visibility.compIn + '.</p><p class="muted">One open model (' + esc(r.visibility.model) + " on Cloudflare Workers AI) was asked. This is NOT ChatGPT, Gemini or Google AI Overviews, and a handful of questions is not your total AI visibility.</p><table class=\"xr-t\"><thead><tr><th>Question</th><th>You?</th><th>Competitors named</th></tr></thead><tbody>" + r.visibility.rows.map(function (x) { return "<tr><td>" + esc(x.q) + "</td><td>" + (x.answered ? (x.brand ? "Yes" : "No") : "no answer") + "</td><td>" + esc(x.competitors.join(", ") || "—") + "</td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">Data unavailable — no AI source connected.</p>') + "</section>";
+    h += secH(13, "AI Visibility", r.dataQuality["AI visibility (sampled)"]) + (r.visibility && !full ? '<p><b>Sampled AI visibility:</b> ' + r.visibility.tested + " questions tested · your brand appeared in " + r.visibility.brandIn + " · competitors appeared in " + r.visibility.compIn + ".</p>" + lockCard("Every AI question and which businesses it named", "fullReport") : r.visibility ? '<p><b>Sampled AI visibility:</b> ' + r.visibility.tested + " questions tested · your brand appeared in " + r.visibility.brandIn + " · competitors appeared in " + r.visibility.compIn + '.</p><p class="muted">One open model (' + esc(r.visibility.model) + " on Cloudflare Workers AI) was asked. This is NOT ChatGPT, Gemini or Google AI Overviews, and a handful of questions is not your total AI visibility.</p><table class=\"xr-t\"><thead><tr><th>Question</th><th>You?</th><th>Competitors named</th></tr></thead><tbody>" + r.visibility.rows.map(function (x) { return "<tr><td>" + esc(x.q) + "</td><td>" + (x.answered ? (x.brand ? "Yes" : "No") : "no answer") + "</td><td>" + esc(x.competitors.join(", ") || "—") + "</td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">Data unavailable — no AI source connected.</p>') + "</section>";
     // 14 biggest opportunities
     var grp = function (t, ids) { var os = ids.map(function (id) { return oppById(r, id); }).filter(Boolean); return os.length ? "<h3>" + t + '</h3><ul class="xr-opps">' + os.map(oppCard).join("") + "</ul>" : ""; };
-    h += secH(14, "Biggest Opportunities") + grp("Top 3 immediate fixes", r.top.immediate) + grp("Top 5 growth opportunities", r.top.growth) + grp("Top 5 strategic opportunities", r.top.strategic) + '<details class="xr-more"><summary>All ' + r.opportunities.length + " opportunities</summary><ul class=\"xr-opps\">" + r.opportunities.map(oppCard).join("") + "</ul></details></section>";
+    h += secH(14, "Biggest Opportunities") + grp("Top 3 immediate fixes", r.top.immediate) + (full ? grp("Top 5 growth opportunities", r.top.growth) + grp("Top 5 strategic opportunities", r.top.strategic) + '<details class="xr-more"><summary>All ' + r.opportunities.length + " opportunities</summary><ul class=\"xr-opps\">" + r.opportunities.map(oppCard).join("") + "</ul></details>" : lockCard("All " + r.opportunities.length + " opportunities with fixes, affected pages and evidence", "fullReport")) + "</section>";
     // 15 top 5 actions
     h += secH(15, "Top 5 Actions") + '<ol class="xr-actions">' + top5.map(function (o) { return "<li><b>" + esc(o.title) + "</b> <span class=\"xr-p " + o.priority.toLowerCase() + "\">" + o.priority + "</span><br>" + esc(o.recommendation) + " " + evBtn(o.evidence, "Evidence") + " " + toolLink(o.tool) + "</li>"; }).join("") + "</ol></section>";
     // 16 plan
@@ -406,7 +474,8 @@
   function pagesTable(list) { return '<table class="xr-t"><thead><tr><th>Page</th><th>Status</th><th>Type</th><th>Title</th><th>Words</th></tr></thead><tbody>' + list.map(function (p) { return "<tr><td><a href=\"" + esc(p.finalUrl) + '" target="_blank" rel="noopener noreferrer nofollow">' + esc(p.finalUrl.replace(/^https?:\/\/(www\.)?/, "")) + "</a></td><td>" + (p.error ? esc(p.error) : p.status) + (p.noindex ? " · noindex" : "") + "</td><td>" + esc(p.type) + "</td><td>" + esc(p.title) + "</td><td>" + p.words + "</td></tr>"; }).join("") + "</tbody></table>"; }
   function serpTable(s) { return s.length ? '<table class="xr-t"><thead><tr><th>Search</th><th>Intent</th><th>Your position</th><th>Who shows up</th></tr></thead><tbody>' + s.map(function (x) { return "<tr><td>" + esc(x.q) + "</td><td>" + esc(x.intent) + "</td><td>" + (x.ok ? x.ourPos ? "#" + x.ourPos : "not in top 10" : "unavailable") + "</td><td>" + esc(x.competitors.slice(0, 3).map(function (c) { return c.domain; }).concat(x.directories.slice(0, 2).map(function (d) { return d.host; })).join(", ")) + " " + evBtn(x.evidence, "Results") + "</td></tr>"; }).join("") + '</tbody></table><p class="muted">Positions come from ' + esc((report && report.providers && report.providers.searchName) || "the search provider") + ' at the time of the X-Ray — a snapshot for one country, not a ranking report.</p>' : ""; }
   function kwTable(k) { return '<table class="xr-t"><thead><tr><th>Search</th><th>Intent</th><th>Volume</th><th>Your position</th><th>Competitors in top 10</th><th>Opportunity</th></tr></thead><tbody>' + k.map(function (x) { return "<tr><td>" + esc(x.keyword) + "</td><td>" + esc(x.intent) + "</td><td>" + (x.volume != null ? x.volume.toLocaleString("en-IN") + " " + lbl("ESTIMATED") : "Data unavailable") + "</td><td>" + (x.ourPos ? "#" + x.ourPos : "—") + "</td><td>" + x.competitorsInTop10 + '</td><td><span class="xr-op ' + x.opportunity.toLowerCase() + '">' + x.opportunity + "</span></td></tr>"; }).join("") + "</tbody></table>"; }
-  function compCard(c) { var p = c.profile, i = c.insights; return '<div class="panel xr-comp"><h3>' + esc(c.name) + ' <small class="muted">' + esc(c.domain) + '</small></h3><p class="muted">Why a competitor: ' + esc(c.reason) + " · confidence <b>" + esc(c.confidence) + "</b> (" + c.score + "/100) · source: " + esc(c.source.join(", ")) + "</p>" +
+  function techBlock(t) { if (!t.length) return '<p class="muted">No common tools detected.</p>'; var g = {}; t.forEach(function (x) { (g[x.cat] = g[x.cat] || []).push(x.name); }); return '<dl class="xr-dl sm xr-tech">' + Object.keys(g).map(function (k) { return "<div><dt>" + esc(k) + "</dt><dd>" + g[k].map(esc).join(" · ") + "</dd></div>"; }).join("") + "</dl>"; }
+  function compCard(c, tech) { var p = c.profile, i = c.insights; return '<div class="panel xr-comp"><h3>' + esc(c.name) + ' <small class="muted">' + esc(c.domain) + '</small></h3><p class="muted">Why a competitor: ' + esc(c.reason) + " · confidence <b>" + esc(c.confidence) + "</b> (" + c.score + "/100) · source: " + esc(c.source.join(", ")) + (c.pagesRead ? " · " + c.pagesRead + " page" + (c.pagesRead === 1 ? "" : "s") + " read" : "") + "</p>" + (tech ? '<details class="xr-more"><summary>Their technology (' + tech.length + ")</summary>" + techBlock(tech) + "</details>" : "") +
     '<dl class="xr-dl sm"><div><dt>Headline</dt><dd>' + esc(p.headline || "—") + "</dd></div><div><dt>CTA</dt><dd>" + esc(p.ctas.join(" · ") || "—") + "</dd></div><div><dt>Pricing</dt><dd>" + (p.pricing ? esc(p.pricingSamples.join(", ") || "shown") : "not shown") + "</dd></div><div><dt>Trust</dt><dd>" + esc([p.testimonials && "testimonials", p.faq && "FAQ"].concat(p.trust.slice(0, 3)).filter(Boolean).join(" · ") || "—") + "</dd></div></dl>" +
     '<div class="xr-ins"><div><b>Competitor advantage</b><ul>' + (i.advantages.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") || "<li class=muted>None found</li>") + "</ul></div><div><b>Competitor weakness</b><ul>" + (i.weaknesses.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") || "<li class=muted>None found</li>") + "</ul></div></div><p><b>Opportunity:</b> " + esc(i.opportunity) + "</p>" + evBtn(c.evidence) + ' <a class="xr-tool" href="' + esc(c.url) + '" target="_blank" rel="noopener noreferrer nofollow">Visit site ↗</a></div>'; }
   function voiceBlock(v) {
@@ -443,7 +512,8 @@
     var b = e.target.closest("[data-x]"); if (!b || !report) return;
     var k = b.dataset.x;
     if (!X) return;
-    if (k === "pdf") { var blob; try { blob = X.pdf(pdfBlocks(report), { title: "FODO Business X-Ray - " + report.business.name.value, footer: "FODO Business X-Ray - " + report.input.url + " - " + new Date(report.createdAt).toLocaleDateString() }); } catch (er) { if (window.console) console.error(er); return; } X.deliver(blob, fname("pdf"), { kind: "PDF" }); }
+    if (k !== "share" && !hasF(report, "export")) { upsell("PDF, Excel, CSV and JSON downloads are part of the Starter plan and above."); $("xr-up").scrollIntoView({ block: "center" }); return; }
+    if (k === "pdf") { var blob, wl = whiteLabel(); try { blob = X.pdf(wl ? wl.blocks(pdfBlocks(report)) : pdfBlocks(report), wl ? wl.meta : { title: "FODO Business X-Ray - " + report.business.name.value, footer: "FODO Business X-Ray - " + report.input.url + " - " + new Date(report.createdAt).toLocaleDateString() }); } catch (er) { if (window.console) console.error(er); return; } X.deliver(blob, fname("pdf"), { kind: "PDF" }); }
     if (k === "csv") X.deliver(X.csv(safe(oppRows())), fname("csv").replace(".csv", "-findings.csv"), { kind: "CSV" });
     if (k === "plan") X.deliver(X.csv(safe(planRows())), fname("csv").replace(".csv", "-30-day-plan.csv"), { kind: "CSV" });
     if (k === "json") X.deliver(new Blob([JSON.stringify(report, null, 1)], { type: "application/json" }), fname("json"), { kind: "JSON" });
@@ -456,12 +526,25 @@
         { name: "Competitors", rows: safe([["Name", "Domain", "Confidence", "Score", "Why", "Advantages", "Weaknesses", "Opportunity", "Headline", "Pricing shown"]].concat(report.competitors.map(function (c) { return [c.name, c.domain, c.confidence, c.score, c.reason, c.insights.advantages.join("; "), c.insights.weaknesses.join("; "), c.insights.opportunity, c.profile.headline, c.profile.pricing ? "Yes" : "No"]; }))) },
         { name: "Searches", rows: safe([["Search", "Intent", "Your position", "Opportunity", "Volume"]].concat(report.keywords.map(function (x) { return [x.keyword, x.intent, x.ourPos || "", x.opportunity, x.volume == null ? "Data unavailable" : x.volume]; }))) },
         { name: "Pages", rows: safe([["URL", "Status", "Type", "Title", "Meta description", "H1", "Words", "Noindex"]].concat(report.crawl.list.map(function (p) { return [p.finalUrl, p.status || p.error, p.type, p.title, p.meta, p.h1, p.words, p.noindex ? "yes" : ""]; }))) },
+        report.techStack || report.compTech ? { name: "Tech stack", rows: safe([["Website", "Category", "Tool"]].concat((report.techStack || []).map(function (t) { return [report.business.domain, t.cat, t.name]; })).concat([].concat.apply([], Object.keys(report.compTech || {}).map(function (d) { return report.compTech[d].map(function (t) { return [d, t.cat, t.name]; }); })))) } : null,
+        report.contentGap ? { name: "Content gap", rows: safe([["Topic", "Competitors covering it", "Of", "Which"]].concat(report.contentGap.topics.map(function (t) { return [t.topic, t.count, t.of, t.competitors.join(", ")]; }))) } : null,
+        report.extLinks ? { name: "Broken links", rows: safe([["Outgoing link", "Answer", "Found on"]].concat(report.extLinks.broken.map(function (b) { return [b.url, b.status || "no answer", b.on.join(" ")]; }))) } : null,
+        report.authority ? { name: "Authority", rows: safe([["Domain", "Open PageRank (0-10, estimated)", "Global rank"]].concat(report.authority.map(function (a) { return [a.domain, a.rank == null ? "Data unavailable" : a.rank, a.globalRank || ""]; }))) } : null,
         { name: "Evidence", rows: safe([["ID", "Label", "Claim", "Evidence", "Source", "URL", "Retrieved"]].concat(report.evidence.map(function (x) { return [x.id, x.label, x.claim, x.evidenceText, x.sourceName, x.sourceUrl, x.retrievedAt]; }))) },
-      ], { title: "FODO Business X-Ray" }), fname("xlsx"), { kind: "Excel" });
+      ].filter(Boolean), { title: "FODO Business X-Ray" }), fname("xlsx"), { kind: "Excel" });
     }
     if (k === "share") { var u = location.origin + ROOT + "business-x-ray/?r=" + report.jobId; (X.copyText ? X.copyText(u, "Copy the share link") : navigator.clipboard.writeText(u)).then(function (h) { if (h === "copied") { var o = b.textContent; b.textContent = "Link copied ✓"; setTimeout(function () { b.textContent = o; }, 2000); } }); }
     track("xray_export", { kind: k });
   });
+  /* v13 white-label (Agency): the PDF carries the agency's name, colour and logo instead of FODO's */
+  function whiteLabel() {
+    var u = ACC && ACC.current(), br = u && u.brand; if (!br || !br.name || !hasF(report, "whiteLabel") || !report.features) return null;
+    var hex = /^#([0-9a-f]{6})$/i.exec(br.color || ""), acc = hex ? [0, 2, 4].map(function (i) { return parseInt(hex[1].substr(i, 2), 16) / 255; }) : null, logo = null;
+    if (/^data:image\/jpeg;base64,/.test(br.logo || "")) { try { var bin = atob(br.logo.split(",")[1]), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); logo = a; } catch (e) {} }
+    var swap = function (t) { return typeof t === "string" ? t.replace(/FODO Business X-Ray/g, br.name + " Website X-Ray").replace(/ \| FODO tool: [^|]*/g, "") : t; };
+    return { meta: { title: br.name + " - Website X-Ray - " + report.business.name.value, footer: "Prepared by " + br.name + " - " + report.input.url + " - " + new Date(report.createdAt).toLocaleDateString(), accent: acc, logo: logo, whiteLabel: true },
+      blocks: function (bl) { return bl.map(function (b) { var o = {}; Object.keys(b).forEach(function (k2) { o[k2] = Array.isArray(b[k2]) ? b[k2].map(function (x) { return Array.isArray(x) ? x.map(swap) : swap(x); }) : swap(b[k2]); }); return o; }).filter(function (b) { return !(b.p && /Every number in this report comes from/.test(b.p)); }).concat([{ p: "Prepared by " + br.name + ". Data from the website itself, Google Search, Google PageSpeed Insights and the other sources named in each finding.", muted: true, size: 8.5 }]); } };
+  }
   /* the PDF is built from the report data (structured text), not from a screenshot of the page */
   function pdfBlocks(r) {
     var B = r.business, A = r.scores.areas, syn = r.synthesis, out = [], P = function (o) { out.push(o); };
@@ -492,9 +575,15 @@
     P({ p: r.crawl.pages + " pages read | robots.txt " + (r.crawl.robotsFound ? "found" : "not found") + " | sitemap " + (r.crawl.sitemapFound ? "found" : "not found") + (r.psi ? " | PageSpeed mobile performance " + r.psi.performance + "/100" : " | Speed: " + (r.psiError || "not measured")) });
     P({ li: r.checks.filter(function (c) { return c.status === "fail" || c.status === "warn"; }).slice(0, 25).map(function (c) { return (c.status === "fail" ? "FAIL" : "WARN") + " - " + c.name + ": " + c.detail + ev(c.evidence); }) });
     if (r.keywords.length) { P({ h3: "Searches checked" + (r.volumes ? "" : " (search volume: data unavailable)") }); P({ li: r.keywords.map(function (k) { return k.keyword + " | " + k.intent + " | your position: " + (k.ourPos ? "#" + k.ourPos : "not in top 10") + " | opportunity: " + k.opportunity + (k.volume != null ? " | volume " + k.volume + " (estimated)" : ""); }) }); }
+    if (r.compare && !r.compare.none) { P({ h3: "Since the last X-Ray (" + new Date(r.compare.previousDate).toLocaleDateString() + ")" }); P({ li: ["Overall: " + (r.compare.overallBefore == null ? "-" : r.compare.overallBefore) + " -> " + (r.compare.overallNow == null ? "-" : r.compare.overallNow)].concat(r.compare.areas.map(function (a) { return a.name + ": " + (a.before == null ? "-" : a.before) + " -> " + (a.now == null ? "-" : a.now); })).concat(["Fixed: " + (r.compare.fixed.join("; ") || "none"), "New: " + (r.compare.added.join("; ") || "none")]) }); }
+    if (r.techStack) { P({ h3: "Technology stack (from the homepage code)" }); P({ li: r.techStack.length ? r.techStack.map(function (t) { return t.cat + ": " + t.name; }) : ["No common tools detected."] }); }
+    if (r.extLinks) { P({ h3: "Outgoing links: " + r.extLinks.broken.length + " broken of " + r.extLinks.checked + " checked" }); if (r.extLinks.broken.length) P({ li: r.extLinks.broken.slice(0, 30).map(function (b) { return b.url + " -> " + (b.status || "no answer") + " (on " + b.on[0] + ")"; }) }); }
+    if (r.contentGap && r.contentGap.topics.length) { P({ h3: "Content gap: topics competitors cover that your pages don't mention" }); P({ li: r.contentGap.topics.map(function (t) { return t.topic + " - " + t.count + " of " + t.of + " competitors (" + t.competitors.join(", ") + ")"; }) }); }
     P({ h2: "9. Competitors" });
     if (r.competitors.length) r.competitors.forEach(function (c) { P({ h3: c.name + " (" + c.domain + ") - confidence " + c.confidence }); P({ kv: [["Why a competitor", c.reason], ["Their advantages", c.insights.advantages.join("; ") || "None found"], ["Their weaknesses", c.insights.weaknesses.join("; ") || "None found"], ["Opportunity", c.insights.opportunity], ["Source", c.source.join(", ")]] }); });
     else P({ p: (r.modules.COMPETITORS || {}).note || "No competitors confirmed.", muted: true });
+    if (r.authority && r.authority.length) { P({ h3: "Domain authority (Open PageRank 0-10, estimated)" }); P({ li: r.authority.map(function (a) { return a.domain + ": " + (a.rank == null ? "data unavailable" : a.rank.toFixed(1)) + (a.globalRank ? " (global rank #" + a.globalRank + ")" : ""); }) }); }
+    if (r.compTech) Object.keys(r.compTech).forEach(function (d) { if (r.competitors.some(function (c) { return c.domain === d; }) && r.compTech[d].length) P({ p: d + " runs: " + r.compTech[d].map(function (t) { return t.name; }).join(", "), size: 9 }); });
     P({ h2: "10. Customer Voice" });
     if (r.voice) { P({ p: "From " + r.voice.snippets + " public text snippets (search-result excerpts, not full reviews). Data quality " + r.voice.quality + ".", muted: true }); [["Needs", r.voice.needs], ["Complaints", r.voice.complaints], ["Buying triggers", r.voice.triggers], ["Objections", r.voice.objections]].forEach(function (g) { if (g[1] && g[1].length) { P({ h3: g[0] }); P({ li: g[1].slice(0, 4).map(function (t) { return t.theme + " (" + t.count + ")" + (t.quotes[0] ? ': "' + t.quotes[0].text + '" - ' + t.quotes[0].source : ""); }) }); } }); }
     else P({ p: "Data unavailable.", muted: true });
@@ -516,6 +605,28 @@
     status("Loading the saved X-Ray…", "busy");
     call("report/" + encodeURIComponent(qs.get("r")), undefined, { tries: 2 }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(r.status === 404 ? "This report was not found or has expired." : "Could not load the report.")); })
       .then(function (rep) { report = rep; $("xr-url").value = rep.input.url; render(rep); status("Saved X-Ray from " + new Date(rep.createdAt).toLocaleString() + ". Run it again for fresh data.", "ok"); }, function (e) { status(e.message, "warn"); });
+  }
+  /* ---------- v13 account bits on the form: plan note, client folder (Agency), bulk X-Ray (Agency) ---------- */
+  if (ACC) ACC.config().then(function (c) {
+    if (!c.enabled) return;
+    var note = $("xr-note"), fp = (c.plans || [])[0] || {};
+    ACC.onChange(function (u) {
+      me = u;
+      if (note) note.innerHTML = (u ? "<b>" + esc(u.planName) + " plan</b> · " + u.credits.total + " X-Ray" + (u.credits.total === 1 ? "" : "s") + " left · each reads up to " + u.limits.MAX_PAGES + " pages and " + u.limits.MAX_COMPETITORS + " competitors. " : "<b>Log in free</b> to run your first " + (fp.xrays || 2) + " X-Rays. ") + '<a href="' + ROOT + 'plans/">Plans</a>. It takes 1–4 minutes — keep this tab open. FODO only reads public pages and never logs in anywhere.';
+      var F = u ? u.limits.features : [], box = $("xr-agency");
+      if (F.indexOf("clients") > -1 || F.indexOf("bulk") > -1) {
+        if (!box) { box = document.createElement("div"); box.id = "xr-agency"; box.className = "xr-agency"; form.querySelector(".btn-row").insertAdjacentElement("beforebegin", box); }
+        box.innerHTML = (F.indexOf("clients") > -1 ? '<div class="cf-f"><label for="xr-client">Client folder</label><select id="xr-client"><option value="">No client</option></select></div>' : "") +
+          (F.indexOf("bulk") > -1 ? '<details class="xr-opt"><summary>Bulk X-Ray <span class="muted">(up to 20 websites, one after another)</span></summary><label for="xr-bulk" class="muted">One website per line</label><textarea id="xr-bulk" rows="4" placeholder="client1.com&#10;client2.in"></textarea><button type="button" class="btn sm ghost" id="xr-bulk-go">Run all</button><ol id="xr-bulk-list" class="xr-bulk-list"></ol></details>' : "");
+        if ($("xr-client")) ACC.api("clients").then(function (j) { $("xr-client").innerHTML = '<option value="">No client</option>' + (j.items || []).map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + "</option>"; }).join(""); });
+        if ($("xr-bulk-go")) $("xr-bulk-go").onclick = bulk;
+      } else if (box) box.remove();
+    });
+  });
+  function bulk() {
+    var list = $("xr-bulk").value.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 20), ol = $("xr-bulk-list");
+    if (!list.length) return; ol.innerHTML = list.map(function (u, i) { return '<li id="xr-b' + i + '">' + esc(u) + ' <small class="muted">waiting</small></li>'; }).join("");
+    list.reduce(function (p, u, i) { return p.then(function () { $("xr-b" + i).querySelector("small").textContent = "running…"; return run({ url: u, name: "", industry: "", city: "", product: "", audience: "" }).then(function (rep) { $("xr-b" + i).innerHTML = rep ? '<a href="' + ROOT + "business-x-ray/?r=" + encodeURIComponent(rep.jobId) + '" target="_blank" rel="noopener">' + esc(u) + "</a> — " + (rep.scores.overall == null ? "—" : rep.scores.overall) + "/100" : esc(u) + ' <small class="muted">' + esc($("xr-status").textContent) + "</small>"; }); }); }, Promise.resolve());
   }
   window.FODO_XRAY = { report: function () { return report; }, run: run };
 })();

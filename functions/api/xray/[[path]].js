@@ -35,8 +35,9 @@ import { isOwner } from "../../_lib/accounts.js";
 /* per-job limits: the plan the X-Ray was paid with (accounts on), else the free defaults */
 async function jobLimits(env, job) {
   if (!accountsOn(env)) return LIMITS;
-  const r = await (await acctDb(env)).prepare("SELECT tier, features FROM acct_runs WHERE job_id=?1").bind(job.id).first();
+  const r = await (await acctDb(env)).prepare("SELECT tier, features, credit FROM acct_runs WHERE job_id=?1").bind(job.id).first();
   const L = Object.assign({}, LIMITS, limitsFor(r ? r.tier : "free"));
+  if (r && r.credit === "owner") L.ownerRun = true;   // owner X-Rays skip the daily search budget
   if (r && r.features) { try { const f = JSON.parse(r.features); if (Array.isArray(f)) { L.features = f; if (f.indexOf("externalLinks") > -1 && !L.LINKCHECK) L.LINKCHECK = 80; } } catch (e) {} }
   return L;
 }
@@ -225,7 +226,10 @@ async function fetchPage(env, job, b, t0) {
   if (await over(env, job, "f", (await jobLimits(env, job)).MAX_FETCHES)) return json({ ok: false, reason: "Page limit for this X-Ray reached." }, 429);
   try {
     const H = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5", "accept-language": "en-IN,en;q=0.9" };
-    let { r, finalUrl, hops } = await safeFetch(u.url, { headers: H }, { timeout: LIMITS.REQUEST_TIMEOUT, env }), retriedAs = "";
+    let first; try { first = await safeFetch(u.url, { headers: H }, { timeout: LIMITS.REQUEST_TIMEOUT, env }); }
+    catch (e) { if (e.name !== "TimeoutError" || !b.slowRetry) throw e;   // slow shared hosting: one more, longer try
+      first = await safeFetch(u.url, { headers: Object.assign({}, H, { "user-agent": UA_COMPAT }) }, { timeout: 30000, env }); first.slow = true; }
+    let { r, finalUrl, hops } = first, retriedAs = first.slow ? "slow-retry" : "";
     // bot protection often turns away unknown agents (403 / 429 / 503 / Cloudflare 52x). Try once more with a standard
     // "compatible" agent string (still names FODO and links to this tool — like search-engine crawlers do).
     if ([403, 406, 429, 503, 520, 521, 522, 523, 524, 525, 526, 530].indexOf(r.status) > -1) {
@@ -254,8 +258,9 @@ async function search(env, job, b, t0) {
   const q = clean(b.q, 200); if (q.length < 2) return json({ ok: false, reason: "Empty query." }, 400);
   const gl = CC[String(b.country || "").toLowerCase()] || "";
   for (const prov of chain) { const hit = await cacheGet("search", prov + "|" + gl + "|" + q.toLowerCase()); if (hit) { log({ job: job.id, route: "search", provider: prov, cached: true }); await logUsage(env, { provider: prov, endpoint: "search", job: job.id, status: 200, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); } }
-  if (await over(env, job, "s", (await jobLimits(env, job)).MAX_QUERIES + 3)) return json({ ok: false, reason: "Search limit for this X-Ray reached." }, 429);
-  if (await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || env.BRAVE_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
+  const JL = await jobLimits(env, job);
+  if (await over(env, job, "s", JL.MAX_QUERIES + 3)) return json({ ok: false, reason: "Search limit for this X-Ray reached." }, 429);
+  if (!JL.ownerRun && await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || env.BRAVE_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
   const out = outbound(env); let lastReason = "Search provider did not answer.";
   for (const prov of chain) {
     const t1 = Date.now();
@@ -282,7 +287,7 @@ async function places(env, job, b, t0) {
   const gl = CC[String(b.country || "").toLowerCase()] || "", key = "places|" + gl + "|" + q.toLowerCase();
   const hit = await cacheGet("places", key); if (hit) { await logUsage(env, { provider: "serper_places", endpoint: "places", job: job.id, status: 200, cached: true }); return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit" } }); }
   if (await over(env, job, "pl", 4)) return json({ ok: false, reason: "Local listing limit for this X-Ray reached." }, 429);
-  if (await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
+  if (!(await jobLimits(env, job)).ownerRun && await counter(env, "xr:search:" + new Date().toISOString().slice(0, 10), parseInt(env.SEARCH_DAILY_CAP || "60", 10), 90000)) return json({ ok: false, limited: true, reason: "Today's search budget is used up." }, 429);
   const t1 = Date.now();
   try {
     const { r } = await retrying(() => outbound(env)("https://google.serper.dev/places", { method: "POST", headers: { "x-api-key": env.SERPER_API_KEY, "content-type": "application/json" }, body: JSON.stringify(Object.assign({ q, hl: "en" }, gl ? { gl } : {})), signal: AbortSignal.timeout(15000) }), { tries: 2 });

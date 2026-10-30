@@ -35,9 +35,10 @@
   var callJ = function (path, body, opt) { return call(path, body, opt).then(function (r) { return r.json().catch(function () { return { ok: false, reason: "Bad answer (" + r.status + ")" }; }).then(function (j) { j._status = r.status; return j; }); }); };
   function makeFetcher(jobId) {
     var memo = {};
-    return function (url) {
+    return function (url, opt) {
       if (memo[url]) return memo[url];
-      return memo[url] = call("fetch", { jobId: jobId, url: url }, { tries: 2, timeout: 30000 }).then(function (r) {
+      var slow = !!(opt && opt.slow);   // the home page: the server waits longer once for slow shared hosting
+      return memo[url] = call("fetch", slow ? { jobId: jobId, url: url, slowRetry: true } : { jobId: jobId, url: url }, { tries: slow ? 1 : 2, timeout: slow ? 55000 : 30000 }).then(function (r) {
         var meta = {}; try { meta = JSON.parse(decodeURIComponent(r.headers.get("x-xray-meta") || "%7B%7D")); } catch (e) {}
         if (r.status !== 200) return r.json().catch(function () { return {}; }).then(function (j) { return { status: 0, error: j.reason || "HTTP " + r.status, redirects: [] }; });
         return r.text().then(function (t) { return { status: meta.status || 0, finalUrl: meta.finalUrl || url, redirects: meta.redirects || [], headers: meta.headers || {}, ms: meta.ms || 0, body: t.slice(0, 3e6), error: meta.error || (meta.status >= 400 ? "" : ""), skipped: meta.skipped || "" }; });
@@ -154,7 +155,7 @@
       });
     };
     return stage("DISCOVERY", function () {
-      return fetcher(E.normUrl(startUrl)).then(function (r) { return bad(r) && !/blocked: /.test(r.error || "") ? fetcher(E.normUrl(altUrl(startUrl))).then(function (r2) { return bad(r2) ? r : r2; }) : r; }).then(function (r) {
+      return fetcher(E.normUrl(startUrl), { slow: true }).then(function (r) { return bad(r) && !/blocked: /.test(r.error || "") ? fetcher(E.normUrl(altUrl(startUrl))).then(function (r2) { return bad(r2) ? r : r2; }) : r; }).then(function (r) {
         if (bad(r)) {
           if (/blocked: /.test(r.error || "")) throw Object.assign(new Error("That address cannot be X-Rayed: " + r.error.replace(/^blocked: /, "")), { fatal: true });
           // the site turns our reader away (bot protection) — carry on with what Google and PageSpeed can see
@@ -162,7 +163,7 @@
           if (!P.search) throw Object.assign(new Error("The website did not let FODO read it (" + S.blocked.error + ") and no search provider is connected, so there is nothing to X-Ray. Try again later."), { fatal: true });
           return search(E.domainOf(startUrl)).then(function (res) {
             S.blockSerp = res;
-            if (!res || !res.web.some(function (w) { return w.domain === E.domainOf(startUrl); })) throw Object.assign(new Error("The website did not let FODO read it (" + S.blocked.error + ") and it could not be found in search either. Check the address."), { fatal: true });
+            if (!res || !res.web.some(function (w) { return w.domain === E.domainOf(startUrl); })) throw Object.assign(new Error((S.searchErrors || []).some(function (x) { return /budget is used up/.test(x); }) ? "The website did not let FODO read it (" + S.blocked.error + ") and today's search limit is used up, so FODO could not look it up in search either. Try again tomorrow, or run it from an owner account." : "The website did not let FODO read it (" + S.blocked.error + ") and it could not be found in search either. Check the address."), { fatal: true });
             S.quick = E.discoverFromSearch(input, E.domainOf(startUrl), res, new E.Evidence());
             stageUI(done, "DISCOVERY", S.quick.name.value + " · limited X-Ray (site blocks automated readers)");
           });
@@ -443,7 +444,7 @@
     add("Website pages", 25, cp, S.blocked ? "The site blocked FODO's reader (" + S.blocked.error + ")." : S.crawl.pages.length + " pages read");
     add("Speed (Google PageSpeed)", 10, S.psi ? 100 : 0, S.psi ? (S.psi.field ? "Lab + real-user (field) data" : "Lab data only — no sufficient real-user field data for this site") : (S.psiError || "unavailable"));
     var sq = (S.serps || []).length, sok = (S.serps || []).filter(function (x) { return x.res; }).length;
-    add("Google search research", 15, !P.search ? 0 : sq ? sok / sq * 100 : 0, !P.search ? "No search provider connected" : sok + " of " + sq + " searches returned results");
+    add("Google search research", 15, !P.search ? 0 : sq ? sok / sq * 100 : 0, !P.search ? "No search provider connected" : (sok < sq && (S.searchErrors || []).some(function (x) { return /budget is used up/.test(x); }) ? "today's search limit (SEARCH_DAILY_CAP) was used up — " : "") + sok + " of " + sq + " searches returned results");
     var want = Math.min(3, E.CFG.MAX_COMPETITORS || 3), nc = (S.comps || []).length;
     add("Competitors", 15, Math.min(100, nc / want * 100), nc + " confirmed (aim: " + want + ")");
     add("Customer voice", 10, S.voice ? (S.voice.snippets >= 5 ? 100 : 60) : 0, S.voice ? S.voice.snippets + " public snippets" : "No public reviews or discussions came back");

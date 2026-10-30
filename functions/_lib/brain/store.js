@@ -25,9 +25,14 @@ export const DDL = [
   "CREATE TABLE IF NOT EXISTS brain_automations (id TEXT PRIMARY KEY, name TEXT, trigger_type TEXT, trigger_value TEXT, cond TEXT, action TEXT, action_args TEXT, enabled INTEGER, last_run TEXT, next_run TEXT, runs INTEGER DEFAULT 0, last_result TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS brain_connectors (id TEXT PRIMARY KEY, data TEXT, scopes TEXT, account TEXT, connected_at TEXT, last_used TEXT)",
   "CREATE TABLE IF NOT EXISTS brain_events (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, user_id TEXT, detail TEXT, t TEXT, handled INTEGER DEFAULT 0)",
+  // v23: people the owners gave Brain access to, social accounts, posts, uploaded media
+  "CREATE TABLE IF NOT EXISTS brain_members (email TEXT PRIMARY KEY, role TEXT, perms TEXT, note TEXT, added_by TEXT, added_at TEXT, last_seen TEXT)",
+  "CREATE TABLE IF NOT EXISTS brain_social (id TEXT PRIMARY KEY, platform TEXT, ext_id TEXT, name TEXT, handle TEXT, avatar TEXT, token TEXT, refresh TEXT, expires_at TEXT, meta TEXT, connected_by TEXT, connected_at TEXT, status TEXT, last_error TEXT)",
+  "CREATE TABLE IF NOT EXISTS brain_social_posts (id TEXT PRIMARY KEY, caption TEXT, captions TEXT, media TEXT, targets TEXT, status TEXT, scheduled_at TEXT, results TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS brain_media (id TEXT PRIMARY KEY, name TEXT, mime TEXT, size INTEGER, parts INTEGER, store TEXT, width INTEGER, height INTEGER, duration REAL, variant_of TEXT, status TEXT, created_at TEXT, ready_at TEXT)",
 ];
 /* additive column migrations (each may already exist → ignored) */
-const MIGRATIONS = ["ALTER TABLE brain_memory ADD COLUMN emb TEXT", "ALTER TABLE brain_chunks ADD COLUMN emb TEXT", "ALTER TABLE brain_tasks ADD COLUMN assignee TEXT", "ALTER TABLE brain_tasks ADD COLUMN kind TEXT"];
+const MIGRATIONS = ["ALTER TABLE brain_memory ADD COLUMN emb TEXT", "ALTER TABLE brain_chunks ADD COLUMN emb TEXT", "ALTER TABLE brain_tasks ADD COLUMN assignee TEXT", "ALTER TABLE brain_tasks ADD COLUMN kind TEXT", "ALTER TABLE brain_threads ADD COLUMN owner TEXT"];
 const made = new WeakSet();
 export async function brainDb(env) {
   const d = env && env.XRAY_DB; if (!d) return null;
@@ -72,7 +77,7 @@ export async function audit(env, o) {
 }
 
 /* ---------- settings (owner-editable in the Brain) ---------- */
-export const SETTING_DEFAULTS = { provider: "auto", memory: "on", tools: "{}", briefing: "on", alerts: "on", retentionDays: "365", voice: "asteria", notifyEmail: "on", wakeWord: "on" };
+export const SETTING_DEFAULTS = { provider: "auto", memory: "on", tools: "{}", briefing: "on", alerts: "on", retentionDays: "365", voice: "asteria", notifyEmail: "on", wakeWord: "on", theme: "dark", gaProperty: "" };
 export async function getSettings(env) {
   const out = Object.assign({}, SETTING_DEFAULTS);
   try { const d = await brainDb(env); ((await d.prepare("SELECT k, v FROM brain_settings").all()).results || []).forEach((r) => { if (r.k in out) out[r.k] = r.v; }); } catch (e) {}
@@ -81,7 +86,7 @@ export async function getSettings(env) {
 }
 export async function saveSettings(env, patch) {
   const d = await brainDb(env), ok = {};
-  const allowed = { provider: /^(auto|workers-ai|groq|gemini)$/, memory: /^(on|off)$/, briefing: /^(on|off)$/, alerts: /^(on|off)$/, retentionDays: /^\d{1,4}$/, voice: /^(asteria|luna|stella|athena|hera|orion|arcas|perseus|angus|orpheus|helios|zeus|browser)$/, notifyEmail: /^(on|off)$/, wakeWord: /^(on|off)$/ };
+  const allowed = { provider: /^(auto|workers-ai|groq|gemini)$/, memory: /^(on|off)$/, briefing: /^(on|off)$/, alerts: /^(on|off)$/, retentionDays: /^\d{1,4}$/, voice: /^(asteria|luna|stella|athena|hera|orion|arcas|perseus|angus|orpheus|helios|zeus|browser)$/, notifyEmail: /^(on|off)$/, wakeWord: /^(on|off)$/, theme: /^(dark|light|auto)$/, gaProperty: /^\d{0,14}$/ };
   for (const k of Object.keys(patch || {})) {
     let v = patch[k];
     if (k === "toolsOff") { if (typeof v !== "object" || !v) continue; const o = {}; Object.keys(v).slice(0, 80).forEach((t) => { if (/^[a-z_]{2,40}$/.test(t) && v[t]) o[t] = true; }); v = JSON.stringify(o); await d.prepare("INSERT INTO brain_settings (k, v, updated_at) VALUES ('tools', ?1, ?2) ON CONFLICT(k) DO UPDATE SET v=?1, updated_at=?2").bind(v, nowIso()).run(); ok.tools = true; continue; }

@@ -1,4 +1,4 @@
-# FODO OWNER BRAIN (v22): architecture, security, memory and setup
+# FODO OWNER BRAIN (v23): architecture, security, memory and setup
 
 **FODO BRAIN** is a private, owner-only operating layer that sits above the FODO website. It reads FODO's live data, remembers what the owner tells it, reads documents, uses tools and prepares actions. It is not a second chatbot: the public "Ask FODO" bot (`/api/chat`) is unchanged.
 
@@ -7,6 +7,29 @@
 - **Status:** OWNER ONLY.
 
 The tool list is in [OWNER-BRAIN-TOOLS.md](OWNER-BRAIN-TOOLS.md), which is generated from the registry.
+
+## 00. What v23 adds
+
+| Feature | How it works | Safety |
+|---|---|---|
+| **Always listening "FODO"** | Once the microphone is allowed, the Brain listens whenever the page is open (Chrome/Edge). "FODO" anywhere wakes it: "Hey FODO …", "FODO kaise ho", "kaise ho FODO". After each reply it listens ~9 s without the wake word, so you can keep talking. It restarts itself and pauses while speaking (no echo). The setting is remembered. | Mic access is the browser's permission; "stop listening" / the 🎙 button turns it off. |
+| **Living orb** | `js/owner-brain-orb.js` draws an original holographic 3-D orb on a canvas (900 particles, orbit rings, glowing core). It shows idle / listening (reacts to the mic level on desktop) / thinking / speaking (reacts to the voice). It appears in the top bar, the phone's bottom bar and a full-screen voice mode. | Pure canvas, no libraries, CSP-safe. |
+| **Natural voice fixed** | The page's CSP blocked `blob:` audio, so the Aura voice silently fell back to the robotic browser voice. Now `media-src 'self' blob:`. The browser fallback picks the best Google/Natural voice. | — |
+| **Light + dark mode** | ☀/☾ button, Settings, or by voice ("light mode kar do"). | — |
+| **Control the page by voice** | `ui` tool: theme, open any page ("social page kholo"), voice on/off, read answers aloud. | Level 0 (only changes the owner's own screen). |
+| **Phone UI** | Bottom navigation with the orb in the middle, sticky composer, swipe-free cards, tap-outside closes the menu, 16 px inputs (no zoom), safe-area aware. | — |
+| **Many Google accounts** | Connect any number of accounts; each with Gmail, Calendar, Analytics 4, YouTube, Drive, Sheets. Inbox and calendar merge all accounts; sending asks which account (shown on the confirmation). | Each refresh token AES-GCM encrypted; disconnect per account. |
+| **New data** | `analytics` (GA4: users, sessions, views, engagement… by day/page/source/country/device), `youtube_stats`, `drive_search`, `drive_read`, `sheet_read`, `cashfree` (orders, payments, settlements). | Read only. |
+| **Social media page** | Connect Facebook Pages + Instagram (Meta), LinkedIn profile (+ company pages after LinkedIn approves Community Management API), X, YouTube (via Google). Upload once → post to all, now or scheduled; per-platform text; live progress; numbers (followers, reach, recent posts). | Posting from chat is level 2 (confirmation card). Tokens encrypted. Files are sent byte-for-byte (no resizing); PNG gets an extra maximum-quality JPG copy only for Instagram. |
+| **Access for your team** | Owners give anyone with a FODO login FULL or LIMITED access (chat, business, tasks, memory, social, data, inbox, site changes, deploy, admin actions, automations). Checked on the server for every page and every tool. | Only owners manage access, connectors, settings, export; owners' personal memories and conversations stay private; secrets never. |
+
+### v23 setup (Hinglish summary in the chat)
+1. Google Cloud (same OAuth client): enable **Google Analytics Data API, Google Analytics Admin API, YouTube Data API v3, Google Drive API, Google Sheets API** (Gmail + Calendar already). Then Brain → Connectors → reconnect each account (to grant the new permissions) / **+ Add another Google account**.
+2. Meta: developers.facebook.com → Create app (Business) → products Facebook Login for Business + Instagram → redirect URIs `https://www.fodo.co.in/api/owner-brain/connect/meta/callback` and `https://fodo.co.in/api/owner-brain/connect/meta/callback` → secrets `META_APP_ID`, `META_APP_SECRET`. Instagram must be a Professional account linked to the FODO Facebook Page.
+3. LinkedIn: linkedin.com/developers → app → products "Sign In with LinkedIn using OpenID Connect" + "Share on LinkedIn" (+ request "Community Management API" for the company page) → redirect URLs `…/api/owner-brain/connect/linkedin/callback` (www and non-www) → secrets `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`; after approval `LINKEDIN_ORG_APPROVED=1`. LinkedIn tokens last 60 days — the Brain reminds you a week before.
+4. X: developer.x.com → app → OAuth 2.0 (Web App), Read and write → callback `…/api/owner-brain/connect/x/callback` → secrets `X_CLIENT_ID`, `X_CLIENT_SECRET`. X is pay-per-use (no free tier since Feb 2026).
+5. YouTube note: videos uploaded through an API project that Google hasn't audited stay **private** until the project passes Google's audit (the Brain says so on the post).
+6. Optional R2 for media (see wrangler.toml); without it, CHAT_KV is used.
 
 ## 0. What v22 adds
 
@@ -184,7 +207,10 @@ The model choice, memory switch, alerts, briefing and per-tool on/off live in Br
 - **No streaming:** answers arrive whole, with safe progress labels.
 - **Code changes are text edits:** best for copy, links, buttons, styles and small features. Large features still need a developer review of the PR. Previews take ~1–2 minutes to build.
 - **Voice:** the wake word needs Chrome/Edge (continuous speech recognition) with the tab open. Aura speaks English; Hindi uses the browser voice.
-- **No WhatsApp or social media connectors yet.** Notifications are in-app + email.
+- **No WhatsApp connector yet.** Notifications are in-app + email.
+- **LinkedIn personal numbers:** LinkedIn's API gives no stats for personal profiles without partner approval.
+- **Scheduled posts** go out with the hourly tick (up to ~1 hour late).
+- **Voice** needs the Brain tab open; phones may stop listening when the screen locks.
 - **Automations' "start X-Ray" action** waits for the background runner.
 - **AI visibility:** the Workers AI visibility row is never filled by Groq (by design).
 
@@ -201,4 +227,5 @@ The model choice, memory switch, alerts, briefing and per-tool on/off live in Br
 |---|---|---|
 | `tests/v21-brain.test.mjs` | 70 | Security matrix, all 12 acceptance tests, confirmations (token, expiry, tamper, idempotency), supersede, documents, degraded mode, fallback, malformed JSON, SSRF, secrets, audit, export, scheduler, review hardening |
 | `tests/v22-brain.test.mjs` | 46 | Wake word, small talk, voice (TTS/STT), code agent end to end (diff → PR → preview → merge, protected files, no token), semantic recall, file ingest, commitments + overdue, prep brief, deep research, agents, automations (events, schedules, email, kill switch), grant plan, Gmail/Calendar OAuth (encrypted token, forged state), customer denial, no secret leaks |
-| `tests/v21-e2e.test.js` | 24 | The real page on the local Cloudflare runtime: strangers, customers, the owner's command center, chat, memory, tasks, knowledge, confirmation card, diagnostics, tools, activity, analytics, v22 pages (Site changes, Automations, Connectors, Hey FODO button), phone layout, no page errors or CSP violations |
+| `tests/v23-brain.test.mjs` | 79 | Wake word anywhere, many Google accounts (merge, send-from, migrate, disconnect one), GA4/YouTube/Drive/Sheets/Cashfree, team access (limited/full, per-tool, private memories/threads, revoke), Meta/LinkedIn/X connect (PKCE, encrypted tokens), byte-exact media + Range, posting photo & video to every platform, Instagram JPG copy, schedule + tick, cancel, numbers, posting/theme/page by voice, CSRF, no secret leaks |
+| `tests/v21-e2e.test.js` | 32 | The real page on the local Cloudflare runtime: strangers, customers, the owner's command center, chat, memory, tasks, knowledge, confirmation card, diagnostics, tools, activity, analytics, v22 pages (Site changes, Automations, Connectors, Hey FODO button), phone layout, no page errors or CSP violations |

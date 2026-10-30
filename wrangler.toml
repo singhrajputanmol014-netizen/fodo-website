@@ -20,3 +20,9 @@ id = "dc36f659051342a39608e79046ae2d44"
 binding = "XRAY_DB"
 database_name = "fodo-xray"
 database_id = "8672c9a1-7d55-4789-8160-0f69875922c2"
+
+# v23 FODO Brain social posting: uploaded photos/videos are stored in CHAT_KV (free 1 GB) unless an R2 bucket is bound.
+# Optional (faster Instagram/Facebook posting, bigger storage): R2 → Create bucket "fodo-media" FIRST, then remove the "# " below.
+# [[r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "fodo-media"

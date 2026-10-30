@@ -76,10 +76,21 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     ok(true, "v22: Automations page lists the default automations"); await shot(p, "brain-automations", true);
     await p.goto(BASE + "/owner-brain/#connectors"); await p.waitForFunction(() => /Google/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
     ok(true, "v22: Connectors page (Google / GitHub)"); await shot(p, "brain-connectors", true);
+    // v23 pages
+    await p.goto(BASE + "/owner-brain/#social"); await p.waitForFunction(() => /Upload once, post everywhere/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
+    ok(!!(await p.$("#ob-drop")) && /Facebook Page \+ Instagram/.test(await p.textContent("#ob-view")), "v23: Social page — composer, uploads, connect buttons"); await shot(p, "brain-social", true);
+    await p.goto(BASE + "/owner-brain/#access"); await p.waitForSelector("#ob-mf"); ok(/Give access/.test(await p.textContent("#ob-view")), "v23: Access page (owners give full/limited access)"); await shot(p, "brain-access", true);
+    await p.click("#ob-theme"); ok(await p.evaluate(() => document.documentElement.getAttribute("data-theme") === "light"), "v23: light mode toggle"); await p.goto(BASE + "/owner-brain/#home"); await p.waitForSelector(".ob-kpi", { timeout: 20000 }); await shot(p, "brain-light", true);
+    await p.click("#ob-theme");
+    await p.click("#ob-hf"); await p.waitForSelector("#ob-vo:not([hidden])"); await p.waitForTimeout(700); ok(await p.evaluate(() => { const c = document.getElementById("ob-voc"); return c && c.width > 100; }), "v23: voice mode opens with the live 3-D orb"); await shot(p, "brain-voice", false);
+    await p.click("#ob-vox");
     // phone
     const m = await page(390, 844); await m.goto(BASE + "/"); await login(m, "anmol@fodo.co.in"); await m.goto(BASE + "/owner-brain/"); await m.waitForSelector(".ob-kpi", { timeout: 20000 });
     ok((await m.evaluate(() => document.documentElement.scrollWidth)) <= 390, "phone: no sideways scrolling"); await shot(m, "brain-phone", false);
-    await m.click("#ob-menu"); ok(await m.evaluate(() => document.getElementById("ob-side").classList.contains("open")), "phone: menu opens");
+    ok(await m.evaluate(() => getComputedStyle(document.querySelector(".ob-bnav")).display !== "none"), "phone: bottom navigation with the voice orb");
+    await m.click("#ob-menu"); ok(await m.evaluate(() => document.getElementById("ob-side").classList.contains("open")), "phone: menu opens"); await m.mouse.click(370, 400); ok(await m.evaluate(() => !document.getElementById("ob-side").classList.contains("open")), "phone: tapping outside closes the menu");
+    await m.goto(BASE + "/owner-brain/#social"); await m.waitForSelector("#ob-drop"); ok((await m.evaluate(() => document.documentElement.scrollWidth)) <= 390, "phone: Social page fits the screen"); await shot(m, "brain-phone-social", true);
+    await m.click("#ob-bvo"); await m.waitForSelector("#ob-vo:not([hidden])"); await m.waitForTimeout(600); await shot(m, "brain-phone-voice", false); ok(true, "phone: tap the orb → voice mode");
     ok(!errs.length, "no page errors" + (errs.length ? ": " + errs.join(" | ") : ""));
     ok(!csp.length, "no CSP violations" + (csp.length ? ": " + csp.slice(0, 2).join(" | ") : ""));
   } catch (e) { ok(false, "crashed: " + e.message); }

@@ -67,7 +67,7 @@ globalThis.fetch = async (u, o = {}) => {
   u = String(u); const m = o.method || "GET", J = (x, s) => new Response(JSON.stringify(x), { status: s || 200, headers: { "content-type": "application/json" } });
   if (/api\.resend\.com\/emails$/.test(u)) { sent.push(JSON.parse(o.body)); return J({ id: "re_" + sent.length }); }
   if (/google\.serper\.dev\/search/.test(u)) return J({ organic: [{ title: "India ad market", link: "https://news.test/a", snippet: "Growing fast" }, { title: "Agency pricing", link: "https://news.test/b", snippet: "Retainers" }] });
-  if (/oauth2\.googleapis\.com\/token/.test(u)) { googleTokens++; const b = new URLSearchParams(o.body); return J(b.get("grant_type") === "authorization_code" ? { access_token: "ya29.a", refresh_token: "1//refresh-SECRET-token", scope: "gmail calendar", id_token: "x." + btoa(JSON.stringify({ email: "anmol@fodo.co.in" })) + ".y" } : { access_token: "ya29.b" }); }
+  if (/oauth2\.googleapis\.com\/token/.test(u)) { googleTokens++; const b = new URLSearchParams(o.body); return J(b.get("grant_type") === "authorization_code" ? { access_token: "ya29.a", refresh_token: "1//refresh-SECRET-token", scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events openid email", id_token: "x." + btoa(JSON.stringify({ email: "anmol@fodo.co.in" })) + ".y" } : { access_token: "ya29.b" }); }
   if (/gmail\.googleapis\.com.*\/messages\/send/.test(u)) { sent.push({ gmail: JSON.parse(o.body) }); return J({ id: "g1" }); }
   if (/gmail\.googleapis\.com.*\/messages\?/.test(u)) return J({ messages: [{ id: "m1" }] });
   if (/gmail\.googleapis\.com.*\/messages\/m1/.test(u)) return J({ id: "m1", snippet: "Can we talk tomorrow?", labelIds: ["UNREAD"], payload: { headers: [{ name: "From", value: "client@acme.in" }, { name: "Subject", value: "Proposal" }, { name: "Date", value: "today" }] } });
@@ -165,11 +165,11 @@ r = await B("confirm", { actionId: ga.id, token: ga.token }); ok(r.j.ok && db().
 r = await B("connect/google"); ok(r.status === 302, "Connect Google → redirect to Google consent");
 const loc = (await brain({ request: new Request(SITE + "/api/owner-brain/connect/google", { headers: { cookie: jars.own } }), env, params: { path: ["connect", "google"] } })).headers.get("location");
 const state = new URL(loc).searchParams.get("state"); ok(/accounts\.google\.com/.test(loc) && /gmail\.send/.test(loc) && /calendar\.events/.test(loc), "consent asks for Gmail + Calendar");
-r = await B("connect/google/callback?code=abc&state=" + encodeURIComponent(state)); ok(r.status === 302 && db().prepare("SELECT account FROM brain_connectors WHERE id='google'").get().account === "anmol@fodo.co.in" && !/refresh-SECRET/.test(db().prepare("SELECT data FROM brain_connectors").get().data), "callback stores the refresh token ENCRYPTED");
+r = await B("connect/google/callback?code=abc&state=" + encodeURIComponent(state)); ok(r.status === 302 && db().prepare("SELECT account FROM brain_connectors WHERE id LIKE 'google:%'").get().account === "anmol@fodo.co.in" && !/refresh-SECRET/.test(db().prepare("SELECT data FROM brain_connectors").get().data), "callback stores the refresh token ENCRYPTED");
 r = await B("connect/google/callback?code=abc&state=bad.state.x"); ok(/google=/.test(r.t) || r.status === 302, "a forged state is refused");
 r = await ask("check my inbox"); ok(r.j.tools_used.some((t) => t.tool === "email_inbox" && t.ok) && /client@acme\.in/.test(prompts[prompts.length - 1].sys), "'check my inbox' → reads Gmail");
 r = await ask("what's on my calendar tomorrow?"); ok(r.j.tools_used.some((t) => t.tool === "calendar" && t.ok), "calendar read");
-const s0 = sent.length; r = await ask("Send the proposal to client@acme.in from my gmail"); const gs = r.j.actions.find((a) => /YOUR Gmail/.test(a.preview));
+const s0 = sent.length; r = await ask("Send the proposal to client@acme.in from my gmail"); const gs = r.j.actions.find((a) => /Send from Gmail/.test(a.preview));
 ok(gs && sent.length === s0, "sending from Gmail → confirmation first");
 r = await B("confirm", { actionId: gs.id, token: gs.token }); ok(r.j.ok && sent.length === s0 + 1 && sent[sent.length - 1].gmail.raw, "confirmed → sent from the owner's Gmail");
 

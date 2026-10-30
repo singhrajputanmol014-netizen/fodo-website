@@ -38,10 +38,13 @@ const DDL = [
 ];
 // columns added after v13 went live (ALTER fails harmlessly when the column already exists)
 const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT"];
-let ready = null;
+/* Table setup runs once per worker instance. It is NOT shared as a promise between requests: on Cloudflare Workers a request
+   that awaits a promise created by ANOTHER request can hang forever (that was the Brain's "Loading…" / "timeout at session").
+   Each request awaits its own (idempotent) setup until one has finished; then everyone skips it. */
+const readyDb = new WeakSet();
 export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
-  if (!ready) ready = d.batch(DDL.map((s) => d.prepare(s))).then(async () => { for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } }).catch((e) => { ready = null; throw e; });
-  await ready; return d; }
+  if (!readyDb.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } readyDb.add(d); }
+  return d; }
 /* v15: activity log for the admin dashboard — never throws, never blocks the request */
 export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block", "admin_config", "action_update", "monitor_add", "monitor_check", "gsc_connect", "gsc_disconnect", "monthly_report", "why_winning", "budget_plan", "tool_use", "share_off", "share_on", "admin_qc", "admin_prompt", "upgrade_click", "report_view", "help_ticket", "admin_help"];
 export async function logEvent(env, userId, kind, detail) { try { if (!userId || !accountsOn(env)) return; await (await db(env)).prepare("INSERT INTO acct_events (user_id, kind, detail, created_at) VALUES (?1,?2,?3,?4)").bind(userId, kind, String(detail == null ? "" : detail).slice(0, 300), nowIso()).run(); } catch (e) {}

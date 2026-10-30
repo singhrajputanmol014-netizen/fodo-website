@@ -60,8 +60,10 @@
       '<button class="ob-icon" id="ob-theme" aria-label="Switch theme">☀</button><button class="ob-pill" id="ob-pill" aria-haspopup="true"><span class="ob-dot" id="ob-dot"></span><span id="ob-pillt">BRAIN ONLINE</span></button></header><main class="ob-view" id="ob-view"></main></div>' +
       '<nav class="ob-bnav" aria-label="Quick navigation"><a href="#home" data-v="home"><span>◎</span>Home</a><a href="#chat" data-v="chat"><span>✦</span>Brain</a><button id="ob-bvo" aria-label="Voice mode"><canvas id="ob-bvc" width="56" height="56"></canvas></button>' + (can("social") ? '<a href="#social" data-v="social"><span>◍</span>Social</a>' : '<a href="#tasks" data-v="tasks"><span>☑</span>Tasks</a>') + '<button id="ob-bmenu"><span>☰</span>More</button></nav>';
     var vo = document.createElement("div"); vo.className = "ob-vo"; vo.id = "ob-vo"; vo.hidden = true;
-    vo.innerHTML = '<button class="ob-vo-x" id="ob-vox" aria-label="Close voice mode">✕</button><div class="ob-vo-stage"><canvas id="ob-voc" aria-hidden="true"></canvas></div><p class="ob-vo-st" id="ob-vost">Say “Hey FODO …”</p><p class="ob-vo-tr" id="ob-votr"></p><div class="ob-vo-ans" id="ob-voans"></div>' +
-      '<div class="ob-vo-ctrl"><button class="ob-btn" id="ob-vomic">🎙 Listening</button><button class="ob-btn" id="ob-vostop">■ Stop talking</button><a class="ob-btn" href="#chat" id="ob-vochat">Open chat</a></div>';
+    vo.innerHTML = '<div class="ob-vo-bg" aria-hidden="true"></div><header class="ob-vo-h"><span class="ob-vo-brand">FODO</span><button class="ob-vo-x" id="ob-vox" aria-label="Close voice mode">✕</button></header>' +
+      '<button class="ob-vo-stage" id="ob-vostage" aria-label="Tap to talk or to stop"><canvas id="ob-voc" aria-hidden="true"></canvas></button>' +
+      '<div class="ob-vo-text"><p class="ob-vo-st" id="ob-vost">Tap the mic to start</p><p class="ob-vo-tr" id="ob-votr"></p><div class="ob-vo-ans" id="ob-voans"></div></div>' +
+      '<div class="ob-vo-ctrl"><button class="ob-micbtn" id="ob-vomic" aria-pressed="false" aria-label="Microphone on/off"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg></button><p class="ob-vo-hint" id="ob-vohint">Talk freely — no wake word needed here</p></div>';
     document.body.appendChild(vo);
     document.getElementById("ob-menu").onclick = document.getElementById("ob-bmenu").onclick = function () { document.getElementById("ob-side").classList.toggle("open"); };
     document.getElementById("ob-scrim").onclick = function () { document.getElementById("ob-side").classList.remove("open"); };
@@ -69,14 +71,12 @@
     document.getElementById("ob-theme").onclick = function () { setTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light", true); }; setTheme(document.documentElement.getAttribute("data-theme"));
     ORB.top = window.FodoOrb ? FodoOrb.mount(document.getElementById("ob-hfc"), { small: true, size: 34 }) : null;
     ORB.bottom = window.FodoOrb ? FodoOrb.mount(document.getElementById("ob-bvc"), { small: true, size: 56 }) : null;
-    document.getElementById("ob-hf").onclick = document.getElementById("ob-bvo").onclick = function () { if (window.FodoOrb) FodoOrb.unlock(); voOpen(); if (!HF.on) hfStart(); };
+    document.getElementById("ob-hf").onclick = document.getElementById("ob-bvo").onclick = function () { voOpen(); if (!HF.on) hfStart(); };
     document.getElementById("ob-vox").onclick = voClose;
     document.getElementById("ob-vomic").onclick = function () { HF.on ? hfStop() : hfStart(); };
-    document.getElementById("ob-vostop").onclick = function () { stopSpeaking(); };
-    document.getElementById("ob-vochat").onclick = voClose;
-    document.addEventListener("click", function once() { if (window.FodoOrb) FodoOrb.unlock(); document.removeEventListener("click", once); });
+    document.getElementById("ob-vostage").onclick = function () { if (HF.speaking) stopSpeaking(); else if (!HF.on) hfStart(); };
     var pref = null; try { pref = localStorage.getItem("ob-hf"); } catch (e) {}
-    if (S.status.settings.wakeWord !== "off" && pref !== "0" && (window.SpeechRecognition || window.webkitSpeechRecognition)) setTimeout(function () { hfStart(true); }, 700);
+    if (S.status.settings.wakeWord !== "off" && pref === "1" && window.FodoVoice) hfStart(true);   // was on last time: resume (the first tap anywhere if the browser needs one)
   }
   function pill() {
     var s = S.status, ai = s.ai.status === "online", bad = s.database !== "healthy";
@@ -137,12 +137,15 @@
   VIEWS.chat = function (tid) {
     if (tid) S.thread = tid;
     V().innerHTML = '<div class="ob-chat"><div class="ob-threads" id="ob-threads"><button class="ob-btn sm" id="ob-new" style="width:100%;margin-bottom:8px">+ New conversation</button><div id="ob-tl"></div></div>' +
-      '<div class="ob-conv"><div class="ob-log" id="ob-log" aria-live="polite"></div><form class="ob-compose" id="ob-form"><textarea class="ob-ta" id="ob-in" placeholder="Ask, command or say “remember …” — Enter to send, Shift+Enter for a new line" aria-label="Message"></textarea>' +
-      '<button type="button" class="ob-btn ob-mic" id="ob-mic" title="Push to talk" aria-label="Voice input">🎙</button><button type="button" class="ob-btn" id="ob-spk" title="Read answers aloud" aria-pressed="' + S.voiceOut + '">' + (S.voiceOut ? "🔊" : "🔈") + '</button><button class="ob-btn pri" type="submit">Send</button></form></div></div>';
+      '<div class="ob-conv"><div class="ob-log" id="ob-log" aria-live="polite"></div><form class="ob-compose" id="ob-form"><textarea class="ob-ta" id="ob-in" rows="1" placeholder="Message FODO…" aria-label="Message"></textarea>' +
+      '<button type="button" class="ob-cbtn" id="ob-spk" title="Read answers aloud" aria-pressed="' + S.voiceOut + '"><svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6L7 10H3Zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-9v2.1a7 7 0 0 1 0 13.8V21a9 9 0 0 0 0-18Z"/></svg></button>' +
+      '<button type="button" class="ob-cbtn ob-mic" id="ob-mic" title="Speak" aria-label="Speak"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg></button>' +
+      '<button class="ob-cbtn send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg></button></form></div></div>';
     document.getElementById("ob-new").onclick = function () { S.thread = null; try { sessionStorage.removeItem("ob-thread"); } catch (e) {} VIEWS.chat(); };
     var inp = document.getElementById("ob-in");
-    document.getElementById("ob-form").onsubmit = function (e) { e.preventDefault(); var v = inp.value.trim(); if (v) { inp.value = ""; send(v); } };
-    inp.onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("ob-form").requestSubmit(); } };
+    document.getElementById("ob-form").onsubmit = function (e) { e.preventDefault(); var v = inp.value.trim(); if (v) { inp.value = ""; inp.style.height = ""; send(v); } };
+    inp.onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey && !/Mobi|Android|iPhone/i.test(navigator.userAgent)) { e.preventDefault(); document.getElementById("ob-form").requestSubmit(); } };
+    inp.oninput = function () { inp.style.height = "auto"; inp.style.height = Math.min(140, inp.scrollHeight) + "px"; };
     voice(); threads();
     var log = document.getElementById("ob-log");
     if (S.thread) api("thread/" + encodeURIComponent(S.thread)).then(function (j) { if (!j.ok) { S.thread = null; hello(); return; } log.innerHTML = ""; j.messages.forEach(function (m) { m.role === "user" ? bubbleU(m.content) : bubbleA({ answer: m.content, messageId: m.id, confidence: m.meta && m.meta.confidence, sources: m.meta && m.meta.sources, tools_used: m.meta && m.meta.tools, model: m.meta && m.meta.model }); }); log.scrollTop = log.scrollHeight; });
@@ -196,112 +199,105 @@
   }
   /* ---- voice: push-to-talk (browser speech recognition) + spoken replies ---- */
   function voice() {
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition, mic = document.getElementById("ob-mic"), spk = document.getElementById("ob-spk");
-    spk.onclick = function () { S.voiceOut = !S.voiceOut; try { localStorage.setItem("ob-voice", S.voiceOut ? "1" : "0"); } catch (e) {} spk.textContent = S.voiceOut ? "🔊" : "🔈"; spk.setAttribute("aria-pressed", S.voiceOut); if (!S.voiceOut && window.speechSynthesis) speechSynthesis.cancel(); };
-    if (!SR) {   // no browser speech recognition (Safari/Firefox) → record and transcribe with Whisper on the server
-      if (!navigator.mediaDevices || !window.MediaRecorder) { mic.disabled = true; mic.title = "Voice input is not supported in this browser"; return; }
-      var mr = null, chunks = [];
-      mic.onclick = function () {
-        if (mr) { mr.stop(); return; }
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (st) { chunks = []; mr = new MediaRecorder(st); mic.classList.add("on");
-          mr.ondataavailable = function (e) { chunks.push(e.data); };
-          mr.onstop = function () { st.getTracks().forEach(function (t) { t.stop(); }); mic.classList.remove("on"); mr = null; var blob = new Blob(chunks, { type: chunks[0] && chunks[0].type || "audio/webm" }), fr = new FileReader();
-            fr.onload = function () { api("stt", "POST", { audioB64: String(fr.result).split(",")[1] }).then(function (j) { if (j.ok && j.text) send(j.text, { voice: true }); else alert(j.reason || "Couldn't hear that."); }); }; fr.readAsDataURL(blob); };
-          mr.start(); setTimeout(function () { if (mr) mr.stop(); }, 30000); }, function () { alert("Microphone permission is needed."); });
-      };
-      return;
-    }
-    var rec = null;
-    mic.onclick = function () {
-      if (rec) { rec.stop(); return; }
-      HF.ptt = true; hfPause(); rec = new SR(); rec.lang = HF.lang; rec.interimResults = true; rec.continuous = false; mic.classList.add("on");
-      var inp = document.getElementById("ob-in"), final = "";
-      rec.onresult = function (e) { var t = ""; for (var k = e.resultIndex; k < e.results.length; k++) { if (e.results[k].isFinal) final += e.results[k][0].transcript; else t += e.results[k][0].transcript; } inp.value = (final + t).trim(); };
-      rec.onend = function () { mic.classList.remove("on"); rec = null; HF.ptt = false; var v = inp.value.trim(); if (v) { inp.value = ""; send(v, { voice: true }); } else hfResume(); };
-      rec.onerror = function () { mic.classList.remove("on"); rec = null; HF.ptt = false; };
-      rec.start();
+    var mic = document.getElementById("ob-mic"), spk = document.getElementById("ob-spk");
+    if (spk) spk.onclick = function () { S.voiceOut = !S.voiceOut; try { localStorage.setItem("ob-voice", S.voiceOut ? "1" : "0"); } catch (e) {} spk.classList.toggle("on", S.voiceOut); spk.setAttribute("aria-pressed", S.voiceOut); if (!S.voiceOut) stopSpeaking(); };
+    if (spk) spk.classList.toggle("on", S.voiceOut);
+    if (!mic) return;
+    if (!window.FodoVoice) { mic.disabled = true; return; }
+    mic.onclick = function () {   // tap → speak one sentence → it is written into the box and sent
+      var inp = document.getElementById("ob-in"), was = HF.on;
+      if (HF.ptt) { HF.ptt = null; mic.classList.remove("on"); if (!was) FodoVoice.stop(); return; }
+      wire(); mic.classList.add("on"); inp.placeholder = "Listening… speak now";
+      HF.ptt = function (t, j) { mic.classList.remove("on"); inp.placeholder = "Message FODO…"; if (!was && !HF.on) FodoVoice.stop(); if (t) send(t, { voice: S.voiceOut }); else if (j && !j.ok) bubbleA({ answer: "**Couldn't hear that:** " + (j.reason || "try again") }); };
+      FodoVoice.start();
     };
   }
-  /* ---------------- VOICE: always listening for "FODO", natural voice replies, live orb ---------------- */
+  /* ---------------- VOICE: FODO hears with its own engine (VAD + Whisper), answers in a natural voice ---------------- */
   var ORB = { top: null, bottom: null, big: null };
-  function orbState(st) { ["top", "bottom", "big"].forEach(function (k) { if (ORB[k]) ORB[k].state(st); }); var x = document.getElementById("ob-vost"); if (x) x.textContent = st === "listening" ? (HF.armedUntil > Date.now() ? "I'm listening — go ahead" : "Say “Hey FODO …”") : st === "thinking" ? "Thinking…" : st === "speaking" ? "Speaking — tap ■ to stop" : HF.on ? "Say “Hey FODO …”" : "Voice is off — tap 🎙"; }
-  function orbLevel(v) { ["top", "bottom", "big"].forEach(function (k) { if (ORB[k]) ORB[k].level(v); }); }
-  function voOpen() { var vo = document.getElementById("ob-vo"); if (!vo) return; vo.hidden = false; document.body.classList.add("ob-vo-on"); if (!ORB.big && window.FodoOrb) ORB.big = FodoOrb.mount(document.getElementById("ob-voc"), {}); orbState(HF.speaking ? "speaking" : S.busy ? "thinking" : HF.on ? "listening" : "idle"); }
-  function voClose() { var vo = document.getElementById("ob-vo"); if (vo) vo.hidden = true; document.body.classList.remove("ob-vo-on"); if (ORB.big) { ORB.big.destroy(); ORB.big = null; } }
+  var HF = { on: false, speaking: false, armedUntil: 0, busy: false, queue: [], lastSpoken: "", tapWait: null, ptt: null };
+  function orbState(st) { HF.state = st; ["top", "bottom", "big"].forEach(function (k) { if (ORB[k]) ORB[k].state(st); }); var vo = document.getElementById("ob-vo"); if (vo) vo.setAttribute("data-state", st);
+    var x = document.getElementById("ob-vost"); if (x) x.textContent = { listening: HF.armedUntil > Date.now() || voIsOpen() ? "Listening…" : "Say “Hey FODO …”", hearing: "Hearing you…", thinking: "Thinking…", speaking: "Speaking — tap the orb to interrupt", idle: HF.on ? "Listening…" : "Tap the mic to start" }[st] || ""; hfLabel(); }
+  function orbLevel(v) { ["top", "bottom", "big"].forEach(function (k) { if (ORB[k]) ORB[k].level(v); }); var m = document.getElementById("ob-vomic"); if (m) m.style.setProperty("--lvl", Math.min(1, v * 1.6).toFixed(2)); }
+  function voIsOpen() { var vo = document.getElementById("ob-vo"); return !!(vo && !vo.hidden); }
+  function voOpen() { var vo = document.getElementById("ob-vo"); if (!vo) return; vo.hidden = false; document.body.classList.add("ob-vo-on"); if (!ORB.big && window.FodoOrb) ORB.big = FodoOrb.mount(document.getElementById("ob-voc"), { big: true }); orbState(HF.speaking ? "speaking" : HF.busy ? "thinking" : HF.on ? "listening" : "idle"); }
+  function voClose() { var vo = document.getElementById("ob-vo"); if (vo) vo.hidden = true; document.body.classList.remove("ob-vo-on"); if (ORB.big) { ORB.big.destroy(); ORB.big = null; } orbState(HF.state || "idle"); }
   function voSay(t, who) { var a = document.getElementById("ob-voans"); if (a) a.innerHTML = who === "u" ? '<p class="u">“' + esc(t) + "”</p>" : md(t); }
-  var audio = null, speakMeter = null;
-  var HINGLISH = /\b(hai|hain|kya|nahi|aap|aapka|mera|meri|kar|karo|karna|haan|ji|tha|thi|bhi|abhi|kal|aaj|kaise|kyun|boliye|batao|dekh|chahiye|wala|wali)\b/i;
-  function plainSpeech(t) { return String(t || "").replace(/```[\s\S]*?```/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>|]/g, "").replace(/\n+/g, ". ").replace(/\s+/g, " ").trim().slice(0, 900); }
-  function browserSay(t, done) { if (!window.speechSynthesis) { if (done) done(); return; } speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t), hi = /[ऀ-ॿ]/.test(t) || HINGLISH.test(t); u.lang = hi ? "hi-IN" : "en-IN";
-    var vs = speechSynthesis.getVoices().filter(function (v) { return v.lang === u.lang || v.lang.replace("_", "-") === u.lang; }); var best = vs.filter(function (v) { return /Google|Natural|Neural|Online/i.test(v.name); })[0] || vs[0]; if (best) u.voice = best;
-    u.rate = 1.03; u.pitch = 1; var sim = setInterval(function () { orbLevel(0.25 + Math.random() * 0.45); }, 110); var end = function () { clearInterval(sim); orbLevel(0); if (done) done(); }; u.onend = end; u.onerror = end; speechSynthesis.speak(u); }
-  function stopSpeaking() { if (audio) { try { audio.pause(); } catch (e) {} audio = null; } if (speakMeter) { speakMeter.stop(); speakMeter = null; } if (window.speechSynthesis) speechSynthesis.cancel(); if (HF.speaking) { HF.speaking = false; orbLevel(0); orbState(HF.on ? "listening" : "idle"); hfResume(); } }
+  function hfLabel() { var b = document.getElementById("ob-hf"), x = document.getElementById("ob-hft"); if (b) { b.setAttribute("aria-pressed", HF.on); b.classList.toggle("on", HF.on); }
+    if (x) x.textContent = !HF.on ? (HF.tapWait ? "Tap to wake" : "Voice off") : HF.state === "thinking" ? "Thinking…" : HF.state === "speaking" ? "Speaking" : HF.state === "hearing" ? "Hearing…" : "Hey FODO";
+    var m = document.getElementById("ob-vomic"); if (m) { m.setAttribute("aria-pressed", HF.on); m.classList.toggle("on", HF.on); }
+    var h = document.getElementById("ob-vohint"); if (h) h.textContent = HF.tapWait ? "Tap anywhere once — your browser needs a tap before it can listen" : HF.on ? "Talk freely here — outside this screen, start with “FODO …”" : "Microphone is off"; }
+
+  /* speaking: English → Aura-2 (natural), sentence by sentence so it starts fast; Hindi/Hinglish → the device's Hindi voice reading a Devanagari version */
+  var audio = null, speakMeter = null, HIN = /\b(hai|hain|kya|nahi|aap|tum|mera|meri|kar|karo|haan|ji|bhi|abhi|kal|aaj|kaise|kitna|kitne|batao|chahiye|wala|raha|rahi|gaya|ke|ki|ka|ko|se|mein|pe|aur|theek|bas|bahut|sab|kuch)\b/gi;
+  function plainSpeech(t) { return String(t || "").replace(/```[\s\S]*?```/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/[*_`#>|]/g, "").replace(/\n+/g, ". ").replace(/\s+/g, " ").trim().slice(0, 1400); }
+  function sentences(t) { var out = [], cur = ""; (t.match(/[^.!?।]+[.!?।]+|[^.!?।]+$/g) || [t]).forEach(function (x) { if ((cur + x).length > 220 && cur) { out.push(cur.trim()); cur = x; } else cur += x; }); if (cur.trim()) out.push(cur.trim()); return out; }
+  var VOICES = null; function hiVoice(lang) { var vs = (window.speechSynthesis && speechSynthesis.getVoices()) || []; var L = vs.filter(function (v) { return v.lang.replace("_", "-").toLowerCase().indexOf(lang.toLowerCase()) === 0; }); return L.filter(function (v) { return /Google|Natural|Neural|Enhanced|Premium|Lekha|Swara|Madhur/i.test(v.name); })[0] || L[0] || null; }
+  function browserSay(t, lang, done) { if (!window.speechSynthesis) { if (done) done(); return; } var u = new SpeechSynthesisUtterance(t); u.lang = lang || "hi-IN"; var v = hiVoice(u.lang); if (v) u.voice = v; u.rate = 1.0; u.pitch = 1.02;
+    var sim = setInterval(function () { orbLevel(0.22 + Math.random() * 0.5); }, 110), end = function () { clearInterval(sim); orbLevel(0); if (done) done(); }; u.onend = end; u.onerror = end; speechSynthesis.speak(u); }
+  function stopSpeaking() { HF.queue = []; HF.speakId = (HF.speakId || 0) + 1; if (audio) { try { audio.pause(); } catch (e) {} audio = null; } if (speakMeter) { speakMeter.stop(); speakMeter = null; } if (window.speechSynthesis) speechSynthesis.cancel(); if (HF.speaking) { HF.speaking = false; if (window.FodoVoice) FodoVoice.guard(false); orbLevel(0); orbState(HF.on ? "listening" : "idle"); } }
   function speak(t, done) {
     t = plainSpeech(t); if (!t) { if (done) done(); return; }
-    stopSpeaking(); HF.speaking = true; orbState("speaking");
-    var fin = function () { if (!HF.speaking) return; HF.speaking = false; if (speakMeter) { speakMeter.stop(); speakMeter = null; } orbLevel(0); HF.armedUntil = Date.now() + 9000; orbState(HF.on ? "listening" : "idle"); if (done) done(); hfResume(); };
-    hfPause();
-    if (/[ऀ-ॿ]/.test(t) || (t.match(new RegExp(HINGLISH.source, "gi")) || []).length >= 2) { browserSay(t, fin); return; }
-    fetch(API + "tts", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) }).then(function (r) { if (!r.ok) throw new Error("tts"); return r.blob(); })
-      .then(function (b) { if (!HF.speaking) return; audio = new Audio(URL.createObjectURL(b)); audio.onended = fin; audio.onerror = function () { audio = null; browserSay(t, fin); }; if (window.FodoOrb) speakMeter = FodoOrb.meter(audio, orbLevel); if (!speakMeter) var sim = setInterval(function () { if (!HF.speaking) return clearInterval(sim); orbLevel(0.3 + Math.random() * 0.4); }, 120); return audio.play(); })
-      .catch(function () { if (HF.speaking) browserSay(t, fin); });
+    stopSpeaking(); var id = HF.speakId; HF.speaking = true; HF.lastSpoken = t; if (window.FodoVoice) FodoVoice.guard(true); orbState("speaking");
+    var fin = function () { if (id !== HF.speakId || !HF.speaking) return; HF.speaking = false; if (window.FodoVoice) FodoVoice.guard(false); orbLevel(0); HF.armedUntil = Date.now() + 12000; orbState(HF.on ? "listening" : "idle"); if (done) done(); };
+    var hindi = /[ऀ-ॿ]/.test(t) || (t.match(HIN) || []).length >= 3;
+    if (hindi) { api("tts", "POST", { text: t }).then(function (j) { if (id !== HF.speakId) return; browserSay(j.speakText || t, j.lang || "hi-IN", fin); }); return; }
+    var parts = sentences(t), cache = {};
+    var get = function (i) { if (!cache[i]) cache[i] = fetch(API + "tts", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: parts[i] }) }).then(function (r) { if (r.ok && /audio/.test(r.headers.get("content-type") || "")) return r.blob(); return r.json().then(function (j) { return { say: j.speakText || parts[i], lang: j.lang || "en-IN" }; }); }); return cache[i]; };
+    (function play(i) {
+      if (id !== HF.speakId) return; if (i >= parts.length) return fin();
+      get(i).then(function (b) { if (id !== HF.speakId) return; if (i + 1 < parts.length) get(i + 1);
+        if (!(b instanceof Blob)) return browserSay(b.say, b.lang, function () { play(i + 1); });
+        audio = new Audio(URL.createObjectURL(b)); audio.setAttribute("playsinline", ""); audio.onended = function () { if (speakMeter) { speakMeter.stop(); speakMeter = null; } play(i + 1); }; audio.onerror = function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); };
+        if (window.FodoOrb) speakMeter = FodoOrb.meter(audio, orbLevel); if (!speakMeter) { var sim = setInterval(function () { if (!audio || audio.paused) return clearInterval(sim); orbLevel(0.25 + Math.random() * 0.45); }, 110); }
+        audio.play().catch(function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); });
+      }, function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); });
+    })(0);
   }
-  /* hands-free: Chrome/Edge continuous speech recognition. "FODO" anywhere in a sentence wakes it ("Hey FODO …", "FODO kaise ho",
-     "kaise ho FODO"). After a reply it keeps listening for ~9 s without the wake word, so a conversation flows. Stays on across
-     visits until switched off; restarts itself when the browser stops it; pauses while the Brain speaks (no echo). */
-  var HF = { on: false, rec: null, armedUntil: 0, speaking: false, starts: [], meter: null, stream: null, lang: "en-IN" };
-  try { HF.lang = localStorage.getItem("ob-lang") || "en-IN"; } catch (e) {}
-  var WAKE_ANY = /(?:\b(?:hey|hi|ok|okay|hello|oye|arre|suno)\b[\s,]*)?(?:\b(?:fodo|phodo|fodu|fodo's|foodo|fo do|for do)\b|फोडो|फ़ोडो|फ़ोदो|फोदो)[\s,!.:?-]*/i;
-  var WAKE_START = /^\s*(?:(?:hey|hi|ok|okay|hello|oye|arre|suno)[\s,]*)?(?:photo|foto|food o|फोटो)\b[\s,!.:?-]*/i;
-  var WAKE_LEAD = new RegExp("^\\s*" + WAKE_ANY.source, "i"), WAKE_TAIL = new RegExp("[\\s,]+" + WAKE_ANY.source.replace("[\\s,!.:?-]*", "") + "[\\s!.?]*$", "i");
-  function wakeSplit(t) {   // "FODO …" → the rest · "… FODO?" → the rest · "… FODO …" in the middle → the whole sentence · no FODO → null
-    if (WAKE_START.test(t)) return t.replace(WAKE_START, "").trim(); if (WAKE_LEAD.test(t)) return t.replace(WAKE_LEAD, "").trim();
-    if (WAKE_TAIL.test(t)) return t.replace(WAKE_TAIL, "").trim(); if (WAKE_ANY.test(t)) return t.trim(); return null; }
-  function hfLabel(t) { var b = document.getElementById("ob-hf"), x = document.getElementById("ob-hft"); if (!b) return; b.setAttribute("aria-pressed", HF.on); b.classList.toggle("on", HF.on); x.textContent = t || (HF.on ? (HF.armedUntil > Date.now() ? "Listening…" : "Hey FODO") : "Voice off"); var m = document.getElementById("ob-vomic"); if (m) m.textContent = HF.on ? "🎙 Listening" : "🎙 Turn voice on"; }
+
+  /* hearing */
+  var WAKE_ANY = /(?:\b(?:hey|hi|ok|okay|hello|oye|arre|suno|a|ae|ay|he)\b[\s,]*)?(?:\b(?:fodo|phodo|fodu|foodo|fordo|fodo's|fo do|for do|photo|foto|fodor|podo|vodo|todo|foto's)\b|फोडो|फ़ोडो|फ़ोदो|फोदो|फोटो)[\s,!.:?-]*/i;
+  function wakeSplit(t) {   // returns the command after/around the wake word, "" if only the wake word, null if no wake word
+    var m = WAKE_ANY.exec(t); if (!m) return null; var before = t.slice(0, m.index).trim(), after = t.slice(m.index + m[0].length).trim();
+    if (/^(photo|foto|todo|podo)/i.test(m[0].replace(/^\W*(hey|hi|ok|okay|hello|oye|arre|suno|a|ae|ay|he)?\W*/i, "")) && before.split(/\s+/).filter(Boolean).length > 2) return null;   // "send this photo" isn't a wake word
+    return (before && after ? before + " " + after : before || after).replace(/^[\s,.!?-]+|[\s,]+$/g, "");
+  }
+  function similar(a, b) { var A = String(a).toLowerCase().match(/[\p{L}\p{N}]+/gu) || [], B = String(b).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []; if (!A.length) return 0; var set = {}; B.forEach(function (w) { set[w] = 1; }); return A.filter(function (w) { return set[w]; }).length / A.length; }
+  var wired = false;
+  function wire() {
+    if (wired || !window.FodoVoice) return; wired = true;
+    FodoVoice.on("level", function (v) { if (!HF.speaking) orbLevel(v); });
+    FodoVoice.on("speechstart", function () { if (HF.speaking) { stopSpeaking(); } if (!HF.busy) orbState("hearing"); });
+    FodoVoice.on("speechend", function () { if (!HF.busy && HF.state === "hearing") orbState("thinking"); });
+    FodoVoice.on("error", function (e) { if (e.message === "tap") { waitForTap(); return; } HF.on = false; try { localStorage.removeItem("ob-hf"); } catch (x) {} voOpen(); var x = document.getElementById("ob-vost"); if (x) x.textContent = e.message === "blocked" ? "Microphone blocked — allow it for fodo.co.in (Safari: aA → Website Settings → Microphone · Chrome: 🔒 → Microphone), then tap the mic." : e.message === "nomic" ? "No microphone found." : "Mic error: " + e.message; hfLabel(); });
+    FodoVoice.on("utterance", function (u) {
+      var wasSpeaking = HF.speaking, lang = (localStorage.getItem("ob-lang") || "auto");
+      api("stt", "POST", { audioB64: u.b64, mime: "audio/wav", lang: lang === "auto" ? "" : lang }).then(function (j) {
+        var t = j.ok ? String(j.text || "").trim() : "";
+        if (HF.ptt) { var cb = HF.ptt; HF.ptt = null; cb(t, j); return; }
+        if (!t) { if (HF.state === "thinking" && !HF.busy) orbState("listening"); return; }
+        if (wasSpeaking && similar(t, HF.lastSpoken) > 0.6) return;   // its own voice came back through the speaker
+        var tr = document.getElementById("ob-votr"); if (tr) tr.textContent = t;
+        var conv = voIsOpen() || HF.armedUntil > Date.now(), rest = wakeSplit(t);
+        if (conv) return command(rest !== null && rest.length > 1 ? rest : t);
+        if (rest === null) { orbState("listening"); return; }
+        if (rest.length > 1) return command(rest);
+        HF.armedUntil = Date.now() + 12000; var nm = (((S.status.me && S.status.me.name) || S.status.owner.name || "").split(" ")[0]); speak(nm ? "Haan " + nm + ", boliye?" : "Haan, boliye?");
+      });
+    });
+  }
+  function waitForTap() {
+    HF.tapWait = true; HF.on = false; hfLabel(); orbState("idle");
+    var go = function () { document.removeEventListener("pointerdown", go, true); document.removeEventListener("keydown", go, true); HF.tapWait = false; hfStart(); };
+    document.addEventListener("pointerdown", go, true); document.addEventListener("keydown", go, true);
+  }
   function hfStart(auto) {
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { if (!auto) { voOpen(); var x = document.getElementById("ob-vost"); if (x) x.textContent = "This browser has no live speech recognition — use the 🎙 button in the chat (it records and transcribes)."; } return; }
-    HF.on = true; HF.auto = !!auto; if (!auto) try { localStorage.setItem("ob-hf", "1"); } catch (e) {} hfLabel(); orbState("listening"); hfListen(); if (!auto) micMeter();
+    if (!window.FodoVoice) return; wire(); if (window.FodoOrb) FodoOrb.unlock();
+    FodoVoice.start().then(function (ok) { if (!ok) return; HF.on = true; HF.tapWait = false; try { localStorage.setItem("ob-hf", "1"); } catch (e) {} orbState("listening"); });
   }
-  function hfStop() { HF.on = false; try { localStorage.setItem("ob-hf", "0"); } catch (e) {} if (HF.rec) try { HF.rec.abort(); } catch (e) {} HF.rec = null; if (HF.meter) { HF.meter.stop(); HF.meter = null; } if (HF.stream) { HF.stream.getTracks().forEach(function (t) { t.stop(); }); HF.stream = null; } orbLevel(0); hfLabel(); orbState("idle"); }
-  function hfPause() { if (HF.rec) try { HF.rec.abort(); } catch (e) {} HF.rec = null; }
-  function hfResume() { if (HF.on && !HF.rec && !HF.speaking) setTimeout(hfListen, 200); }
-  var mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-  function micMeter() {   // desktop only: phones give the mic to speech recognition exclusively
-    if (mobile || HF.meter || !navigator.mediaDevices || !window.FodoOrb) return;
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (st) { if (!HF.on) { st.getTracks().forEach(function (t) { t.stop(); }); return; } HF.stream = st; HF.meter = FodoOrb.meter(st, function (v) { if (!HF.speaking) orbLevel(v * 1.4); }); }, function () {});
-  }
-  function hfListen() {
-    if (!HF.on || HF.speaking || HF.rec || HF.ptt) return;
-    var now = Date.now(); HF.starts = HF.starts.filter(function (x) { return now - x < 10000; }); if (HF.starts.length > 7) { setTimeout(hfListen, 2500); HF.starts = []; return; } HF.starts.push(now);
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition, rec = new SR(); HF.rec = rec;
-    rec.lang = HF.lang; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
-    rec.onresult = function (e) {
-      if (HF.auto) { HF.auto = false; micMeter(); }
-      for (var k = e.resultIndex; k < e.results.length; k++) {
-        var res = e.results[k], t = res[0].transcript.trim(); if (!t || HF.speaking) continue;
-        if (!res.isFinal) { var tr = document.getElementById("ob-votr"); if (tr) tr.textContent = t; if (mobile) orbLevel(0.35 + Math.random() * 0.3); continue; }
-        var tr2 = document.getElementById("ob-votr"); if (tr2) tr2.textContent = "";
-        var alt = [t]; for (var q = 1; q < res.length; q++) alt.push(res[q].transcript.trim());
-        var rest = null; for (var q2 = 0; q2 < alt.length && rest === null; q2++) rest = wakeSplit(alt[q2]);
-        if (HF.armedUntil > Date.now()) { HF.armedUntil = 0; command(rest !== null && rest.length > 1 ? rest : t); continue; }
-        if (rest === null) continue;
-        if (rest.length > 2) command(rest);
-        else { HF.armedUntil = Date.now() + 10000; hfLabel("Listening…"); orbState("listening"); var nm = ((S.status.me && S.status.me.name) || S.status.owner.name || "").split(" ")[0]; speak(nm ? "Haan " + nm + ", boliye?" : "Haan, boliye?"); }
-      }
-    };
-    rec.onerror = function (e) {
-      if ((e.error === "not-allowed" || e.error === "service-not-allowed") && HF.auto) { HF.on = false; if (HF.rec) try { HF.rec.abort(); } catch (x) {} HF.rec = null; hfLabel("Tap to talk"); orbState("idle"); return; }   // auto-start blocked until the owner taps once
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") { hfStop(); try { localStorage.removeItem("ob-hf"); } catch (x) {} voOpen(); var x = document.getElementById("ob-vost"); if (x) x.textContent = "Allow the microphone for this page (🔒 in the address bar → Microphone → Allow), then tap 🎙."; }
-      else if (e.error === "audio-capture") { hfStop(); voOpen(); var y = document.getElementById("ob-vost"); if (y) y.textContent = "No microphone found."; }
-    };
-    rec.onend = function () { if (HF.rec === rec) HF.rec = null; if (HF.on && !HF.speaking) setTimeout(hfListen, 250); };
-    try { rec.start(); } catch (e) { HF.rec = null; setTimeout(hfListen, 1000); }
-  }
-  document.addEventListener("visibilitychange", function () { if (!document.hidden) hfResume(); });
+  function hfStop() { HF.on = false; HF.armedUntil = 0; try { localStorage.setItem("ob-hf", "0"); } catch (e) {} if (window.FodoVoice) FodoVoice.stop(); stopSpeaking(); orbLevel(0); orbState("idle"); }
   function command(t) {
-    t = t.replace(/^[\s,.!?-]+/, ""); if (!t) return; hfLabel("Working on it…"); orbState("thinking"); voSay(t, "u");
-    send(t, { voice: true, done: function (r) { if (r && r.answer) voSay(r.answer); hfLabel(); if (!HF.speaking) orbState(HF.on ? "listening" : "idle"); } });
+    t = String(t || "").replace(/^[\s,.!?-]+/, ""); if (!t) return; HF.busy = true; orbState("thinking"); voSay(t, "u"); HF.armedUntil = Date.now() + 12000;
+    send(t, { voice: true, done: function (r) { HF.busy = false; if (r && r.answer) voSay(r.answer); if (!HF.speaking) orbState(HF.on ? "listening" : "idle"); } });
   }
   /* ---- alerts ---- */
   VIEWS.alerts = function () {
@@ -397,15 +393,15 @@
       "<label>Memory" + sel("memory", [["on", "On — remember when I say so"], ["off", "Off — don't store anything new"]], s.memory) + "</label>" +
       "<label>Daily briefing (06:47 scheduler)" + sel("briefing", [["on", "On"], ["off", "Off"]], s.briefing) + "</label>" +
       "<label>Proactive alerts" + sel("alerts", [["on", "On"], ["off", "Off"]], s.alerts) + "</label>" +
-      "<label>Brain's voice" + sel("voice", [["asteria", "Asteria — warm female (natural)"], ["luna", "Luna — soft female"], ["athena", "Athena — calm female"], ["orion", "Orion — male"], ["arcas", "Arcas — male"], ["perseus", "Perseus — deep male"], ["browser", "Browser voice (works offline, Hindi)"]], s.voice) + "</label>" +
+      "<label>Brain's English voice" + sel("voice", [["thalia", "Thalia — warm, clear female"], ["andromeda", "Andromeda — calm female"], ["helena", "Helena — friendly female"], ["asteria", "Asteria — classic female"], ["apollo", "Apollo — confident male"], ["orion", "Orion — calm male"], ["arcas", "Arcas — deep male"], ["zeus", "Zeus — rich male"], ["browser", "Device voice only"]], s.voice) + "</label>" +
       "<label>Email me important alerts" + sel("notifyEmail", [["on", "On"], ["off", "Off"]], s.notifyEmail) + "</label>" +
       "<label>“Hey FODO” wake word" + sel("wakeWord", [["on", "On — always listening while this page is open"], ["off", "Off"]], s.wakeWord) + "</label>" +
       "<label>Theme" + sel("theme", [["dark", "Dark"], ["light", "Light"]], s.theme || "dark") + "</label>" +
-      '<label>Voice recognition language<select class="ob-sel" id="ob-lang">' + [["en-IN", "English + Hinglish (India)"], ["hi-IN", "Hindi (Devanagari)"], ["en-US", "English (US)"]].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === HF.lang ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" +
+      '<label>I speak<select class="ob-sel" id="ob-lang">' + [["auto", "Automatic — Hindi, English, Hinglish (best)"], ["hi", "Mostly Hindi"], ["en", "Mostly English"]].map(function (o) { var cur = (function () { try { return localStorage.getItem("ob-lang") || "auto"; } catch (e) { return "auto"; } })(); return '<option value="' + o[0] + '"' + (o[0] === cur ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" +
       '</div><div class="ob-row" style="margin-top:14px"><button class="ob-btn pri" type="submit">Save</button><span class="ob-empty" id="ob-sst"></span></div></form>' +
       '<div class="ob-card" style="margin-top:14px"><h2>Your data</h2><div class="ob-row"><a class="ob-btn sm" href="' + API + 'export">Export everything (JSON)</a><a class="ob-btn sm" href="#memory">Manage memory</a><a class="ob-btn sm" href="#activity">Audit log</a></div></div>';
     if (!j.owner) { V().querySelectorAll("#ob-sf select:not(#ob-lang):not([name=theme])").forEach(function (x) { x.disabled = true; }); }
-    document.getElementById("ob-lang").onchange = function () { HF.lang = this.value; try { localStorage.setItem("ob-lang", HF.lang); } catch (e) {} if (HF.rec) { hfPause(); hfResume(); } };
+    document.getElementById("ob-lang").onchange = function () { try { localStorage.setItem("ob-lang", this.value); } catch (e) {} };
     document.getElementById("ob-sf").onsubmit = function (e) { e.preventDefault(); var f = new FormData(this), b = {}; f.forEach(function (v, k) { b[k] = v; }); if (b.theme) setTheme(b.theme); if (!j.owner) { document.getElementById("ob-sst").textContent = "Saved on this device."; return; } api("settings", "POST", b).then(function (r) { document.getElementById("ob-sst").textContent = r.ok ? "Saved." : r.reason; }); }; }); };
   /* ---- site changes (code agent) ---- */
   VIEWS.changes = function () { api("changes").then(function (j) { var L = j.items || [], G = j.github || {};

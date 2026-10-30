@@ -147,3 +147,71 @@ body.ob-vo-on{overflow:hidden}
 .ob-perms{display:grid;gap:8px;margin-top:4px}
 @media (prefers-reduced-motion:reduce){.ob-vo{backdrop-filter:none}}
 .ob-scrim{display:none}@media (max-width:860px){.ob-side.open~.ob-scrim{display:block;position:fixed;inset:0;z-index:29;background:rgba(0,0,0,.45)}}
+/* ===== v24: voice mode (living orb, one mic button) ===== */
+.ob-vo{justify-content:space-between;gap:0;padding:calc(12px + env(safe-area-inset-top)) 20px calc(26px + env(safe-area-inset-bottom));background:#05050b;overflow:hidden}
+[data-theme="light"] .ob-vo{background:#f3f1fb}
+.ob-vo-bg{position:absolute;inset:-20%;background:radial-gradient(40% 35% at 50% 42%,rgba(110,90,255,.22),transparent 70%),radial-gradient(30% 30% at 30% 70%,rgba(40,200,220,.10),transparent 70%),radial-gradient(30% 30% at 72% 22%,rgba(255,90,200,.08),transparent 70%);filter:blur(10px);animation:obDrift 18s ease-in-out infinite alternate;pointer-events:none}
+.ob-vo[data-state="listening"] .ob-vo-bg,.ob-vo[data-state="hearing"] .ob-vo-bg{background:radial-gradient(40% 35% at 50% 42%,rgba(40,220,210,.22),transparent 70%),radial-gradient(30% 30% at 30% 70%,rgba(110,90,255,.12),transparent 70%)}
+.ob-vo[data-state="thinking"] .ob-vo-bg{background:radial-gradient(40% 35% at 50% 42%,rgba(255,170,60,.18),transparent 70%),radial-gradient(30% 30% at 70% 70%,rgba(139,123,255,.16),transparent 70%)}
+.ob-vo[data-state="speaking"] .ob-vo-bg{background:radial-gradient(40% 35% at 50% 42%,rgba(220,90,255,.24),transparent 70%),radial-gradient(30% 30% at 30% 30%,rgba(255,110,190,.12),transparent 70%)}
+@keyframes obDrift{0%{transform:translate(0,0) scale(1)}100%{transform:translate(2%,-3%) scale(1.08)}}
+.ob-vo-h{position:relative;width:100%;max-width:760px;display:flex;align-items:center;justify-content:space-between}
+.ob-vo-brand{font:700 13px var(--b-font);letter-spacing:.32em;color:var(--b-muted)}
+.ob-vo .ob-vo-x{position:static}
+.ob-vo-stage{position:relative;flex:1 1 auto;width:min(92vw,560px);max-height:58vh;aspect-ratio:1;border:0;background:none;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ob-vo-stage canvas{width:100%;height:100%;display:block}
+.ob-vo-text{position:relative;width:100%;max-width:720px;min-height:120px;text-align:center}
+.ob-vo-st{font:600 11.5px var(--b-mono);letter-spacing:.2em;text-transform:uppercase;color:var(--b-muted);margin:0 0 8px}
+.ob-vo-tr{min-height:1.4em;font-size:17px;margin:0 0 6px;color:var(--b-text);opacity:.9}
+.ob-vo-ans{max-height:22vh;overflow:auto;font-size:16px;line-height:1.55;color:var(--b-text);-webkit-mask-image:linear-gradient(#000 80%,transparent)}.ob-vo-ans p{margin:0 0 6px}
+.ob-vo-ctrl{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:6px}
+.ob-vo-hint{margin:0;font-size:12.5px;color:var(--b-dim)}
+.ob-micbtn{--lvl:0;position:relative;width:76px;height:76px;border-radius:50%;border:0;display:grid;place-items:center;background:rgba(255,255,255,.08);color:var(--b-text);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .25s,transform .15s}
+[data-theme="light"] .ob-micbtn{background:rgba(20,16,60,.07)}
+.ob-micbtn svg{width:30px;height:30px;fill:currentColor;position:relative;z-index:2}
+.ob-micbtn:active{transform:scale(.94)}
+.ob-micbtn.on{background:linear-gradient(140deg,#21d4c7,#6c5ce7);color:#fff;box-shadow:0 10px 40px rgba(60,200,220,.35)}
+.ob-micbtn .r{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(80,230,220,.55);opacity:0;pointer-events:none}
+.ob-micbtn.on .r{animation:obRing 2.4s cubic-bezier(.2,.6,.3,1) infinite}.ob-micbtn.on .r2{animation-delay:.8s}.ob-micbtn.on .r3{animation-delay:1.6s}
+.ob-micbtn.on::before{content:"";position:absolute;inset:-6px;border-radius:50%;background:radial-gradient(circle,rgba(80,230,220,.35),transparent 70%);transform:scale(calc(1 + var(--lvl) * .9));transition:transform .08s linear}
+@keyframes obRing{0%{transform:scale(1);opacity:.75}100%{transform:scale(2.1);opacity:0}}
+.ob-vo[data-state="speaking"] .ob-micbtn.on{background:linear-gradient(140deg,#c55cff,#6c5ce7)}
+.ob-vo[data-state="thinking"] .ob-micbtn.on{background:linear-gradient(140deg,#ffb347,#8b7bff)}
+/* top-bar + bottom-bar orb buttons */
+.ob-hfb{background:transparent;border-color:transparent}.ob-hfb canvas{width:38px;height:38px}.ob-hfb.on{border-color:rgba(61,220,200,.4);box-shadow:none;background:var(--b-panel)}
+.ob-bnav #ob-bvo canvas{background:radial-gradient(circle,rgba(20,18,40,.9),rgba(7,7,12,.95));border:1px solid rgba(139,123,255,.35)}
+[data-theme="light"] .ob-bnav #ob-bvo canvas{background:#15132a}
+/* ===== v24: chat composer — one slim pill ===== */
+.ob-compose{display:flex;align-items:flex-end;gap:4px;padding:6px;border:1px solid var(--b-line2);border-radius:26px;background:var(--b-panel);margin-top:10px}
+.ob-compose .ob-ta{flex:1;min-height:40px;max-height:140px;height:40px;resize:none;border:0;background:transparent;padding:9px 12px;line-height:1.4;box-shadow:none}
+.ob-compose .ob-ta:focus{box-shadow:none}
+.ob-cbtn{width:40px;height:40px;flex:none;border-radius:50%;border:0;background:transparent;color:var(--b-muted);display:grid;place-items:center;cursor:pointer}
+.ob-cbtn svg{width:21px;height:21px;fill:currentColor}.ob-cbtn:hover{color:var(--b-text);background:var(--b-panel2)}
+.ob-cbtn.on{color:var(--b-acc)}.ob-cbtn.send{background:linear-gradient(135deg,var(--b-acc),var(--b-acc2));color:#fff}
+.ob-cbtn.ob-mic.on{background:var(--b-err);color:#fff;animation:obPulse2 1.2s ease-in-out infinite}
+@keyframes obPulse2{0%,100%{box-shadow:0 0 0 0 rgba(255,93,115,.5)}50%{box-shadow:0 0 0 8px rgba(255,93,115,0)}}
+.ob-msg{font-size:15px}.ob-msg.a{max-width:100%}
+.ob-msg.a table{display:block;overflow-x:auto;border-collapse:collapse;font-size:13px}.ob-msg.a td,.ob-msg.a th{border:1px solid var(--b-line);padding:4px 8px}
+/* ===== v24: phone ===== */
+@media (max-width:860px){
+  .ob-compose{position:sticky;bottom:calc(76px + env(safe-area-inset-bottom));background:var(--b-bg2);box-shadow:0 -6px 24px rgba(0,0,0,.25);border-radius:24px;padding:4px;margin:8px 0 0}
+  [data-theme="light"] .ob-compose{background:#fff}
+  .ob-compose .ob-ta{font-size:16px;min-height:38px;height:38px;padding:8px 10px}
+  .ob-cbtn{width:38px;height:38px}
+  .ob-msg.a{padding:12px 13px;border-radius:4px 16px 16px 16px}.ob-msg.u{padding:9px 13px}
+  .ob-meta{font-size:11px;gap:4px}.ob-meta button{padding:1px 7px}
+  .ob-log{gap:10px;padding-bottom:8px}
+  /* tables become cards on phones — nothing gets cut off */
+  .ob-card .ob-table,.ob-scroll .ob-table{display:block}
+  .ob-table thead{display:none}.ob-table tbody,.ob-table tr,.ob-table td{display:block;width:auto!important}
+  .ob-table tr{padding:10px 0;border-bottom:1px solid var(--b-line)}.ob-table td{border:0;padding:2px 0;white-space:normal;word-break:break-word}
+  .ob-table td:first-child{font-weight:600}
+  .ob-card{overflow:hidden}.ob-card pre,.ob-act pre{white-space:pre-wrap;word-break:break-word}
+  .ob-vo-stage{width:min(96vw,460px);max-height:52vh}
+  .ob-vo-tr{font-size:16px}.ob-vo-ans{font-size:15px;max-height:20vh}
+}
+@media (max-width:860px){
+  .ob-chat{display:block}.ob-conv{display:flex;flex-direction:column;min-height:calc(100vh - 66px - 100px);min-height:calc(100dvh - 66px - 100px - env(safe-area-inset-bottom))}
+  .ob-conv .ob-log{flex:1 1 auto}.ob-view:has(.ob-chat){padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  .ob-table td{text-align:left!important}.ob-table td input{margin:4px 0}
+}

@@ -90,7 +90,12 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     ok(await m.evaluate(() => getComputedStyle(document.querySelector(".ob-bnav")).display !== "none"), "phone: bottom navigation with the voice orb");
     await m.click("#ob-menu"); ok(await m.evaluate(() => document.getElementById("ob-side").classList.contains("open")), "phone: menu opens"); await m.mouse.click(370, 400); ok(await m.evaluate(() => !document.getElementById("ob-side").classList.contains("open")), "phone: tapping outside closes the menu");
     await m.goto(BASE + "/owner-brain/#social"); await m.waitForSelector("#ob-drop"); ok((await m.evaluate(() => document.documentElement.scrollWidth)) <= 390, "phone: Social page fits the screen"); await shot(m, "brain-phone-social", true);
-    await m.click("#ob-bvo"); await m.waitForSelector("#ob-vo:not([hidden])"); await m.waitForTimeout(600); await shot(m, "brain-phone-voice", false); ok(true, "phone: tap the orb → voice mode");
+    await m.click("#ob-bvo"); await m.waitForSelector("#ob-vo:not([hidden])"); await m.waitForTimeout(900); await shot(m, "brain-phone-voice", false);
+    ok(!!(await m.$("#ob-vomic")) && (await m.$$(".ob-vo-ctrl button")).length === 1, "phone: tap the orb → voice mode with ONE mic button");
+    await m.click("#ob-vox");
+    await m.goto(BASE + "/owner-brain/#chat"); await m.waitForSelector("#ob-form"); const ch = await m.evaluate(() => document.getElementById("ob-form").getBoundingClientRect().height);
+    ok(ch < 60, "phone: slim chat box (" + Math.round(ch) + " px tall)"); await m.fill("#ob-in", "kaise ho fodo?"); await m.click("#ob-form button[type=submit]"); await m.waitForSelector(".ob-msg.a .ob-meta", { timeout: 40000 }); await shot(m, "brain-phone-chat", false);
+    await m.goto(BASE + "/owner-brain/#tools"); await m.waitForSelector(".ob-table"); ok((await m.evaluate(() => document.documentElement.scrollWidth)) <= 390 && (await m.evaluate(() => { const t = document.querySelector(".ob-table td:nth-child(2)"); return t && t.getBoundingClientRect().right <= 392; })), "phone: tables turn into cards — nothing cut off"); await shot(m, "brain-phone-tools", false);
     ok(!errs.length, "no page errors" + (errs.length ? ": " + errs.join(" | ") : ""));
     ok(!csp.length, "no CSP violations" + (csp.length ? ": " + csp.slice(0, 2).join(" | ") : ""));
   } catch (e) { ok(false, "crashed: " + e.message); }

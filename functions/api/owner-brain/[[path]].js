@@ -26,6 +26,7 @@ import { brainDaily } from "../../_lib/brain/insights.js";
 import * as AC from "../../_lib/brain/access.js";
 import * as SO from "../../_lib/brain/social.js";
 import * as MD from "../../_lib/brain/media.js";
+import * as VO from "../../_lib/brain/voice.js";
 import { mayOpenThread } from "../../_lib/brain/orchestrator.js";
 const SITE = (env) => env.SITE_ORIGIN || "https://www.fodo.co.in";
 /* which permission each page endpoint needs ("owner" = the two owner logins only) */
@@ -142,23 +143,23 @@ export async function onRequest(ctx) {
       if (p0 === "memory") { const r = await execute(ctxT, "remember", { type: body.type, title: body.title, content: body.content, scope: body.scope, project: body.project }, { intent: "memory page" }); return json(r.ok ? { ok: true, item: r.result } : { ok: false, reason: r.error }, r.ok ? 200 : 400); }
       if (p0 === "tasks") { try { const t = await createTask(env, Object.assign({}, body, { source: "owner (tasks page)" })); await audit(env, { owner: u.email, kind: "tool", tool: "create_task", status: "ok" }); return json({ ok: true, item: t }); } catch (e) { return json({ ok: false, reason: e.message }, 400); } }
       if (p0 === "feedback") { const d = await brainDb(env); await d.prepare("INSERT INTO brain_feedback (message_id, rating, note, created_at) VALUES (?1,?2,?3,?4)").bind(+body.messageId || 0, body.rating > 0 ? 1 : -1, clean(body.note, 500), nowIso()).run(); await audit(env, { owner: u.email, kind: "feedback", status: body.rating > 0 ? "up" : "down", detail: clean(body.note, 200) }); return json({ ok: true }); }
-      if (p0 === "tts") {   // human-like voice (Deepgram Aura on Workers AI). Hindi script → the browser's Hindi voice instead.
+      if (p0 === "tts") {   // human-like voice: Deepgram Aura-2 (English). Hindi / Hinglish → a Devanagari version for the device's Hindi voice.
         const text = clean(body.text, 1500).replace(/[*_`#>]|\[([^\]]*)\]\([^)]*\)/g, "$1"); if (!text) return json({ ok: false, reason: "No text." }, 400);
-        if (!env.AI || settings.voice === "browser" || /[\u0900-\u097F]/.test(text)) return json({ ok: false, fallback: true, reason: "use the browser voice" }, 415);
-        if (await count(env, "brain:tts:" + u.id + ":" + Math.floor(Date.now() / 60e3), 40, 120)) return json({ ok: false, fallback: true, reason: "Too many voice replies this minute." }, 429);
-        try { const t0 = Date.now(), out = await env.AI.run("@cf/deepgram/aura-1", { text, speaker: settings.voice || "asteria", encoding: "mp3" });
-          let bodyOut = out; if (out && out.audio) { const b = atob(out.audio), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); bodyOut = a; } else if (out instanceof Response) bodyOut = out.body;
-          await logUsage(env, { provider: "workers-ai", endpoint: "brain", tool: "brain:tts · aura-1", status: 200, ms: Date.now() - t0, units: text.length });
-          return new Response(bodyOut, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } }); }
-        catch (e) { return json({ ok: false, fallback: true, reason: "Voice unavailable: " + String(e.message).slice(0, 100) }, 503); }
+        if (await count(env, "brain:tts:" + u.id + ":" + Math.floor(Date.now() / 60e3), 60, 120)) return json({ ok: false, fallback: true, reason: "Too many voice replies this minute." }, 429);
+        const lang = VO.speechLang(text);
+        if (lang !== "en" || !env.AI || settings.voice === "browser") { let say = text; if (lang === "hinglish") say = await VO.toDevanagari(env, text, settings).catch(() => text); return json({ ok: false, fallback: true, lang: lang === "en" ? "en-IN" : "hi-IN", speakText: say }, 415); }
+        try { const r = await VO.aura(env, text, settings.voice); await logUsage(env, { provider: "workers-ai", endpoint: "brain", tool: "brain:tts · " + r.model, status: 200, ms: r.ms, units: text.length });
+          return new Response(r.body, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } }); }
+        catch (e) { return json({ ok: false, fallback: true, lang: "en-IN", speakText: text, reason: "Voice unavailable: " + String(e.message).slice(0, 100) }, 503); }
       }
-      if (p0 === "stt") {   // speech → text (Whisper on Workers AI) for browsers without speech recognition
+      if (p0 === "stt") {   // speech → text: Whisper large-v3-turbo (Hindi, English, Hinglish) with FODO vocabulary; Nova-3 as a backup
         if (!env.AI) return json({ ok: false, reason: "Speech recognition needs the Workers AI binding." }, 503);
-        const a = String(body.audioB64 || ""); if (!a || a.length > 8e6) return json({ ok: false, reason: "Audio missing or too long (max ~1 minute)." }, 400);
-        try { const t0 = Date.now(), r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", Object.assign({ audio: a }, /^(hi|en)$/.test(body.lang || "") ? { language: body.lang } : {}));
-          await logUsage(env, { provider: "workers-ai", endpoint: "brain", tool: "brain:stt · whisper", status: 200, ms: Date.now() - t0, units: Math.round(a.length / 1000) });
-          return json({ ok: true, text: clean((r && (r.text || (r.transcription_info && r.text))) || "", 2000) }); }
-        catch (e) { return json({ ok: false, reason: "Couldn't transcribe: " + String(e.message).slice(0, 100) }, 502); }
+        const a = String(body.audioB64 || ""); if (!a || a.length > 4e6) return json({ ok: false, reason: "Audio missing or too long (max ~60 s)." }, 400);
+        if (await count(env, "brain:stt:" + u.id + ":" + Math.floor(Date.now() / 60e3), 50, 120)) return json({ ok: false, reason: "Too much audio this minute." }, 429);
+        try { const r = await VO.transcribe(env, a, { lang: body.lang, mime: body.mime, name: (W.name || "").split(" ")[0] });
+          await logUsage(env, { provider: "workers-ai", endpoint: "brain", tool: "brain:stt · " + r.engine, status: 200, ms: r.ms, units: Math.round(a.length / 1000) });
+          return json({ ok: true, text: r.text, engine: r.engine, ms: r.ms, dropped: r.dropped || null }); }
+        catch (e) { return json({ ok: false, reason: "Couldn't transcribe: " + String(e.message).slice(0, 120) }, 502); }
       }
       if (p0 === "automations" && !path[1]) { try { const r = await AU.save(env, body || {}); await audit(env, { owner: u.email, kind: "automation", tool: "save", status: "ok", detail: r.name }); return json({ ok: true, item: r }); } catch (e) { return json({ ok: false, reason: e.message }, 400); } }
       if (p0 === "automations" && path[1] && path[2] === "toggle") { await AU.toggle(env, path[1], !!body.on); return json({ ok: true }); }

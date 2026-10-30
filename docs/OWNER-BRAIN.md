@@ -1,4 +1,4 @@
-# FODO OWNER BRAIN (v23): architecture, security, memory and setup
+# FODO OWNER BRAIN (v24): architecture, security, memory and setup
 
 **FODO BRAIN** is a private, owner-only operating layer that sits above the FODO website. It reads FODO's live data, remembers what the owner tells it, reads documents, uses tools and prepares actions. It is not a second chatbot: the public "Ask FODO" bot (`/api/chat`) is unchanged.
 
@@ -7,6 +7,20 @@
 - **Status:** OWNER ONLY.
 
 The tool list is in [OWNER-BRAIN-TOOLS.md](OWNER-BRAIN-TOOLS.md), which is generated from the registry.
+
+## 000. What v24 changes (voice rebuilt)
+
+| Part | Before | Now |
+|---|---|---|
+| Hearing | The browser's own speech engine (weak on iPhone Safari and for Hindi/Hinglish; "Hey FODO" heard as "A photo") | `js/owner-brain-voice.js`: the mic stays open, a voice-activity detector (adaptive noise floor, 380 ms pre-roll, ends after 0.8 s silence, ignores clicks/coughs < 0.3 s) sends only the spoken clip as 16 kHz WAV to `/stt` → **Whisper large-v3-turbo** with a FODO vocabulary prompt; hallucinations ("Thank you.") dropped; Hindi-as-Urdu retried as Hindi; Deepgram Nova-3 backup. Same engine on every browser. |
+| Wake word | Only at the start, exact spelling | "FODO" anywhere in the sentence, tolerant of mishearings (photo/foto/fodu/फोडो…). In voice mode no wake word is needed; after each reply it listens 12 s without it. |
+| Interrupting | Not possible | Speak while the Brain talks → it stops and listens (barge-in). Its own voice coming back through the speaker is ignored. |
+| Speaking | Aura-1, whole answer at once | **Aura-2** (40 natural voices, default Thalia) sentence by sentence (starts faster); Hinglish/Hindi → a Devanagari version read by the device's Hindi voice. |
+| Thinking | Small 8B model for voice | 70B / Groq for every answer; replies in the language you used (English / Hinglish / Hindi). |
+| Orb | 2-D particles | WebGL living orb: breathing, rippling surface, flowing plasma, corona, orbiting sparks; reacts to your voice and its own. 2-D fallback. |
+| Controls | Several buttons | One mic button (animated rings that pulse with your voice); tap the orb to interrupt. |
+| Phone | Big chat box, tables cut off | Slim pill composer stuck to the bottom; tables become cards. |
+Cost: Whisper ≈ $0.0005 per audio minute; Aura-2 $0.03 per 1,000 characters (Workers AI). When voice is on and the overlay is closed, everything you say is transcribed to look for "FODO" — switch the mic off when not needed.
 
 ## 00. What v23 adds
 
@@ -228,4 +242,5 @@ The model choice, memory switch, alerts, briefing and per-tool on/off live in Br
 | `tests/v21-brain.test.mjs` | 70 | Security matrix, all 12 acceptance tests, confirmations (token, expiry, tamper, idempotency), supersede, documents, degraded mode, fallback, malformed JSON, SSRF, secrets, audit, export, scheduler, review hardening |
 | `tests/v22-brain.test.mjs` | 46 | Wake word, small talk, voice (TTS/STT), code agent end to end (diff → PR → preview → merge, protected files, no token), semantic recall, file ingest, commitments + overdue, prep brief, deep research, agents, automations (events, schedules, email, kill switch), grant plan, Gmail/Calendar OAuth (encrypted token, forged state), customer denial, no secret leaks |
 | `tests/v23-brain.test.mjs` | 79 | Wake word anywhere, many Google accounts (merge, send-from, migrate, disconnect one), GA4/YouTube/Drive/Sheets/Cashfree, team access (limited/full, per-tool, private memories/threads, revoke), Meta/LinkedIn/X connect (PKCE, encrypted tokens), byte-exact media + Range, posting photo & video to every platform, Instagram JPG copy, schedule + tick, cancel, numbers, posting/theme/page by voice, CSRF, no secret leaks |
-| `tests/v21-e2e.test.js` | 32 | The real page on the local Cloudflare runtime: strangers, customers, the owner's command center, chat, memory, tasks, knowledge, confirmation card, diagnostics, tools, activity, analytics, v22 pages (Site changes, Automations, Connectors, Hey FODO button), phone layout, no page errors or CSP violations |
+| `tests/v24-voice.test.mjs` | 28 | Language detection, Whisper prompt/filters/Urdu retry/Nova backup, /stt, Aura-2 + backup, Hinglish → Devanagari, voice model, WAV encoder (16 kHz, resample, normalise), VAD settings |
+| `tests/v21-e2e.test.js` | 34 | The real page on the local Cloudflare runtime: strangers, customers, the owner's command center, chat, memory, tasks, knowledge, confirmation card, diagnostics, tools, activity, analytics, v22 pages (Site changes, Automations, Connectors, Hey FODO button), phone layout, no page errors or CSP violations |

@@ -3,6 +3,7 @@
    Email threading: every ticket email carries "[FODO #T…]" in the subject and goes out with Reply-To = SUPPORT_EMAIL,
    so a customer's reply lands back on the same ticket.
    Secrets/vars: RESEND_API_KEY (send) · SUPPORT_EMAIL (the address customers write to) · RESEND_WEBHOOK_SECRET (inbound, whsec_…) */
+import { groqChat } from "./aivis.js";
 import { HELP_KB } from "./helpkb.js";
 import { db, sendMail, nowIso, randId } from "./accounts.js";
 import { PLANS, PACKS, ORDER } from "./plans.js";
@@ -147,6 +148,7 @@ export async function aiReply(env, question, facts, history) {
     try { const r = await Promise.race([env.AI.run(MODELS[i], { messages: msgs, max_tokens: 400, temperature: 0.2 }), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), i ? 12000 : 20000))]);
       const t = typeof r === "string" ? r : r && (r.response || (r.result && r.result.response)) || ""; if (t) return { text: String(t).trim(), model: MODELS[i] }; } catch (e) {}
   }
+  if (env.GROQ_API_KEY) { try { const g = await groqChat(env, msgs, 400, 20000); return { text: g.text.trim(), model: g.model }; } catch (e) {} }   // v20.2: Workers AI down → Groq
   return null;   // no AI available → the caller answers from the help articles directly
 }
 export function articleReply(question) {

@@ -46,6 +46,23 @@ async function groq(env, q, sys) {
   }
   throw last || Object.assign(new Error("groq: no model"), { status: 404 });
 }
+/* v20.2: a whole conversation on Groq — the fallback when Workers AI is busy, over its daily limit or failing
+   (report summary, FODO Edge, the help assistant). Returns { text, model } or throws. */
+export async function groqChat(env, messages, max, wait) {
+  if (!env.GROQ_API_KEY) throw new Error("no GROQ_API_KEY");
+  let last;
+  for (const model of chain(env, "GROQ_MODEL", GROQ_MODELS)) {
+    const body = { model, messages, max_tokens: Math.max(400, max || 1800), temperature: 0.2 };
+    if (/^openai\/gpt-oss/.test(model)) { body.reasoning_effort = "low"; body.include_reasoning = false; }
+    const r = await outbound(env)("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { authorization: "Bearer " + env.GROQ_API_KEY, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(wait || 45000) });
+    if (!r.ok) { const t = await r.text().catch(() => ""); last = Object.assign(new Error("groq " + r.status), { status: r.status, detail: model + ": " + why(t) }); if (modelGone(r.status, t)) continue; throw last; }
+    const j = await r.json(), t = (((j.choices || [])[0] || {}).message || {}).content || "";
+    if (!t) { last = new Error("groq: empty answer"); continue; }
+    good.groq = model;
+    return { text: String(t), model: "groq/" + model };
+  }
+  throw last || new Error("groq: no model");
+}
 async function gemini(env, q, grounded, sys) {
   let last;
   for (const model of chain(env, "GEMINI_MODEL", GEMINI_MODELS)) {

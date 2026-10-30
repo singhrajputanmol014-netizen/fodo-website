@@ -178,7 +178,7 @@
     var words = body ? body.split(/\s+/).length : 0;
     var phonesT = (body.match(PHONE_RE) || []).map(norm).filter(function (p) { var d = p.replace(/\D/g, ""); return d.length >= 10 && d.length <= 13 && !/^(19|20)\d{8}$/.test(d) && !/^0+$/.test(d); });
     var emails = uniq(emailsL.concat((body.match(EMAIL_RE) || []).map(function (e) { return e.toLowerCase(); })).filter(function (e) { return !/\.(png|jpe?g|webp|gif|svg)$/.test(e) && !/(example|domain|sentry|wixpress)\./.test(e); }));
-    var prices = (body.match(PRICE_RE) || []).map(norm).filter(function (x) { return x.length < 40; });
+    var prices = (body.match(PRICE_RE) || []).map(norm).filter(function (x) { if (x.length >= 40) return false; var m = /(\d[\d,]*)\.(\d+)/.exec(x); return !(m && +m[1].replace(/,/g, "") < 10); });
     var faqQs = heads.h2.concat(heads.h3, heads.h4).filter(function (h) { return /\?$/.test(h); });
     var details = qa("details summary").length;
     var faqSchema = types.some(function (t) { return /FAQPage/i.test(t); });
@@ -268,7 +268,7 @@
       out.durationMs = Date.now() - t0;
       // inbound link counts + broken links (internal links pointing at crawled 4xx/5xx/unreachable URLs)
       var inbound = {}, broken = [];
-      out.pages.forEach(function (p) { (p.internalLinks || []).forEach(function (l) { var u = l.url; try { if (E.skipSvc.test(new URL(u).pathname)) return; } catch (x) {} inbound[u] = (inbound[u] || 0) + 1; var st = out.linkStatus[u]; if (st != null && (st >= 400 || st === 0)) broken.push({ from: p.url, to: u, status: st }); }); });
+      out.pages.forEach(function (p) { (p.internalLinks || []).forEach(function (l) { var u = l.url; try { if (E.skipSvc.test(new URL(u).pathname)) return; } catch (x) {} inbound[u] = (inbound[u] || 0) + 1; var st = out.linkStatus[u]; if (st != null && st >= 400) broken.push({ from: p.url, to: u, status: st }); }); });
       out.inbound = inbound; out.broken = uniq(broken).slice(0, 100);
       return out;
     });
@@ -341,7 +341,15 @@
     INDUSTRIES.forEach(function (i) { i.re.lastIndex = 0; });
     // services / products
     var GENERIC_NAV = /^(home|about( us)?|contact( us)?|blog|news|careers?|login|sign in|sign up|faq|faqs|privacy|terms|menu|search|cart|more|our work|work|portfolio|team|gallery|reviews|testimonials|resources|support|help|pricing|shop|services|products|company|insights|events|press|media)$/i;
-    var svc = uniq(pages.filter(function (p) { return p.type === "service" || p.type === "product"; }).map(function (p) { return p.h1[0] || p.title.split(/\s[|–—\-]\s/)[0]; }).concat((home.internalLinks || []).filter(function (l) { return l.nav && /servic|solution|product|treatment|course|menu/.test(l.url); }).map(function (l) { return l.text; })).map(function (s) { return clip(s, 60); }).filter(function (s) { return s && s.length > 2 && !GENERIC_NAV.test(s); })).slice(0, 15);
+    // v20.2: a service name reads like a label ("Corporate Travel", "MICE & Events") — not a tagline ("Local Expertise. Seamless
+    // On-Ground Execution.") or a link prompt ("All Solutions ->"). Nav labels first; a service page whose H1 is a tagline is named from its URL.
+    var svcLike = function (x) { x = norm(x); return x.length > 2 && x.length <= 48 && x.split(/\s+/).length <= 5 && !/[.!?]\s|[.!?…]$|->|→|»|›|\.\.\./.test(x) && !/^(all|our|view|see|explore|discover|learn|read|find|get|why|how|what)\b/i.test(x) && !/\b(for every|your|we|you)\b/i.test(x) && !GENERIC_NAV.test(x) && /[a-z]/i.test(x); };
+    var ACR = /^(mice|seo|ppc|smm|sem|crm|erp|hr|it|ui|ux|b2b|b2c|d2c|gst|ca|cctv|ac|ivf|mri|ct|ent|bpo|kpo|vfx|ott|nri|emi)$/i;
+    var slugName = function (u) { try { var seg = decodeURIComponent(new URL(u).pathname.split("/").filter(Boolean).pop() || "").replace(/\.(html?|php|aspx?)$/i, ""); if (!/^[a-z][a-z0-9_-]{2,60}$/i.test(seg) || /\d{3,}/.test(seg)) return ""; var w = seg.split(/[-_]+/).filter(Boolean); if (w.length > 5) return ""; return w.map(function (x) { return ACR.test(x) ? x.toUpperCase() : x.charAt(0).toUpperCase() + x.slice(1).toLowerCase(); }).join(" "); } catch (x) { return ""; } };
+    var shares = function (a, b) { var A = low(a).split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2; }); return low(b).split(/[^a-z0-9]+/).some(function (w) { return w.length > 2 && A.indexOf(w) > -1; }); };
+    var pageSvc = function (p) { var h = p.h1[0] || "", t = (p.title || "").split(/\s[|–—\-]\s/)[0], sl = slugName(p.url); if (svcLike(h) && (!sl || shares(h, sl))) return h; if (sl && !GENERIC_NAV.test(sl)) return sl; return svcLike(t) ? t : svcLike(h) ? h : ""; };
+    var navSvc = (home.internalLinks || []).filter(function (l) { return l.nav && /servic|solution|product|treatment|course|menu/.test(l.url); }).map(function (l) { return svcLike(l.text) ? l.text : ""; });
+    var svc = uniq(navSvc.concat(pages.filter(function (p) { return p.type === "service" || p.type === "product"; }).map(pageSvc)).map(norm).filter(function (x) { return x && svcLike(x); })).filter(function (x, i, a) { var k = function (y) { return low(y).replace(/&|\band\b|[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim(); }; return a.findIndex(function (y) { return k(y) === k(x); }) === i; }).slice(0, 15);
     var prods = uniq([].concat.apply([], pages.map(function (p) { return (p.entities || []).filter(function (e) { return /^Product$/.test([].concat(e["@type"]).join(" ")) && typeof e.name === "string"; }).map(function (e) { return norm(e.name); }); }))).filter(Boolean).slice(0, 15);
     B.services = f(svc, "OBSERVED", svc.length ? [ev.add({ type: "business", claim: "Services/products named on the site", pageUrl: home.finalUrl, evidenceText: svc.slice(0, 10).join(" · ") })] : []);
     B.products = f(prods, "OBSERVED", prods.length ? [ev.add({ type: "business", claim: "Products in structured data", pageUrl: home.finalUrl, evidenceText: prods.slice(0, 10).join(" · "), sourceName: "Structured data (JSON-LD)" })] : []);
@@ -479,7 +487,10 @@
     add({ id: "T_index", name: "Important pages indexable", status: impNo.length ? "fail" : noidx.length ? "warn" : "pass", score: impNo.length ? Math.max(0, 100 - impNo.length * 30) : 100, weight: 4, detail: impNo.length ? impNo.length + " important page(s) tell Google not to index them (noindex)." : noidx.length ? noidx.length + " minor page(s) are noindex." : "No crawled page blocks indexing.", pages: listPages(impNo.concat(noidx)), evidence: noidx.length ? e("noindex found", noidx.slice(0, 4).map(function (p) { return p.finalUrl + " (" + (p.robotsMeta || p.xRobots) + ")"; }).join(" | "), noidx[0].finalUrl) : [] });
     add({ id: "T_robots", name: "robots.txt", status: crawl.robotsFound ? "pass" : "warn", score: crawl.robotsFound ? 100 : 50, weight: 1, detail: crawl.robotsFound ? "robots.txt found" + (crawl.skippedRobots.length ? "; it blocks " + crawl.skippedRobots.length + " of the links we found." : ".") : "No robots.txt (HTTP " + crawl.robotsStatus + ").", evidence: e("robots.txt", crawl.robotsFound ? (crawl.robots.groups.length + " rule group(s), " + crawl.robots.sitemaps.length + " sitemap line(s)") : "HTTP " + crawl.robotsStatus, new URL(crawl.start).origin + "/robots.txt") });
     add({ id: "T_sitemap", name: "XML sitemap", status: crawl.sitemapFound ? "pass" : "fail", score: crawl.sitemapFound ? 100 : 0, weight: 2, detail: crawl.sitemapFound ? "Sitemap found via " + crawl.sitemapSource + " with " + crawl.sitemapUrls.length + " URL(s)." : "No XML sitemap found in robots.txt or at /sitemap.xml.", evidence: e("Sitemap", crawl.sitemapFound ? crawl.sitemapUrls.length + " URLs listed" : "not found", new URL(crawl.start).origin + "/sitemap.xml") });
-    var errP = crawl.pages.filter(function (p) { return p.status >= 400 || p.error; });
+    // v20.2: a page that timed out is slow, not broken — it is reported on its own ("didn't load in time")
+    var slowP = crawl.pages.filter(function (p) { return !(p.status >= 400) && /timeout/i.test(p.error || ""); });
+    var errP = crawl.pages.filter(function (p) { return p.status >= 400 || (p.error && !/timeout/i.test(p.error)); });
+    if (slowP.length) add({ id: "T_slow", name: "Pages that load too slowly", status: slowP.length > 3 ? "fail" : "warn", score: Math.max(0, 100 - slowP.length * 15), weight: 2, detail: slowP.length + " page(s) did not load within 15 seconds, so FODO could not read them (visitors on mobile usually give up long before that).", pages: slowP.map(function (p) { return p.url; }).slice(0, 12), evidence: e("Slow pages", slowP.slice(0, 5).map(function (p) { return p.url + " → no answer in 15 s"; }).join(" | "), slowP[0].url) });
     add({ id: "T_broken", name: "Broken pages & links", status: crawl.broken.length || errP.length ? (crawl.broken.length > 5 || errP.length > 3 ? "fail" : "warn") : "pass", score: Math.max(0, 100 - crawl.broken.length * 10 - errP.length * 10), weight: 3, detail: errP.length + " crawled URL(s) returned an error; " + crawl.broken.length + " internal link(s) point to them.", pages: errP.map(function (p) { return p.url; }).slice(0, 12), evidence: errP.length ? e("Error pages", errP.slice(0, 5).map(function (p) { return p.url + " → " + (p.status || p.error); }).join(" | "), errP[0].url) : [] });
     var chains = crawl.pages.filter(function (p) { return (p.redirects || []).length > 1; });
     add({ id: "T_redirects", name: "Redirect chains", status: chains.length ? "warn" : "pass", score: Math.max(0, 100 - chains.length * 15), weight: 1, detail: chains.length ? chains.length + " URL(s) go through 2+ redirects." : "No redirect chains.", pages: listPages(chains), evidence: chains.length ? e("Redirect chain", chains[0].redirects.map(function (r) { return r.status + " " + r.from + " → " + r.to; }).join(" | "), chains[0].url) : [] });
@@ -736,10 +747,20 @@
     var hit = ctx.words.filter(function (w) { return t.indexOf(w) > -1; });
     return hit.length ? { ok: true, why: "names you with " + hit.slice(0, 2).join(", ") } : { ok: false, why: "names “" + ctx.name + "” but nothing about your business — probably a different company" };
   };
-  E.voice = function (items) {
-    // items: [{ text, url, source, evidence }]
+  // v20.2: employee-review sites talk about working there, not buying there
+  var EMPLOYER = /(^|\.)(ambitionbox|glassdoor|indeed|naukri|foundit|comparably|kununu|jobs?\.|careers?\.)/i;
+  E.voiceRelevant = function (it, ctx) {
+    var host = ""; try { host = new URL(it.url).hostname; } catch (e) {}
+    if (EMPLOYER.test(host) || /\b(work(ing)? (here|there|culture)|salary|appraisal|interview process|management (is|was)|employee)\b/i.test(it.text || "")) return false;
+    if (!ctx || !ctx.words || !ctx.words.length) return true;
+    var t = low(it.text) + " " + low(it.url);
+    return (ctx.domain && t.indexOf(ctx.domain) > -1) || (ctx.name && t.indexOf(ctx.name) > -1) || ctx.words.some(function (w) { return new RegExp("(^|[^a-z0-9])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "", "i").test(t); });
+  };
+  E.voice = function (items, ctx) {
+    // items: [{ text, url, source, evidence }]; ctx (optional): E.entityContext — keeps only snippets about this business or its market
     var groups = {}; Object.keys(VOICE).forEach(function (k) { groups[k] = {}; });
-    var used = 0;
+    var used = 0, total = items.length;
+    items = items.filter(function (it) { return E.voiceRelevant(it, ctx); });
     items.forEach(function (it) {
       norm(it.text).split(/(?:[.!?]+\s+)|(?:\s[|•·]\s)/).forEach(function (s) {
         s = norm(s); if (s.length < 25 || s.length > 300) return;
@@ -753,7 +774,7 @@
       });
     });
     var out = {}; Object.keys(groups).forEach(function (k) { out[k] = Object.keys(groups[k]).map(function (t) { return groups[k][t]; }).sort(function (a, b) { return b.count - a.count; }).slice(0, 5); });
-    out.snippets = items.length; out.matches = used;
+    out.snippets = items.length; out.matches = used; out.setAside = total - items.length;
     out.quality = items.length >= 15 ? "HIGH" : items.length >= 5 ? "MEDIUM" : items.length ? "LOW" : "UNAVAILABLE";
     var topNeed = (out.needs[0] || {}).theme, topComplaint = (out.complaints[0] || {}).theme;
     out.marketOpportunity = topComplaint ? "Customers in this market most often complain about “" + topComplaint.toLowerCase() + "” — make it the thing you visibly do better." + (topNeed && topNeed !== topComplaint ? " They also ask about “" + topNeed.toLowerCase() + "”." : "") : topNeed ? "People searching in this market ask most about “" + topNeed.toLowerCase() + "” — answer it on your site." : "";
@@ -867,6 +888,7 @@
     T_h1: ["Pages without exactly one H1", "Search", 2, 2, 2, "Use one clear H1 per page that names the service and outcome.", "seo"],
     T_canonical: ["Canonical tags missing or pointing elsewhere", "Search", 2, 2, 3, "Add a self-referencing canonical to every page; fix any that point to another domain.", "seo"],
     T_broken: ["Broken pages and links", "Website", 4, 2, 4, "Fix or redirect the error pages and update the links that point to them.", "web"],
+    T_slow: ["Some pages load too slowly", "Website", 4, 3, 4, "Check hosting and caching for these pages (server response, heavy scripts, uncached database pages) — they took over 15 seconds to answer.", "web"],
     T_redirects: ["Redirect chains slow pages down", "Website", 2, 2, 2, "Point links straight at the final URL; collapse chains to one hop.", "web"],
     T_schema: ["Structured data missing or broken", "Search", 3, 2, 3, "Add valid Organization/LocalBusiness (and FAQ/Product where relevant) JSON-LD.", "seo"],
     T_alt: ["Images without alt text", "Website", 1, 2, 1, "Describe key images in alt text (helps accessibility and image search).", "web"],
@@ -919,8 +941,19 @@
     A_invisible: ["AI assistants don't name you when buyers ask", "Presence", 3, 3, 3, "Get listed and reviewed where AI tools read (Google Business Profile, directories, comparison articles), keep your name/address consistent, and publish clear answer pages for the questions buyers ask.", "seo"],
   };
   E.OPP = OPP;
-  E.opportunities = function (checks, extra, ev) {
-    var list = [], n = 0;
+  // v20.2: the copy examples in a fix match the business's industry (a travel company is not told "for clinics in Delhi")
+  var EXAMPLES = {
+    restaurant: ["for office lunches in Dwarka", "fresh food at your door in 30 minutes"], clinic: ["for families in South Delhi", "same-day appointments, no long waits"],
+    saas: ["for finance teams at growing companies", "close your books in half the time"], ecommerce: ["for new mothers who want chemical-free care", "free delivery in 2 days"],
+    agency: ["for D2C brands selling online", "more leads at a lower cost per lead"], realestate: ["for first-time buyers in Gurugram", "RERA-approved homes, possession in 2027"],
+    education: ["for Class 11–12 JEE aspirants", "board + JEE prep in one plan"], travel: ["for HR and admin teams booking company travel", "one desk for flights, hotels and visas with 24×7 support"],
+    beauty: ["for brides in West Delhi", "salon-finish results at home"], fitness: ["for working professionals who have 45 minutes", "visible results in 12 weeks"],
+    legal: ["for startups raising their first round", "contracts reviewed in 48 hours"], finance: ["for salaried families planning taxes", "save tax without the paperwork"],
+    manufacturing: ["for OEMs who need certified parts on time", "dispatch in 7 days, ISO-certified"], hospitality: ["for families on a weekend break", "pool-view rooms, breakfast included"],
+    itservices: ["for SMEs moving to the cloud", "launch in 6 weeks at a fixed price"] };
+  E.opportunities = function (checks, extra, ev, ctx) {
+    var list = [], n = 0, ex = EXAMPLES[ctx && ctx.industryId] || null;
+    var fixFor = function (key, t) { if (!ex) return t[5]; if (key === "O_audience") return "Name the audience in the hero (e.g. “" + ex[0] + "”)."; if (key === "O_outcome") return "Promise a concrete result (e.g. “" + ex[1] + "”)."; return t[5]; };
     var mk = function (key, o) {
       var t = OPP[key]; if (!t) return;
       var conf = o.confidence != null ? o.confidence : LABEL_CONF[o.label || "OBSERVED"];
@@ -928,7 +961,7 @@
       var raw = impact * conf * urgency / effort, score = Math.round(100 * raw / 25);
       var pr = impact >= 4 && effort <= 3 && urgency >= 4 ? "P0" : impact >= 4 ? "P1" : impact === 3 ? "P2" : "P3";
       list.push({ id: "O" + (++n), key: key, title: t[0], category: t[1], description: o.detail || "", evidence: (o.evidence || []).slice(0, 8), source: uniq((o.evidence || []).map(function (id) { var x = ev.get(id); return x ? x.sourceName : ""; }).filter(Boolean)),
-        impact: impact, effort: effort, urgency: urgency, confidence: Math.round(conf * 100) / 100, priorityScore: Math.min(100, score), priority: pr, recommendation: o.fix || t[5], affectedPages: (o.pages || []).slice(0, 10), estimatedValue: null, estimatedValueConfidence: "UNKNOWN", tool: TOOLS[t[6]] || null, label: o.label || "OBSERVED" });
+        impact: impact, effort: effort, urgency: urgency, confidence: Math.round(conf * 100) / 100, priorityScore: Math.min(100, score), priority: pr, recommendation: o.fix || fixFor(key, t), affectedPages: (o.pages || []).slice(0, 10), estimatedValue: null, estimatedValueConfidence: "UNKNOWN", tool: TOOLS[t[6]] || null, label: o.label || "OBSERVED" });
     };
     checks.forEach(function (c) { if (c.status === "fail" || (c.status === "warn" && (c.weight >= 2 || c.score < 50))) { var key = /^R_schemaMismatch/.test(c.id) || c.id === "R_https" || (c.id === "T_index" && c.status === "warn") ? null : c.id; if (key && OPP[key]) mk(key, { detail: c.detail, evidence: c.evidence, pages: c.pages, label: c.label, impact: c.status === "warn" ? Math.max(1, OPP[key][2] - 1) : null }); } });
     (extra || []).forEach(function (x) { mk(x.key, x); });
@@ -1082,7 +1115,7 @@
   };
   /* Revenue Leak Finder (prompt §31): opportunities that lose enquiries — never a rupee figure without the business's own data */
   E.leaks = function (opps) {
-    return opps.filter(function (o) { return ["Conversion", "Offer", "Trust"].indexOf(o.category) > -1 || ["P_perf", "P_field", "T_viewport", "T_home", "T_broken"].indexOf(o.key) > -1; }).slice(0, 12)
+    return opps.filter(function (o) { return ["Conversion", "Offer", "Trust"].indexOf(o.category) > -1 || ["P_perf", "P_field", "T_viewport", "T_home", "T_broken", "T_slow"].indexOf(o.key) > -1; }).slice(0, 12)
       .map(function (o) { return { id: o.id, key: o.key, leak: o.title, evidence: o.evidence, detail: o.description, impact: o.impact >= 4 ? "High" : o.impact === 3 ? "Medium" : "Low", confidence: o.confidence >= 0.8 ? "High" : o.confidence >= 0.6 ? "Medium" : "Low", effort: o.effort <= 2 ? "Low" : o.effort === 3 ? "Medium" : "High", fix: o.recommendation, label: o.label }; });
   };
   /* Priority matrix (prompt §90) */

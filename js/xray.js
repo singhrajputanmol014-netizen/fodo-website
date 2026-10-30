@@ -252,7 +252,7 @@
           var id = ev.add({ type: "voice", claim: "Testimonial text on your site (self-published)", pageUrl: p.finalUrl, sourceName: "Your website", evidenceText: p.text.slice(0, 400) });
           items.push({ text: p.text.slice(0, 3000), url: p.finalUrl, source: "Your website (self-published)", evidence: [id], own: true });
         });
-        if (!P.search) { S.voice = E.voice(items); modules.CUSTOMER_RESEARCH = { status: items.length ? "partial" : "unavailable", note: "Public reviews and discussions need a search provider." }; return; }
+        if (!P.search) { S.voice = E.voice(items, S.B ? E.entityContext(S.B, input) : null); modules.CUSTOMER_RESEARCH = { status: items.length ? "partial" : "unavailable", note: "Public reviews and discussions need a search provider." }; return; }
         var qs = S.queries.filter(function (q) { return q.kind === "voice"; }), ectx = E.entityContext(B, input); S.voiceOut = [];
         if (has("moreVoice") && L) { var nm0 = B.name.value, svc0 = (input.product || B.services.value[0] || B.industry.value || "").trim(); [nm0 + " complaints", nm0 + " customer experience", svc0 && svc0 + " problems customers face"].filter(Boolean).forEach(function (q) { if (!qs.some(function (x) { return x.q.toLowerCase() === q.toLowerCase(); })) qs.push({ q: q, kind: "voice" }); }); }
         return Promise.all(qs.map(function (q) { return search(q.q).then(function (res) {
@@ -266,7 +266,7 @@
             var id = ev.add({ type: "voice", claim: "Public text from " + (r.host || E.domainOf(r.url)), sourceUrl: r.url, sourceName: (r.forum ? r.forum + " — " : "") + (r.host || "search result") + " (via " + SN + ")", evidenceText: txt });
             items.push({ text: txt, url: r.url, source: r.host || E.domainOf(r.url), evidence: [id] });
           });
-        }); })).then(function () { S.voice = E.voice(items); modules.CUSTOMER_RESEARCH = { status: items.length ? "ok" : "unavailable", note: items.length ? "Based on " + items.length + " public snippets (search-result excerpts, not full reviews)." : "No public reviews or discussions came back from the searches." }; });
+        }); })).then(function () { S.voice = E.voice(items, S.B ? E.entityContext(S.B, input) : null); modules.CUSTOMER_RESEARCH = { status: items.length ? "ok" : "unavailable", note: items.length ? "Based on " + items.length + " public snippets (search-result excerpts, not full reviews)." : "No public reviews or discussions came back from the searches." }; });
       });
     }).then(function () {
       return stage("SEO", function () {
@@ -347,12 +347,12 @@
           if (B.local && S.placesBrand && !S.local.me) extra.push({ key: "L_noListing", detail: "Searching Google Maps for “" + S.placesBrand.q + "” did not show your business.", evidence: [lev], label: "OBSERVED" });
           if (S.local.me && (S.local.behindOnRating || S.local.behindOnReviews)) extra.push({ key: "L_weak", detail: "Your listing: " + (S.local.me.rating != null ? S.local.me.rating + "★" : "no rating") + ", " + (S.local.me.reviews || 0) + " reviews · local competitors' median: " + (S.local.medianRating != null ? S.local.medianRating + "★" : "—") + ", " + (S.local.medianReviews || 0) + " reviews (" + S.local.compared + " listings).", evidence: [lev], label: "OBSERVED" }); }
         if (S.vis && S.vis.tested >= 3 && S.vis.brandIn === 0) extra.push({ key: "A_invisible", detail: "None of the " + S.vis.tested + " AI answers named you" + (S.vis.compIn ? "; " + S.vis.compIn + " named a competitor" : "") + ".", evidence: [ev.add({ type: "ai", claim: "AI assistants asked " + S.vis.tested + " buyer questions", sourceName: S.vis.engines.map(function (e) { return e.name; }).join(" + "), evidenceText: S.vis.rows.slice(0, 3).map(function (r) { return r.q + " → " + (r.competitors.join(", ") || "no known business named"); }).join(" · "), label: "OBSERVED" })], label: "INFERRED" });
-        if (cmpl && cmpl.count >= 2) extra.push({ key: "V_complaint", detail: "Most common complaint theme in public text: “" + cmpl.theme + "” (" + cmpl.count + " mentions).", evidence: [].concat.apply([], cmpl.quotes.map(function (q) { return q.evidence || []; })).slice(0, 4), label: "INFERRED" });
+        if (cmpl && cmpl.count >= 2 && !/^other$/i.test(cmpl.theme)) extra.push({ key: "V_complaint", detail: "Most common complaint theme in public text: “" + cmpl.theme + "” (" + cmpl.count + " mentions).", evidence: [].concat.apply([], cmpl.quotes.map(function (q) { return q.evidence || []; })).slice(0, 4), label: "INFERRED" });
         S.checks = checks;
         S.scores = E.scores(checks, { searchName: SN, serp: serpA, presence: S.presence, reviewCheck: S.reviewCheck, competitive: S.compMetrics, compCount: (S.comps || []).length });
         if (S.blocked) ["conversion", "trust", "competitive"].forEach(function (k) { var a = S.scores.areas[k]; if (a && a.score == null) { a.quality = "UNAVAILABLE"; a.note = "Data unavailable — the website's pages could not be read."; } });
         if (S.blocked) { var wa = S.scores.areas.website; wa.note = "Only Google PageSpeed — the pages themselves could not be read."; if (wa.score != null) wa.quality = "LOW"; }
-        S.opps = E.opportunities(checks, extra, ev);
+        S.opps = E.opportunities(checks, extra, ev, { industryId: S.B && S.B.industry && S.B.industry.id });
         S.top = E.pickTop(S.opps); S.plan = E.plan(S.opps);
         // v17 deterministic views of the same findings
         S.leaks = E.leaks(S.opps); S.matrix4 = E.matrix4(S.opps); S.funnel = S.blocked ? null : E.funnel(checks, B.offer.score);

@@ -28,7 +28,7 @@ import { accountsOn, sessionUser, billingUser, spendCredit, hasCredit, refundCre
 import { PLANS, limitsFor } from "../../_lib/plans.js";
 import { logUsage } from "../../_lib/usage.js";
 import { applyConfig, toolOn } from "../../_lib/config.js";
-import { engines as aiEngines, ask as aiAsk } from "../../_lib/aivis.js";
+import { engines as aiEngines, ask as aiAsk, groqChat } from "../../_lib/aivis.js";
 import { gscForJob } from "../../_lib/gsc.js";
 import { getPrompt } from "../../_lib/prompts.js";
 import { isOwner } from "../../_lib/accounts.js";
@@ -370,17 +370,20 @@ export function checkSynthesis(s, ids) {
   }, dropped };
 }
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
-async function runAI(env, messages, max, firstWait) {   // firstWait: ms before giving up on the big model (visibility answers use a shorter wait, then the small model)
-  let last;
-  for (let i = 0; i < MODELS.length; i++) {
+async function runAI(env, messages, max, firstWait, opt) {   // firstWait: ms before giving up on the big model (visibility answers use a shorter wait, then the small model)
+  const fails = [];
+  for (let i = 0; i < MODELS.length && env.AI; i++) {
     try { const r = await Promise.race([env.AI.run(MODELS[i], { messages, max_tokens: max || 1800, temperature: 0.2 }), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), i ? 20000 : (firstWait || 45000)))]);
-      const text = typeof r === "string" ? r : r && (r.response || (r.result && r.result.response)) || ""; if (text) return { text: typeof text === "string" ? text : JSON.stringify(text), model: MODELS[i] }; }
-    catch (e) { last = e; }
+      const text = typeof r === "string" ? r : r && (r.response || (r.result && r.result.response)) || ""; if (text) return { text: typeof text === "string" ? text : JSON.stringify(text), model: MODELS[i] };
+      fails.push(MODELS[i].split("/").pop() + ": empty answer"); }
+    catch (e) { fails.push(MODELS[i].split("/").pop() + ": " + String(e && e.message || e).replace(/\s+/g, " ").slice(0, 80)); }
   }
-  throw last || new Error("no answer");
+  // v20.2: Workers AI busy / over its daily limit / failing → Groq answers instead (not for the "Workers AI" visibility engine itself)
+  if (!(opt && opt.noFallback) && env.GROQ_API_KEY) { try { const g = await groqChat(env, messages, max); g.fallback = true; g.workersAi = fails.join("; "); return g; } catch (e) { fails.push("groq: " + (e.detail || e.message)); } }
+  throw Object.assign(new Error("no answer"), { detail: fails.join("; ").slice(0, 150) || "Workers AI not bound" });
 }
 async function ai(env, job, b, t0) {
-  if (!env.AI) return json({ ok: false, disabled: true, reason: "AI is not connected." }, 503);
+  if (!env.AI && !env.GROQ_API_KEY) return json({ ok: false, disabled: true, reason: "AI is not connected." }, 503);
   const mode = b.mode === "visibility" ? "visibility" : "synthesis", pack = b.pack || {};
   if (await over(env, job, "ai:" + mode, mode === "visibility" ? 2 : 3)) return json({ ok: false, reason: "AI limit for this X-Ray reached." }, 429);
   const AIQ = accountsOn(env) ? (await jobLimits(env, job)).AI_QUESTIONS : 4;
@@ -392,7 +395,7 @@ async function ai(env, job, b, t0) {
     ENG.forEach((e) => qs.slice(0, e.id === "gemini" ? Math.min(5, AIQ) : AIQ).forEach((q) => jobs.push({ e, q })));
     const answers = [], pool = jobs.slice(); let pi = 0;
     const worker = async () => { while (pi < pool.length) { const it = pool[pi++], t1 = Date.now();
-      try { const a = await aiAsk(env, it.e.id, it.q, (m, x) => runAI(env, m, x, 25000), VP.text); answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, live: it.e.live && a.grounded, answer: a.answer, model: a.model, citations: a.citations || [], searches: a.searches || [], grounded: !!a.grounded, groundingRefused: a.groundingRefused || null });
+      try { const a = await aiAsk(env, it.e.id, it.q, (m, x) => runAI(env, m, x, 25000, { noFallback: true }), VP.text); answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, live: it.e.live && a.grounded, answer: a.answer, model: a.model, citations: a.citations || [], searches: a.searches || [], grounded: !!a.grounded, groundingRefused: a.groundingRefused || null });
         await logUsage(env, { provider: it.e.id, endpoint: "aivis", tool: "prompt:visibility@" + VP.ver, job: job.id, status: a.status || 200, ms: Date.now() - t1 }); }
       catch (e) { answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, answer: "", error: "no answer" }); await logUsage(env, { provider: it.e.id, endpoint: "aivis", tool: e.detail ? ("error · " + e.detail).slice(0, 160) : (e.name === "TimeoutError" || /timeout/i.test(e.message || "") ? "error · timed out" : undefined), job: job.id, status: e.status || 0, ok: false, ms: Date.now() - t1 }); } } };
     await Promise.all([worker(), worker(), worker(), worker()]);
@@ -406,10 +409,10 @@ async function ai(env, job, b, t0) {
     const t1 = Date.now(), a = await runAI(env, [{ role: "system", content: P.text + "\n\n" + FORMAT }, { role: "user", content: "RESEARCH DATA (JSON):\n" + data }], 1800);
     const parsed = parseObj(a.text); if (!parsed) { log({ job: job.id, route: "ai", ok: false, err: "unparseable" }); await logUsage(env, { provider: "workers-ai", endpoint: "synthesis", tool, job: job.id, status: 422, ok: false, ms: Date.now() - t1, units: 0 }); return json({ ok: false, reason: "The AI answer could not be read." }, 502); }
     const { out, dropped } = checkSynthesis(parsed, ids);
-    await logUsage(env, { provider: "workers-ai", endpoint: "synthesis", tool, job: job.id, status: 200, ms: Date.now() - t1, units: dropped.length });   // units = statements dropped for having no evidence (prompt quality)
+    await logUsage(env, { provider: a.fallback ? "groq" : "workers-ai", endpoint: "synthesis", tool: a.fallback ? (tool + " · Workers AI failed (" + a.workersAi + ")").slice(0, 160) : tool, job: job.id, status: 200, ms: Date.now() - t1, units: dropped.length });   // units = statements dropped for having no evidence (prompt quality)
     log({ job: job.id, route: "ai", mode, provider: "workers-ai", model: a.model, ok: true, dropped: dropped.length, ms: Date.now() - t0 });
     return json({ ok: true, mode, model: a.model, synthesis: out, dropped });
-  } catch (e) { log({ job: job.id, route: "ai", ok: false, err: String(e.message) }); return json({ ok: false, reason: "AI did not answer." }, 502); }
+  } catch (e) { log({ job: job.id, route: "ai", ok: false, err: String(e.message) }); await logUsage(env, { provider: "workers-ai", endpoint: "synthesis", tool: ("error · " + (e.detail || e.message)).slice(0, 160), job: job.id, status: 502, ok: false }); return json({ ok: false, reason: "AI did not answer." }, 502); }
 }
 
 /* ---------- v14 FODO Edge (Agency + owner logins): AI Fix Pack, battle cards, 90-day roadmap, client pitch.
@@ -425,7 +428,7 @@ async function edge(env, job, b, t0) {
   const kind = String(b.kind || ""), E = EDGE[kind]; if (!E) return json({ ok: false, reason: "Unknown tool." }, 400);
   if (!accountsOn(env)) return json({ ok: false, upgrade: "agency", reason: "FODO Edge tools need a Growth Lab account." }, 402);
   const L = await jobLimits(env, job); if (L.features.indexOf(E.feature) < 0) return json({ ok: false, upgrade: "agency", reason: "FODO Edge tools are part of the Agency plan." }, 402);
-  if (!env.AI) return json({ ok: false, disabled: true, reason: "AI is not connected." }, 503);
+  if (!env.AI && !env.GROQ_API_KEY) return json({ ok: false, disabled: true, reason: "AI is not connected." }, 503);
   if (await over(env, job, "edge:" + kind, 2)) return json({ ok: false, reason: "Limit for this tool reached on this X-Ray." }, 429);
   const pack = b.pack || {}, data = JSON.stringify(pack); if (data.length > 40000) return json({ ok: false, reason: "Research pack too large." }, 413);
   try {

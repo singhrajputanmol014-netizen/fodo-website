@@ -192,7 +192,7 @@ export function providers(env) {
     authority: env.OPR_API_KEY ? "openpagerank" : null,
     performance: "pagespeed",
     places: env.GEOAPIFY_KEY ? "geoapify" : null,
-    ai: env.AI ? "workers-ai" : null,
+    ai: env.AI ? "workers-ai" : env.GROQ_API_KEY ? "groq" : null,   // v20.2: Groq stands in when Workers AI is not bound
     storage: storageKind(env),
   };
 }

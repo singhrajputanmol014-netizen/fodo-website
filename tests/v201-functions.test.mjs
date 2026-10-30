@@ -1,6 +1,7 @@
 // v20.1: owner X-Rays have no daily search limit (customers keep SEARCH_DAILY_CAP); a slow home page gets one longer try.
 // Run: node --no-warnings tests/v201-functions.test.mjs
 import { DatabaseSync } from "node:sqlite";
+import { onRequest as help } from "../functions/api/help/[[path]].js";
 import { onRequest as account } from "../functions/api/account/[[path]].js";
 import { onRequest as xray } from "../functions/api/xray/[[path]].js";
 import { onRequest as admin } from "../functions/api/admin/[[path]].js";
@@ -26,10 +27,11 @@ const call = async (env, path, body, o = {}) => {
 const login = (env, email, plan, who) => call(env, "test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const save = (env, job, who, extra) => xray({ request: new Request(SITE + "/api/xray/report", { method: "POST", headers: { "content-type": "application/json", "x-job": job, cookie: jars[who || "a"] }, body: JSON.stringify(Object.assign({ jobId: job, scores: { overall: 64 }, crawl: { blocked: null, pages: 3 }, completeness: { overall: 80, parts: [] } }, extra || {})) }), env, params: { path: ["report"] } });
 
-let serper = 0, slowHits = 0;
+let serper = 0, slowHits = 0; const groqCalls = [];
 globalThis.fetch = async (u, o = {}) => {
   u = String(u);
   if (/google\.serper\.dev\/(search|places)/.test(u)) { serper++; return new Response(JSON.stringify({ organic: [{ title: "x", link: "https://x.test/", snippet: "s" }], places: [] })); }
+  if (/api\.groq\.com/.test(u)) { groqCalls.push(JSON.parse(o.body)); const sys = JSON.parse(o.body).messages[0].content; return new Response(JSON.stringify({ choices: [{ message: { content: /RESEARCH DATA|Output one JSON/.test(JSON.stringify(JSON.parse(o.body).messages)) ? JSON.stringify({ summary: "Groq summary", biggestProblem: "x", doFirst: [] }) : "Groq says: you are on the Growth plan." } }] })); }
   if (/slow\.test/.test(u)) { slowHits++; if (slowHits === 1) throw new DOMException("timed out", "TimeoutError"); return new Response("<html><title>Slow</title></html>", { headers: { "content-type": "text/html" } }); }
   return new Response("not mocked: " + u, { status: 599 });
 };
@@ -56,5 +58,16 @@ slowHits = 0;
 const f2 = await xray({ request: new Request(SITE + "/api/xray/fetch", { method: "POST", headers: { "content-type": "application/json", origin: SITE, cookie: jars.own }, body: JSON.stringify({ jobId: js, url: "https://slow.test/about" }) }), env, params: { path: ["fetch"] } });
 ok(JSON.parse(decodeURIComponent(f2.headers.get("x-xray-meta"))).error === "timeout", "other pages don't wait twice (crawl stays fast)");
 
-console.log("\nv20.1 functions: " + pass + "/" + (pass + fail) + " passed");
+/* v20.2: Workers AI failing → Groq writes the summary and answers the help chat; the "Workers AI" visibility engine never borrows Groq */
+env.AI = { run: async () => { throw new Error("3036: daily free allocation exceeded"); } }; env.GROQ_API_KEY = "gsk_test";
+r = await call(env, "xray/ai", { jobId: jo, mode: "synthesis", pack: { ids: ["O1"], data: { a: 1 } } }, { as: "own" });
+const syn = env.XRAY_DB.db.prepare("SELECT provider, tool FROM api_usage WHERE endpoint='synthesis' ORDER BY rowid DESC").get();
+ok(r.status === 200 && r.j.ok && /^groq\//.test(r.j.model) && syn.provider === "groq" && /daily free allocation/.test(syn.tool), "Workers AI over its limit → Groq writes the report summary (admin log says why: " + (syn && syn.tool) + ")");
+r = await call(env, "xray/ai", { jobId: jo, mode: "visibility", pack: { questions: ["best corporate travel company in Gurugram?"] } }, { as: "own" });
+const wa = (r.j.answers || []).find((a) => a.engine === "workers-ai");
+ok(wa && wa.error && groqCalls.filter((b) => /corporate travel/.test(JSON.stringify(b))).length === 1, "AI visibility: the Workers AI row stays 'no answer' (not filled in by Groq); Groq answers only as itself");
+const hreq = new Request(SITE + "/api/help/chat", { method: "POST", headers: { "content-type": "application/json", origin: SITE, "cf-connecting-ip": "5.5.5.5", cookie: jars.c }, body: JSON.stringify({ message: "mera plan kya hai" }) });
+const hr = await (await help({ request: hreq, env, params: { path: ["chat"] } })).json();
+ok(hr.ok && /Groq says/.test(hr.reply), "help chatbot: Workers AI down → Groq answers (not just the articles)");
+console.log("\nv20.1–20.2 functions: " + pass + "/" + (pass + fail) + " passed");
 process.exit(fail ? 1 : 0);

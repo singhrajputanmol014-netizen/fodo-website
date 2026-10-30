@@ -9,10 +9,16 @@
   var inr = function (n) { return "₹" + Number(n).toLocaleString("en-IN"); };
   var cfgP = null, meP = null, user, subs = [];
   var api = function (path, body) {
-    return fetch(ROOT + "api/account/" + path, { method: body === undefined ? "GET" : "POST", credentials: "same-origin", headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, reason: "The account service did not answer (" + r.status + ")." }; }).then(function (j) { j._status = r.status; return j; }); }, function () { return { ok: false, reason: "No connection. Check your internet and try again.", _status: 0 }; });
+    // v17.1.3: a request that never answers must not leave the page on "Loading…" — give up after 15 s and say so
+    var ac = typeof AbortController === "function" ? new AbortController() : null, tm = ac ? setTimeout(function () { ac.abort(); }, 15000) : 0;
+    return fetch(ROOT + "api/account/" + path, { method: body === undefined ? "GET" : "POST", credentials: "same-origin", headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: ac ? ac.signal : undefined })
+      .then(function (r) { clearTimeout(tm); return r.json().catch(function () { return { ok: false, reason: "The account service did not answer (" + r.status + ").", _bad: true }; }).then(function (j) { j._status = r.status; return j; }); },
+        function (e) { clearTimeout(tm); return e && e.name === "AbortError" ? { ok: false, reason: "The account service is not answering right now (waited 15 s).", _status: 0, _bad: true } : { ok: false, reason: "No connection. Check your internet and try again.", _status: 0, _bad: true }; });
   };
-  var config = function () { return cfgP = cfgP || api("config").then(function (j) { return j.ok ? j : { enabled: false, plans: [], packs: [] }; }); };
+  var config = function () { return cfgP = cfgP || api("config").then(function (j) {
+    if (j.ok) return j;
+    if (j._bad || j._status >= 500 && !j.disabled) { cfgP = null; return { enabled: false, unreachable: j.reason || "The account service is not answering right now.", plans: [], packs: [] }; }   // a server problem is not "accounts off"
+    return { enabled: false, plans: [], packs: [] }; }); };
   var known = false, set = function (u) { user = u || null; known = true; subs.forEach(function (f) { try { f(user); } catch (e) {} }); chip(); return user; };
   var me = function (force) { if (force || !meP) meP = config().then(function (c) { return c.enabled ? api("me").then(function (j) { return set(j.user); }) : set(null); }); return meP; };
   var load = function (src, test) { return new Promise(function (ok, no) { if (test()) return ok(); var s = document.createElement("script"); s.src = src; s.async = true; s.onload = function () { ok(); }; s.onerror = function () { no(new Error("Could not load " + src.split("/")[2])); }; document.head.appendChild(s); }); };

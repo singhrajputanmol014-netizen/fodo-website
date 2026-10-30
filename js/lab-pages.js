@@ -108,6 +108,7 @@
     });
   }
   A.config().then(function (c) {
+    if (c.unreachable) { acc.innerHTML = '<div class="panel hud"><h2>Your account could not load</h2><p class="muted">' + esc(c.unreachable) + ' Your X-Rays and plan are safe — this is a temporary server problem.</p><div class="btn-row"><button class="btn" type="button" id="ac-retry">Try again</button><a class="btn ghost" href="' + ROOT + 'business-x-ray/">Business X-Ray</a></div></div>'; var rb = $("ac-retry"); if (rb) rb.onclick = function () { location.reload(); }; return; }
     if (!c.enabled) { acc.innerHTML = '<div class="panel hud"><h2>Accounts open soon</h2><p class="muted">The Business X-Ray is free to use right now — no login needed.</p><a class="btn" href="' + ROOT + 'business-x-ray/">Run a Business X-Ray</a></div>'; return; }
     A.onChange(draw);
     A.me().then(function (u) { draw(u); return payReturn(); });

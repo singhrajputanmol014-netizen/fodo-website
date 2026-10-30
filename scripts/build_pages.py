@@ -607,7 +607,8 @@ pages["plans"] = ("plans", "/plans/", T("Growth Lab Plans — Business X-Ray Pri
  + sec("01", "Questions about plans", '<div class="reveal">' + faq_block(LAB_FAQ, "plf") + '</div>'),
  1, LD(crumbs_ld([("Home", "/"), ("Plans", "/plans/")]), faq_ld(LAB_FAQ)), ("account", "lab-pages"))
 pages["account"] = ("account", "/account/", T("Your Growth Lab Account | FODO"), D_("Your FODO Growth Lab account: plan, X-Rays left, receipts, X-Ray history, monitoring, Search Console, monthly report and team settings."),
- '<section class="cf-sec ac-sec"><div class="container"><p class="eyebrow">FODO GROWTH LAB</p><h1 class="ac-h1">Your account</h1><p class="cf-status" id="ac-status" role="status" aria-live="polite"></p><div id="ac-root"><p class="muted">Loading your account…</p></div></div></section>',
+ '<section class="cf-sec ac-sec"><div class="container"><p class="eyebrow">FODO GROWTH LAB</p><h1 class="ac-h1">Your account</h1><p class="cf-status" id="ac-status" role="status" aria-live="polite"></p><div id="ac-root"><p class="muted">Loading your account…</p></div></div></section>'
+ + '<script>setTimeout(function(){var r=document.getElementById("ac-root");if(r&&/Loading your account/.test(r.textContent)){r.innerHTML=\'<div class="panel hud"><h2>Your account is taking too long</h2><p class="muted">\'+(window.FODO_ACCOUNT?"The account service is not answering.":"The account script did not load \u2014 usually an old copy in your browser.")+\' Press Ctrl+Shift+R to reload, or try again in a minute.</p><button class="btn" type="button" onclick="location.reload()">Try again</button></div>\'}},20000)</script>',
  1, '', ("cf-export", "account", "lab-account", "lab-pages"))
 
 # ---- GROWTH LAB HOME (/growth-lab/) + MARKETING BUDGET PLANNER (/marketing-budget/) — v17. The tool list mirrors CATALOG in

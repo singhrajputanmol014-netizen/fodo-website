@@ -754,12 +754,12 @@
   };
   E.visibility = function (answers, B, comps) {
     var names = [low(B.name.value), B.domain].filter(Boolean), dom = B.domain, rows = answers.map(function (a) {
-      var t = low(a.answer), brand = names.some(function (n) { return n && t.indexOf(n) > -1; });
+      var t = low(a.answer), aboutYou = names.some(function (n) { return n && low(a.q).indexOf(n) > -1; }), brand = !aboutYou && names.some(function (n) { return n && t.indexOf(n) > -1; });   // v17.1.3: a question that already names you ("FODO alternatives") can't prove AI knows you — not counted
       var cm = comps.filter(function (c) { return t.indexOf(low(c.name)) > -1 || t.indexOf(c.domain) > -1; }).map(function (c) { return c.name || c.domain; });
       var cites = (a.citations || []).map(function (c) { return { title: c.title, uri: c.uri, you: !!dom && low(c.title || "").indexOf(dom) > -1, comp: comps.some(function (x) { return low(c.title || "").indexOf(x.domain) > -1; }) }; });
       // "recommended" = named in the first third of the answer (where assistants put their picks); a rule, labelled INFERRED
-      var first = brand && names.some(function (n) { var i = t.indexOf(n); return i > -1 && i < Math.max(300, t.length / 3); });
-      return { q: a.q, engine: a.engine || "workers-ai", engineName: a.engineName || "Llama on Cloudflare Workers AI", live: !!a.live, brand: brand, recommended: !!first, competitors: cm, answered: !!a.answer, excerpt: clip(a.answer, 400), model: a.model, citations: cites, citedYou: cites.some(function (c) { return c.you; }) };
+      var first = !aboutYou && brand && names.some(function (n) { var i = t.indexOf(n); return i > -1 && i < Math.max(300, t.length / 3); });
+      return { q: a.q, aboutYou: aboutYou, engine: a.engine || "workers-ai", engineName: a.engineName || "Llama on Cloudflare Workers AI", live: !!a.live, brand: brand, recommended: !!first, competitors: cm, answered: !!a.answer, excerpt: clip(a.answer, 400), model: a.model, citations: cites, citedYou: cites.some(function (c) { return c.you; }) };
     });
     var answered = rows.filter(function (r) { return r.answered; }), engines = {};
     answered.forEach(function (r) { var e = engines[r.engine] = engines[r.engine] || { id: r.engine, name: r.engineName, live: r.live, asked: 0, you: 0, comp: 0, cited: 0, withCites: 0, model: r.model }; e.asked++; if (r.brand) e.you++; if (r.competitors.length) e.comp++; if (r.citations.length) { e.withCites++; if (r.citedYou) e.cited++; } if (r.live) e.live = true; });

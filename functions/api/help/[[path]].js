@@ -27,6 +27,8 @@ export async function onRequest(ctx) {
     if (!accountsOn(env) || !env.XRAY_DB) return json({ ok: false, disabled: true, reason: "The help desk is not switched on yet. Email " + supportAddr(env) + "." }, 503);
     if (m === "POST" && (!sameOrigin(request) || !/json/.test(request.headers.get("content-type") || ""))) return json({ ok: false, reason: "Bad request." }, 403);
     const u = await sessionUser(env, request), body = m === "POST" ? await request.json().catch(() => ({})) : null, ip = await hashIp(request);
+    // v20.3: the person's OWN account facts for the "Ask FODO" bot (plan, X-Rays left, latest X-Ray, open tickets) — never anyone else's
+    if (path[0] === "me" && m === "GET") return json({ ok: true, facts: u ? await accountFacts(env, u, await billingUser(env, u)) : null }, 200, { "cache-control": "no-store" });
     if (path[0] === "chat" && !path[1] && m === "POST") return await chat(env, u, body, ip);
     if (path[0] === "chat" && path[1] === "escalate" && m === "POST") return await escalate(env, u, body, ip, origin);
     if (path[0] === "chat" && path[1] === "rate" && m === "POST") { const d = await hdb(env); await d.prepare("UPDATE help_chats SET rating=?2 WHERE id=?1 AND (ip_hash=?3 OR user_id=?4)").bind(clean(body.chatId, 40), body.rating > 0 ? 1 : -1, ip, u ? u.id : "-").run(); return json({ ok: true }); }

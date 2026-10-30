@@ -299,3 +299,47 @@ Tests:
 | `RESEND_WEBHOOK_SECRET` | The `whsec_…` signing secret of the Resend inbound webhook. Without it, outgoing mail still works, but email replies don't come back into admin. |
 
 Tests: `tests/v20-functions.test.mjs`, 38 checks covering articles, assistant grounding and fallback, escalation, tickets and access, the inbound webhook (signature, replay, threading, hijack, duplicates), the mail log and login-code redaction, and admin reply, note, compose and viewer read-only.
+
+## v20.1 – v20.3
+
+**v20.1**
+- Owner X-Rays skip the daily search budget. Customers keep `SEARCH_DAILY_CAP` (default 60).
+- A slow home page gets one longer try (30 s).
+
+**v20.2: X-Ray quality**
+- Service names come from nav labels and service-page URLs, not taglines.
+- A page that times out is reported as "Pages that load too slowly", not as broken.
+- Customer voice keeps only snippets about the business or its market. Employee reviews are dropped.
+- A small decimal ("Rs.4.2") is not read as a price.
+- Copy examples match the industry.
+- Workers AI failing → Groq writes the AI summary, FODO Edge and the help chat. The "Workers AI" visibility row never borrows Groq.
+
+**v20.3: the "Ask FODO" bot knows the whole site**
+- **Live knowledge, nothing hard-coded:**
+  - `/api/help/kb`: help articles (now 32, with a new "Growth Lab & free tools" topic) and live prices.
+  - `/api/lab/catalog`: the 13 Pro tools, each with its price and the plans that include it.
+  - `data/search-index.json`: every page.
+  - Admin price changes show in the bot at once.
+- **Offline layer `js/bot-product.js`** (after `bot-llm`) answers exactly:
+  - plans and packs, each Pro tool, the free tools, and the help articles (refund, renew, login, monitoring…);
+  - "where is …";
+  - for the logged-in person, their own account via `/api/help/me` (only their own data).
+  - "How much do you charge?" keeps the agency answer and adds the self-serve prices under it.
+- **`/api/chat` (AI):**
+  - The system prompt now has the Growth Lab catalogue with live prices.
+  - It adds plan, tool and help-article detail for product questions, and the person's own account.
+  - It falls back to Groq when Workers AI fails.
+  - The bot sends the login cookie (`credentials: same-origin`).
+- **Paying members:**
+  - AI replies are on by default and there is a "<plan> · priority" badge in the bot header.
+  - Limits are 3× per minute and 5× per hour and day, with longer answers.
+  - Their latest X-Ray (area scores, top actions with the fix, competitors) is in the prompt, so "what should I fix first in my X-Ray?" gets coaching from their own report.
+  - With AI off, the same coaching comes straight from the report's top actions.
+- **Owners** count as Agency members.
+
+Tests:
+- `tests/v201-functions.test.mjs`: 9 checks.
+- `tests/v202-engine.test.js`: 9 checks.
+- `tests/v203-chat.test.mjs`: 11 checks.
+- `tests/v203-bot.test.js`: 17 checks.
+- The bot regression (547) is unchanged and passes.

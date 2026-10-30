@@ -15,6 +15,11 @@
  */
 import { KNOWLEDGE, SITE } from "../_lib/knowledge.js";
 import { bump } from "../_lib/metrics.js";
+import { accountsOn, sessionUser, billingUser } from "../_lib/accounts.js";
+import { accountFacts } from "../_lib/help.js";
+import { applyConfig } from "../_lib/config.js";
+import { productBrief, productDetail, memberBlock, PRODUCT_RE } from "../_lib/sitekb.js";
+import { groqChat } from "../_lib/aivis.js";
 
 const DEFAULT_MODELS = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // best quality, uses more of the free daily allowance
@@ -24,7 +29,7 @@ const DEFAULT_MODELS = [
 const MAX_MESSAGE = 600;
 const MAX_HISTORY = 12;
 const MAX_HISTORY_CHARS = 900;
-const MAX_REPLY_CHARS = 2200;
+const MAX_REPLY_CHARS = 3200;
 
 const SYSTEM_PROMPT = `You are FODO Bot, the assistant on the website of FODO ("Fear Of Digitally Out ?"), an independent, remote-first digital growth agency headquartered in New Delhi, India, that works with brands worldwide.
 
@@ -131,7 +136,16 @@ function contextBlock(ctx, page) {
   return lines.length ? `\n\n# WHAT THE VISITOR HAS ALREADY TOLD YOU (may be incomplete; do not repeat it back)\n${lines.join("\n")}` : "";
 }
 
-function buildMessages(body) {
+/* v20.3: what the site sells (live prices) + the person's own account, so the bot knows everything that is built */
+async function siteKnowledge(env, request, message) {
+  let facts = null;
+  try { if (accountsOn(env)) { await applyConfig(env); const u = await sessionUser(env, request); if (u) facts = await accountFacts(env, u, await billingUser(env, u)); } } catch (e) { facts = null; }
+  const want = PRODUCT_RE.test(message) || /\b(mera|meri|my|mere)\b/i.test(message) || (facts && facts.paid);
+  return { facts, text: "\n\n" + productBrief() + (want ? productDetail(message) : "") + memberBlock(facts) +
+    "\n\n# RULES FOR THE GROWTH LAB\n- Quote Growth Lab prices exactly as listed above (they are live). Agency service pricing is different: fixed price after a free scoping call.\n- Never invent a feature, plan, discount or report result. If something is not listed, say you are not sure and point to /help/.\n- Link pages with Markdown, e.g. [Business X-Ray](/business-x-ray/), [Plans](/plans/), [Growth Lab](/growth-lab/)." };
+}
+
+function buildMessages(body, extra) {
   const message = cleanText(body.message, MAX_MESSAGE);
   if (!message) return null;
   const history = [];
@@ -149,7 +163,7 @@ function buildMessages(body) {
     ? `\n\n# NOTE\nThe visitor's latest message ("${message.replace(/"/g, "'")}") is a short reply to your previous message. Continue from that previous message; do not start over.`
     : "";
   return [
-    { role: "system", content: SYSTEM_PROMPT + contextBlock(body.context, body.page) + followNote },
+    { role: "system", content: SYSTEM_PROMPT + (extra || "") + contextBlock(body.context, body.page) + followNote },
     ...history,
     { role: "user", content: message },
   ];
@@ -183,13 +197,14 @@ const withTimeout = (p, ms) => new Promise((resolve, reject) => {
 
 const looksLikeQuota = (err) => /4006|daily free allocation|neurons|quota|rate limit exceeded|capacity/i.test(String((err && err.message) || err));
 
-async function generate(env, messages) {
+async function generate(env, messages, maxTokens) {
+  if (!env.AI) return groqOnly(env, messages, maxTokens);
   const models = String(env.LLM_MODELS || "").split(",").map((s) => s.trim()).filter(Boolean);
   const chain = models.length ? models : DEFAULT_MODELS;
   let lastErr = null;
   for (let i = 0; i < chain.length; i++) {
     try {
-      const res = await withTimeout(env.AI.run(chain[i], { messages, max_tokens: 480, temperature: 0.5 }), i === 0 ? 22000 : 14000);
+      const res = await withTimeout(env.AI.run(chain[i], { messages, max_tokens: maxTokens || 480, temperature: 0.5 }), i === 0 ? 22000 : 14000);
       const text = tidyReply(extractText(res));
       if (text) return { text, model: chain[i] };
       lastErr = new Error("empty reply");
@@ -198,9 +213,15 @@ async function generate(env, messages) {
       if (looksLikeQuota(err)) break; // another model will not help if the daily allowance is gone
     }
   }
+  if (env.GROQ_API_KEY) { try { return await groqOnly(env, messages, maxTokens); } catch (g) { lastErr = lastErr || g; } }   // v20.3: Workers AI down / over quota → Groq
   const e = new Error(String((lastErr && lastErr.message) || "AI unavailable"));
   e.quota = looksLikeQuota(lastErr);
   throw e;
+}
+async function groqOnly(env, messages, maxTokens) {
+  const g = await groqChat(env, messages, maxTokens || 480, 25000);
+  const text = tidyReply(g.text); if (!text) throw new Error("empty reply");
+  return { text, model: g.model };
 }
 
 /* ---------- route handlers ---------- */
@@ -210,14 +231,16 @@ export async function onRequestOptions({ request, env }) {
 
 export async function onRequestGet({ request, env }) {
   // Health check: open /api/chat in a browser after deploying. Reveals nothing sensitive.
-  return json({ ok: true, service: "fodo-bot", ai: !!(env && env.AI) && String((env && env.BOT_AI_DISABLED) || "") !== "1", kv: !!(env && env.CHAT_KV) }, 200, corsHeaders(request, env));
+  let member = null;
+  try { if (env && accountsOn(env)) { const u = await sessionUser(env, request); if (u) { const b = await billingUser(env, u), f = await accountFacts(env, u, b); member = { plan: f.plan, paid: !!f.paid, name: u.name || "" }; } } } catch (e) { member = null; }
+  return json({ ok: true, service: "fodo-bot", ai: !!(env && (env.AI || env.GROQ_API_KEY)) && String((env && env.BOT_AI_DISABLED) || "") !== "1", kv: !!(env && env.CHAT_KV), member }, 200, Object.assign({ "cache-control": "no-store" }, corsHeaders(request, env)));
 }
 
 export async function onRequestPost({ request, env }) {
   const cors = corsHeaders(request, env);
   if (!originAllowed(request, env)) return json({ ok: false, code: "forbidden" }, 403, cors);
   if (env && String(env.BOT_AI_DISABLED || "") === "1") return json({ ok: false, code: "disabled" }, 503, cors);
-  if (!env || !env.AI) return json({ ok: false, code: "no_ai_binding" }, 503, cors);
+  if (!env || (!env.AI && !env.GROQ_API_KEY)) return json({ ok: false, code: "no_ai_binding" }, 503, cors);
 
   let body;
   try {
@@ -227,19 +250,21 @@ export async function onRequestPost({ request, env }) {
   } catch (_) { await bump(env, { bad_request: 1 }); return json({ ok: false, code: "bad_request" }, 400, cors); }
   if (!body || typeof body !== "object") return json({ ok: false, code: "bad_request" }, 400, cors);
 
-  const messages = buildMessages(body);
+  const K = await siteKnowledge(env, request, cleanText(body.message, MAX_MESSAGE));
+  const messages = buildMessages(body, K.text);
   if (!messages) return json({ ok: false, code: "empty" }, 400, cors);
+  const paid = !!(K.facts && K.facts.paid);   // v20.3: paying customers get higher limits and longer answers
 
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  const ipHash = await digest(ip);
-  if (!memoryLimit(ipHash, num(env.RATE_PER_MIN, 6), num(env.RATE_PER_HOUR, 40)) || !(await kvDailyLimit(env, ipHash, num(env.DAILY_PER_IP, 60)))) {
+  const ipHash = await digest(paid ? "u:" + K.facts.email : ip);
+  if (!memoryLimit(ipHash, num(env.RATE_PER_MIN, 6) * (paid ? 3 : 1), num(env.RATE_PER_HOUR, 40) * (paid ? 5 : 1)) || !(await kvDailyLimit(env, ipHash, num(env.DAILY_PER_IP, 60) * (paid ? 5 : 1)))) {
     await bump(env, { rate_limited: 1 });
     return json({ ok: false, code: "rate_limited" }, 429, { ...cors, "retry-after": "60" });
   }
 
   try {
     const t0 = Date.now();
-    const { text, model } = await generate(env, messages);
+    const { text, model } = await generate(env, messages, paid ? 800 : 480);
     await bump(env, { requests: 1, ok: 1, latency_ms_total: Date.now() - t0 });
     return json({ ok: true, reply: text, model }, 200, cors);
   } catch (err) {

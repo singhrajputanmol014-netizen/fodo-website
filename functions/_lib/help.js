@@ -5,10 +5,11 @@
    Secrets/vars: RESEND_API_KEY (send) · SUPPORT_EMAIL (the address customers write to) · RESEND_WEBHOOK_SECRET (inbound, whsec_…) */
 import { groqChat } from "./aivis.js";
 import { HELP_KB } from "./helpkb.js";
-import { db, sendMail, nowIso, randId } from "./accounts.js";
+import { db, sendMail, nowIso, randId, activePlan, isUnlimited } from "./accounts.js";
 import { PLANS, PACKS, ORDER } from "./plans.js";
 import { PRODUCTS } from "./products.js";
-import { outbound } from "./xray-core.js";
+import { outbound, reportGet } from "./xray-core.js";
+import { productBrief } from "./sitekb.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS help_tickets (id TEXT PRIMARY KEY, token TEXT, user_id TEXT, email TEXT, name TEXT, subject TEXT, category TEXT, status TEXT, priority TEXT, channel TEXT, assignee TEXT, chat_id TEXT, created_at TEXT, updated_at TEXT, last_from TEXT, first_reply_at TEXT, msgs INTEGER DEFAULT 0)",
@@ -101,7 +102,7 @@ export async function fetchReceived(env, id) {
 /* ---------- what the assistant may know about the person asking (their own account only) ---------- */
 export async function accountFacts(env, u, b) {
   if (!u) return null;
-  const d = await hdb(env), owner = b || u, plan = owner.plan && owner.plan_until && Date.parse(owner.plan_until) > Date.now() ? owner.plan : "free";
+  const d = await hdb(env), owner = b || u, plan = activePlan(owner);   // owners count as Agency (every feature free)
   const orders = (await d.prepare("SELECT kind, item, amount, status, created_at, paid_at FROM acct_orders WHERE user_id=?1 ORDER BY created_at DESC LIMIT 5").bind(owner.id).all().catch(() => ({ results: [] }))).results || [];
   const runs = (await d.prepare("SELECT domain, status, credit, created_at FROM acct_runs WHERE owner_id=?1 ORDER BY created_at DESC LIMIT 5").bind(owner.id).all().catch(() => ({ results: [] }))).results || [];
   const tools = (await d.prepare("SELECT tool, credits FROM lab_tool_credits WHERE user_id=?1 AND credits > 0").bind(owner.id).all().catch(() => ({ results: [] }))).results || [];
@@ -109,12 +110,33 @@ export async function accountFacts(env, u, b) {
   const itemName = (o) => o.kind === "plan" ? (PLANS[o.item] ? PLANS[o.item].name + " plan (1 month)" : o.item) : o.kind === "pack" ? (PACKS[o.item] ? PACKS[o.item].name + " pack" : o.item) : o.kind === "tool" ? (PRODUCTS[o.item] ? PRODUCTS[o.item].name + " (1 run)" : o.item) : o.item;
   return {
     email: u.email, plan: PLANS[plan] ? PLANS[plan].name : plan, planUntil: plan === "free" ? null : (owner.plan_until || "").slice(0, 10),
-    xraysLeft: { thisMonth: plan === "free" ? 0 : owner.monthly_left || 0, packs: owner.pack_left || 0, free: plan === "free" ? owner.free_left || 0 : 0 },
+    xraysLeft: isUnlimited(owner) ? "unlimited (FODO team / gifted access)" : { thisMonth: plan === "free" ? 0 : owner.monthly_left || 0, packs: owner.pack_left || 0, free: plan === "free" ? owner.free_left || 0 : 0 },
     toolRuns: tools.map((x) => (PRODUCTS[x.tool] ? PRODUCTS[x.tool].name : x.tool) + ": " + x.credits),
     payments: orders.map((o) => ({ what: itemName(o), amount: "₹" + o.amount, status: o.status === "PAID" ? "paid" : o.status === "ACTIVE" ? "not completed (no money taken, or still being confirmed)" : String(o.status || "").toLowerCase(), date: (o.paid_at || o.created_at || "").slice(0, 16).replace("T", " ") })),
     recentXrays: runs.map((r) => ({ website: r.domain, status: r.status === "COMPLETE" ? "finished" : r.status === "refunded" ? "could not run — credit returned" : r.status, date: (r.created_at || "").slice(0, 10) })),
     openTickets: open.map((x) => x.id + " — " + x.subject + " (" + x.status + ")"),
+    paid: plan !== "free",
+    latestXray: await latestReport(env, owner.id, plan !== "free"),
   };
+}
+/* v20.3: the person's own most recent finished X-Ray, summarised for the assistants. Paid plans get the full coaching detail
+   (area scores, biggest problem, top actions with the fix, competitors); free accounts get the score and the top 3 actions. */
+export async function latestReport(env, ownerId, full) {
+  try {
+    const d = await hdb(env), run = await d.prepare("SELECT job_id, domain, created_at FROM acct_runs WHERE owner_id=?1 AND status='COMPLETE' ORDER BY created_at DESC LIMIT 1").bind(ownerId).first();
+    if (!run) return null;
+    const raw = await reportGet(env, run.job_id); if (!raw) return { website: run.domain, date: (run.created_at || "").slice(0, 10), link: "/business-x-ray/?r=" + run.job_id };
+    const r = JSON.parse(raw), byId = {}; (r.opportunities || []).forEach((o) => { byId[o.id] = o; });
+    const top = [].concat((r.top && r.top.immediate) || [], (r.top && r.top.growth) || [], (r.top && r.top.strategic) || []).map((id) => byId[id]).filter(Boolean);
+    const acts = (top.length ? top : (r.opportunities || [])).slice(0, full ? 6 : 3).map((o) => ({ priority: o.priority, problem: o.title, fix: String(o.recommendation || "").slice(0, 220) }));
+    const sc = r.scores || {}, out = { website: run.domain, date: (run.created_at || "").slice(0, 10), link: "/business-x-ray/?r=" + run.job_id, score: sc.overall != null ? sc.overall + "/100" : "not scored", topActions: acts };
+    if (full) {
+      out.areas = Object.keys(sc.areas || {}).map((k) => sc.areas[k]).filter((a) => a && a.score != null).map((a) => a.name + " " + a.score);
+      out.competitors = (r.competitors || []).slice(0, 6).map((c) => c.name || c.domain).filter(Boolean);
+      out.dataCompleteness = r.completeness && r.completeness.overall != null ? r.completeness.overall + "%" : null;
+    }
+    return out;
+  } catch (e) { return null; }
 }
 export function priceFacts() {
   return { plans: ORDER.map((id) => PLANS[id].name + ": " + (PLANS[id].price ? "₹" + PLANS[id].price.toLocaleString("en-IN") + "/month" : "free") + ", " + PLANS[id].xrays + " X-Rays" + (id === "free" ? " (lifetime)" : " a month")),
@@ -126,7 +148,8 @@ export function priceFacts() {
 const STOP = /^(a|an|the|i|my|me|is|are|to|of|in|on|for|and|or|it|do|does|can|how|what|why|kya|hai|ka|ki|ke|mera|meri|mujhe|se|ko|nahi|kaise)$/i;
 export function kbSearch(q, n) {
   const w = String(q || "").toLowerCase().split(/[^a-z0-9ऀ-ॿ]+/).filter((x) => x.length > 2 && !STOP.test(x));
-  const SYN = { refund: ["refund", "money", "paisa", "wapas", "return"], paid: ["paid", "payment", "charged", "deducted", "kat", "paise"], plan: ["plan", "price", "pricing", "cost", "kitna", "rate"], cancel: ["cancel", "renew", "band", "stop"], login: ["login", "code", "otp", "sign"], fail: ["fail", "failed", "error", "nahi", "stuck", "loading"] };
+  const SYN = { refund: ["refund", "money", "paisa", "wapas", "return"], paid: ["paid", "payment", "charged", "deducted", "kat", "paise"], plan: ["plan", "price", "pricing", "cost", "kitna", "rate"], cancel: ["cancel", "renew", "band", "stop"], login: ["login", "code", "otp", "sign"], fail: ["fail", "failed", "error", "nahi", "stuck", "loading"],
+    free: ["free", "muft", "calculator", "quiz", "game", "score", "budget", "templates", "checklist"], comp: ["competitor", "competitors", "rival", "finder"], agency: ["agency", "white", "label", "client", "bulk"], better: ["improve", "improved", "compare", "previous", "progress", "pichla"], ai: ["chatgpt", "gemini", "ai", "visibility"], lab: ["lab", "tools", "tool", "pro"] };
   const ex = w.concat([].concat.apply([], Object.keys(SYN).filter((k) => SYN[k].some((s) => w.indexOf(s) > -1)).map((k) => SYN[k])));
   return HELP_KB.map((a) => { const t = (a.q + " " + a.a + " " + a.cat).toLowerCase(); return { a, s: ex.reduce((s, x) => s + (t.indexOf(x) > -1 ? (a.q.toLowerCase().indexOf(x) > -1 ? 3 : 1) : 0), 0) }; })
     .filter((x) => x.s > 0).sort((x, y) => y.s - x.s).slice(0, n || 4).map((x) => x.a);
@@ -137,7 +160,7 @@ export const SYS = "You are the FODO Help Assistant on fodo.co.in (FODO — Fear
   "- Use the ACCOUNT FACTS only for the person asking; never mention other customers.\n- Reply in the person's language (Hindi, Hinglish or English) and keep it under 120 words, friendly and clear. Plain text, no markdown tables.";
 export function buildPrompt(question, facts, history) {
   const arts = kbSearch(question + " " + (history || []).slice(-2).map((m) => m.text).join(" "), 4), P = priceFacts();
-  return "HELP ARTICLES:\n" + (arts.length ? arts : HELP_KB.slice(0, 4)).map((a) => "• " + a.q + " — " + a.a).join("\n") +
+  return productBrief() + "\n\nHELP ARTICLES:\n" + (arts.length ? arts : HELP_KB.slice(0, 4)).map((a) => "• " + a.q + " — " + a.a).join("\n") +
     "\n\nPRICES (live): " + P.plans.join("; ") + ". Packs: " + P.packs.join("; ") + ". Pro tools: " + P.tools.join("; ") + "." +
     "\n\nACCOUNT FACTS: " + (facts ? JSON.stringify(facts) : "the person is not logged in — for account-specific questions ask them to log in, or open a ticket with their email.");
 }

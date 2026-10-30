@@ -43,7 +43,7 @@ const hook = async (data, opt) => { const raw = JSON.stringify({ type: "email.re
 
 /* ---------- 1. help articles + live prices ---------- */
 let r = await call("help/kb");
-ok(r.j.ok && r.j.articles.length >= 15 && r.j.cats.length === 6 && r.j.prices.plans.some((x) => /Growth: ₹1,499\/month/.test(x)) && r.j.support === "support@fodo.co.in", "help articles (6 topics) + live prices + support address");
+ok(r.j.ok && r.j.articles.length >= 30 && r.j.cats.length === 7 && r.j.prices.plans.some((x) => /Growth: ₹1,499\/month/.test(x)) && r.j.support === "support@fodo.co.in", "help articles (7 topics) + live prices + support address");
 ok(kbSearch("paisa wapas kab milega refund")[0].id === "refund" && kbSearch("payment kat gaya plan nahi aaya")[0].id === "paid-not-received", "article search understands Hinglish (refund, money taken but no plan)");
 ok(newPart("Thanks, works now!\n\nOn Mon, 3 Nov 2026 FODO <support@fodo.co.in> wrote:\n> old text") === "Thanks, works now!", "email replies: quoted history is cut off");
 

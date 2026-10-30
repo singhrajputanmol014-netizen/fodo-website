@@ -34,7 +34,10 @@
   disabledUntil = parseInt(ss("fodo-llm-off") || "0", 10) || 0;
 
   /* Visitor switch (v10): AI replies are OFF until the visitor turns them on — the offline engine answers otherwise. */
-  function aiPref() { try { return localStorage.getItem("fodo-ai") === "on"; } catch (_) { return false; } }
+  /* v20.3: a paying member gets AI replies on by default (they can still switch them off), a bigger session allowance and a badge */
+  var member = null; try { member = JSON.parse(ss("fodo-llm-member") || "null"); } catch (_) { member = null; }
+  function paid() { return !!(member && member.paid); }
+  function aiPref() { try { var v = localStorage.getItem("fodo-ai"); return v === "on" || (v !== "off" && paid()); } catch (_) { return paid(); } }
   function aiAvailable() { return MODE !== "off" && !!ENDPOINT && !(MODE === "auto" && probe !== true) && location.protocol !== "file:"; }
   function aiPossible() {
     if (MODE === "off" || !ENDPOINT) return false;
@@ -43,7 +46,7 @@
     if (location.protocol === "file:") return false;           // local double-click preview has no backend
     if (navigator.onLine === false) return false;
     if (Date.now() < disabledUntil) return false;
-    if (used >= MAX_SESSION) return false;                      // protects the free daily allowance from one visitor
+    if (used >= (paid() ? Math.max(MAX_SESSION, 200) : MAX_SESSION)) return false;   // protects the free daily allowance from one visitor
     return true;
   }
   function pause(ms) { disabledUntil = Date.now() + ms; ss("fodo-llm-off", String(disabledUntil)); setNote(); }
@@ -83,8 +86,20 @@
     var ctl = ("AbortController" in window) ? new AbortController() : null, t = setTimeout(function () { if (ctl) ctl.abort(); }, 5000);
     fetch(ENDPOINT, { method: "GET", headers: { accept: "application/json" }, signal: ctl ? ctl.signal : undefined, cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
-      .then(function (j) { clearTimeout(t); probe = !!(j && j.ok && j.ai); ss("fodo-llm-probe", probe ? "1" : "0"); setNote(); });
+      .then(function (j) { clearTimeout(t); probe = !!(j && j.ok && j.ai); ss("fodo-llm-probe", probe ? "1" : "0"); setMember(j && j.member); setNote(); });
   }
+  function setMember(m) { member = m || null; ss("fodo-llm-member", JSON.stringify(member)); badge(); }
+  function badge() {
+    var h = document.querySelector(".bot-head, #bot-panel header, .bot-panel header"); if (!h) return;
+    var b = document.getElementById("bot-member");
+    if (!paid()) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement("span"); b.id = "bot-member"; b.className = "bot-member"; b.style.cssText = "margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(124,92,255,.18);color:inherit;white-space:nowrap"; (h.querySelector("div > b") || h).appendChild(b); }
+    b.textContent = member.plan + " · priority";
+  }
+  // logging in or out changes what the bot may say (own plan, own reports) → ask the server again
+  function reprobe() { try { sessionStorage.removeItem("fodo-llm-probe"); } catch (_) { } probe = null; MODE === "auto" ? runProbe() : setMember(null); }
+  try { if (window.FODO_ACCOUNT && window.FODO_ACCOUNT.onChange) { var lastId = null, first = true; window.FODO_ACCOUNT.onChange(function (u) { var id = u ? (u.id || u.email || "x") : null; if (!first && id !== lastId) reprobe(); first = false; lastId = id; }); } } catch (_) { }
+  document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".bot-fab")) setTimeout(badge, 80); }, true);
   setTimeout(runProbe, 600);
   document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".bot-fab")) setTimeout(setNote, 60); }, true);
   [800, 2000, 4000].forEach(function (ms) { setTimeout(ensureToggle, ms); });   // plain timer: idle callbacks can starve while the 3D background animates
@@ -156,7 +171,8 @@
   }
 
   /* ---------- safe rendering of model text ---------- */
-  var PATHS = ["services", "industries", "work", "insights", "resources", "growth-score", "roi-calculator", "fodo-challenge", "marketing-quiz", "about", "faq", "reviews", "legal", "contact", "thank-you"];
+  var PATHS = ["services", "industries", "work", "insights", "resources", "growth-score", "roi-calculator", "fodo-challenge", "marketing-quiz", "about", "faq", "reviews", "legal", "contact", "thank-you",
+    "business-x-ray", "growth-lab", "plans", "pricing", "account", "help", "competitor-finder", "marketing-budget", "templates", "teardowns", "founding-programme", "locations"];
   function safeHref(u) {
     u = String(u || "").trim();
     var site = String(C.siteUrl || "").replace(/\/$/, "");
@@ -201,7 +217,7 @@
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, TIMEOUT_MS);
     used++; ss("fodo-llm-used", String(used));
     return fetch(ENDPOINT, {
-      method: "POST", credentials: "omit", signal: ctl ? ctl.signal : undefined,
+      method: "POST", credentials: "same-origin", signal: ctl ? ctl.signal : undefined,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: q, history: prior.slice(-12), context: contextSnapshot(), page: route })
     }).then(function (res) {
@@ -247,5 +263,6 @@
   document.addEventListener("click", function (ev) {
     if (ev.target && ev.target.closest && ev.target.closest(".bot-new")) { hist.length = 0; saveHist(); }
   });
-  window.FODO_BOT_LLM = { version: "2026.10.27", mode: MODE, endpoint: ENDPOINT, render: render, safeHref: safeHref, state: function () { return { used: used, failures: failures, pausedUntil: disabledUntil, history: hist.length }; } };
+  window.FODO_BOT_LLM = { version: "2026.10.30", mode: MODE, endpoint: ENDPOINT, render: render, safeHref: safeHref, aiOn: aiPossible, member: function () { return member; }, remember: remember,
+    state: function () { return { used: used, failures: failures, pausedUntil: disabledUntil, history: hist.length, member: member }; } };
 })();

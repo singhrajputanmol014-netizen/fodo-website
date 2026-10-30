@@ -255,3 +255,47 @@ Ticking **Run in the background** on the X-Ray form lets the visitor close the t
 Tests:
 - `tests/v19-functions.test.mjs`: 25 checks. They run the real Worker code against the real API in-process.
 - `tests/v19-e2e.test.js`: 16 checks. Real pages and the runner Worker code, with a local queue and Chromium standing in for Cloudflare's: tab closed → report built → email; capacity full → waits → starts by itself; token and key checks.
+
+## v20 — Help desk, support mail and the AI help assistant
+
+**For customers: `/help/`** (linked in the menu and footer as "Help & support")
+- **Answers:** 19 help articles in 6 topics, with search (FAQ JSON-LD for Google).
+- **AI help assistant:**
+  - Answers from the help articles, the live prices from admin settings, and, when the person is logged in, only *their own* account: plan, X-Rays left, recent payments, tool runs and tickets.
+  - Uses Workers AI (llama 3.3 70b, falling back to 8b). If AI is down it answers straight from the best-matching articles.
+  - It never promises refunds or changes accounts. For refunds, double payments or bugs it offers **Talk to a person**, which turns the chat into a ticket with the whole transcript.
+- **Ticket form:** works for guests. Spam bots are caught by a hidden field and rate limits.
+- **Your tickets:** the list of your own tickets, a thread view, reply, and mark as solved. A guest opens their ticket from the secret link in the ticket email.
+
+**Email**
+- Every ticket email goes out with the subject `[FODO #T…]` and `Reply-To: SUPPORT_EMAIL`.
+- When the customer replies by email, the Resend inbound webhook (`/api/help/inbound/resend`, Svix-signed) puts the reply on the same ticket, with the quoted history removed.
+- A reply that quotes a ticket number from a *different* sender opens a new ticket (no hijacking). Duplicate webhooks are ignored.
+- A new email to support opens a new ticket and gets an auto-reply.
+
+**Admin → Support**
+- **Help desk:**
+  - Counts: open, waiting for customer, solved this week, average first-reply time, AI chats and how many went to a person, 👍/👎.
+  - The ticket list with search and status filter. Topics for the last 30 days.
+  - Ticket page:
+    - The thread and the AI chat before it.
+    - The customer's plan, X-Rays left, payments, recent X-Rays, tool credits and other tickets.
+    - The emails on this ticket and whether each was sent.
+    - Reply (emailed and shown on the help page), internal note (never shown to the customer), and status, priority, topic and assignee.
+  - **New email:** write to anyone. It becomes a ticket, so the reply comes back into the same thread.
+- **Mail:** every email the site sends or receives (Inbox / Sent / all, search, open one). Login-code emails are logged without the code.
+- **AI chats:** every assistant conversation, the model used, rating, and whether it became a ticket.
+- Viewers can read everything. Only owners can reply, change or send.
+
+**Tables:** `help_tickets`, `help_messages`, `help_chats`, `help_chat_msgs`, `help_mail`. They are created automatically.
+
+**Secrets (Cloudflare Pages → Settings → Variables and Secrets)**
+
+| Secret | What it is |
+|---|---|
+| `RESEND_API_KEY` | Resend key (already used for login codes). |
+| `MAIL_FROM` | e.g. `FODO <hello@fodo.co.in>`, on a domain verified in Resend. |
+| `SUPPORT_EMAIL` | The address customers write to and reply to, e.g. `support@fodo.co.in`. |
+| `RESEND_WEBHOOK_SECRET` | The `whsec_…` signing secret of the Resend inbound webhook. Without it, outgoing mail still works, but email replies don't come back into admin. |
+
+Tests: `tests/v20-functions.test.mjs`, 38 checks covering articles, assistant grounding and fallback, escalation, tickets and access, the inbound webhook (signature, replay, threading, hijack, duplicates), the mail log and login-code redaction, and admin reply, note, compose and viewer read-only.

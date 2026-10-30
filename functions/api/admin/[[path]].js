@@ -13,6 +13,7 @@
  *        GET businesses?q= · GET business/<domain> · GET findings?days=&industry= · GET report/<job> · POST report/<job>/qc {status, note}
  *        GET prompts · POST prompts {key, text, note} | {key, reset} | {key, activate: id}  (owners only) · GET insights (next best actions)
  */
+import { helpGet, helpPost } from "../../_lib/help-admin.js";
 import { bgOn, bdb } from "../../_lib/bg.js";
 import { PRODUCTS } from "../../_lib/products.js";
 import { json, accountsOn, db, sessionUser, sameOrigin, isOwner, logEvent, cleanEmail, nowIso, activePlan, extraFeatures, randId } from "../../_lib/accounts.js";
@@ -43,6 +44,7 @@ export async function onRequest(ctx) {
     if (!role) return json({ ok: false, forbidden: true, reason: "This dashboard is only for the FODO team." }, 403);
     const p0 = path[0] || "", q = new URL(request.url).searchParams;
     if (m === "GET") {
+      if (["help", "mail", "mailone", "chats", "chat"].indexOf(p0) > -1) { const hr = await helpGet(env, path, q, role); if (hr) return hr; }   // v20 help desk
       if (p0 === "me") return json({ ok: true, role, email: u.email, name: u.name, plans: ORDER.map((id) => ({ id, name: PLANS[id].name, price: PLANS[id].price })), features: Object.keys(FEATURE_INFO).map((id) => ({ id, label: FEATURE_INFO[id].label })) });
       if (p0 === "overview") return json(Object.assign({ ok: true, role }, await overview(d)));
       if (p0 === "users") return json({ ok: true, role, items: (await users(d, clean(q.get("q"), 80), Math.max(0, +q.get("offset") || 0), q.get("filter"), q.get("all") === "1")).map((x) => Object.assign(x, { owner: isOwner(x) })) });
@@ -70,6 +72,7 @@ export async function onRequest(ctx) {
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
     const body = await request.json().catch(() => ({}));
+    if (p0 === "help" || p0 === "mail") { const hr = await helpPost(env, path, body, u, new URL(request.url).origin); if (hr) return hr; }   // v20 help desk
     if (p0 === "report" && path[1] && path[2] === "qc") {
       const st = String(body.status || ""); if (["verified", "needs_review", "failed", ""].indexOf(st) < 0) return json({ ok: false, reason: "Status: verified, needs_review or failed." }, 400);
       const r = await d.prepare("UPDATE acct_runs SET qc=?2, qc_note=?3, qc_by=?4, qc_at=?5 WHERE job_id=?1").bind(String(path[1]), st || null, clean(body.note, 300), u.email, nowIso()).run();

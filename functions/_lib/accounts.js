@@ -43,7 +43,7 @@ export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
   if (!ready) ready = d.batch(DDL.map((s) => d.prepare(s))).then(async () => { for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } }).catch((e) => { ready = null; throw e; });
   await ready; return d; }
 /* v15: activity log for the admin dashboard — never throws, never blocks the request */
-export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block", "admin_config", "action_update", "monitor_add", "monitor_check", "gsc_connect", "gsc_disconnect", "monthly_report", "why_winning", "budget_plan", "tool_use", "share_off", "share_on", "admin_qc", "admin_prompt", "upgrade_click", "report_view"];
+export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block", "admin_config", "action_update", "monitor_add", "monitor_check", "gsc_connect", "gsc_disconnect", "monthly_report", "why_winning", "budget_plan", "tool_use", "share_off", "share_on", "admin_qc", "admin_prompt", "upgrade_click", "report_view", "help_ticket", "admin_help"];
 export async function logEvent(env, userId, kind, detail) { try { if (!userId || !accountsOn(env)) return; await (await db(env)).prepare("INSERT INTO acct_events (user_id, kind, detail, created_at) VALUES (?1,?2,?3,?4)").bind(userId, kind, String(detail == null ? "" : detail).slice(0, 300), nowIso()).run(); } catch (e) {} }
 export async function count(env, key, limit, ttlSec) {   // true when over the limit
   const d = await db(env), now = Date.now();
@@ -222,10 +222,28 @@ export const waOn = (env) => !!(env.WA_NUMBER && env.WA_TOKEN && env.WA_PHONE_ID
 export const displayName = (u) => (u && (u.name || u.email || u.phone)) || "User";
 
 /* ---------------- email one-time code (Resend) ---------------- */
-export async function sendMail(env, to, subject, html, text) {
-  if (!env.RESEND_API_KEY) throw new Error("email not configured");
+/* every email FODO sends goes through here — and is logged for the admin Mail view (v20). Login codes are never stored.
+   opt = { replyTo, kind: system|ticket|compose, ticket, by, from } */
+const MAIL_DDL = "CREATE TABLE IF NOT EXISTS help_mail (id INTEGER PRIMARY KEY AUTOINCREMENT, t TEXT, dir TEXT, kind TEXT, from_addr TEXT, to_addr TEXT, subject TEXT, text TEXT, ticket_id TEXT, status TEXT, provider_id TEXT, error TEXT, by_email TEXT, msg_id TEXT)";
+const mailMade = new WeakSet();
+export async function mailLog(env, o) {
+  try { const d = env.XRAY_DB; if (!d) return; if (!mailMade.has(d)) { await d.prepare(MAIL_DDL).run(); mailMade.add(d); }
+    await d.prepare("INSERT INTO help_mail (t, dir, kind, from_addr, to_addr, subject, text, ticket_id, status, provider_id, error, by_email, msg_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)")
+      .bind(new Date().toISOString(), o.dir || "out", o.kind || "system", String(o.from || "").slice(0, 200), String(o.to || "").slice(0, 200), String(o.subject || "").slice(0, 300), String(o.text || "").slice(0, 20000), o.ticket || null, o.status || "sent", o.providerId || null, o.error || null, o.by || null, o.msgId || null).run();
+  } catch (e) {}
+}
+export async function sendMail(env, to, subject, html, text, opt) {
+  opt = opt || {};
+  const from = opt.from || env.MAIL_FROM || "FODO <login@fodo.co.in>", secret = /login code/i.test(subject);
+  const logText = secret ? "[login code — not stored]" : String(text || String(html || "").replace(/<[^>]+>/g, " ")).replace(/\s+\n/g, "\n").slice(0, 20000);
+  if (!env.RESEND_API_KEY) { await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, ticket: opt.ticket, status: "not sent", error: "email not configured (RESEND_API_KEY)", by: opt.by }); throw new Error("email not configured"); }
+  const body = { from, to: [to], subject, html, text };
+  if (opt.replyTo) body.reply_to = opt.replyTo;
+  if (opt.headers) body.headers = opt.headers;
   const r = await outbound(env)("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + env.RESEND_API_KEY, "content-type": "application/json" },
-    body: JSON.stringify({ from: env.MAIL_FROM || "FODO <login@fodo.co.in>", to: [to], subject, html, text }), signal: AbortSignal.timeout(10000) });
+    body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  const j = await r.json().catch(() => ({}));
+  await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, ticket: opt.ticket, status: r.ok ? "sent" : "failed", providerId: j.id || null, error: r.ok ? null : "Resend " + r.status + (j.message ? ": " + String(j.message).slice(0, 160) : ""), by: opt.by, msgId: opt.headers && opt.headers["X-FODO-Ticket"] || null });
   if (!r.ok) { log({ route: "mail", ok: false, status: r.status }); throw new Error("email failed " + r.status); }
   return true;
 }

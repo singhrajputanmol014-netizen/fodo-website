@@ -152,7 +152,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   ok(/Next best actions/.test(await p.textContent(".ad-nba")), "overview: next best actions panel");
   await p.click("#ad-menu"); await p.waitForSelector(".ad-menu-box");
   const groups = await p.$$eval(".ad-menu-box .ad-gl", (e) => e.map((x) => x.textContent)), mlinks = await p.$$eval(".ad-menu-box a[data-tab]", (e) => e.length);
-  ok(groups.join(",") === "Growth Lab,Customers,Website,Money & setup,Quick links" && mlinks === 16, "☰ menu beside dark mode opens every section, grouped (" + mlinks + " sections) + quick links");
+  ok(groups.join(",") === "Growth Lab,Support,Customers,Website,Money & setup,Quick links" && mlinks === 19, "☰ menu beside dark mode opens every section, grouped (" + mlinks + " sections) + quick links");
   await shot(p, "admin-menu");
   await p.click('.ad-menu-box a[data-tab="lab"]'); await p.waitForFunction(() => /Every Growth Lab tool/.test(document.getElementById("ad-view").textContent), null, { timeout: 20000 });
   const lt = await p.textContent("#ad-view"); ok(/Every Growth Lab tool/.test(lt) && /Visitor → customer funnel/.test(lt) && /Marketing Budget Planner/.test(lt) && /Growth Score/.test(lt), "admin Growth Lab: every tool + full funnel");

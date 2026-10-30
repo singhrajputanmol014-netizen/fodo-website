@@ -24,7 +24,7 @@ def shell(route, path, title, desc, body, depth, extra_head="", scripts=()):
 
 STATIC_FOOTER = ('<nav class="container" aria-label="Site" style="padding:24px 0"><p><b>FODO — Fear Of Digitally Out ?</b> · Based in New Delhi. Built for ambitious brands worldwide.</p><ul>'
   + "".join(f'<li><a href="__R__{u}">{t}</a></li>' for u, t in [("", "Home"), ("services/", "Services"), ("industries/", "Industries"), ("work/", "Work"), ("insights/", "Insights"), ("about/", "About"),
-     ("pricing/", "Pricing"), ("faq/", "FAQ"), ("reviews/", "Reviews"), ("contact/", "Contact"), ("locations/", "Where we work"), ("locations/delhi/", "Delhi"), ("locations/uae/", "UAE"), ("locations/uk/", "UK"), ("locations/usa/", "USA"),
+     ("pricing/", "Pricing"), ("faq/", "FAQ"), ("reviews/", "Reviews"), ("contact/", "Contact"), ("help/", "Help & support"), ("locations/", "Where we work"), ("locations/delhi/", "Delhi"), ("locations/uae/", "UAE"), ("locations/uk/", "UK"), ("locations/usa/", "USA"),
      ("growth-lab/", "Growth Lab"), ("business-x-ray/", "Business X-Ray"), ("plans/", "Growth Lab Plans"), ("marketing-budget/", "Marketing Budget Planner"), ("competitor-finder/", "Competitor Finder"), ("growth-score/", "Growth Score"), ("roi-calculator/", "ROI Calculator"), ("marketing-quiz/", "Marketing Quiz"), ("fodo-challenge/", "FODO Challenge"),
      ("teardowns/", "Ad Teardowns"), ("templates/", "Templates"), ("resources/", "Checklists"), ("founding-programme/", "Founding Programme"), ("legal/", "Privacy &amp; Terms")])
   # v17.2: real tel: / WhatsApp / mailto links in the HTML itself (the JS footer replaces this, but crawlers and no-JS visitors see these)
@@ -711,6 +711,37 @@ for _t in PRODUCTS:
      2, LD(crumbs_ld([("Home", "/"), ("Growth Lab", "/growth-lab/"), (_t["name"], "/growth-lab/" + _id + "/")]), faq_ld(_faq),
            {"@context": "https://schema.org", "@type": "Service", "name": _t["name"], "provider": {"@type": "Organization", "name": "FODO", "url": SITE}, "description": _desc, "offers": {"@type": "Offer", "price": str(_t["price"]), "priceCurrency": "INR"}}),
      ("account", "tool"))
+# ---- v20 HELP DESK (/help/): articles from functions/_lib/helpkb.js (the same file the AI help assistant answers from),
+#      the AI assistant, a ticket form and "my tickets" — all connected to /admin/ → Help desk ----
+_HK = open(os.path.join(ROOT, "functions", "_lib", "helpkb.js")).read()
+HELP_KB = json.loads(_HK.split("export const HELP_KB = ")[1].split(";\nexport const HELP_CATS")[0])
+HELP_CATS = json.loads(_HK.split("export const HELP_CATS = ")[1].split(";")[0])
+HELP_TCATS = ["Plans & pricing", "Payments & refunds", "Business X-Ray", "Pro tools", "Account & login", "Bug / something broken", "FODO services", "Other"]
+def _hlink(l): return f' <a href="../{l}">Open →</a>' if l else ""
+pages["help"] = ("help", "/help/", T("Help & Support — FODO Growth Lab"),
+ D_("Answers about plans, payments, refunds, Business X-Ray and your account — ask the FODO help assistant or open a ticket and a person replies."),
+ hero("Help & support", "How can we help?", "Search the answers, ask the FODO help assistant (it knows your plan and payments when you're logged in), or open a ticket — a person replies by email.",
+      '<a class="btn" href="#hp-chat">Ask the assistant</a><a class="btn ghost" href="#hp-ticket">Open a ticket</a>',
+      visual=ASIDE("Most asked", [(a["q"], "#hp-" + a["id"]) for a in HELP_KB[:5]]))
+ + '<section class="cf-sec hp-sec" id="hp-answers"><div class="container"><div class="section-head reveal"><h2>Answers</h2><span class="section-num">01</span></div>'
+ + '<div class="cf-f hp-search"><label for="hp-q">Search help</label><input id="hp-q" type="search" placeholder="e.g. refund, payment not received, cancel plan" autocomplete="off"></div><p class="muted" id="hp-none" hidden>Nothing matched — ask the assistant below or open a ticket.</p>'
+ + "".join(f'<div class="hp-cat" data-cat="{X(c)}"><p class="eyebrow">{X(c)}</p>' + "".join(f'<div class="acc hp-a" id="hp-{a["id"]}"><button type="button" aria-expanded="false" aria-controls="hpa-{a["id"]}">{X(a["q"])}</button><div class="acc-body" id="hpa-{a["id"]}" hidden>{X(a["a"])}{_hlink(a.get("link"))}</div></div>' for a in HELP_KB if a["cat"] == c) + '</div>' for c in HELP_CATS)
+ + '</div></section>'
+ + '<section class="cf-sec hp-sec" id="hp-chat"><div class="container"><div class="section-head reveal"><h2>Ask the FODO help assistant</h2><span class="section-num">02</span></div>'
+ + '<div class="panel hud hp-chat"><div class="hp-log" id="hp-log" aria-live="polite"><div class="hp-m a"><b>FODO Help</b><p>Hi! Ask me about plans, prices, payments, refunds, the Business X-Ray or your account. When you are logged in I can see your own plan, credits and payments.</p></div></div>'
+ + '<form class="hp-cf" id="hp-cf"><label class="sr-only" for="hp-in">Your question</label><input id="hp-in" maxlength="1500" placeholder="Type your question… (English, Hindi or Hinglish)" autocomplete="off"><button class="btn" type="submit">Send</button></form>'
+ + '<div class="hp-human" id="hp-human"><span class="muted">Need a person?</span> <button type="button" class="btn sm ghost" id="hp-esc">Talk to a person</button> <span id="hp-escb"></span></div>'
+ + '<p class="muted cf-note">The assistant answers from FODO\'s help articles, live prices and your own account only. It can\'t approve refunds or change your account — a person does that. Chats are saved so the FODO team can help you.</p></div></div></section>'
+ + '<section class="cf-sec hp-sec" id="hp-ticket"><div class="container"><div class="section-head reveal"><h2>Open a ticket</h2><span class="section-num">03</span></div><div class="grid g2 hp-grid">'
+ + '<form class="cf-form panel hud" id="hp-tf" novalidate><div class="cf-fields"><div class="cf-f"><label for="hp-name">Name</label><input id="hp-name" maxlength="80" autocomplete="name"></div><div class="cf-f"><label for="hp-email">Email (we reply here)</label><input id="hp-email" type="email" maxlength="120" autocomplete="email" required></div>'
+ + '<div class="cf-f"><label for="hp-cat">Topic</label><select id="hp-cat">' + "".join(f'<option>{X(c)}</option>' for c in HELP_TCATS) + '</select></div><div class="cf-f"><label for="hp-subj">Subject</label><input id="hp-subj" maxlength="160"></div></div>'
+ + '<div class="cf-f"><label for="hp-msg">What happened?</label><textarea id="hp-msg" rows="5" maxlength="8000" placeholder="For payments: the date, amount and what you bought. For an X-Ray: the website address." required></textarea></div>'
+ + '<div class="hp-hp" aria-hidden="true"><label>Website <input name="website" id="hp-web" tabindex="-1" autocomplete="off"></label></div>'
+ + '<div class="btn-row"><button class="btn" type="submit">Send to FODO</button></div><p class="cf-status" id="hp-tst" role="status" aria-live="polite"></p></form>'
+ + '<div class="panel hp-my" id="hp-my"><h3>Your tickets</h3><div id="hp-myl"><p class="muted">Log in to see your tickets here — or use the link in your ticket email.</p></div></div></div>'
+ + '<div class="panel hud hp-thread" id="hp-thread" hidden></div>'
+ + '<p class="muted hp-contact">Prefer email? Write to <a id="hp-sup" href="mailto:support@fodo.co.in">support@fodo.co.in</a> — it becomes a ticket too. Urgent? <a href="tel:+917827007676">Call +91 7827007676</a> · <a href="https://wa.me/917827007676" rel="noopener">WhatsApp</a></p></div></section>',
+ 1, LD(crumbs_ld([("Home", "/"), ("Help", "/help/")]), faq_ld([(a["q"], a["a"]) for a in HELP_KB])), ("account", "help"))
 BP_TYPES = [("local", "Local business (clinic, salon, restaurant, store, home services)"), ("ecom", "Online store / D2C brand"), ("b2b", "B2B / services to companies"), ("saas", "Software / app (SaaS)"), ("edu", "Courses, coaching, education")]
 BP_GOALS = [("leads", "More enquiries / leads"), ("sales", "More online sales"), ("footfall", "More walk-ins / bookings"), ("awareness", "Brand awareness")]
 BP_HAVE = [("search", "Google Search Ads"), ("meta", "Meta (Facebook/Instagram) Ads"), ("gbp", "Google Business Profile"), ("seo", "SEO / blog"), ("linkedin", "LinkedIn"), ("youtube", "YouTube"), ("email", "Email / WhatsApp"), ("market", "Marketplaces")]

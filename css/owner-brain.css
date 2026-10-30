@@ -215,3 +215,11 @@ body.ob-vo-on{overflow:hidden}
   .ob-conv .ob-log{flex:1 1 auto}.ob-view:has(.ob-chat){padding-bottom:calc(84px + env(safe-area-inset-bottom))}
   .ob-table td{text-align:left!important}.ob-table td input{margin:4px 0}
 }
+/* ===== v25: mute FODO (only listening + speaking) ===== */
+.ob-mute svg{width:17px;height:17px;fill:currentColor}.ob-mute .off{display:none}
+.ob-mute.muted{color:#fff;background:var(--b-err);border-color:transparent}.ob-mute.muted .on{display:none}.ob-mute.muted .off{display:inline}
+body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness(.6)}
+.ob-vo-h .sp{flex:1}.ob-vo-h{gap:8px}
+.ob-vo-stage canvas{filter:drop-shadow(0 0 30px rgba(255,170,80,.0))}
+.ob-vo[data-state="speaking"] .ob-vo-bg{background:radial-gradient(40% 35% at 50% 42%,rgba(255,160,70,.20),transparent 70%),radial-gradient(30% 30% at 30% 30%,rgba(255,200,120,.10),transparent 70%)}
+.ob-vo[data-state="speaking"] .ob-micbtn.on{background:linear-gradient(140deg,#ffb35c,#e0702a)}

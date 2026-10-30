@@ -50,7 +50,107 @@
     " if(uLight>.5){outc*=1.05;}",
     " gl_FragColor=vec4(outc*al,al);}",
   ].join("\n");
-  function mount(cv, opt) {
+  /* ---------- v25: the FODO neural circuit sphere (default) ----------
+     Glowing traces grow across three shells of a 3-D sphere like circuitry being drawn live, branch, fade and are replaced by new
+     ones; broken ring arcs orbit it on drifting axes. Nothing is pre-recorded: every trace is generated on the fly, and the
+     "mood" (spin, tilt, density, growth speed) keeps wandering towards new random targets — and jumps whenever the voice peaks —
+     so it never repeats. Sound drives it: louder speech → more traces, faster growth, brighter glow, a pulsing radius. */
+  var CIRC = {
+    idle: { c: [150, 130, 255], c2: [95, 170, 255], spin: 0.10, grow: 0.5, dens: 0.55 },
+    listening: { c: [70, 225, 210], c2: [110, 160, 255], spin: 0.16, grow: 0.8, dens: 0.75 },
+    hearing: { c: [110, 245, 235], c2: [150, 140, 255], spin: 0.26, grow: 1.4, dens: 1.0 },
+    thinking: { c: [255, 185, 90], c2: [175, 125, 255], spin: 0.55, grow: 2.2, dens: 1.0 },
+    speaking: { c: [255, 168, 80], c2: [255, 215, 150], spin: 0.30, grow: 1.6, dens: 1.0 },
+  };
+  function mountCircuit(cv, opt) {
+    opt = opt || {}; var ctx = cv.getContext("2d"); if (!ctx) return mount2d(cv, opt);
+    var small = !!opt.small, MAXT = small ? 70 : 260, raf = 0, dead = false, last = performance.now(), t = 0;
+    var st = CIRC.idle, col = st.c.slice(), col2 = st.c2.slice(), lvl = 0, lvlT = 0, prevL = 0;
+    var mood = { spin: 0.1, tilt: 0.35, roll: 0, dens: 0.6, grow: 0.6 }, goal = { tilt: 0.35, roll: 0, spinMul: 1, dens: 1 }, nextGoal = 0;
+    var yaw = Math.random() * 6.28, pitch = 0.35, roll = 0, traces = [], rings = [], R = Math.random;
+    var SHELLS = small ? [{ r: 1, band: 1.6, w: 1 }, { r: 0.55, band: 1.6, w: 0.6 }] : [{ r: 1, band: 1.6, w: 1 }, { r: 0.56, band: 1.6, w: 0.7 }, { r: 1.17, band: 0.42, w: 0.55 }];
+    function newRing() { return { tilt: (R() - 0.5) * 2.4, phase: R() * 6.28, sp: (R() < 0.5 ? -1 : 1) * (0.15 + R() * 0.5), r: 1.08 + R() * 0.3, arcs: Array.from({ length: 3 + (R() * 4 | 0) }, function () { var a = R() * 6.28; return [a, a + 0.25 + R() * 1.4]; }), life: 0, max: 6 + R() * 10 }; }
+    for (var k = 0; k < (small ? 1 : 3); k++) { var rg = newRing(); rg.life = R() * rg.max; rings.push(rg); }
+    var DIRS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+    function spawn(lat, lon, shell) {
+      var sh = shell == null ? (R() < 0.62 ? 0 : R() < 0.6 || SHELLS.length < 3 ? 1 : 2) : shell, S = SHELLS[sh];
+      lat = lat != null ? lat : (R() * 2 - 1) * S.band * 0.95; lon = lon != null ? lon : R() * 6.283;
+      traces.push({ sh: sh, pts: [[lat, lon]], dir: (R() * 8) | 0, max: 8 + (R() * (small ? 20 : 44) | 0), age: 0, fade: 0, acc: 0, step: 0.028 + R() * 0.03 });
+    }
+    for (var i = 0; i < MAXT * 0.5; i++) { spawn(); var tr = traces[traces.length - 1], n = R() * tr.max | 0; while (n--) grow(tr); }
+    function grow(tr) {
+      var S = SHELLS[tr.sh], p = tr.pts[tr.pts.length - 1];
+      if (R() < 0.22) tr.dir = (tr.dir + (R() < 0.5 ? 1 : 7)) % 8;   // 45° turns, like real circuit traces
+      var d = DIRS[tr.dir], lat = p[0] + d[1] * tr.step, lon = p[1] + d[0] * tr.step / Math.max(0.25, Math.cos(p[0]));
+      if (Math.abs(lat) > S.band) { tr.dir = (tr.dir + 4) % 8; lat = p[0]; }
+      tr.pts.push([lat, lon]);
+      if (R() < 0.035 && traces.length < MAXT) spawn(lat, lon, tr.sh);   // branch
+    }
+    function rot(x, y, z) {   // yaw (Y) → pitch (X) → roll (Z)
+      var cy = Math.cos(yaw), sy = Math.sin(yaw), x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      var cp = Math.cos(pitch), sp = Math.sin(pitch), y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+      var cr = Math.cos(roll), sr = Math.sin(roll); return [x1 * cr - y2 * sr, x1 * sr + y2 * cr, z2];
+    }
+    function size() { var d = Math.min(window.devicePixelRatio || 1, small ? 2 : 1.75), w = Math.round((cv.clientWidth || 100) * d), h = Math.round((cv.clientHeight || 100) * d); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } return d; }
+    function rgba(c, a) { return "rgba(" + (c[0] | 0) + "," + (c[1] | 0) + "," + (c[2] | 0) + "," + Math.max(0, Math.min(1, a)).toFixed(3) + ")"; }
+    function frame(now) {
+      if (dead) return; raf = requestAnimationFrame(frame);
+      if (document.hidden || !cv.offsetParent) { last = now; return; }
+      var dt = Math.min(0.05, (now - last) / 1000); if (small && dt < 0.03) return; last = now; t += dt;
+      var dpr = size(), W = cv.width, H = cv.height, cx = W / 2, cy = H / 2, base = Math.min(W, H) * (small ? 0.40 : 0.33);
+      // sound + mood
+      lvl += (lvlT - lvl) * (lvlT > lvl ? 0.45 : 0.08);
+      for (var q = 0; q < 3; q++) { col[q] += (st.c[q] - col[q]) * 0.06; col2[q] += (st.c2[q] - col2[q]) * 0.06; }
+      if (now > nextGoal || (lvl - prevL > 0.22 && !small)) { goal.tilt = (R() - 0.5) * 1.6; goal.roll = (R() - 0.5) * 0.9; goal.spinMul = (R() < 0.25 ? -1 : 1) * (0.6 + R() * 1.2); goal.dens = 0.6 + R() * 0.6; nextGoal = now + 2500 + R() * 6000;
+        if (lvl - prevL > 0.22) for (var b = 0; b < 10 && traces.length < MAXT; b++) spawn(); }
+      prevL = lvl;
+      mood.tilt += (goal.tilt - mood.tilt) * dt * 0.6; mood.roll += (goal.roll - mood.roll) * dt * 0.5;
+      var spinT = st.spin * goal.spinMul * (1 + lvl * 2.2); mood.spin += (spinT - mood.spin) * dt * 1.5;
+      yaw += mood.spin * dt; pitch = mood.tilt + Math.sin(t * 0.37) * 0.08; roll = mood.roll + Math.sin(t * 0.23) * 0.05;
+      var pulse = 1 + Math.sin(t * 1.4) * 0.018 + lvl * 0.16 + (Math.sin(t * 9.3) * 0.5 + 0.5) * lvl * 0.05, Rr = base * pulse;
+      // grow / spawn / retire traces
+      var target = MAXT * st.dens * goal.dens * (0.75 + lvl * 0.5); while (traces.length < target) spawn();
+      var g = st.grow * (1 + lvl * 3), alive = [];
+      traces.forEach(function (tr) { tr.age += dt; if (tr.pts.length < tr.max) { tr.acc += g * dt * 18; while (tr.acc > 1 && tr.pts.length < tr.max) { grow(tr); tr.acc--; } } else tr.fade += dt * (0.35 + R() * 0.3 + lvl * 0.6); if (tr.fade < 1) alive.push(tr); });
+      traces = alive;
+      // draw
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
+      var halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Rr * 1.55); halo.addColorStop(0, rgba(col, 0.20 + lvl * 0.25)); halo.addColorStop(0.45, rgba(col, 0.07 + lvl * 0.08)); halo.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "lighter"; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      var front = [new Path2D(), new Path2D(), new Path2D()], back = new Path2D(), dots = new Path2D();
+      traces.forEach(function (tr) {
+        var S = SHELLS[tr.sh], rr = Rr * S.r, P = [], vis = 0;
+        for (var j = 0; j < tr.pts.length; j++) { var a = tr.pts[j], cl = Math.cos(a[0]), v = rot(cl * Math.cos(a[1]), Math.sin(a[0]), cl * Math.sin(a[1])), f = 3.2 / (3.2 + v[2]); P.push([cx + v[0] * rr * f, cy + v[1] * rr * f, v[2]]); vis += v[2]; }
+        var path = vis / P.length < 0.05 ? front[tr.sh] : back, fadeIn = Math.min(1, tr.age * 3);
+        if (tr.fade > 0.55 || fadeIn < 0.4) path = back;
+        path.moveTo(P[0][0], P[0][1]); for (var m = 1; m < P.length; m++) path.lineTo(P[m][0], P[m][1]);
+        var e = P[P.length - 1]; if (e[2] < 0.1 && !small) { dots.moveTo(e[0] + 1.6 * dpr, e[1]); dots.arc(e[0], e[1], 1.6 * dpr, 0, 6.283); }
+      });
+      var bright = 0.75 + lvl * 0.45;
+      ctx.lineWidth = 1 * dpr; ctx.strokeStyle = rgba(col2, 0.16 * bright); ctx.stroke(back);
+      for (var sIdx = front.length - 1; sIdx >= 0; sIdx--) { if (!SHELLS[sIdx]) continue;
+        ctx.lineWidth = (small ? 2.4 : 3.6) * dpr; ctx.strokeStyle = rgba(col, 0.10 * bright * SHELLS[sIdx].w); ctx.stroke(front[sIdx]);
+        ctx.lineWidth = (small ? 1.1 : 1.15) * dpr; ctx.strokeStyle = rgba(sIdx === 1 ? col2 : col, 0.85 * bright * SHELLS[sIdx].w); ctx.stroke(front[sIdx]); }
+      ctx.lineWidth = 1 * dpr; ctx.strokeStyle = rgba(col, 0.9 * bright); ctx.stroke(dots);
+      // orbiting broken rings
+      rings.forEach(function (rg, ri) {
+        rg.life += dt; rg.phase += rg.sp * dt * (1 + lvl * 1.5); var fadeR = Math.min(1, rg.life, (rg.max - rg.life)); if (rg.life > rg.max) { rings[ri] = newRing(); return; }
+        var ct = Math.cos(rg.tilt), stt = Math.sin(rg.tilt), rr = Rr * rg.r; ctx.beginPath();
+        rg.arcs.forEach(function (ar) { for (var a = ar[0]; a <= ar[1]; a += 0.05) { var x = Math.cos(a + rg.phase), z0 = Math.sin(a + rg.phase), v = rot(x, z0 * stt, z0 * ct), f = 3.2 / (3.2 + v[2]), px = cx + v[0] * rr * f, py = cy + v[1] * rr * f; a === ar[0] ? ctx.moveTo(px, py) : ctx.lineTo(px, py); } });
+        ctx.lineWidth = (small ? 1 : 1.4) * dpr; ctx.strokeStyle = rgba(col, (0.35 + lvl * 0.4) * fadeR); ctx.stroke();
+        ctx.lineWidth = 4 * dpr; ctx.strokeStyle = rgba(col, 0.06 * fadeR); ctx.stroke();
+      });
+      // core
+      ctx.globalCompositeOperation = "lighter";
+      var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, Rr * 0.55); core.addColorStop(0, rgba([255, 240, 220], 0.35 + lvl * 0.4)); core.addColorStop(0.3, rgba(col, 0.18 + lvl * 0.25)); core.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = core; ctx.beginPath(); ctx.arc(cx, cy, Rr * 0.55, 0, 6.283); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+    }
+    raf = requestAnimationFrame(frame);
+    return { state: function (s) { if (CIRC[s]) st = CIRC[s]; }, level: function (v) { lvlT = Math.max(0, Math.min(1, +v || 0)); }, destroy: function () { dead = true; cancelAnimationFrame(raf); }, circuit: true };
+  }
+  function mountGL(cv, opt) {
     opt = opt || {}; var gl = null;
     try { gl = cv.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false, powerPreference: "low-power" }) || cv.getContext("experimental-webgl"); } catch (e) {}
     if (!gl) return mount2d(cv, opt);
@@ -136,5 +236,5 @@
     } catch (e) { return null; }
   }
   function unlock() { try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; var ac = (window.FodoVoice && FodoVoice.context()) || meter.ac || (meter.ac = new AC()); if (ac.state !== "running") ac.resume(); } catch (e) {} }
-  window.FodoOrb = { mount: mount, meter: meter, unlock: unlock };
+  window.FodoOrb = { mount: function (cv, opt) { return (opt && opt.style === "plasma") ? mountGL(cv, opt) : mountCircuit(cv, opt); }, meter: meter, unlock: unlock };
 })();

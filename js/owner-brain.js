@@ -8,7 +8,8 @@
     return fetch(API + path, { method: method || (body ? "POST" : "GET"), credentials: "same-origin", cache: "no-store", headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { return r.json().catch(function () { return { ok: false, reason: "No answer (" + r.status + ")." }; }).then(function (j) { j._s = r.status; return j; }); }, function () { return { ok: false, reason: "No connection." }; });
   };
-  var S = { status: null, thread: null, voiceOut: false, busy: false };
+  var S = { status: null, thread: null, voiceOut: false, busy: false, muted: false };
+  try { S.muted = localStorage.getItem("ob-mute") === "1"; } catch (e) {}
   /* theme: dark (default) / light — remembered per browser, changeable by voice ("light mode kar do") */
   function setTheme(t, save) { t = t === "light" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", t); var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", t === "light" ? "#f6f5fb" : "#07070c"); try { localStorage.setItem("ob-theme", t); } catch (e) {} var b = document.getElementById("ob-theme"); if (b) { b.textContent = t === "light" ? "☾" : "☀"; b.title = t === "light" ? "Dark mode" : "Light mode"; } if (save) api("settings", "POST", { theme: t }); }
   try { setTheme(localStorage.getItem("ob-theme") || "dark"); } catch (e) { setTheme("dark"); }
@@ -57,10 +58,11 @@
       '</nav><div class="foot">Signed in as ' + esc(me.email || S.status.owner.email) + (me.owner ? '<br><a href="/admin/">Admin</a> · ' : "<br>") + '<a href="/">Website</a></div></aside><div class="ob-scrim" id="ob-scrim" aria-hidden="true"></div>' +
       '<div class="ob-main"><header class="ob-top"><button class="ob-menu" id="ob-menu" aria-label="Menu">☰</button><h1>FODO BRAIN</h1><span class="tag">' + (me.owner ? "OWNER" : esc(me.role).toUpperCase()) + '</span><span class="sp"></span>' +
       '<button class="ob-hfb" id="ob-hf" title="Hands-free: say “Hey FODO …” — tap to open voice mode" aria-pressed="false"><canvas id="ob-hfc" width="34" height="34" aria-hidden="true"></canvas><span id="ob-hft">Hey FODO</span></button>' +
+      '<button class="ob-icon ob-mute" id="ob-mute" aria-pressed="false" title="Mute FODO — stops only listening and speaking"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="on" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/><path class="off" d="M19 12h-2a5 5 0 0 1-.4 1.97l1.5 1.5A6.9 6.9 0 0 0 19 12Zm-4-.17V6a3 3 0 0 0-5.94-.6L15 11.83ZM4.27 3 3 4.27l6 6V12a3 3 0 0 0 4.52 2.6l1.48 1.48A5 5 0 0 1 7 12H5a7 7 0 0 0 6 6.92V21h2v-2.08a6.9 6.9 0 0 0 3.05-1.12L19.73 21 21 19.73 4.27 3Z"/></svg></button>' +
       '<button class="ob-icon" id="ob-theme" aria-label="Switch theme">☀</button><button class="ob-pill" id="ob-pill" aria-haspopup="true"><span class="ob-dot" id="ob-dot"></span><span id="ob-pillt">BRAIN ONLINE</span></button></header><main class="ob-view" id="ob-view"></main></div>' +
       '<nav class="ob-bnav" aria-label="Quick navigation"><a href="#home" data-v="home"><span>◎</span>Home</a><a href="#chat" data-v="chat"><span>✦</span>Brain</a><button id="ob-bvo" aria-label="Voice mode"><canvas id="ob-bvc" width="56" height="56"></canvas></button>' + (can("social") ? '<a href="#social" data-v="social"><span>◍</span>Social</a>' : '<a href="#tasks" data-v="tasks"><span>☑</span>Tasks</a>') + '<button id="ob-bmenu"><span>☰</span>More</button></nav>';
     var vo = document.createElement("div"); vo.className = "ob-vo"; vo.id = "ob-vo"; vo.hidden = true;
-    vo.innerHTML = '<div class="ob-vo-bg" aria-hidden="true"></div><header class="ob-vo-h"><span class="ob-vo-brand">FODO</span><button class="ob-vo-x" id="ob-vox" aria-label="Close voice mode">✕</button></header>' +
+    vo.innerHTML = '<div class="ob-vo-bg" aria-hidden="true"></div><header class="ob-vo-h"><span class="ob-vo-brand">FODO</span><span class="sp"></span><button class="ob-vo-x" id="ob-vomute" aria-label="Mute FODO">🔇</button><button class="ob-vo-x" id="ob-vox" aria-label="Close voice mode">✕</button></header>' +
       '<button class="ob-vo-stage" id="ob-vostage" aria-label="Tap to talk or to stop"><canvas id="ob-voc" aria-hidden="true"></canvas></button>' +
       '<div class="ob-vo-text"><p class="ob-vo-st" id="ob-vost">Tap the mic to start</p><p class="ob-vo-tr" id="ob-votr"></p><div class="ob-vo-ans" id="ob-voans"></div></div>' +
       '<div class="ob-vo-ctrl"><button class="ob-micbtn" id="ob-vomic" aria-pressed="false" aria-label="Microphone on/off"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg></button><p class="ob-vo-hint" id="ob-vohint">Talk freely — no wake word needed here</p></div>';
@@ -68,15 +70,18 @@
     document.getElementById("ob-menu").onclick = document.getElementById("ob-bmenu").onclick = function () { document.getElementById("ob-side").classList.toggle("open"); };
     document.getElementById("ob-scrim").onclick = function () { document.getElementById("ob-side").classList.remove("open"); };
     document.getElementById("ob-pill").onclick = statusPop; pill();
+    var mb = document.getElementById("ob-mute"), muteUi = function () { mb.setAttribute("aria-pressed", S.muted); mb.classList.toggle("muted", S.muted); mb.title = S.muted ? "FODO is muted — tap to let it listen and speak again" : "Mute FODO — stops only listening and speaking"; document.body.classList.toggle("ob-muted", S.muted); };
+    mb.onclick = function () { S.muted = !S.muted; try { localStorage.setItem("ob-mute", S.muted ? "1" : "0"); } catch (e) {} if (S.muted) { hfStop(); stopSpeaking(); try { localStorage.setItem("ob-hf", "1"); } catch (e) {} orbState("idle"); } else { hfStart(); } muteUi(); }; muteUi();
     document.getElementById("ob-theme").onclick = function () { setTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light", true); }; setTheme(document.documentElement.getAttribute("data-theme"));
     ORB.top = window.FodoOrb ? FodoOrb.mount(document.getElementById("ob-hfc"), { small: true, size: 34 }) : null;
     ORB.bottom = window.FodoOrb ? FodoOrb.mount(document.getElementById("ob-bvc"), { small: true, size: 56 }) : null;
     document.getElementById("ob-hf").onclick = document.getElementById("ob-bvo").onclick = function () { voOpen(); if (!HF.on) hfStart(); };
     document.getElementById("ob-vox").onclick = voClose;
+    document.getElementById("ob-vomute").onclick = function () { if (!S.muted) document.getElementById("ob-mute").click(); voClose(); };
     document.getElementById("ob-vomic").onclick = function () { HF.on ? hfStop() : hfStart(); };
     document.getElementById("ob-vostage").onclick = function () { if (HF.speaking) stopSpeaking(); else if (!HF.on) hfStart(); };
     var pref = null; try { pref = localStorage.getItem("ob-hf"); } catch (e) {}
-    if (S.status.settings.wakeWord !== "off" && pref === "1" && window.FodoVoice) hfStart(true);   // was on last time: resume (the first tap anywhere if the browser needs one)
+    if (S.status.settings.wakeWord !== "off" && pref === "1" && window.FodoVoice && !S.muted) hfStart(true);   // was on last time: resume (the first tap anywhere if the browser needs one)
   }
   function pill() {
     var s = S.status, ai = s.ai.status === "online", bad = s.database !== "healthy";
@@ -143,7 +148,7 @@
       '<button class="ob-cbtn send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg></button></form></div></div>';
     document.getElementById("ob-new").onclick = function () { S.thread = null; try { sessionStorage.removeItem("ob-thread"); } catch (e) {} VIEWS.chat(); };
     var inp = document.getElementById("ob-in");
-    document.getElementById("ob-form").onsubmit = function (e) { e.preventDefault(); var v = inp.value.trim(); if (v) { inp.value = ""; inp.style.height = ""; send(v); } };
+    document.getElementById("ob-form").onsubmit = function (e) { e.preventDefault(); if (S.voiceOut && !S.muted && window.FodoVoice) { FodoVoice.unlock(); primeSpeech(); } var v = inp.value.trim(); if (v) { inp.value = ""; inp.style.height = ""; send(v); } };
     inp.onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey && !/Mobi|Android|iPhone/i.test(navigator.userAgent)) { e.preventDefault(); document.getElementById("ob-form").requestSubmit(); } };
     inp.oninput = function () { inp.style.height = "auto"; inp.style.height = Math.min(140, inp.scrollHeight) + "px"; };
     voice(); threads();
@@ -207,7 +212,8 @@
     mic.onclick = function () {   // tap → speak one sentence → it is written into the box and sent
       var inp = document.getElementById("ob-in"), was = HF.on;
       if (HF.ptt) { HF.ptt = null; mic.classList.remove("on"); if (!was) FodoVoice.stop(); return; }
-      wire(); mic.classList.add("on"); inp.placeholder = "Listening… speak now";
+      if (S.muted) { inp.placeholder = "FODO voice is muted — unmute it at the top"; return; }
+      wire(); primeSpeech(); mic.classList.add("on"); inp.placeholder = "Listening… speak now";
       HF.ptt = function (t, j) { mic.classList.remove("on"); inp.placeholder = "Message FODO…"; if (!was && !HF.on) FodoVoice.stop(); if (t) send(t, { voice: S.voiceOut }); else if (j && !j.ok) bubbleA({ answer: "**Couldn't hear that:** " + (j.reason || "try again") }); };
       FodoVoice.start();
     };
@@ -216,10 +222,10 @@
   var ORB = { top: null, bottom: null, big: null };
   var HF = { on: false, speaking: false, armedUntil: 0, busy: false, queue: [], lastSpoken: "", tapWait: null, ptt: null };
   function orbState(st) { HF.state = st; ["top", "bottom", "big"].forEach(function (k) { if (ORB[k]) ORB[k].state(st); }); var vo = document.getElementById("ob-vo"); if (vo) vo.setAttribute("data-state", st);
-    var x = document.getElementById("ob-vost"); if (x) x.textContent = { listening: HF.armedUntil > Date.now() || voIsOpen() ? "Listening…" : "Say “Hey FODO …”", hearing: "Hearing you…", thinking: "Thinking…", speaking: "Speaking — tap the orb to interrupt", idle: HF.on ? "Listening…" : "Tap the mic to start" }[st] || ""; hfLabel(); }
+    var x = document.getElementById("ob-vost"); if (x) x.textContent = { listening: HF.armedUntil > Date.now() || voIsOpen() ? "Listening…" : "Say “Hey FODO …”", hearing: "Hearing you…", thinking: "Thinking…", speaking: "Speaking — tap the orb to interrupt", idle: S.muted ? "FODO is muted" : HF.on ? "Listening…" : "Tap the mic to start" }[st] || ""; hfLabel(); }
   function orbLevel(v) { ["top", "bottom", "big"].forEach(function (k) { if (ORB[k]) ORB[k].level(v); }); var m = document.getElementById("ob-vomic"); if (m) m.style.setProperty("--lvl", Math.min(1, v * 1.6).toFixed(2)); }
   function voIsOpen() { var vo = document.getElementById("ob-vo"); return !!(vo && !vo.hidden); }
-  function voOpen() { var vo = document.getElementById("ob-vo"); if (!vo) return; vo.hidden = false; document.body.classList.add("ob-vo-on"); if (!ORB.big && window.FodoOrb) ORB.big = FodoOrb.mount(document.getElementById("ob-voc"), { big: true }); orbState(HF.speaking ? "speaking" : HF.busy ? "thinking" : HF.on ? "listening" : "idle"); }
+  function voOpen() { var vo = document.getElementById("ob-vo"); if (!vo) return; if (S.muted) { var mb = document.getElementById("ob-mute"); if (mb) mb.click(); } vo.hidden = false; document.body.classList.add("ob-vo-on"); if (!ORB.big && window.FodoOrb) ORB.big = FodoOrb.mount(document.getElementById("ob-voc"), { big: true }); orbState(HF.speaking ? "speaking" : HF.busy ? "thinking" : HF.on ? "listening" : "idle"); }
   function voClose() { var vo = document.getElementById("ob-vo"); if (vo) vo.hidden = true; document.body.classList.remove("ob-vo-on"); if (ORB.big) { ORB.big.destroy(); ORB.big = null; } orbState(HF.state || "idle"); }
   function voSay(t, who) { var a = document.getElementById("ob-voans"); if (a) a.innerHTML = who === "u" ? '<p class="u">“' + esc(t) + "”</p>" : md(t); }
   function hfLabel() { var b = document.getElementById("ob-hf"), x = document.getElementById("ob-hft"); if (b) { b.setAttribute("aria-pressed", HF.on); b.classList.toggle("on", HF.on); }
@@ -234,9 +240,30 @@
   var VOICES = null; function hiVoice(lang) { var vs = (window.speechSynthesis && speechSynthesis.getVoices()) || []; var L = vs.filter(function (v) { return v.lang.replace("_", "-").toLowerCase().indexOf(lang.toLowerCase()) === 0; }); return L.filter(function (v) { return /Google|Natural|Neural|Enhanced|Premium|Lekha|Swara|Madhur/i.test(v.name); })[0] || L[0] || null; }
   function browserSay(t, lang, done) { if (!window.speechSynthesis) { if (done) done(); return; } var u = new SpeechSynthesisUtterance(t); u.lang = lang || "hi-IN"; var v = hiVoice(u.lang); if (v) u.voice = v; u.rate = 1.0; u.pitch = 1.02;
     var sim = setInterval(function () { orbLevel(0.22 + Math.random() * 0.5); }, 110), end = function () { clearInterval(sim); orbLevel(0); if (done) done(); }; u.onend = end; u.onerror = end; speechSynthesis.speak(u); }
-  function stopSpeaking() { HF.queue = []; HF.speakId = (HF.speakId || 0) + 1; if (audio) { try { audio.pause(); } catch (e) {} audio = null; } if (speakMeter) { speakMeter.stop(); speakMeter = null; } if (window.speechSynthesis) speechSynthesis.cancel(); if (HF.speaking) { HF.speaking = false; if (window.FodoVoice) FodoVoice.guard(false); orbLevel(0); orbState(HF.on ? "listening" : "idle"); } }
+  /* iPhone only lets sound play inside a tap. The mic tap unlocks the shared AudioContext once; after that every reply is
+     decoded and played through it (and measured for the orb), even though it arrives seconds later. */
+  var src = null;
+  function playBlob(b, id, done, fail) {
+    var ac = window.FodoVoice && FodoVoice.context();
+    if (ac && ac.state === "running") {
+      b.arrayBuffer().then(function (buf) { return new Promise(function (ok, no) { ac.decodeAudioData(buf, ok, no); }); }).then(function (ab) {
+        if (id !== HF.speakId) return; var an = ac.createAnalyser(); an.fftSize = 256; src = ac.createBufferSource(); src.buffer = ab; src.connect(an); an.connect(ac.destination);
+        var data = new Uint8Array(an.frequencyBinCount), on = true; (function loop() { if (!on) return; an.getByteFrequencyData(data); var sum = 0; for (var k = 2; k < 48; k++) sum += data[k]; orbLevel(Math.min(1, sum / (46 * 140))); requestAnimationFrame(loop); })();
+        src.onended = function () { on = false; orbLevel(0); src = null; done(); }; src.start(0);
+      }).catch(fail);
+      return;
+    }
+    audio = new Audio(URL.createObjectURL(b)); audio.setAttribute("playsinline", ""); audio.onended = function () { if (speakMeter) { speakMeter.stop(); speakMeter = null; } done(); }; audio.onerror = fail;
+    if (window.FodoOrb) speakMeter = FodoOrb.meter(audio, orbLevel); if (!speakMeter) { var sim = setInterval(function () { if (!audio || audio.paused) return clearInterval(sim); orbLevel(0.25 + Math.random() * 0.45); }, 110); }
+    audio.play().catch(fail);
+  }
+  function primeSpeech() {   // must run inside a tap: wakes the device's speech voice for later Hindi replies
+    try { if (window.speechSynthesis) { var u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } } catch (e) {}
+    if (window.FodoOrb) FodoOrb.unlock();
+  }
+  function stopSpeaking() { if (src) { try { src.onended = null; src.stop(); } catch (e) {} src = null; } HF.queue = []; HF.speakId = (HF.speakId || 0) + 1; if (audio) { try { audio.pause(); } catch (e) {} audio = null; } if (speakMeter) { speakMeter.stop(); speakMeter = null; } if (window.speechSynthesis) speechSynthesis.cancel(); if (HF.speaking) { HF.speaking = false; if (window.FodoVoice) FodoVoice.guard(false); orbLevel(0); orbState(HF.on ? "listening" : "idle"); } }
   function speak(t, done) {
-    t = plainSpeech(t); if (!t) { if (done) done(); return; }
+    t = plainSpeech(t); if (!t || S.muted) { if (done) done(); return; }
     stopSpeaking(); var id = HF.speakId; HF.speaking = true; HF.lastSpoken = t; if (window.FodoVoice) FodoVoice.guard(true); orbState("speaking");
     var fin = function () { if (id !== HF.speakId || !HF.speaking) return; HF.speaking = false; if (window.FodoVoice) FodoVoice.guard(false); orbLevel(0); HF.armedUntil = Date.now() + 12000; orbState(HF.on ? "listening" : "idle"); if (done) done(); };
     var hindi = /[ऀ-ॿ]/.test(t) || (t.match(HIN) || []).length >= 3;
@@ -247,9 +274,7 @@
       if (id !== HF.speakId) return; if (i >= parts.length) return fin();
       get(i).then(function (b) { if (id !== HF.speakId) return; if (i + 1 < parts.length) get(i + 1);
         if (!(b instanceof Blob)) return browserSay(b.say, b.lang, function () { play(i + 1); });
-        audio = new Audio(URL.createObjectURL(b)); audio.setAttribute("playsinline", ""); audio.onended = function () { if (speakMeter) { speakMeter.stop(); speakMeter = null; } play(i + 1); }; audio.onerror = function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); };
-        if (window.FodoOrb) speakMeter = FodoOrb.meter(audio, orbLevel); if (!speakMeter) { var sim = setInterval(function () { if (!audio || audio.paused) return clearInterval(sim); orbLevel(0.25 + Math.random() * 0.45); }, 110); }
-        audio.play().catch(function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); });
+        playBlob(b, id, function () { play(i + 1); }, function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); });
       }, function () { browserSay(parts[i], "en-IN", function () { play(i + 1); }); });
     })(0);
   }
@@ -291,7 +316,7 @@
     document.addEventListener("pointerdown", go, true); document.addEventListener("keydown", go, true);
   }
   function hfStart(auto) {
-    if (!window.FodoVoice) return; wire(); if (window.FodoOrb) FodoOrb.unlock();
+    if (!window.FodoVoice || S.muted) return; wire(); primeSpeech();
     FodoVoice.start().then(function (ok) { if (!ok) return; HF.on = true; HF.tapWait = false; try { localStorage.setItem("ob-hf", "1"); } catch (e) {} orbState("listening"); });
   }
   function hfStop() { HF.on = false; HF.armedUntil = 0; try { localStorage.setItem("ob-hf", "0"); } catch (e) {} if (window.FodoVoice) FodoVoice.stop(); stopSpeaking(); orbLevel(0); orbState("idle"); }

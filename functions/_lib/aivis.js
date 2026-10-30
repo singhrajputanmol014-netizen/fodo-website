@@ -16,6 +16,8 @@ export const GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/q
 export const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
 const good = { groq: null, gemini: null };
 const chain = (env, k, list) => { const own = String(env[k] || "").trim(); const c = (own ? [own] : []).concat(list); const g = good[k === "GROQ_MODEL" ? "groq" : "gemini"]; return Array.from(new Set(g ? [g].concat(c) : c)); };
+const why = (t) => { let m = ""; try { const j = JSON.parse(t); m = (j.error && (j.error.message || j.error.status)) || j.message || ""; } catch (e) { m = String(t || ""); }
+  return String(m).replace(/(AIza|gsk_|sk-)[\w-]+/g, "[key]").replace(/\s+/g, " ").trim().slice(0, 140); };   // provider's own error text, keys masked
 const modelGone = (status, text) => status === 404 || ((status === 400 || status === 403) && /model[^"]{0,80}(not found|not exist|decommission|deprecat|no longer|not supported|does not have access)/i.test(text || ""));
 export function _resetModels() { good.groq = null; good.gemini = null; }
 
@@ -26,7 +28,7 @@ export function engines(env, tools) {
   const on = (k) => !tools || tools(k);
   const list = [];
   if (env.AI) list.push({ id: "workers-ai", name: "Llama on Cloudflare Workers AI", live: false });
-  if (env.GROQ_API_KEY && on("aiGroq")) list.push({ id: "groq", name: "Llama on Groq", live: false });
+  if (env.GROQ_API_KEY && on("aiGroq")) list.push({ id: "groq", name: "Groq (open model)", live: false });
   if (env.GEMINI_API_KEY && on("aiGemini")) list.push({ id: "gemini", name: "Gemini + Google Search", live: true });
   return list;
 }
@@ -37,7 +39,7 @@ async function groq(env, q, sys) {
     const body = { model, messages: [{ role: "system", content: sys || SYS }, { role: "user", content: q }], max_tokens: 1200, temperature: 0.2 };
     if (/^openai\/gpt-oss/.test(model)) { body.reasoning_effort = "low"; body.include_reasoning = false; }   // reasoning models: keep the tokens for the answer
     const r = await outbound(env)("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { authorization: "Bearer " + env.GROQ_API_KEY, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
-    if (!r.ok) { const t = await r.text().catch(() => ""); last = Object.assign(new Error("groq " + r.status), { status: r.status }); if (modelGone(r.status, t)) continue; throw last; }
+    if (!r.ok) { const t = await r.text().catch(() => ""); last = Object.assign(new Error("groq " + r.status), { status: r.status, detail: model + ": " + why(t) }); if (modelGone(r.status, t)) continue; throw last; }
     const j = await r.json(), t = (((j.choices || [])[0] || {}).message || {}).content || "";
     good.groq = model;
     return { answer: clean(t, 3000), model, citations: [], grounded: false, status: r.status, tokens: j.usage ? j.usage.total_tokens : null };
@@ -52,7 +54,7 @@ async function gemini(env, q, grounded, sys) {
     const r = await outbound(env)("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", { method: "POST", headers: { "x-goog-api-key": env.GEMINI_API_KEY, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(40000) });
     if (!r.ok) {
       const t = await r.text().catch(() => "");
-      last = Object.assign(new Error("gemini " + r.status), { status: r.status });
+      last = Object.assign(new Error("gemini " + r.status), { status: r.status, detail: model + ": " + why(t) });
       if (modelGone(r.status, t)) continue;                                  // retired id → try the next model
       if (grounded && (r.status === 400 || r.status === 403 || r.status === 429)) { const x = await gemini(env, q, false, sys); x.groundingRefused = r.status; return x; }
       throw last;

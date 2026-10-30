@@ -552,9 +552,14 @@
   E.buildQueries = function (B, input) {
     input = input || {};
     var name = B.name.value, city = input.city || B.city || "", ind = (B.industry && B.industry.value) || "";
-    var svc = input.product || (B.services.value[0] || "") || ind.split("/")[0].trim() || "";
+    // v17.1.1: a service name must read like a service ("SEO", "Meta Ads") — not a tagline fragment such as
+    // "— everything your brand needs to compete digitally". Strip dashes/bullets, keep the part before a separator, max 6 words.
+    var tidy = function (x) { x = String(x || "").replace(/^[\s\u2014\u2013\-:|•·*>.,]+/, "").split(/\s[\u2014\u2013|:]\s|\s-\s|\s(?:that|which|who|so you|to help|you can|you)\s/i)[0].replace(/[\s\u2014\u2013\-:|•·.,]+$/, "").trim();
+      return x && x.split(/\s+/).length <= 6 && /[a-z]/i.test(x) ? x : ""; };
+    var cands = [input.product].concat(B.services.value || [], [ind.split("/")[0]]).map(tidy).filter(Boolean);
+    var svc = cands[0] || "";
     svc = clip(svc.replace(/\b(services?|solutions?)\b/i, "").trim() || svc, 50);
-    var svc2 = clip(B.services.value[1] || "", 50), aud = input.audience || B.audience.value || "";
+    var svc2 = clip(cands.filter(function (c) { return low(c) !== low(cands[0] || ""); })[0] || "", 50), aud = input.audience || B.audience.value || "";
     var Q = [];
     var add = function (q, kind) { q = norm(q); if (q.length > 3 && !Q.some(function (x) { return low(x.q) === low(q); })) Q.push({ q: q, kind: kind, intent: E.intentOf(q, name, city) }); };
     add('"' + name + '"', "brand");

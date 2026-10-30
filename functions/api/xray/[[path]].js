@@ -295,7 +295,7 @@ async function ai(env, job, b, t0) {
     const worker = async () => { while (pi < pool.length) { const it = pool[pi++], t1 = Date.now();
       try { const a = await aiAsk(env, it.e.id, it.q, (m, x) => runAI(env, m, x, 25000), VP.text); answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, live: it.e.live && a.grounded, answer: a.answer, model: a.model, citations: a.citations || [], searches: a.searches || [], grounded: !!a.grounded, groundingRefused: a.groundingRefused || null });
         await logUsage(env, { provider: it.e.id, endpoint: "aivis", tool: "prompt:visibility@" + VP.ver, job: job.id, status: a.status || 200, ms: Date.now() - t1 }); }
-      catch (e) { answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, answer: "", error: "no answer" }); await logUsage(env, { provider: it.e.id, endpoint: "aivis", job: job.id, status: e.status || 0, ok: false, ms: Date.now() - t1 }); } } };
+      catch (e) { answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, answer: "", error: "no answer" }); await logUsage(env, { provider: it.e.id, endpoint: "aivis", tool: e.detail ? ("error · " + e.detail).slice(0, 160) : (e.name === "TimeoutError" || /timeout/i.test(e.message || "") ? "error · timed out" : undefined), job: job.id, status: e.status || 0, ok: false, ms: Date.now() - t1 }); } } };
     await Promise.all([worker(), worker(), worker(), worker()]);
     log({ job: job.id, route: "ai", mode, engines: ENG.map((e) => e.id).join(","), ok: true, ms: Date.now() - t0 });
     return json({ ok: true, mode, engines: ENG, answers });

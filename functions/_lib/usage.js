@@ -42,7 +42,7 @@ export async function logUsage(env, o) {
     const cost = o.cached ? 0 : real ? +o.cost : o.ok === false ? 0 : listPrice(env, o.provider) * units;
     const t = new Date().toISOString();
     await d.prepare("INSERT INTO api_usage (t, day, provider, endpoint, tool, job_id, user_id, status, ok, ms, cached, cost_usd, cost_kind, units) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)")
-      .bind(t, t.slice(0, 10), String(o.provider || "").slice(0, 40), String(o.endpoint || "").slice(0, 60), String(o.tool || "xray").slice(0, 40), o.job || null, o.user || null,
+      .bind(t, t.slice(0, 10), String(o.provider || "").slice(0, 40), String(o.endpoint || "").slice(0, 60), String(o.tool || "xray").slice(0, 160), o.job || null, o.user || null,
         o.status | 0, o.ok === false ? 0 : 1, o.ms | 0, o.cached ? 1 : 0, Math.round(cost * 1e6) / 1e6, o.cached ? "cache" : real ? "actual" : "estimated", units).run();
   } catch (e) {}
 }

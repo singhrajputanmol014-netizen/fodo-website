@@ -68,6 +68,14 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     ok(/send_email/.test(await p.textContent("#ob-view")) && /never runs/.test(await p.textContent("#ob-view")), "Tools page: registry with risk levels");
     await p.goto(BASE + "/owner-brain/#activity"); await p.waitForSelector(".ob-table"); ok(/fodo_today/.test(await p.textContent("#ob-view")), "Activity: the audit log");
     await p.goto(BASE + "/owner-brain/#analytics"); await p.waitForSelector(".ob-kpi"); ok(/messages answered/.test(await p.textContent("#ob-view")), "Analytics page");
+    // v22 pages
+    ok(!!(await p.$("#ob-hf")), "v22: 'Hey FODO' hands-free button present");
+    await p.goto(BASE + "/owner-brain/#changes"); await p.waitForFunction(() => /GitHub/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
+    ok(/GitHub/.test(await p.textContent("#ob-view")), "v22: Site changes page (GitHub status shown)"); await shot(p, "brain-changes", true);
+    await p.goto(BASE + "/owner-brain/#automations"); await p.waitForFunction(() => /Tell me about every payment/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
+    ok(true, "v22: Automations page lists the default automations"); await shot(p, "brain-automations", true);
+    await p.goto(BASE + "/owner-brain/#connectors"); await p.waitForFunction(() => /Google/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
+    ok(true, "v22: Connectors page (Google / GitHub)"); await shot(p, "brain-connectors", true);
     // phone
     const m = await page(390, 844); await m.goto(BASE + "/"); await login(m, "anmol@fodo.co.in"); await m.goto(BASE + "/owner-brain/"); await m.waitForSelector(".ob-kpi", { timeout: 20000 });
     ok((await m.evaluate(() => document.documentElement.scrollWidth)) <= 390, "phone: no sideways scrolling"); await shot(m, "brain-phone", false);

@@ -14,6 +14,7 @@ async function upsertAlert(env, a) {
   if (ex) { await d.prepare("UPDATE brain_alerts SET reason=?2, evidence=?3, updated_at=?4 WHERE id=?1").bind(ex.id, a.reason, a.evidence, now).run(); return ex.id; }
   const id = "al_" + rid(10);
   await d.prepare("INSERT INTO brain_alerts (id, akey, severity, title, reason, evidence, action, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'open',?8,?8)").bind(id, key, a.severity, clip(a.title, 160), clip(a.reason, 500), clip(a.evidence, 800), clip(a.action, 300), now).run();
+  try { await (await import("./automations.js")).onEvent(env, "alert", null, a.severity + ": " + a.title + " — " + a.reason); } catch (e) {}   // a new alert can trigger automations (e.g. email me on critical)
   return id;
 }
 export async function listAlerts(env, all) { const d = await brainDb(env); return ((await d.prepare("SELECT * FROM brain_alerts WHERE (?1 = 1 OR status='open') ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END, created_at DESC LIMIT 60").bind(all ? 1 : 0).all()).results || []); }

@@ -156,3 +156,4 @@ body.ad-menu-on{overflow:hidden}
 .ad-dlg .cfx-box label{display:grid;gap:4px;margin:8px 0;font-size:13px}
 @media (max-width:1000px){.ad-tgrid{grid-template-columns:1fr}}
 .ad-card h3{margin:18px 0 6px;font-size:16px}.ad-ta,.ad-card textarea,.ad-dlg textarea{font:inherit;line-height:1.5}
+.ad-brain{display:inline-grid;place-items:center;text-decoration:none;color:#b7adff;font-size:16px}@media (max-width:560px){.ad-brain{display:none}}

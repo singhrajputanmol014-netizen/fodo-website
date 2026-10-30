@@ -1,4 +1,4 @@
-# FODO OWNER BRAIN (v21): architecture, security, memory and setup
+# FODO OWNER BRAIN (v22): architecture, security, memory and setup
 
 **FODO BRAIN** is a private, owner-only operating layer that sits above the FODO website. It reads FODO's live data, remembers what the owner tells it, reads documents, uses tools and prepares actions. It is not a second chatbot: the public "Ask FODO" bot (`/api/chat`) is unchanged.
 
@@ -7,6 +7,27 @@
 - **Status:** OWNER ONLY.
 
 The tool list is in [OWNER-BRAIN-TOOLS.md](OWNER-BRAIN-TOOLS.md), which is generated from the registry.
+
+## 0. What v22 adds
+
+| Feature | How it works | Safety |
+|---|---|---|
+| **"Hey FODO" voice** | Hands-free button: the browser listens continuously for "Hey FODO" / "FODO …" / "फोडो …". Replies are spoken with the Workers AI Aura voice (`@cf/deepgram/aura-1`); Hindi/Hinglish uses the browser's Hindi voice. Browsers without speech recognition record audio and transcribe it with Whisper (`/stt`). | Owner page only; mic access is asked by the browser. Listening pauses while the Brain speaks. |
+| **Human conversation** | "Hey FODO" alone, or small talk ("fodo tum kaise ho"), gets a warm, short reply plus one live fact. In voice mode, answers are short and spoken. | Same live data and no-fake-data rules. |
+| **Change the website by talking** | `propose_change` reads the repo through the GitHub API, picks the files (including the page's build source), writes exact find/replace edits and shows a diff. Then: confirm → branch + commit + pull request + Cloudflare preview → "deploy kar do" → second confirmation → squash-merge → Cloudflare deploys. | Protected paths are never edited: `.github/`, `accounts.js`, `functions/_lib/brain/`, the owner-brain API, `_headers`, `_routes.json`, `wrangler.toml`, `runner/`, `.env`, keys. Any `functions/` edit is marked high risk. An edit whose `find` text isn't found exactly once is skipped. Opening a PR is level 2; going live is level 4. The Brain never merges without the owner. |
+| **Semantic memory** | `@cf/baai/bge-m3` embeddings on memories and document chunks; recall is hybrid (keywords + cosine). | Embeddings stay in D1. |
+| **Any file into Knowledge** | PDF, Word, Excel, images and more are converted with `env.AI.toMarkdown` (max 10 MB). | Document content stays "untrusted data". |
+| **Commitments** | "Rahul will send the logo by Friday" → a task with an assignee and due date. Overdue items raise a reminder alert every hour. | — |
+| **Prep briefs, deep research, specialist agents** | `prep_brief` (a customer's account, plan, tickets and memories); `deep_research` (3 searches → pages → a cited answer saved as RESEARCH memory); deep questions consult the Analyst/Growth/Technical/Marketing agents before one final answer. | Web pages are untrusted data. |
+| **Automations** | WHEN an event happens (payment, ticket, warm lead, alert…) or on a schedule ("daily 08:00") → THEN notify / email the owner / create a task / email the briefing. Events fire in real time from `logEvent`; schedules run from `POST /api/owner-brain/tick` (hourly GitHub workflow `fodo-brain.yml`, key `FODO_CRON_KEY`). | Automations can never email customers, change money or delete anything. Every run is audited; `BRAIN_ENABLED=0` stops them. |
+| **Admin by talking** | `grant_plan` (L3), `switch_feature` (L3), `reply_ticket` (L2) go through the existing admin API with the owner's session. | Always confirmed. |
+| **Gmail + Calendar** | Connect Google (Connectors page). Read inbox and calendar automatically; send email / create events only after confirmation. | The refresh token is AES-GCM encrypted in D1 and can be disconnected (revoked). |
+
+### v22 setup
+1. **GitHub** (for site changes): a fine-grained token on the repo with **Contents: read/write** and **Pull requests: read/write** → Cloudflare secret `GITHUB_TOKEN`. Optional: `GITHUB_REPO` (default `singhrajputanmol014-netizen/fodo-website`), `GITHUB_BRANCH` (default `main`), `PAGES_PROJECT` (the Cloudflare Pages project name, for preview links).
+2. **Google**: in the existing OAuth client add the redirect URI `https://www.fodo.co.in/api/owner-brain/connect/google/callback`, enable the Gmail API and Google Calendar API, then Brain → Connectors → Connect Google.
+3. **Schedules**: nothing new — the `FODO_CRON_KEY` GitHub secret already exists.
+4. **Note:** Brain pull requests change the GitHub repo directly. Always start manual edits from the latest repo, or a manual upload can undo a Brain change.
 
 ## 1. What v1 does (and how it maps to the 12 acceptance tests)
 
@@ -158,31 +179,26 @@ No new Cloudflare binding is needed. It runs on the existing `XRAY_DB` (D1), the
 
 The model choice, memory switch, alerts, briefing and per-tool on/off live in Brain → Settings, stored in D1.
 
-## 6. Known limitations of v1 (honest)
+## 6. Known limitations (honest)
 
 - **No streaming:** answers arrive whole, with safe progress labels.
-- **Files:** PDF, Word and Excel files must be pasted as text. Text, Markdown, CSV, JSON and HTML files upload directly.
-- **Retrieval is keyword-based,** not semantic. The vector interface is ready.
-- **One-step planning:** up to 5 tools per message. There is no multi-agent orchestration or visible task graph yet.
-- **No connectors yet:** no Gmail, Calendar, WhatsApp sending, social media, GitHub or codebase index. Email sending uses the site's Resend account.
-- **Automations:** only the daily briefing and alert scan. There is no automation builder yet.
-- **Notifications are in-app only.**
+- **Code changes are text edits:** best for copy, links, buttons, styles and small features. Large features still need a developer review of the PR. Previews take ~1–2 minutes to build.
+- **Voice:** the wake word needs Chrome/Edge (continuous speech recognition) with the tab open. Aura speaks English; Hindi uses the browser voice.
+- **No WhatsApp or social media connectors yet.** Notifications are in-app + email.
+- **Automations' "start X-Ray" action** waits for the background runner.
 - **AI visibility:** the Workers AI visibility row is never filled by Groq (by design).
 
 ## 7. Next phases
 
-- Vectorize embeddings and semantic retrieval.
-- An automation builder (event → condition → action, with an audit trail).
-- Email/WhatsApp notifications for critical alerts.
-- Gmail and Calendar connectors (send and create always confirmed).
-- A codebase index for "where is X handled?".
-- Multi-agent roles (Analytics → Marketing → Growth) with a visible task graph.
-- A web research pipeline with stored research memory.
-- PDF/DOCX parsing in a background job.
+- WhatsApp Business notifications and replies (confirmed).
+- Streaming answers.
+- A visual task graph for multi-agent runs.
+- Auto-run the test suite on each Brain PR (GitHub Actions) before merge.
 
 ## 8. Tests
 
 | File | Checks | Covers |
 |---|---|---|
 | `tests/v21-brain.test.mjs` | 70 | Security matrix, all 12 acceptance tests, confirmations (token, expiry, tamper, idempotency), supersede, documents, degraded mode, fallback, malformed JSON, SSRF, secrets, audit, export, scheduler, review hardening |
-| `tests/v21-e2e.test.js` | 20 | The real page on the local Cloudflare runtime: strangers, customers, the owner's command center, chat, memory, tasks, knowledge, confirmation card, diagnostics, tools, activity, analytics, phone layout, no page errors or CSP violations |
+| `tests/v22-brain.test.mjs` | 46 | Wake word, small talk, voice (TTS/STT), code agent end to end (diff → PR → preview → merge, protected files, no token), semantic recall, file ingest, commitments + overdue, prep brief, deep research, agents, automations (events, schedules, email, kill switch), grant plan, Gmail/Calendar OAuth (encrypted token, forged state), customer denial, no secret leaks |
+| `tests/v21-e2e.test.js` | 24 | The real page on the local Cloudflare runtime: strangers, customers, the owner's command center, chat, memory, tasks, knowledge, confirmation card, diagnostics, tools, activity, analytics, v22 pages (Site changes, Automations, Connectors, Hey FODO button), phone layout, no page errors or CSP violations |

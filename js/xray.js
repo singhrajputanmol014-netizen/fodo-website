@@ -929,6 +929,11 @@
     catalog().then(function (c) { var t = c && c.ok ? (c.tools || []).filter(function (x) { return x.id === qs.get("tool"); })[0] : null; var n = document.createElement("p"); n.className = "xr-focus panel"; n.innerHTML = "<b>" + esc(t ? t.name : "Pro tool") + "</b> — researching " + esc(qs.get("u")) + ". When it finishes, the report opens at " + esc(t ? t.name : "the tool") + "."; $("xr-form").insertBefore(n, $("xr-form").firstChild); });
     var go0 = function () { run({ toolRun: qs.get("run") }); };
     if (ACC) Promise.all([ACC.config().then(function () { return ACC.me(); }), bgP]).then(go0, go0); else go0();
+  } else if (qs.get("u") && qs.get("go") === "1" && !qs.get("r")) {
+    // v21: a one-click "start this X-Ray" link (e.g. from FODO Brain) — fills the address and starts it for the logged-in user
+    $("xr-url").value = qs.get("u");
+    var go1 = function () { $("xr-form").requestSubmit ? $("xr-form").requestSubmit() : $("xr-form").dispatchEvent(new Event("submit", { cancelable: true })); };
+    if (ACC) Promise.all([ACC.config().then(function () { return ACC.me(); }), bgP]).then(go1, go1); else go1();
   } else if (qs.get("r")) {
     status("Loading the saved X-Ray…", "busy");
     call("report/" + encodeURIComponent(qs.get("r")), undefined, { tries: 2 }).then(function (r) { return r.ok ? r.json() : r.status === 403 ? r.json().then(function (j) { throw new Error((j.reason || "This report is private.") + " Log in as its owner to open it."); }) : r.status === 404 ? call("status/" + encodeURIComponent(qs.get("r")), undefined, { tries: 1 }).then(function (x) { return x.json(); }).then(function (s) {

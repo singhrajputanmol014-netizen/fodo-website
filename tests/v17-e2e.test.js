@@ -163,7 +163,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   await p.goto(BASE + "/admin/#report/" + R.jobId); await p.waitForSelector(".ad-qc"); ok(/API calls \(\d+\)/.test(await p.textContent("#ad-view")) && /Data completeness/.test(await p.textContent("#ad-view")), "admin report detail: API calls, data completeness, modules");
   await p.click('.ad-qc [data-qc="verified"]'); await p.fill("#ad-di", "sources checked"); await p.click(".ad-dlg [data-ok]"); await p.waitForFunction(() => /Verified/.test(document.querySelector(".ad-kpis").textContent), null, { timeout: 10000 });
   ok(true, "report marked VERIFIED from the detail page");
-  await p.goto(BASE + "/admin/#prompts"); await p.waitForSelector(".ad-prompt"); ok((await p.$$(".ad-prompt")).length === 6 && /Runs \(this version\)/.test(await p.textContent("#ad-view")), "admin AI prompts: 6 prompts with version + usage");
+  await p.goto(BASE + "/admin/#prompts"); await p.waitForSelector(".ad-prompt"); ok((await p.$$(".ad-prompt")).length === 10 && /Runs \(this version\)/.test(await p.textContent("#ad-view")), "admin AI prompts: 6 prompts with version + usage");
   /* ---------- v18 standalone PRO tools ---------- */
   await p.goto(BASE + "/growth-lab/"); await p.waitForFunction(() => /included in Growth/.test((document.querySelector('[data-pid="war-room"]') || {}).textContent || ""), null, { timeout: 15000 }).catch(() => {});
   ok(/₹2,999 a run · included in Growth, Pro, Agency X-Rays/.test(await p.textContent('[data-pid="war-room"]')) && (await p.getAttribute('.gl-card[data-tool="war-room"]', "href")) === "../growth-lab/war-room/", "Growth Lab: War Room card → its own page, ₹2,999 a run, included in Growth+ X-Rays");

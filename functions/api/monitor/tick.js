@@ -5,6 +5,7 @@
 import { json, accountsOn, activePlan, isUnlimited, sendMail } from "../../_lib/accounts.js";
 import { mdb, runCheck } from "../../_lib/monitor.js";
 import { applyConfig, toolOn } from "../../_lib/config.js";
+import { brainDaily } from "../../_lib/brain/insights.js";
 
 const same = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 export async function onRequest({ request, env }) {
@@ -23,5 +24,7 @@ export async function onRequest({ request, env }) {
     out.push({ domain: t.domain, ok: r.ok, events: r.events.length });
   }
   const left = await d.prepare("SELECT COUNT(*) AS n FROM mon_targets WHERE next_check <= ?1").bind(now).first();
-  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0 });
+  // v21: when the day's monitoring is finished, the FODO Brain writes the owner's daily briefing + alert scan (once a day)
+  const brain = left && left.n ? null : await brainDaily(env, request);
+  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain });
 }

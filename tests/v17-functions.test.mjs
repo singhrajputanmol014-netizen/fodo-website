@@ -223,7 +223,7 @@ ok((await seal(env, "abc")).split(".").length === 2, "seal format iv.ciphertext"
   ok(r.j.ok && r.j.run.qc === "verified" && r.j.calls.some((c) => /prompt:synthesis@v/.test(c.tool)) && r.j.report.overall === 64 && r.j.report.completeness.overall === 71 && r.j.report.modules.SEO, "report detail: run, QC, API calls with prompt version, scores, completeness, module errors");
   // prompts
   const def = await getPrompt(env, "synthesis");
-  r = await call(env, "admin/prompts", undefined, { as: "own" }); ok(r.j.ok && r.j.canEditPrompts && r.j.prompts.length === 6 && r.j.prompts[0].versions.some((v) => v.ver === def.ver && v.calls >= 1), "prompt list: 6 prompts, runs counted per version");
+  r = await call(env, "admin/prompts", undefined, { as: "own" }); ok(r.j.ok && r.j.canEditPrompts && r.j.prompts.length === 10 && r.j.prompts[0].versions.some((v) => v.ver === def.ver && v.calls >= 1), "prompt list: 6 prompts, runs counted per version");
   r = await call(env, "admin/prompts", { key: "synthesis", text: def.text + "\nAlways mention the city when it is known.", note: "city" }, { as: "own" });
   const nv = r.j.ver; ok(r.j.ok && /^v[0-9a-f]{8}$/.test(nv) && nv !== def.ver && (await getPrompt(env, "synthesis")).custom, "owner saves a new prompt version " + nv);
   const job3 = (await call(env, "xray/start", { url: "spicehub.test" })).j.jobId;

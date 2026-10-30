@@ -13,6 +13,8 @@
  *        GET businesses?q= · GET business/<domain> · GET findings?days=&industry= · GET report/<job> · POST report/<job>/qc {status, note}
  *        GET prompts · POST prompts {key, text, note} | {key, reset} | {key, activate: id}  (owners only) · GET insights (next best actions)
  */
+import { bgOn, bdb } from "../../_lib/bg.js";
+import { PRODUCTS } from "../../_lib/products.js";
 import { json, accountsOn, db, sessionUser, sameOrigin, isOwner, logEvent, cleanEmail, nowIso, activePlan, extraFeatures, randId } from "../../_lib/accounts.js";
 import { PLANS, FEATURE_INFO, ORDER } from "../../_lib/plans.js";
 import { log } from "../../_lib/xray-core.js";
@@ -217,6 +219,17 @@ async function costs(env, d, days) {
     byDay: U.byDay.map((x) => Object.assign(x, { costInr: Math.round((+x.cost || 0) * rate * 100) / 100 })), plans, reports, byUser: Object.keys(users).map((k) => ({ who: emails[k] || k, user_id: k, runs: users[k].runs, costInr: Math.round(users[k].cost * rate * 100) / 100 })).sort((a, b) => b.costInr - a.costInr).slice(0, 25) };
 }
 /* ---------- v17: system health (prompt §93): configured? + last 24 h success rate per data source ---------- */
+/* v19 background runner: is it connected, and what happened to background X-Rays in the last 24 h */
+async function bgHealth(env) {
+  if (!bgOn(env)) return { id: "runner", name: "Background X-Rays (runner Worker)", configured: false, status: "not connected", calls: null, failed: null, last: null, note: "Add RUNNER_URL + RUNNER_KEY (see runner/README.md). Until then X-Rays run in the visitor's browser." };
+  const since = new Date(Date.now() - 864e5).toISOString(), m = {};
+  (await safeAll(await bdb(env), "SELECT status, COUNT(*) n, MAX(enqueued_at) t FROM xray_bg WHERE enqueued_at >= ?1 GROUP BY status", since)).forEach((x) => { m[x.status] = x; });
+  const n = (k) => (m[k] ? m[k].n : 0), all = Object.keys(m).reduce((a, k) => a + m[k].n, 0), last = Object.keys(m).map((k) => m[k].t).sort().pop() || null;
+  let up = null; try { const r = await fetch(String(env.RUNNER_URL).replace(/\/$/, "") + "/health", { signal: AbortSignal.timeout(5000) }); up = r.ok ? await r.json() : null; } catch (e) {}
+  const st = !up ? "down" : !all ? "no calls (24 h)" : n("failed") / all >= 0.5 ? "down" : n("failed") / all >= 0.1 || n("waiting") > 3 ? "degraded" : "healthy";
+  return { id: "runner", name: "Background X-Rays (runner Worker)", configured: true, status: st, calls: all, failed: n("failed"), last,
+    note: (up ? "Queue " + (up.queue ? "✓" : "✗") + " · browser " + (up.browser ? "✓" : "✗") + " · GitHub fallback " + (up.github ? "on" : "off") : "The runner Worker did not answer") + " · 24 h: " + n("done") + " done, " + n("running") + " running, " + n("waiting") + " waiting, " + n("queued") + " queued, " + n("failed") + " failed (refunded)." };
+}
 async function health(env) {
   const P = providers(env), U = await usageReport(env, 1), h = {}; (U.health || []).forEach((x) => { h[x.provider] = x; });
   const row = (id, name, configured, keys, note) => { const all = keys.map((k) => h[k]).filter(Boolean), calls = all.reduce((s, x) => s + x.calls, 0), failed = all.reduce((s, x) => s + x.failed, 0), last = all.map((x) => x.last).sort().pop() || null;
@@ -236,6 +249,7 @@ async function health(env) {
     { id: "db", name: "Database (D1)", configured: !!env.XRAY_DB, status: dbOk ? "healthy" : "down", calls: null, failed: null, last: null, note: "" },
     { id: "payments", name: "Payments (Cashfree)", configured: !!(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY), status: env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY ? (env.CASHFREE_ENV === "production" ? "live" : "sandbox") : "not connected", note: "" },
     { id: "email", name: "Email (Resend)", configured: !!env.RESEND_API_KEY, status: env.RESEND_API_KEY ? "configured" : "not connected", note: "" },
+    await bgHealth(env),
     { id: "cron", name: "Monitoring scheduler", configured: !!env.CRON_KEY, status: env.CRON_KEY ? "configured" : "not connected", note: env.CRON_KEY ? "Runs from GitHub Actions daily." : "Add CRON_KEY + the GitHub secret to run checks automatically ('Check now' works without it)." },
   ] };
 }
@@ -274,7 +288,12 @@ async function labStats(env, d, days) {
   const funnel = [["Visitors", g("uv", "all"), "Unique visitors a day, summed (first-party analytics)"], ["Used a free tool", toolDone, "Completed Growth Score, ROI, quiz, game, Competitor Finder or Budget Planner"],
     ["Signed up", S.n || 0, "New Growth Lab accounts"], ["Saw the plans page", g("page", "/plans/"), "Views of /plans/"], ["Started checkout", E("checkout").n, "Opened Cashfree checkout"], ["Paid", O.n || 0, "Paid orders"],
     ["Got a report", R.done || 0, "X-Rays completed"], ["Started monitoring", E("monitor_add").n, "Websites added to monitoring"], ["Asked FODO for help", leads, "Contact, WhatsApp, call, booking and lead-form actions"]].map((x) => ({ step: x[0], n: x[1], note: x[2] }));
-  return { days, since: sinceDay, tools, xray: Object.assign({}, R, { starts: E("xray_start").n, limitHits: E("limit_hit"), exportsPdf: E("export_pdf").n, exportsXlsx: E("export_xlsx").n, shares: E("share").n }), tiers, money: O, signups: S.n || 0, industries, locations,
+  // v18 standalone tools: runs (reused vs fresh scan), bought runs and revenue per tool
+  const TR = await safeAll(d, "SELECT tool, source, status, reused, COUNT(*) n FROM lab_tool_runs WHERE created_at >= ?1 GROUP BY tool, source, status, reused", since);
+  const TO = await safeAll(d, "SELECT item, COUNT(*) n, SUM(amount) amt FROM acct_orders WHERE kind='tool' AND status='PAID' AND created_at >= ?1 GROUP BY item", since);
+  const products = Object.keys(PRODUCTS).map((id) => { const r = TR.filter((x) => x.tool === id), o = TO.filter((x) => x.item === id)[0] || {}, sum = (f) => r.filter(f).reduce((a, x) => a + x.n, 0);
+    return { id, name: PRODUCTS[id].name, price: PRODUCTS[id].price, on: PRODUCTS[id].on !== false, runs: sum(() => true), reused: sum((x) => x.reused === 1), fresh: sum((x) => x.reused !== 1), done: sum((x) => x.status === "done"), viaPlan: sum((x) => x.source === "included" || x.source === "xray"), bought: o.n || 0, revenue: o.amt || 0 }; });
+  return { days, since: sinceDay, products, tools, xray: Object.assign({}, R, { starts: E("xray_start").n, limitHits: E("limit_hit"), exportsPdf: E("export_pdf").n, exportsXlsx: E("export_xlsx").n, shares: E("share").n }), tiers, money: O, signups: S.n || 0, industries, locations,
     monitoring: { sites: mon.n || 0, users: mon.users || 0 }, gscConnected: gscN.n || 0, actions: { n: actN.n || 0, done: actN.done || 0, users: actN.users || 0 }, funnel, eventsTotal: Object.keys(ev).map((k) => ({ kind: k, n: ev[k].n, users: Object.keys(ev[k].users).length })).sort((a, b) => b.n - a.n) };
 }
 async function businesses(d, q) {

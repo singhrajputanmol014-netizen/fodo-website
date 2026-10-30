@@ -1774,3 +1774,16 @@ select.xr-act.doing{border-color:var(--warn);color:var(--warn)}select.xr-act.don
 .ac-next{margin:14px 0 8px;font-size:14px}.ac-bcard .btn-row{margin-top:auto}
 /* v17.1: long call-to-action buttons wrap on phones instead of pushing the page sideways */
 .bp-res .btn-row .btn,.xr-help .btn{white-space:normal;max-width:100%;text-align:center;height:auto;min-height:40px;line-height:1.25}
+/* v18 standalone PRO tool pages (/growth-lab/<tool>/) + tool mode in the X-Ray report */
+.tl-grid{align-items:start;gap:20px}
+.tl-form h2{margin:10px 0 14px;font-size:clamp(22px,2.4vw,30px)}
+.tl-price{margin:12px 0 4px;font-size:15px}.tl-price b{font-size:22px}
+.tl-me{margin:6px 0 14px;font-size:14px;min-height:1.4em}
+.tl-buy{padding:14px;border:1px solid var(--line-3,var(--line));border-radius:14px;background:color-mix(in srgb,#4C3BCF 10%,transparent);color:var(--text)}
+.tl-buy p{margin:0 0 10px}
+.tl-what h3{margin:16px 0 4px;font-size:15px;letter-spacing:.02em}.tl-what h3:first-child{margin-top:0}.tl-what p{margin:0;color:var(--muted)}
+.tl-steps{list-style:none;padding:0;margin:0}.tl-steps li h3{margin:0 0 6px}
+.xr-toolbar{margin:0 0 18px}.xr-toolbar h2{margin:8px 0 6px;font-size:clamp(24px,3vw,36px)}.xr-toolbar p{margin:0 0 12px}
+@media (max-width:760px){.tl-grid{grid-template-columns:1fr}}
+/* v19 background X-Ray option */
+.xr-bgopt{display:flex;gap:10px;align-items:flex-start;margin:14px 0 0;font-size:14px;line-height:1.45;cursor:pointer}.xr-bgopt input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:#4C3BCF}

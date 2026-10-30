@@ -570,6 +570,7 @@ pages["xray"] = ("xray", "/business-x-ray/", T("Business X-Ray — Free Website 
  + '<div class="cf-f"><label for="xr-country">Country</label><select id="xr-country" name="country"><option value="">Detect from the website</option>' + "".join(f'<option value="{X(c)}">{X(c)}</option>' for c in XR_COUNTRIES) + '</select></div>'
  + '<div class="cf-f"><label for="xr-product">Main product / service</label><input id="xr-product" name="product" maxlength="120" placeholder="e.g. root canal treatment"></div>'
  + '<div class="cf-f"><label for="xr-audience">Target audience</label><input id="xr-audience" name="audience" maxlength="120" placeholder="e.g. families in West Delhi"></div></div></details>'
+ + '<label class="xr-bgopt" id="xr-bgwrap" hidden><input type="checkbox" id="xr-bg" checked> <span><b>Run in the background</b> — you can close this tab; the report is saved in your account and emailed to you.</span></label>'
  + '<div class="btn-row" style="margin:16px 0 0"><button class="btn" type="submit" id="xr-run">Run Business X-Ray</button></div>'
  + '<p class="muted cf-note" id="xr-note">It takes 1–4 minutes — keep this tab open; the progress below is the real state of the job. FODO only reads public pages and never logs in anywhere.</p></form>'
  + '<p class="cf-status" id="xr-status" role="status" aria-live="polite"></p>'
@@ -639,6 +640,16 @@ GL_PRO = [("DIAGNOSE", "diagnose", [("business-xray", "Business X-Ray", "Complet
     ("competitor-monitoring", "Competitor Monitoring", "Keep watching your competitors without opening their sites.", "Scheduled snapshots", "Alerts only when something meaningful changes", "account/#monitoring", "monitor"),
     ("visibility-monitoring", "Visibility Monitoring", "Watch your own site for downtime, noindex, title and content changes.", "Scheduled snapshots of your homepage + sitemap", "Alerts for problems that cost traffic", "account/#monitoring", "monitor"),
     ("monthly-report", "Monthly Growth Report", "Last month vs this month: what improved, what declined, what to do next.", "Your X-Rays + monitoring + action tracker", "A one-page monthly report", "account/#monthly", "starter")])]
+# ---- v18 standalone PRO tools: one page each at /growth-lab/<tool>/ (prompt §79). Read from functions/_lib/products.js,
+#      the same registry the server sells and runs from, so names, default prices and copy never drift apart. ----
+import re as _re2
+_PJS = open(os.path.join(ROOT, "functions", "_lib", "products.js")).read()
+PRODUCTS = []
+for _m in _re2.finditer(r'^\s*"([a-z0-9-]+)":\s*\{(.*)\},\s*$', _PJS.split("export const PRODUCTS = {")[1].split("\n};")[0], _re2.M):
+    _f = dict(_re2.findall(r'(\w+): "((?:[^"\\]|\\.)*)"', _m.group(2))); _f["price"] = int(_re2.search(r"price: (\d+)", _m.group(2)).group(1)); _f["id"] = _m.group(1)
+    PRODUCTS.append(_f)
+PRODUCT_BY_ID = dict((x["id"], x) for x in PRODUCTS)
+assert len(PRODUCTS) >= 10, "could not read functions/_lib/products.js"
 _st = dict((p[0], p) for p in LAB_PLANS)
 GL_PRICE = {"pro": f"PRO · {_st['free'][3]} X-Rays free with login, then from {_inr(_st['starter'][2])} for {_st['starter'][3]}", "growth": f"PRO · Growth plan ({_inr(_st['growth'][2])}/month) and above",
   "starter": f"PRO · Starter plan ({_inr(_st['starter'][2])}/month) and above", "monitor": "PRO · 1 website free · more on paid plans"}
@@ -648,10 +659,14 @@ def _glcard(t, free=False):
         return (f'<a class="panel hud gl-card" data-tool="{i}" href="../{href}"><span class="tag gl-free">FREE</span><h3>{n}</h3><p class="muted">{b}</p>'
                 f'<dl class="gl-dl"><div><dt>Uses</dt><dd>{uses}</dd></div><div><dt>Time</dt><dd>~{tm}</dd></div></dl><span class="gl-go">Open →</span></a>')
     i, n, b, uses, gets, href, tier = t
+    if i in PRODUCT_BY_ID:   # v18: a standalone tool — its own page and its own one-run price
+        pr = PRODUCT_BY_ID[i]
+        return (f'<a class="panel hud gl-card gl-pro" data-tool="{i}" data-tier="tool" href="../growth-lab/{i}/"><span class="tag hot gl-protag">PRO</span><h3>{n}</h3><p class="muted">{b}</p>'
+                f'<dl class="gl-dl"><div><dt>Uses</dt><dd>{uses}</dd></div><div><dt>You get</dt><dd>{gets}</dd></div></dl><p class="gl-price" data-pid="{i}">PRO · {_inr(pr["price"])} a run · or included in plan X-Rays</p><span class="gl-go">Details →</span></a>')
     return (f'<a class="panel hud gl-card gl-pro" data-tool="{i}" data-tier="{tier}" href="../{href}"><span class="tag hot gl-protag">PRO</span><h3>{n}</h3><p class="muted">{b}</p>'
             f'<dl class="gl-dl"><div><dt>Uses</dt><dd>{uses}</dd></div><div><dt>You get</dt><dd>{gets}</dd></div></dl><p class="gl-price" data-price="{tier}">{GL_PRICE[tier]}</p><span class="gl-go">{"Open" if tier in ("monitor", "starter") and href.startswith("account") else "Run"} →</span></a>')
 GL_FAQ = [("Which tools are free?", "Growth Score, ROI Calculator, Competitor Finder, Marketing Budget Planner, the Marketing Quiz and the FODO Challenge are free with no login. Every FODO Pro tool can be tried with the 2 free Business X-Rays you get when you log in."),
-  ("Why do many Pro tools open the Business X-Ray?", "Because they need the same research — reading your website, Google results, competitors and customer voice. One X-Ray produces all of them, so you never enter the same business twice and you only pay once."),
+  ("Can I buy just one Pro tool?", "Yes. Every Pro tool has its own page and its own price for one run. They share one research engine, so a tool reuses your full Business X-Ray of the same website from the last 30 days — no new crawl and no re-entering your business. Plans include the tools their X-Rays cover."),
   ("Where does the data come from?", "Your public website (FODO's own reader, which respects robots.txt), Google search and Maps results (via Serper), Google PageSpeed Insights, your own Google Search Console if you connect it, map data from OpenStreetMap/Geoapify and AI answers from the engines listed in each report. Anything we cannot verify says “Data unavailable”."),
   ("Does FODO guess traffic, revenue or rankings?", "No. FODO never invents traffic, revenue, conversion rates or search volumes. Estimates are labelled ESTIMATED with their source; first-party numbers appear only when you connect Search Console."),
   ("What do I get with monitoring?", "FODO checks your competitors' (and your own) homepage and sitemap on a schedule and only alerts you when something meaningful changes — prices, headline, new pages, content, downtime or a noindex tag — with why it matters and what to do.")]
@@ -664,10 +679,38 @@ pages["growth-lab"] = ("lab", "/growth-lab/", T("Growth Lab — Free Tools & Pro
  + '<div class="panel hud gl-cta"><div><h3>Want the complete picture?</h3><p class="muted">The Business X-Ray reads your website, your market and your real competitors — and shows what is wrong, what you are missing and what to do first, with evidence.</p></div><div class="btn-row"><a class="btn" href="../business-x-ray/">Run your free X-Ray</a><a class="btn ghost" href="../business-x-ray/?r=sample">See a sample report (demo data)</a></div></div></div></section>'
  + '<section class="cf-sec gl-sec" id="gl-pro"><div class="container"><div class="section-head reveal"><h2>FODO Pro Intelligence</h2><span class="section-num">02</span></div><p class="lead gl-lead">Twenty tools on one research engine — every finding traceable to a page, a search result or a report. <span class="gl-live" id="gl-live"></span></p>'
  + "".join(f'<div class="gl-cat" id="gl-{cid}"><p class="eyebrow">{cn}</p><div class="grid g4 gl-grid">' + "".join(_glcard(t) for t in tools) + '</div></div>' for cn, cid, tools in GL_PRO)
- + '<p class="muted gl-fine">Prices in INR. Pro tools that open the Business X-Ray use one X-Ray credit for all of them. <a href="../plans/">Plans &amp; packs</a> · <a href="../legal/#refunds">refunds</a></p></div></section>'
+ + '<p class="muted gl-fine">Prices in INR. Buy one run of any Pro tool, or use a plan — its X-Rays include the tools they cover, and a tool reuses your recent X-Ray of the same site. <a href="../plans/">Plans &amp; packs</a> · <a href="../legal/#refunds">refunds</a></p></div></section>'
  + sec("03", "How FODO gets the data", '<div class="grid g3 reveal gl-src">' + "".join(f'<div class="panel"><h3>{a}</h3><p class="muted">{b}</p></div>' for a, b in [("Your website", "FODO's own reader crawls your public pages (respects robots.txt, never logs in) and runs deterministic checks."), ("Google Search & Maps", "Real results for the searches buyers use, and local listings with ratings and review counts (via Serper)."), ("Google PageSpeed", "Lab tests plus real-user Chrome data when Google has it — shown separately, never blended."), ("Your Search Console (optional)", "Connect it read-only to add your real clicks and impressions. Only you see it."), ("AI assistants", "The same buyer questions to the AI engines listed in each report — FODO's own AI Visibility Score, clearly not an official one."), ("Your competitors", "Found from those searches and listings, then read side by side with your pages.")]) + '</div>')
  + sec("04", "Questions", '<div class="reveal">' + faq_block(GL_FAQ, "glf") + '</div>'),
  1, LD(crumbs_ld([("Home", "/"), ("Growth Lab", "/growth-lab/")]), faq_ld(GL_FAQ)), ("account", "growth-lab"))
+CAT_NAME = {"diagnose": "Diagnose", "compete": "Compete", "visibility": "Visibility", "strategy": "Strategy"}
+def _tool_faq(t):
+    return [("Do I have to enter my business again?", "No. If you ran a full Business X-Ray of the same website in the last 30 days, " + t["name"] + " reuses that research — no new crawl, no waiting. Otherwise it runs a fresh scan of your website, Google results and competitors."),
+            ("What does one run include?", "One website, one report: " + t["gives"].replace("&amp;", "&") + ". The report stays in your account, can be downloaded as PDF / Excel and shared with a link you control."),
+            ("Is it included in a plan?", "Yes — plans whose X-Rays include this part of the research already include " + t["name"] + ". Without a plan you can buy a single run. The page shows which applies to you after login."),
+            ("Does FODO guess any numbers?", "No. Every finding links to the page, search result or measurement it came from. Anything FODO cannot verify says “Data unavailable” — never a made-up traffic, revenue or ranking number.")]
+for _t in PRODUCTS:
+    _id, _faq = _t["id"], _tool_faq(_t)
+    _title = _t["name"] + " — FODO Growth Lab"
+    if len(_title) > 62: _title = _t["name"] + " | FODO"
+    _desc = (_t["line"].replace("&amp;", "&"))
+    _desc = _desc if len(_desc) <= 150 else _desc[:147].rsplit(" ", 1)[0] + "…"
+    pages["tool-" + _id] = ("tool", "/growth-lab/" + _id + "/", T(_title), D_(_desc),
+     hero("Growth Lab · " + CAT_NAME.get(_t["cat"], "Pro") + " · PRO", X(_t["name"]), X(_t["line"]),
+          f'<a class="btn" href="#tl-run">Run {X(_t["name"])}</a><a class="btn ghost" href="../../business-x-ray/?r=sample&amp;tool={_id}">See a sample (demo data)</a>',
+          visual=ASIDE("One run", [("Price: " + _inr(_t["price"]) + " (or included in plan X-Rays)", None), ("Time: ~" + _t["time"], None), ("Reuses your last X-Ray when it can", None), ("Every finding with its evidence", None)]))
+     + f'<section class="cf-sec tl-sec" id="tl-run"><div class="container"><div class="grid g2 tl-grid"><form class="cf-form panel hud tl-form" id="tl-form" data-tool="{_id}" novalidate>'
+     + f'<span class="tag hot">PRO</span><h2>Run {X(_t["name"])}</h2><div class="cf-f"><label for="tl-url">Your website</label><input id="tl-url" inputmode="url" autocomplete="url" placeholder="yourbusiness.com" maxlength="200" required></div>'
+     + f'<p class="tl-price" id="tl-price" data-pid="{_id}"><b>{_inr(_t["price"])}</b> a run · or included in plan X-Rays</p><div id="tl-me" class="tl-me muted"></div>'
+     + '<div class="btn-row"><button class="btn" type="submit" id="tl-go">Run it</button><a class="btn ghost" href="../../plans/">Plans &amp; packs</a></div><p class="cf-status" id="tl-st" role="status" aria-live="polite"></p>'
+     + '<p class="muted cf-note">You log in first (free). Payment is by Cashfree and is checked on our server before anything unlocks.</p></form>'
+     + '<div class="panel tl-what"><h3>What it analyzes</h3><p>' + X(_t["line"]) + '</p><h3>What data it uses</h3><p>' + _t["uses"] + '</p><h3>What you receive</h3><p>' + _t["gives"] + '</p><h3>How long</h3><p>About ' + _t["time"] + ' for a fresh scan — instant when it reuses your recent X-Ray.</p></div></div></div></section>'
+     + sec("02", "How it works", '<ol class="grid g3 reveal tl-steps">' + "".join(f'<li class="panel"><h3>{a}</h3><p class="muted">{b}</p></li>' for a, b in [("Enter your website", "Log in (free). FODO checks whether you already have a recent full X-Ray of that site."), ("Reuse or research", "With a recent X-Ray, the tool uses it straight away. Otherwise FODO reads your site, Google results and competitors — you watch the real stages, not a fake progress bar."), ("Get the report", "Only the " + X(_t["name"]) + " part, with evidence, priorities and what to do first. Saved in your account, downloadable and shareable.")]) + '</ol>')
+     + sec("03", "Your data", '<p class="reveal">FODO reads only public pages (respecting robots.txt) and the searches listed in the report. Private data such as Search Console is used only if you connect it and never appears in a shared link. See <a href="../../legal/#privacy">privacy</a>.</p>')
+     + sec("04", "Questions", '<div class="reveal">' + faq_block(_faq, "tf" + _id.replace("-", "")) + '</div>'),
+     2, LD(crumbs_ld([("Home", "/"), ("Growth Lab", "/growth-lab/"), (_t["name"], "/growth-lab/" + _id + "/")]), faq_ld(_faq),
+           {"@context": "https://schema.org", "@type": "Service", "name": _t["name"], "provider": {"@type": "Organization", "name": "FODO", "url": SITE}, "description": _desc, "offers": {"@type": "Offer", "price": str(_t["price"]), "priceCurrency": "INR"}}),
+     ("account", "tool"))
 BP_TYPES = [("local", "Local business (clinic, salon, restaurant, store, home services)"), ("ecom", "Online store / D2C brand"), ("b2b", "B2B / services to companies"), ("saas", "Software / app (SaaS)"), ("edu", "Courses, coaching, education")]
 BP_GOALS = [("leads", "More enquiries / leads"), ("sales", "More online sales"), ("footfall", "More walk-ins / bookings"), ("awareness", "Brand awareness")]
 BP_HAVE = [("search", "Google Search Ads"), ("meta", "Meta (Facebook/Instagram) Ads"), ("gbp", "Google Business Profile"), ("seo", "SEO / blog"), ("linkedin", "LinkedIn"), ("youtube", "YouTube"), ("email", "Email / WhatsApp"), ("market", "Marketplaces")]

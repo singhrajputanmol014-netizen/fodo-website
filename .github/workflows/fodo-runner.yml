@@ -1,0 +1,25 @@
+# FODO background X-Ray — OPTIONAL fallback runner (v19).
+# The Cloudflare runner Worker sends a job here only when Cloudflare's free daily browser time is used up
+# (and only if the Worker has GH_TOKEN + GH_REPO). It opens the job's runner page in Chromium, waits for the report, and tells the website.
+# Setup: repo → Settings → Secrets and variables → Actions → New repository secret  FODO_RUNNER_KEY  = the same RUNNER_KEY text.
+name: FODO background X-Ray
+on:
+  repository_dispatch:
+    types: [fodo-xray]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Chromium
+        run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
+      - name: Run the X-Ray
+        env:
+          RUN_URL: ${{ github.event.client_payload.runUrl }}
+          JOB_ID: ${{ github.event.client_payload.jobId }}
+          KEY: ${{ secrets.FODO_RUNNER_KEY }}
+        run: node scripts/bg-runner.mjs

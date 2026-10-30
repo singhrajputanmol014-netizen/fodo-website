@@ -23,11 +23,24 @@
       sec("07", "monitoring", "Monitoring", '<p class="muted">Loading…</p>') +
       sec("08", "search-console", "Google Search Console", '<p class="muted">Loading…</p>') +
       sec("09", "monthly", "Monthly Growth Report", hasF("monthlyReport") ? '<p class="muted">Loading…</p>' : '<p class="muted">The monthly report (last month vs this month, what improved, what declined, competitor changes and what to do next) comes with Starter and above. <a href="' + ROOT + 'plans/">See plans</a>.</p>');
+    box.insertAdjacentHTML("beforeend", sec("10", "tools", "My Pro tool reports", '<p class="muted">Loading…</p>'));
     acc.appendChild(box);
     (hasF("history") ? A.history() : Promise.resolve({ items: [] })).then(function (j) { HIST = (j.items || []).filter(function (r) { return r.status === "COMPLETE"; }); if (hasF("history")) { history(); bizCards(); } if (hasF("monthlyReport")) monthly(); });
-    actions(); monitoring(); gsc();
+    actions(); monitoring(); gsc(); toolRuns();
     var h = location.hash.slice(1); if (h && $(h)) setTimeout(function () { $(h).scrollIntoView({ block: "start" }); }, 300);
   };
+
+  /* ---------- v18: report library of standalone Pro tools (prompt §50) ---------- */
+  function toolRuns() {
+    fetch(ROOT + "api/lab/tool/runs", { credentials: "same-origin" }).then(function (x) { return x.json(); }).then(function (j) {
+      var b = $("tools-b"); if (!b) return; var L = (j && j.items) || [];
+      var st = { done: "Ready", scan: "Not finished", refunded: "Refunded" }, src = { tool: "bought run", included: "included in plan", xray: "one plan X-Ray", owner: "owner" };
+      b.innerHTML = L.length ? '<div class="xr-scroll"><table class="xr-t"><thead><tr><th>Tool</th><th>Website</th><th>Date</th><th>Status</th><th>Paid by</th><th></th></tr></thead><tbody>' + L.map(function (r) {
+        return "<tr><td><b>" + esc(r.name) + "</b></td><td>" + esc(r.domain) + "</td><td>" + esc(new Date(r.created_at).toLocaleDateString("en-IN")) + "</td><td>" + esc(st[r.status] || r.status) + (r.reused ? ' <small class="muted">· reused X-Ray</small>' : "") + "</td><td>" + esc(src[r.source] || r.source) + "</td><td>" +
+          (r.job_id && r.status === "done" ? '<a class="btn sm ghost" href="' + ROOT + "business-x-ray/?r=" + encodeURIComponent(r.job_id) + "&tool=" + encodeURIComponent(r.tool) + '">Open</a>' : r.status === "scan" && !r.job_id ? '<a class="btn sm ghost" href="' + ROOT + "business-x-ray/?tool=" + encodeURIComponent(r.tool) + "&run=" + encodeURIComponent(r.id) + "&u=" + encodeURIComponent(r.domain) + '">Run now</a>' : "") + "</td></tr>"; }).join("") + "</tbody></table></div>"
+        : '<p class="muted">No Pro tool runs yet. <a href="' + ROOT + 'growth-lab/#gl-pro">Browse the Pro tools</a> — each one reuses your recent X-Ray of the same website.</p>';
+    }, function () { var b = $("tools-b"); if (b) b.innerHTML = '<p class="muted">Could not load your tool reports.</p>'; });
+  }
 
   /* ---------- Growth Score history (prompt §17 "Growth Score" monitor) ---------- */
   function history() {

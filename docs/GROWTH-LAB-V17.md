@@ -157,3 +157,101 @@ Tests: `tests/v172-engine.test.js` has 11 checks. The other suites are unchanged
 - v17 functions: 92
 - v17 e2e: 58
 - X-Ray e2e: 116
+
+## v18: standalone PRO tools + per-tool pricing
+
+**13 PRO tools now have their own page** at `/growth-lab/<tool>/`:
+- revenue-leak, conversion-xray, website-health
+- war-room, why-winning, market-position
+- ai-visibility, search-visibility, local-visibility, brand-presence
+- offer-strength, blueprint30, roadmap90
+
+Each page shows what the tool analyzes, the data it uses, what you receive, the live price, the time it takes, a sample, an FAQ and a privacy note. The registry is `functions/_lib/products.js`, and the page builder reads the same file, so the copy never drifts.
+
+**How a run works (`POST /api/lab/tool/start`)**
+1. **Reuse (§47).** If the account has a full X-Ray of the same website from the last 30 days that covers what the tool needs, the run opens at once on that report. There is no new research and the API cost is ₹0.
+2. **Fresh scan.** Otherwise the X-Ray engine runs in tool mode: `/business-x-ray/?tool=…&run=…&u=…`. The run id is tied to the account and the website, and works once.
+3. **Who pays:**
+
+| Account | Pays with |
+|---|---|
+| Owner emails | Free |
+| Plan whose X-Rays include the tool | Reuse is free; a fresh scan uses one plan X-Ray |
+| Everyone else | One bought run of that tool. Without one, the server answers 402 "Buy one run (₹…)" |
+
+4. **A bought run** scans at the smallest plan level that covers the tool (Website Health = Starter, War Room = Growth…). It never touches the free X-Rays. If the site can't be read, the run is refunded as a tool run.
+
+**Payment.** Cashfree `checkout {kind:"tool", item:<tool>}` returns to the tool page. The server re-reads the order from Cashfree (`verify` / webhook), then grants exactly 1 run. This is idempotent.
+
+**Report.** The X-Ray report page shows only that tool's sections plus Evidence, with a "Show the full X-Ray" button.
+
+**Account → My Pro tool reports** lists every run: reused or fresh, how it was paid, and Open / Run now.
+
+**Admin**
+- Prices & tools → "Standalone PRO tools": a price per run and an on-sale switch for each tool.
+- Growth Lab → per tool: runs, reused vs fresh, finished, via plan, runs bought, revenue.
+
+**Default prices (prompt §9; change them in admin):**
+
+| Tool | Price per run |
+|---|---|
+| Website Health | ₹699 |
+| Offer Strength | ₹699 |
+| Revenue Leak | ₹999 |
+| Conversion X-Ray | ₹999 |
+| Why Winning | ₹999 |
+| Market Position | ₹999 |
+| Search Visibility | ₹999 |
+| Local Visibility | ₹999 |
+| Brand Presence | ₹999 |
+| AI Visibility | ₹1,999 |
+| 30-Day Blueprint | ₹1,999 |
+| War Room | ₹2,999 |
+| 90-Day Roadmap | ₹3,999 |
+
+⚠️ **Pricing check:** X-Ray packs cost from ₹60 per full X-Ray (`p5` = ₹299 for 5), and a full X-Ray contains every tool. Decide in admin whether tool prices or pack prices should move.
+
+New tables: `lab_tool_credits` and `lab_tool_runs`, created automatically.
+
+Tests:
+- `tests/v18-functions.test.mjs`: 38 checks.
+- v17 e2e: 67 checks, including the browser tool flow (reuse, fresh scan, tool view, account library, admin).
+
+## v19: background X-Rays (Cloudflare Queue + Browser Rendering, free plan)
+
+Ticking **Run in the background** on the X-Ray form lets the visitor close the tab. The report is still built, saved in the account and emailed. Pro tools use it too.
+
+**Flow**
+1. `/api/xray/start {background:true}` checks credits as usual and creates the job.
+2. The website asks the runner Worker (`runner/`) to queue it.
+3. The Worker's queue consumer claims the job (`/api/xray/bg/claim`) and opens `/business-x-ray/?bg=<job>&t=<HMAC token>` in Cloudflare Browser Rendering.
+4. That page runs the **same engine** and saves the report.
+5. The Worker reports back (`bg/done`), and the user gets one "your X-Ray is ready" email.
+
+**Limits and fallbacks**
+
+| Situation | What happens |
+|---|---|
+| Daily free browser time used up (10 min/day ≈ 3–6 X-Rays) | The job waits and is retried every 15 min. Or GitHub Actions runs it, if connected (optional). |
+| A run crashes | Retried with backoff. After 3 failed tries, or 2½ h of waiting, the credit or tool run is refunded. |
+| A run dies while "running" | The cron sweep (every 15 min) puts it back on the queue. |
+| Runner not set up or not answering | The X-Ray runs in the browser exactly as before, and the page says so. |
+
+**What the visitor sees**
+- An open tab shows the real job state: queued, waiting, live stages, then the report.
+- A saved `?r=` link of an unfinished job keeps watching until it is done.
+
+**Admin → System health** shows "Background X-Rays": whether the Worker is up, and done / running / waiting / failed counts for the last 24 h.
+
+**Security**
+- Runner calls need `x-runner-key`.
+- The runner page needs the job's HMAC token.
+- A job runs once.
+- No secret ever reaches a browser.
+- The runner page is not counted in analytics.
+
+**Setup:** see `runner/README.md` (queue, Worker from the repo, 2 secrets on the website).
+
+Tests:
+- `tests/v19-functions.test.mjs`: 25 checks. They run the real Worker code against the real API in-process.
+- `tests/v19-e2e.test.js`: 16 checks. Real pages and the runner Worker code, with a local queue and Chromium standing in for Cloudflare's: tab closed → report built → email; capacity full → waits → starts by itself; token and key checks.

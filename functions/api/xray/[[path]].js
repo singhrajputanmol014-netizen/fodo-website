@@ -19,6 +19,9 @@
  * v17: every outside call is logged with its (estimated) cost in api_usage (_lib/usage.js); search falls back Serper → Brave.
  * Why the browser does the analysis: Cloudflare's free plan gives a request ~10 ms of CPU — parsing 50 web pages on the
  * server would not fit, the browser has plenty. The server keeps the keys, blocks unsafe addresses, limits and stores. */
+import { tdb, toolTier } from "../../_lib/products.js";
+import { bgOn, bdb, bgToken, runnerAuth, enqueue, same } from "../../_lib/bg.js";
+import { sendMail } from "../../_lib/accounts.js";
 import { json, log, safeUrl, safeFetch, regDomain, retrying, cacheGet, cachePut, jobCreate, jobGet, jobUpdate, reportPut, reportGet, rowsPut,
   hashIp, counter, memCount, providers, rid, UA, STAGES, ROW_TABLES, outbound, normSearch } from "../../_lib/xray-core.js";
 import { accountsOn, sessionUser, billingUser, spendCredit, hasCredit, refundCredit, limitsForUser, logEvent, activePlan, db as acctDb, count as acctCount, nowIso } from "../../_lib/accounts.js";
@@ -51,11 +54,12 @@ export async function onRequest(ctx) {
   const path = [].concat(params.path || []), route = path[0] || "", method = request.method;
   try {
     await applyConfig(env);
-    if (route === "health" && method === "GET") return json({ ok: true, service: "business-x-ray", version: "1.0", providers: Object.assign(providers(env), { aiEngines: aiEngines(env, toolOn).map((e) => e.id), places: providers(env).places || (env.SERPER_API_KEY && toolOn("places") ? "serper-places" : null) }), limits: LIMITS });
+    if (route === "health" && method === "GET") return json({ ok: true, service: "business-x-ray", version: "1.0", background: bgOn(env) && accountsOn(env), providers: Object.assign(providers(env), { aiEngines: aiEngines(env, toolOn).map((e) => e.id), places: providers(env).places || (env.SERPER_API_KEY && toolOn("places") ? "serper-places" : null) }), limits: LIMITS });
     if (route === "start" && method === "POST") return await start(request, env);
     if (route === "status" && method === "GET") return await status(env, path[1]);
     if (route === "report" && method === "GET") { const gate = await shareGate(env, request, String(path[1] || "")); if (gate) return gate;
       const r = await reportGet(env, path[1]); return r ? new Response(r, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "private, max-age=60" } }) : json({ ok: false, reason: "Report not found or expired." }, 404); }
+    if (route === "bg") return await bgRoute(request, env, path[1] || "", path[2] || "", method);
     if (method !== "POST") return json({ ok: false, reason: "Not found." }, 404);
     if (route === "report") return await saveReport(request, env);
     const body = await request.json().catch(() => null); if (!body) return json({ ok: false, reason: "Send JSON." }, 400);
@@ -87,30 +91,120 @@ async function start(request, env) {
   if (!toolOn("xray")) return json({ ok: false, maintenance: true, reason: "Business X-Ray is being updated right now. Please try again in a little while." }, 503);
   const u = safeUrl(b.url); if (!u.ok) return json({ ok: false, reason: u.reason }, 400);
   const ip = await hashIp(request), hour = Math.floor(Date.now() / 3600e3), day = new Date().toISOString().slice(0, 10);
-  let user = null, owner = null;
+  let user = null, owner = null, tool = null;
   if (accountsOn(env)) {
     user = await sessionUser(env, request);
     if (!user) return json({ ok: false, login: true, reason: "Log in (it's free) to run a Business X-Ray — your first " + PLANS.free.xrays + " are on us." }, 401);
     owner = await billingUser(env, user);
     const plan = activePlan(owner);
-    if (!hasCredit(owner)) { await logEvent(env, user.id, "limit_hit", regDomain(u.host)); return json({ ok: false, upgrade: true, reason: plan === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402); }
+    // v18: a standalone tool's fresh scan — already paid by a bought tool run (or owner); a plan-included one spends an X-Ray below
+    if (b.toolRun) {
+      tool = await (await tdb(env)).prepare("SELECT * FROM lab_tool_runs WHERE id=?1 AND owner_id=?2").bind(String(b.toolRun).slice(0, 40), owner.id).first();
+      if (!tool || tool.status !== "scan" || tool.job_id) return json({ ok: false, reason: "This tool run has already been used. Start it again from the tool's page." }, 409);
+      if (regDomain(u.host) !== tool.domain) return json({ ok: false, reason: "This tool run is for " + tool.domain + "." }, 400);
+    }
+    if ((!tool || tool.source !== "tool") && !hasCredit(owner)) { await logEvent(env, user.id, "limit_hit", regDomain(u.host)); return json({ ok: false, upgrade: true, reason: plan === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402); }
     if (await acctCount(env, "xrh:" + owner.id + ":" + hour, PLANS[plan].perHour, 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour on the " + PLANS[plan].name + " plan. Please try again a little later." }, 429);
   } else if (await counter(env, `xr:rl:${ip}:${hour}`, parseInt(env.XRAY_PER_HOUR || "4", 10), 3700)) return json({ ok: false, reason: "You have run the maximum X-Rays for this hour. Please try again a little later." }, 429);
   if (await counter(env, `xr:day:${day}`, parseInt(env.XRAY_PER_DAY || "60", 10), 90000)) return json({ ok: false, reason: "Today's free X-Rays are used up. Please try again tomorrow." }, 429);
   const input = { url: u.url, name: clean(b.name, 80), industry: clean(b.industry, 80), country: clean(b.country, 40), city: clean(b.city, 80), product: clean(b.product, 120), audience: clean(b.audience, 120) };
   const id = rid(); let limits = LIMITS, credit = null;
   if (owner) {
-    credit = await spendCredit(env, owner, id);
+    credit = tool && tool.source === "tool" ? { tier: toolTier(tool.tool), kind: "tool:" + tool.tool } : await spendCredit(env, owner, id);
     if (!credit) return json({ ok: false, upgrade: true, reason: activePlan(owner) === "free" ? "You have used your " + PLANS.free.xrays + " free X-Rays. Pick a plan or an X-Ray pack to run more." : "No X-Rays left this month. Buy a pack or move to a bigger plan." }, 402);
     limits = Object.assign({}, LIMITS, limitsForUser(credit.tier, owner));
     const client = String(b.client || "").replace(/[^a-z0-9_]/gi, "").slice(0, 20) || null;
     await (await acctDb(env)).prepare("INSERT INTO acct_runs (job_id, user_id, owner_id, domain, url, tier, credit, client_id, status, created_at, features) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'running',?9,?10)")
       .bind(id, user.id, owner.id, regDomain(u.host), u.url, credit.tier, credit.kind, client, nowIso(), JSON.stringify(limits.features)).run();
-    await logEvent(env, user.id, "xray_start", regDomain(u.host) + " · " + credit.tier);
+    await logEvent(env, user.id, "xray_start", regDomain(u.host) + " · " + credit.tier + (tool ? " · tool " + tool.tool : ""));
+    if (tool) await (await tdb(env)).prepare("UPDATE lab_tool_runs SET job_id=?2 WHERE id=?1 AND job_id IS NULL").bind(tool.id, id).run();
   }
   const job = await jobCreate(env, { id, url: u.url, domain: regDomain(u.host), input, status: "queued", stage: "DISCOVERY", progress: 0, completed: [], allow: [], ip_hash: ip });
   log({ job: job.id, route: "start", ok: true, domain: job.domain, tier: credit ? credit.tier : "anon" });
-  return json({ ok: true, jobId: job.id, status: "queued", providers: providers(env), limits, tier: credit ? credit.tier : null, credit: credit ? credit.kind : null, stages: STAGES });
+  const out = { ok: true, jobId: job.id, status: "queued", providers: providers(env), limits, tier: credit ? credit.tier : null, credit: credit ? credit.kind : null, stages: STAGES };
+  // v19: run it in the background (the runner Worker's queue) — the visitor can close the tab
+  if (b.background && owner && bgOn(env)) {
+    const d = await bdb(env), now = nowIso();
+    await d.prepare("INSERT INTO xray_bg (job_id, user_id, owner_id, email, payload, status, attempts, enqueued_at) VALUES (?1,?2,?3,?4,?5,'queued',0,?6)").bind(job.id, user.id, owner.id, user.email || "", JSON.stringify(Object.assign({}, out, { input })), now).run();
+    if (await enqueue(env, job.id)) { await jobUpdate(env, job, { note: "Queued — FODO's background runner starts it in a moment. You can close this tab." }); await logEvent(env, user.id, "xray_bg", job.domain); return json(Object.assign(out, { background: true })); }
+    await d.prepare("DELETE FROM xray_bg WHERE job_id=?1").bind(job.id).run();
+    return json(Object.assign(out, { background: false, bgNote: "The background runner did not answer, so this X-Ray runs here in your browser — keep the tab open." }));
+  }
+  return json(out);
+}
+/* ---------- v19 background runner API ----------
+   GET  bg/job/<id>?t=  → the start payload for the background page (token = HMAC of the job id with RUNNER_KEY)
+   POST bg/claim {jobId, executor}  · POST bg/wait {jobId, reason}  · POST bg/done {jobId, ok, error}   (header x-runner-key) */
+const BG_MAX_AGE = 150 * 60e3, BG_TRIES = 3;
+async function bgFail(env, d, row, why) {
+  await d.prepare("UPDATE xray_bg SET status='failed', note=?2, finished_at=?3 WHERE job_id=?1").bind(row.job_id, String(why || "").slice(0, 300), nowIso()).run();
+  const run = await (await acctDb(env)).prepare("SELECT * FROM acct_runs WHERE job_id=?1").bind(row.job_id).first();
+  let refunded = false; if (run && run.status === "running") refunded = await refundCredit(env, run);
+  const job = await jobGet(env, row.job_id); if (job) await jobUpdate(env, job, { status: "FAILED", note: "The background X-Ray could not finish (" + String(why || "unknown").slice(0, 120) + ")." + (refunded ? " Your X-Ray credit was returned." : "") });
+  return refunded;
+}
+/* email "your X-Ray is ready" once — from the report save (fastest) or from the runner's done call, whichever comes first */
+async function bgNotify(env, request, jid) {
+  const d = await bdb(env); if (!d) return false;
+  const row = await d.prepare("SELECT * FROM xray_bg WHERE job_id=?1").bind(jid).first(); if (!row || row.notified || !row.email || !env.RESEND_API_KEY) return false;
+  const claim = await d.prepare("UPDATE xray_bg SET notified=1 WHERE job_id=?1 AND notified=0").bind(jid).run(); if (!claim.meta || !claim.meta.changes) return false;
+  const job = await jobGet(env, jid), tr = await (await tdb(env)).prepare("SELECT tool FROM lab_tool_runs WHERE job_id=?1").bind(jid).first().catch(() => null);
+  const origin = env.SITE_URL ? String(env.SITE_URL).replace(/\/$/, "") : new URL(request.url).origin, link = origin + "/business-x-ray/?r=" + jid + (tr ? "&tool=" + tr.tool : ""), dom = job ? job.domain : "your website";
+  try { await sendMail(env, row.email, "Your Business X-Ray of " + dom + " is ready", '<p>Your FODO Business X-Ray of <b>' + dom + '</b> is ready.</p><p><a href="' + link + '">Open the report</a></p><p style="color:#666">It ran in the background, so you could close the tab. It is also in your account.</p>', "Your FODO Business X-Ray of " + dom + " is ready: " + link); return true; }
+  catch (e) { await d.prepare("UPDATE xray_bg SET notified=0 WHERE job_id=?1").bind(jid).run(); return false; }
+}
+async function bgRoute(request, env, action, id, method) {
+  if (!bgOn(env) || !accountsOn(env)) return json({ ok: false, reason: "Background X-Rays are not switched on." }, 503);
+  const d = await bdb(env);
+  if (action === "job" && method === "GET") {
+    const t = new URL(request.url).searchParams.get("t"); if (!/^[a-z0-9]{20}$/.test(id) || !same(t, await bgToken(env, id))) return json({ ok: false, reason: "Not allowed." }, 403);
+    const row = await d.prepare("SELECT * FROM xray_bg WHERE job_id=?1").bind(id).first(); if (!row || row.status !== "running") return json({ ok: false, reason: "This background X-Ray is not running." }, 409);
+    const p = JSON.parse(row.payload || "{}");
+    // the last finished X-Ray of the same website (same account) so "what changed since last time" works in the background too
+    const job = await jobGet(env, id), prev = job ? await (await acctDb(env)).prepare("SELECT job_id FROM acct_runs WHERE owner_id=?1 AND domain=?2 AND status='COMPLETE' AND job_id != ?3 ORDER BY created_at DESC LIMIT 1").bind(row.owner_id, job.domain, id).first() : null;
+    return json(Object.assign(p, { bg: true, compareWith: prev ? prev.job_id : null }));
+  }
+  if (method !== "POST" || !runnerAuth(env, request)) return json({ ok: false, reason: "Not allowed." }, 403);
+  const b = await request.json().catch(() => ({})), jid = String(b.jobId || "");
+  if (action === "sweep") {   // cron: runs that died (browser crashed, GitHub job lost) go back on the queue; jobs past their time are refunded
+    const stale = new Date(Date.now() - 20 * 60e3).toISOString(), rows = (await d.prepare("SELECT * FROM xray_bg WHERE status='running' AND started_at < ?1 LIMIT 20").bind(stale).all()).results || [], requeue = [];
+    for (const r0 of rows) { const j0 = await jobGet(env, r0.job_id);
+      if (j0 && j0.status === "COMPLETE") { await d.prepare("UPDATE xray_bg SET status='done', finished_at=?2 WHERE job_id=?1").bind(r0.job_id, nowIso()).run(); continue; }
+      if (!j0 || r0.attempts >= BG_TRIES || Date.now() - Date.parse(r0.enqueued_at) > BG_MAX_AGE) { await bgFail(env, d, r0, "the background run stopped"); continue; }
+      await d.prepare("UPDATE xray_bg SET status='waiting' WHERE job_id=?1").bind(r0.job_id).run(); requeue.push(r0.job_id); }
+    return json({ ok: true, requeue });
+  }
+  const row = await d.prepare("SELECT * FROM xray_bg WHERE job_id=?1").bind(jid).first(); if (!row) return json({ ok: false, drop: true, reason: "Unknown background job." }, 404);
+  const job = await jobGet(env, jid);
+  if (action === "claim") {
+    if (row.status === "done" || row.status === "failed") return json({ ok: false, drop: true, reason: "Already " + row.status + "." });
+    if (!job || Date.now() - Date.parse(row.enqueued_at) > BG_MAX_AGE) { const rf = await bgFail(env, d, row, "it waited too long for a free background browser"); return json({ ok: false, drop: true, refunded: rf }); }
+    if (job.status === "COMPLETE") { await d.prepare("UPDATE xray_bg SET status='done', finished_at=?2 WHERE job_id=?1").bind(jid, nowIso()).run(); return json({ ok: false, drop: true, reason: "Already finished." }); }
+    if (row.attempts >= BG_TRIES) { const rf = await bgFail(env, d, row, "it failed " + row.attempts + " times"); return json({ ok: false, drop: true, refunded: rf }); }
+    await d.prepare("UPDATE xray_bg SET status='running', executor=?2, attempts=attempts+1, started_at=?3, note='' WHERE job_id=?1").bind(jid, String(b.executor || "browser").slice(0, 30), nowIso()).run();
+    await jobUpdate(env, job, { note: "Running in the background — you can close this tab." });
+    const origin = env.SITE_URL ? String(env.SITE_URL).replace(/\/$/, "") : new URL(request.url).origin;
+    return json({ ok: true, runUrl: origin + "/business-x-ray/?bg=" + jid + "&t=" + (await bgToken(env, jid)), attempt: row.attempts + 1, maxMs: 14 * 60e3 });
+  }
+  if (action === "wait") {
+    if (row.status === "done" || row.status === "failed") return json({ ok: true, drop: true });
+    if (job && Date.now() - Date.parse(row.enqueued_at) > BG_MAX_AGE) { const rf = await bgFail(env, d, row, "no background browser was free in time"); return json({ ok: true, drop: true, refunded: rf }); }
+    await d.prepare("UPDATE xray_bg SET status='waiting', note=?2 WHERE job_id=?1").bind(jid, String(b.reason || "").slice(0, 200)).run();
+    if (job) await jobUpdate(env, job, { note: "Waiting for a free background browser — it starts automatically (" + String(b.reason || "busy").slice(0, 80) + "). You can close this tab." });
+    return json({ ok: true });
+  }
+  if (action === "done") {
+    if (job && job.status === "COMPLETE") {
+      await d.prepare("UPDATE xray_bg SET status='done', finished_at=?2 WHERE job_id=?1").bind(jid, nowIso()).run();
+      const mailed = await bgNotify(env, request, jid);
+      return json({ ok: true, done: true, mailed });
+    }
+    if (row.attempts >= BG_TRIES) { const rf = await bgFail(env, d, row, String(b.error || "the report was not saved").slice(0, 160)); return json({ ok: true, failed: true, refunded: rf }); }
+    await d.prepare("UPDATE xray_bg SET status='waiting', note=?2 WHERE job_id=?1").bind(jid, String(b.error || "not finished").slice(0, 200)).run();
+    if (job) await jobUpdate(env, job, { note: "The background run stopped (" + String(b.error || "unknown").slice(0, 80) + ") — trying again automatically." });
+    return json({ ok: true, retry: true });
+  }
+  return json({ ok: false, reason: "Not found." }, 404);
 }
 async function status(env, id) {
   const j = await jobGet(env, id); if (!j) return json({ ok: false, reason: "Job not found." }, 404);
@@ -393,6 +487,8 @@ async function saveReport(request, env) {
   if (accountsOn(env)) { const m = /"overall":(\d+|null)/.exec(text), dc = /"completeness":\{"overall":(\d+)/.exec(text);
     const du = /"durationMs":(\d+)/.exec(text);
     await (await acctDb(env)).prepare("UPDATE acct_runs SET status='COMPLETE', score=?2, completeness=?3, duration_ms=?4 WHERE job_id=?1").bind(id, m && m[1] !== "null" ? +m[1] : null, dc ? +dc[1] : null, du ? +du[1] : null).run();
+    try { await (await tdb(env)).prepare("UPDATE lab_tool_runs SET status='done', done_at=?2 WHERE job_id=?1 AND status='scan'").bind(id, new Date().toISOString()).run(); } catch (e) {}
+    if (bgOn(env)) { try { const d0 = await bdb(env), bgr = await d0.prepare("SELECT status FROM xray_bg WHERE job_id=?1").bind(id).first(); if (bgr) { await d0.prepare("UPDATE xray_bg SET status='done', finished_at=?2 WHERE job_id=?1").bind(id, nowIso()).run(); await bgNotify(env, request, id); } } catch (e) {} }
     const ru = await (await acctDb(env)).prepare("SELECT user_id, domain FROM acct_runs WHERE job_id=?1").bind(id).first(); if (ru) await logEvent(env, ru.user_id, "xray_done", ru.domain + (m ? " · score " + m[1] : "")); }
   await jobUpdate(env, job, { status: "COMPLETE", stage: "COMPLETE", progress: 100, completed: STAGES.slice() });
   // v17: one usage row for the whole crawl (pages read through FODO's reader — free, but counted for the health view)

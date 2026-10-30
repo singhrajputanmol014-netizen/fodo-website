@@ -2,6 +2,7 @@
    Storage: Cloudflare D1 (binding XRAY_DB) — required; without it (or with ACCOUNTS_ENABLED != "1") the site keeps working
    in the old anonymous mode. Secrets stay on the server: GOOGLE_CLIENT_ID (public id), RESEND_API_KEY, MAIL_FROM,
    CASHFREE_APP_ID, CASHFREE_SECRET_KEY, CASHFREE_ENV (sandbox|production), CASHFREE_SUBSCRIPTIONS ("1" = auto-renew on). */
+import { PRODUCTS, addTool } from "./products.js";
 import { PLANS, PACKS, rank, limitsFor } from "./plans.js";
 import { outbound, log } from "./xray-core.js";
 
@@ -126,7 +127,16 @@ export async function spendCredit(env, b, jobId) {
   return { tier, kind };
 }
 export async function refundCredit(env, run) {
-  const d = await db(env), col = { monthly: "monthly_left", pack: "pack_left", free: "free_left" }[run.credit]; if (!col) return false;
+  const d = await db(env);
+  if (/^tool:/.test(run.credit || "")) {   // v18: a bought tool run comes back as a tool run
+    const t = run.credit.slice(5); if (!PRODUCTS[t]) return false;
+    const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'tool',1,?2,?3,?4)").bind(run.owner_id, "refund:" + run.job_id, "Refund: " + PRODUCTS[t].name + " could not run", nowIso()).run();
+    if (!ins.meta || ins.meta.changes === 0) return false;
+    await addTool(env, run.owner_id, t, 1); await d.prepare("UPDATE acct_runs SET status='refunded' WHERE job_id=?1").bind(run.job_id).run();
+    try { await d.prepare("UPDATE lab_tool_runs SET status='refunded' WHERE job_id=?1").bind(run.job_id).run(); } catch (e) {}
+    return true;
+  }
+  const col = { monthly: "monthly_left", pack: "pack_left", free: "free_left" }[run.credit]; if (!col) return false;
   const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,?2,1,?3,'Refund: X-Ray could not run',?4)").bind(run.owner_id, run.credit, "refund:" + run.job_id, nowIso()).run();
   if (!ins.meta || ins.meta.changes === 0) return false;
   await d.prepare(`UPDATE acct_users SET ${col} = ${col} + 1 WHERE id=?1`).bind(run.owner_id).run();
@@ -143,6 +153,14 @@ export async function grantPlan(env, userId, planId, ref, note) {
   const until = new Date(base + 30 * 864e5).toISOString();
   // same plan renewing: new month's X-Rays replace the old month's (unused monthly X-Rays don't roll over); upgrade: start fresh
   await d.prepare("UPDATE acct_users SET plan=?2, plan_until=?3, monthly_left=?4 WHERE id=?1").bind(userId, planId, until, p.xrays).run();
+  return true;
+}
+/* v18: one bought run of a standalone tool (idempotent by ref) */
+export async function grantTool(env, userId, toolId, ref) {
+  const d = await db(env), t = PRODUCTS[toolId]; if (!t) return false;
+  const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'tool',1,?2,?3,?4)").bind(userId, ref, t.name + " — 1 run", nowIso()).run();
+  if (!ins.meta || ins.meta.changes === 0) return false;
+  await addTool(env, userId, toolId, 1);
   return true;
 }
 export async function grantPack(env, userId, packId, ref) {
@@ -243,6 +261,6 @@ export async function settleOrder(env, orderId) {
   if (Math.abs(+cfo.order_amount - o.amount) > 0.01) { log({ route: "settle", ok: false, err: "amount mismatch", order: orderId }); return { ok: false, reason: "amount mismatch" }; }
   const upd = await d.prepare("UPDATE acct_orders SET status='PAID', paid_at=?2, cf_order_id=?3 WHERE order_id=?1 AND status != 'PAID'").bind(orderId, nowIso(), String(cfo.cf_order_id || "")).run();
   if (upd.meta && upd.meta.changes) await logEvent(env, o.user_id, "paid", o.kind + ":" + o.item + ":" + o.amount);
-  if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
+  if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "tool") await grantTool(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
   return { ok: true, order: Object.assign(o, { status: "PAID" }) };
 }

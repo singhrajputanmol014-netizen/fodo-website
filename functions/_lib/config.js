@@ -3,6 +3,7 @@
    applyConfig() copies the saved values onto PLANS / PACKS in memory (refreshed every 60 s per server instance), so the
    checkout, the credits and the plans page all use the admin's numbers. Payments still re-check the amount with Cashfree. */
 import { PLANS, PACKS, ORDER } from "./plans.js";
+import { PRODUCTS, PRODUCT_IDS, defaultPrice } from "./products.js";
 
 export const TOOLS = {
   xray: { name: "Business X-Ray", default: true },
@@ -12,9 +13,10 @@ export const TOOLS = {
   aiGroq: { name: "AI visibility: Groq (Llama) engine", default: true },
   aiGemini: { name: "AI visibility: Gemini + Google Search engine", default: true },
 };
-const DEF = { plans: {}, packs: {} };
+const DEF = { plans: {}, packs: {}, products: {} };
 ORDER.forEach((id) => { DEF.plans[id] = { price: PLANS[id].price, xrays: PLANS[id].xrays, monitors: PLANS[id].monitors }; });
 Object.keys(PACKS).forEach((id) => { DEF.packs[id] = { price: PACKS[id].price, xrays: PACKS[id].xrays }; });
+PRODUCT_IDS.forEach((id) => { DEF.products[id] = { price: defaultPrice(id), on: true }; });   // v18: one price per standalone tool
 
 const DDL = "CREATE TABLE IF NOT EXISTS lab_config (k TEXT PRIMARY KEY, v TEXT, updated_by TEXT, updated_at TEXT)";
 let at = 0, cur = { pricing: null, tools: {} }, lastDb = null; const made = new WeakSet();
@@ -24,6 +26,7 @@ function apply(p) {
   ORDER.forEach((id) => { const s = (p && p.plans && p.plans[id]) || {}, dft = DEF.plans[id];
     PLANS[id].price = id === "free" ? 0 : s.price != null ? s.price : dft.price; PLANS[id].xrays = s.xrays != null ? s.xrays : dft.xrays; PLANS[id].monitors = s.monitors != null ? s.monitors : dft.monitors; });
   Object.keys(PACKS).forEach((id) => { const s = (p && p.packs && p.packs[id]) || {}, dft = DEF.packs[id]; PACKS[id].price = s.price != null ? s.price : dft.price; PACKS[id].xrays = s.xrays != null ? s.xrays : dft.xrays; PACKS[id].name = PACKS[id].xrays + " X-Rays"; });
+  PRODUCT_IDS.forEach((id) => { const s = (p && p.products && p.products[id]) || {}; PRODUCTS[id].price = s.price != null ? s.price : defaultPrice(id); PRODUCTS[id].on = s.on != null ? !!s.on : true; });
 }
 export async function applyConfig(env, force) {
   if (!force && Date.now() - at < 60e3 && lastDb === (env && env.XRAY_DB)) return cur;
@@ -39,7 +42,8 @@ export async function applyConfig(env, force) {
 export const toolOn = (k) => (cur.tools && cur.tools[k] != null ? !!cur.tools[k] : TOOLS[k] ? TOOLS[k].default : true);
 export const defaults = () => JSON.parse(JSON.stringify(DEF));
 export function current() {
-  const out = { plans: {}, packs: {}, tools: {} };
+  const out = { plans: {}, packs: {}, tools: {}, products: {} };
+  PRODUCT_IDS.forEach((id) => { out.products[id] = { name: PRODUCTS[id].name, price: PRODUCTS[id].price, on: PRODUCTS[id].on !== false, cat: PRODUCTS[id].cat }; });
   ORDER.forEach((id) => { out.plans[id] = { name: PLANS[id].name, price: PLANS[id].price, xrays: PLANS[id].xrays, monitors: PLANS[id].monitors, period: PLANS[id].period }; });
   Object.keys(PACKS).forEach((id) => { out.packs[id] = { name: PACKS[id].name, price: PACKS[id].price, xrays: PACKS[id].xrays }; });
   Object.keys(TOOLS).forEach((k) => { out.tools[k] = { name: TOOLS[k].name, on: toolOn(k) }; });
@@ -59,6 +63,11 @@ export async function saveConfig(env, body, by) {
   Object.keys(K).forEach((id) => { if (!PACKS[id]) return errors.push("Unknown pack " + id); const s = K[id] || {}, o = pricing.packs[id] = Object.assign({}, pricing.packs[id] || {});
     if (s.price != null) { const v = int(s.price, 1, 1000000); v == null ? errors.push("Pack " + id + ": price must be 1 – 10,00,000.") : (o.price = v); }
     if (s.xrays != null) { const v = int(s.xrays, 1, 100000); v == null ? errors.push("Pack " + id + ": X-Rays must be 1 – 1,00,000.") : (o.xrays = v); } });
+  pricing.products = pricing.products || {};
+  const R = (body && body.products) || {};
+  Object.keys(R).forEach((id) => { if (!PRODUCTS[id]) return errors.push("Unknown tool " + id); const s = R[id] || {}, o = pricing.products[id] = Object.assign({}, pricing.products[id] || {});
+    if (s.price != null) { const v = int(s.price, 1, 1000000); v == null ? errors.push(PRODUCTS[id].name + ": price must be a whole number of rupees (1 – 10,00,000).") : (o.price = v); }
+    if (s.on != null) o.on = !!s.on; });
   const tools = Object.assign({}, cur.tools || {}); Object.keys((body && body.tools) || {}).forEach((k) => { if (TOOLS[k]) tools[k] = !!body.tools[k]; else errors.push("Unknown tool " + k); });
   if (body && body.reset) { await d.prepare("DELETE FROM lab_config").run(); await applyConfig(env, true); return { ok: true, errors: [], config: current() }; }
   if (errors.length) return { ok: false, errors };

@@ -48,7 +48,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   const cats = await p.$$eval("#gl-pro .gl-cat .eyebrow", (e) => e.map((x) => x.textContent));
   ok(cats.join(",") === "DIAGNOSE,COMPETE,VISIBILITY,STRATEGY,MONITOR", "five categories: " + cats.join(", "));
   ok(/₹499 for 10/.test(await p.textContent('#gl-pro [data-tool="business-xray"] .gl-price')) && /Search Console|Google Search/.test(await p.textContent("#gl-live")), "prices + connected sources refreshed live from /api/lab/catalog");
-  ok(await p.$('#gl-pro a[href$="business-x-ray/?focus=leaks"]') && await p.$('a[href$="business-x-ray/?r=sample"]'), "tool cards deep-link into the X-Ray section; sample report link present");
+  ok(await p.$('#gl-pro a[href$="growth-lab/revenue-leak/"]') && await p.$('#gl-pro a[href$="business-x-ray/"]') && await p.$('a[href$="business-x-ray/?r=sample"]'), "PRO tool cards open their own pages (X-Ray card opens the X-Ray); sample report link present");
   await shot(p, "growth-lab");
 
   /* ---------- Budget Planner ---------- */
@@ -164,6 +164,29 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   await p.click('.ad-qc [data-qc="verified"]'); await p.fill("#ad-di", "sources checked"); await p.click(".ad-dlg [data-ok]"); await p.waitForFunction(() => /Verified/.test(document.querySelector(".ad-kpis").textContent), null, { timeout: 10000 });
   ok(true, "report marked VERIFIED from the detail page");
   await p.goto(BASE + "/admin/#prompts"); await p.waitForSelector(".ad-prompt"); ok((await p.$$(".ad-prompt")).length === 6 && /Runs \(this version\)/.test(await p.textContent("#ad-view")), "admin AI prompts: 6 prompts with version + usage");
+  /* ---------- v18 standalone PRO tools ---------- */
+  await p.goto(BASE + "/growth-lab/"); await p.waitForFunction(() => /included in Growth/.test((document.querySelector('[data-pid="war-room"]') || {}).textContent || ""), null, { timeout: 15000 }).catch(() => {});
+  ok(/₹2,999 a run · included in Growth, Pro, Agency X-Rays/.test(await p.textContent('[data-pid="war-room"]')) && (await p.getAttribute('.gl-card[data-tool="war-room"]', "href")) === "../growth-lab/war-room/", "Growth Lab: War Room card → its own page, ₹2,999 a run, included in Growth+ X-Rays");
+  await p.goto(BASE + "/growth-lab/website-health/"); await p.waitForFunction(() => /Owner access/.test(document.getElementById("tl-me").textContent), null, { timeout: 15000 });
+  ok(/Website Health Audit/.test(await p.textContent("h1")) && /What it analyzes/.test(await p.textContent(".tl-what")) && /₹\d/.test(await p.textContent("#tl-price")), "tool page: name, what it analyzes, data, what you receive, live price, owner access");
+  await p.fill("#tl-url", "spicehub.test"); await p.click("#tl-go");
+  await p.waitForSelector(".xr-toolbar", { timeout: 30000 });
+  const tv = await p.evaluate(() => ({ url: location.search, shown: [].slice.call(document.querySelectorAll("#xr-report section.xr-sec")).filter((s) => !s.hidden).map((s) => s.id) }));
+  ok(/r=.+&tool=website-health/.test(tv.url) && tv.shown.join() === "xr-s6,xr-s17" && /Website Health Audit/.test(await p.textContent(".xr-toolbar")), "recent X-Ray of the site reused at once → report shows only Website Health (+ evidence) [" + tv.shown.join(",") + "]");
+  await shot(p, "tool-view");
+  await p.click("#xr-toolall"); ok((await p.$$eval("#xr-report section.xr-sec", (l) => l.filter((s) => !s.hidden).length)) >= 15, "'Show the full X-Ray' opens every section");
+  await p.goto(BASE + "/growth-lab/war-room/"); await p.waitForFunction(() => /Owner access/.test(document.getElementById("tl-me").textContent), null, { timeout: 15000 });
+  await p.fill("#tl-url", "curryhouse.test"); await p.click("#tl-go");
+  await p.waitForSelector(".xr-focus", { timeout: 20000 }); ok(/Competitor War Room<\/b> — researching curryhouse\.test/.test(await p.innerHTML(".xr-focus")), "no X-Ray of that site yet → the X-Ray engine runs a fresh scan in tool mode");
+  await p.waitForSelector(".xr-toolbar", { timeout: 240000 });
+  const tv2 = await p.evaluate(() => [].slice.call(document.querySelectorAll("#xr-report section.xr-sec")).filter((s) => !s.hidden).map((s) => s.id).join());
+  ok(tv2 === "xr-s4,xr-s8,xr-s17" && /tool=war-room/.test(p.url()), "fresh scan finished → War Room view (market + competitors + evidence)");
+  await p.goto(BASE + "/account/#tools"); await p.waitForSelector("#tools-b table", { timeout: 20000 });
+  const lib = await p.textContent("#tools-b"); ok(/Website Health Audit/.test(lib) && /Competitor War Room/.test(lib) && /reused X-Ray/.test(lib), "account: Pro tool report library (reused vs fresh)");
+  await p.goto(BASE + "/admin/#settings"); await p.waitForSelector('[data-f="products.war-room.price"]', { timeout: 15000 });
+  ok((await p.$$('[data-f^="products."]')).length === 13, "admin: price field for each of the 13 tools");
+  await p.goto(BASE + "/admin/#lab"); await p.waitForFunction(() => /Standalone PRO tools/.test(document.getElementById("ad-view").textContent), null, { timeout: 20000 });
+  ok(/Competitor War Room/.test(await p.textContent("#ad-view")), "admin Growth Lab: standalone tool runs table");
   const ma = await newCtx(b, true), map = await ma.newPage(); await ma.addCookies(await ctx.cookies()); await map.goto(BASE + "/admin/#overview"); await map.waitForSelector(".ad-more", { timeout: 15000 });
   const bottom = await map.$$eval(".ad-nav > a.ad-mob, .ad-nav > .ad-more", (e) => e.filter((x) => getComputedStyle(x).display !== "none").length);
   ok(bottom === 5 && await map.evaluate(() => document.documentElement.scrollWidth <= 391 && innerWidth === 390), "admin on a phone: 4 tabs + More in the bottom bar, no sideways scroll");

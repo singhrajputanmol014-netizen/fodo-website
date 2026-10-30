@@ -3,7 +3,7 @@
    Feeds the admin dashboard (/admin/ → Traffic). Server: functions/api/t.js. */
 (function () {
   "use strict";
-  if (navigator.doNotTrack === "1" || /^\/admin\//.test(location.pathname)) return;
+  if (navigator.doNotTrack === "1" || /^\/admin\//.test(location.pathname) || /[?&]bg=/.test(location.search)) return;   // v19: the background runner page is not a visitor
   var send = function (o) { try { var b = JSON.stringify(o); if (navigator.sendBeacon && navigator.sendBeacon("/api/t", new Blob([b], { type: "text/plain" }))) return; fetch("/api/t", { method: "POST", body: b, keepalive: true, headers: { "content-type": "text/plain" } }); } catch (e) {} };
   // "new or returning" uses a plain yes/no flag in the browser, and only after the visitor accepted analytics cookies
   var ret = null; try { var cs = JSON.parse(localStorage.getItem("fodo-consent") || "null"); if (cs && cs.analytics) { ret = localStorage.getItem("fodo-seen") ? 1 : 0; localStorage.setItem("fodo-seen", "1"); } } catch (e) {}

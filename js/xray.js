@@ -65,6 +65,7 @@
     if (over) input = Object.assign(input, over);
     if (!input.url) { status("Enter the website address to X-Ray.", "warn"); $("xr-url").focus(); return Promise.resolve(null); }
     if ($("xr-client") && $("xr-client").value) input.client = $("xr-client").value;
+    if ($("xr-bg") && $("xr-bg").checked && !$("xr-bgwrap").hidden && (!over || over.toolRun)) input.background = true;
     busy = true; log = []; curJob = null; $("xr-run").disabled = true; $("xr-report").hidden = true; $("xr-report").innerHTML = ""; $("xr-up").hidden = true;
     status("Starting the X-Ray…", "busy");
     var begin = function (again) { return callJ("start", input, { tries: 2 }).then(function (j) {
@@ -74,11 +75,15 @@
       if (j._status === 402 && j.upgrade) { upsell(j.reason); throw Object.assign(new Error(j.reason), { user: true, quiet: true }); }
       if (!j.ok) throw Object.assign(new Error(j.reason || "Could not start"), { user: true });
       curJob = j.jobId; if (ACC && j.credit) ACC.me(true);
+      delete input.background;
+      if (j.background) { track("xray_start", { domain: j.jobId, mode: "background" }); if (window.FODO_TOOL) window.FODO_TOOL("start", "xray"); return watch(j.jobId, j.stages); }
+      if (j.bgNote) status(j.bgNote, "warn");
       track("xray_start", { domain: E.domainOf(input.url.indexOf("://") < 0 ? "https://" + input.url : input.url) }); if (window.FODO_TOOL) window.FODO_TOOL("start", "xray");
+      delete input.toolRun;
       return execute(j, Object.assign(input, { url: j.jobId && input.url }));
     }).then(function (rep) {
       busy = false; $("xr-run").disabled = false; report = rep; render(rep); status(rep.crawl.blocked ? "Limited X-Ray complete — the site blocked FODO's reader (" + rep.crawl.blocked.error + "), so this uses Google Search and PageSpeed data. " + rep.opportunities.length + " opportunities found." : "X-Ray complete — " + rep.crawl.pages + " pages read, " + rep.opportunities.length + " opportunities found.", "ok"); track("xray_complete", { score: rep.scores.overall }); if (window.FODO_TRACK) window.FODO_TRACK("tool_complete", { tool: "xray" });
-      try { history.replaceState(null, "", location.pathname + "?r=" + rep.jobId); } catch (e) {}
+      try { history.replaceState(null, "", location.pathname + "?r=" + rep.jobId + (qs.get("tool") ? "&tool=" + encodeURIComponent(qs.get("tool")) : "")); } catch (e) {}
       return rep;
     }, function (e) {
       busy = false; $("xr-run").disabled = false;
@@ -89,6 +94,23 @@
     });
   }
 
+  /* v19: a background X-Ray — the runner builds the report; this tab only watches the real job state (and can be closed) */
+  function watch(jobId, stages) {
+    try { history.replaceState(null, "", location.pathname + "?r=" + jobId + (qs.get("tool") ? "&tool=" + encodeURIComponent(qs.get("tool")) : "")); } catch (e) {}
+    status("Running in the background — you can close this tab. The report will be in your account and we'll email you.", "busy");
+    return new Promise(function (resolve, reject) {
+      var tries = 0, tick = function () {
+        call("status/" + jobId, undefined, { tries: 1 }).then(function (r) { return r.json(); }).then(function (s) {
+          if (!s.ok) throw new Error(s.reason || "status");
+          stageUI(s.completedModules || [], s.status === "COMPLETE" ? null : s.currentStage, s.note);
+          if (s.status === "COMPLETE") return call("report/" + encodeURIComponent(jobId), undefined, { tries: 3 }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("The report is saved but could not be opened — reload the page.")); }).then(resolve, reject);
+          if (s.status === "FAILED") return reject(Object.assign(new Error(s.note || "The background X-Ray could not finish."), { user: true }));
+          if (s.note) status(s.note, "busy");
+          setTimeout(tick, 4000);
+        }).catch(function () { if (++tries > 30) return reject(new Error("Lost contact with the X-Ray service. The report will still appear in your account when it is ready.")); setTimeout(tick, 6000); });
+      }; tick();
+    });
+  }
   function execute(job, input) {
     var jobId = job.jobId, P = job.providers || {}, ev = new E.Evidence(), done = [], modules = {}, fetcher = makeFetcher(jobId), t0 = Date.now();
     var L = job.limits || null, FE = L ? L.features : null, has = function (f) { return !FE || FE.indexOf(f) > -1; };
@@ -263,7 +285,7 @@
               S.extLinks = { checked: Object.keys(stt).length, found: Object.keys(ext).length, broken: bad.map(function (u) { return { url: u, status: stt[u], on: ext[u].slice(0, 3) }; }), refused: shy.length };
             });
           }
-          var gscP = L && ACC && ACC.current() ? callJ("gsc", { jobId: jobId }, { tries: 1, timeout: 60000 }).then(function (j) { S.gsc = j; }, function () { S.gsc = { ok: false, reason: "Search Console did not answer." }; }) : Promise.resolve();
+          var gscP = L && ((ACC && ACC.current()) || job.bg) ? callJ("gsc", { jobId: jobId }, { tries: 1, timeout: 60000 }).then(function (j) { S.gsc = j; }, function () { S.gsc = { ok: false, reason: "Search Console did not answer." }; }) : Promise.resolve();
           var auP = has("authority") && P.authority ? callJ("authority", { jobId: jobId, domains: [S.B.domain].concat((S.comps || []).map(function (c) { return c.domain; })) }, { tries: 1, timeout: 20000 }).then(function (j) { S.authority = j.ok ? j.items : null; }, function () {}) : Promise.resolve();
           return Promise.all([volP, lcP, auP, gscP]).then(function (x) { var vol = x[0]; S.volumes = vol; S.kw = S.serpA ? E.keywordOpps(S.serpA, siteText, vol) : []; });
         });
@@ -368,7 +390,9 @@
       var rep = assemble(jobId, S, ev, modules, Date.now() - t0);
       rep.completeness = completeness(S, P, L, has);
       rep.tier = L ? L.tier : null; rep.features = FE; rep.limits = L ? { pages: L.MAX_PAGES, competitors: L.MAX_COMPETITORS, compPages: COMP_PAGES } : null; E.CFG = Object.assign({}, BASE);
-      return (has("compare") && ACC && L ? ACC.history({ domain: rep.business.domain }).then(function (h) {
+      // v19: in the background there is no login session — the server already told us which X-Ray to compare with
+      var histP = job.bg ? Promise.resolve({ items: job.compareWith ? [{ job_id: job.compareWith, status: "COMPLETE" }] : [] }) : ACC ? ACC.history({ domain: rep.business.domain }) : Promise.resolve({ items: [] });
+      return (has("compare") && (ACC || job.bg) && L ? histP.then(function (h) {
         var prev = (h.items || []).filter(function (x) { return x.job_id !== jobId && x.status === "COMPLETE"; })[0]; if (!prev) { rep.compare = { none: true }; return; }
         return call("report/" + encodeURIComponent(prev.job_id), undefined, { tries: 1 }).then(function (r) { return r.ok ? r.json() : null; }).then(function (old) { if (old && old.scores) rep.compare = compareReports(old, rep); }, function () {});
       }, function () {}) : Promise.resolve()).then(function () { return rep; });
@@ -546,6 +570,7 @@
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     loadActions(r); loadShare(r);
     var fx = FOCUS[qs.get("focus")]; if (fx && $(fx)) setTimeout(function () { $(fx).scrollIntoView({ behavior: "smooth", block: "start" }); }, 600);
+    if (qs.get("tool")) toolView(r, qs.get("tool"));
   }
   /* v15: tell the account which features were used in the browser (admin dashboard); silent, best effort */
   var ping = function (kind, detail) { try { if (ACC && ACC.current()) ACC.api("event", { kind: kind, detail: detail || "" }); } catch (e) {} };
@@ -553,6 +578,24 @@
   var copyBtn = function (id, label) { return '<button type="button" class="btn sm ghost xr-copy" data-copy="' + id + '">' + esc(label || "Copy") + "</button>"; };
   var edgeTag = '<span class="tag hot">FODO EDGE</span>';
   /* ---------- v17 blocks ---------- */
+  /* v18: a standalone PRO tool shows only its own part of the research (the full X-Ray stays one click away) */
+  var catP = null, catalog = function () { return catP = catP || fetch(ROOT + "api/lab/catalog").then(function (x) { return x.ok ? x.json() : null; }).catch(function () { return null; }); };
+  function toolView(r, id) {
+    catalog().then(function (c) {
+      var t = c && c.ok ? (c.tools || []).filter(function (x) { return x.id === id && x.view; })[0] : null, el = $("xr-report"); if (!t || !el) return;
+      var keep = t.view.map(function (n) { return "xr-" + n; }).concat(["xr-s17"]);
+      el.classList.add("xr-toolmode"); el.dataset.tool = id;
+      el.querySelectorAll("section.xr-sec, section.xr-edge, .xr-big, .xr-big2").forEach(function (s0) { if (keep.indexOf(s0.id) < 0) s0.hidden = true; });
+      el.querySelectorAll(".xr-nav a").forEach(function (a) { var tgt = (a.getAttribute("href") || "").replace(/^#/, ""), sec0 = tgt && document.getElementById(tgt); if (sec0 && sec0.hidden) a.hidden = true; });
+      var b = document.createElement("div"); b.className = "panel hud xr-toolbar"; b.setAttribute("role", "note");
+      b.innerHTML = '<span class="tag hot">PRO TOOL</span><h2>' + esc(t.name) + '</h2><p class="muted">' + esc(t.benefit) + " · from the Business X-Ray of <b>" + esc(r.business.domain) + "</b>, " + esc(new Date(r.createdAt).toLocaleDateString("en-IN")) + ". Every finding links to its evidence.</p>" +
+        '<div class="btn-row"><button type="button" class="btn sm ghost" id="xr-toolall">Show the full X-Ray</button><a class="btn sm ghost" href="' + ROOT + "growth-lab/" + esc(id) + '/">About this tool</a></div>';
+      el.insertBefore(b, el.firstChild);
+      $("xr-toolall").onclick = function () { el.querySelectorAll("[hidden]").forEach(function (x) { if (!x.classList.contains("xr-whyp")) x.hidden = false; }); el.classList.remove("xr-toolmode"); this.remove(); };
+      if (t.focus && $(t.focus)) setTimeout(function () { $(t.focus).scrollIntoView({ behavior: "smooth", block: "start" }); }, 500);
+      try { if (window.FODO_TOOL) window.FODO_TOOL("complete", id, r.business.domain, true); } catch (e) {}
+    });
+  }
   var FOCUS = { leaks: "xr-leaks", conversion: "xr-s11", website: "xr-s6", competitors: "xr-s8", why: "xr-whyw", market: "xr-s4", ai: "xr-s13", search: "xr-s7", local: "xr-local", presence: "xr-s12", offer: "xr-s10", plan: "xr-s16", roadmap: "xr-roadmap" };
   var actSel = function (key, title) { if (!key) return ""; return '<select class="xr-act" data-akey="' + esc(key) + '" data-title="' + esc(String(title || "").slice(0, 150)) + '" aria-label="Status of: ' + esc(title) + '"><option value="todo">To do</option><option value="doing">In progress</option><option value="done">Done</option></select>'; };
   var actLocal = function (dom) { try { return JSON.parse(localStorage.getItem("fodo-act:" + dom) || "{}"); } catch (e) { return {}; } };
@@ -862,14 +905,36 @@
 
   /* ---------- shared report link ---------- */
   /* v17 sample report (prompt §78): a real X-Ray of a TEST website, clearly labelled demo data — never a customer */
-  if (qs.get("r") === "sample") {
+  /* v19: background runner page (opened by FODO's runner in a headless browser — needs the job's token) */
+  if (qs.get("bg") && qs.get("t")) {
+    window.__fodoBg = null; status("Background X-Ray runner…", "busy");
+    fetch(ROOT + "api/xray/bg/job/" + encodeURIComponent(qs.get("bg")) + "?t=" + encodeURIComponent(qs.get("t"))).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.ok || !j.jobId) throw new Error(j.reason || "not allowed");
+      busy = true; curJob = j.jobId; return execute(j, j.input);
+    }).then(function (rep) { busy = false; window.__fodoBg = { ok: true, jobId: rep && rep.jobId, opportunities: rep ? rep.opportunities.length : 0 }; status("Background X-Ray saved.", "ok"); },
+      function (e) { busy = false; window.__fodoBg = { ok: false, error: String((e && e.message) || e).slice(0, 200), refundable: !!(e && e.refundable) }; status("Background X-Ray stopped: " + window.__fodoBg.error, "warn"); });
+  } else {
+    var bgP = fetch(ROOT + "api/xray/health").then(function (r) { return r.json(); }).then(function (h) { if (h && h.background && $("xr-bgwrap")) $("xr-bgwrap").hidden = false; }, function () {});
+  }
+  if (qs.get("bg")) { /* runner page: nothing else to load */ }
+  else if (qs.get("r") === "sample") {
     status("Loading the sample report…", "busy");
     fetch(ROOT + "data/xray-sample.json").then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("The sample report is not available.")); }).then(function (rep) { report = rep; render(rep);
       var b = document.createElement("div"); b.className = "panel xr-limited xr-demo"; b.setAttribute("role", "note"); b.innerHTML = '<span class="tag hot">DEMO REPORT — SAMPLE DATA</span><p>This is a real Business X-Ray of <b>a test website</b> (' + esc(rep.business.domain) + ') built for demos — not a real business or customer. Every number on it was produced by the same engine your X-Ray uses. <a href="' + ROOT + 'business-x-ray/">Run your own X-Ray →</a></p>';
       $("xr-report").insertBefore(b, $("xr-report").firstChild); status("Sample report (demo data from a test website).", "ok"); }, function (e) { status(e.message, "warn"); });
+  } else if (qs.get("tool") && qs.get("run") && qs.get("u")) {
+    // v18: a standalone tool's fresh scan — paid/checked on the server (the run id is tied to this account and website)
+    $("xr-url").value = qs.get("u");
+    catalog().then(function (c) { var t = c && c.ok ? (c.tools || []).filter(function (x) { return x.id === qs.get("tool"); })[0] : null; var n = document.createElement("p"); n.className = "xr-focus panel"; n.innerHTML = "<b>" + esc(t ? t.name : "Pro tool") + "</b> — researching " + esc(qs.get("u")) + ". When it finishes, the report opens at " + esc(t ? t.name : "the tool") + "."; $("xr-form").insertBefore(n, $("xr-form").firstChild); });
+    var go0 = function () { run({ toolRun: qs.get("run") }); };
+    if (ACC) Promise.all([ACC.config().then(function () { return ACC.me(); }), bgP]).then(go0, go0); else go0();
   } else if (qs.get("r")) {
     status("Loading the saved X-Ray…", "busy");
-    call("report/" + encodeURIComponent(qs.get("r")), undefined, { tries: 2 }).then(function (r) { return r.ok ? r.json() : r.status === 403 ? r.json().then(function (j) { throw new Error((j.reason || "This report is private.") + " Log in as its owner to open it."); }) : Promise.reject(new Error(r.status === 404 ? "This report was not found or has expired." : "Could not load the report.")); })
+    call("report/" + encodeURIComponent(qs.get("r")), undefined, { tries: 2 }).then(function (r) { return r.ok ? r.json() : r.status === 403 ? r.json().then(function (j) { throw new Error((j.reason || "This report is private.") + " Log in as its owner to open it."); }) : r.status === 404 ? call("status/" + encodeURIComponent(qs.get("r")), undefined, { tries: 1 }).then(function (x) { return x.json(); }).then(function (s) {
+        // v19: a background X-Ray that is still running → watch it here
+        if (s && s.ok && s.status !== "COMPLETE" && s.status !== "FAILED") return watch(qs.get("r"));
+        throw new Error(s && s.status === "FAILED" ? (s.note || "This X-Ray could not finish.") : "This report was not found or has expired.");
+      }) : Promise.reject(new Error("Could not load the report.")); })
       .then(function (rep) { report = rep; $("xr-url").value = rep.input.url; render(rep); track("report_view", { tool: "xray" }); status("Saved X-Ray from " + new Date(rep.createdAt).toLocaleString() + ". Run it again for fresh data.", "ok"); }, function (e) { status(e.message, "warn"); });
   }
   /* ---------- v13 account bits on the form: plan note, client folder (Agency), bulk X-Ray (Agency) ---------- */

@@ -6,12 +6,13 @@
  *   POST otp/verify {email, code}
  *   POST logout · POST profile {name, phone}
  *   GET  history[?client=]      → your X-Rays (Starter+) · GET ledger → credit history
- *   POST checkout {kind: "plan"|"pack", item, phone, autoRenew?} → { paymentSessionId | subsSessionId, mode }
+ *   POST checkout {kind: "plan"|"pack"|"tool", item, phone, autoRenew?} → { paymentSessionId | subsSessionId, mode }
  *   POST verify {order_id | subscription_id}  → re-reads the payment from Cashfree and credits it (idempotent)
  *   POST cancel                 → stop auto-renew
  *   GET/POST team (Agency) · GET/POST clients (Agency) · POST brand (Agency white-label)
  *   POST webhook/cashfree       → signed Cashfree webhooks (payments + subscriptions)
  */
+import { PRODUCTS } from "../../_lib/products.js";
 import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
   verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
 import { PLANS, PACKS, rank, has, publicPlans } from "../../_lib/plans.js";
@@ -226,9 +227,10 @@ async function checkout(request, env, u, b, body) {
   if (!cfOn(env)) return json({ ok: false, reason: "Payments are not switched on yet." }, 503);
   if (b.id !== u.id) return json({ ok: false, reason: "Your team owner manages payments for this plan." }, 403);
   if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login — every feature is already free." }, 409);
-  const kind = body.kind === "pack" ? "pack" : "plan", item = String(body.item || "");
-  const thing = kind === "pack" ? PACKS[item] : PLANS[item];
-  if (!thing || (kind === "plan" && item === "free")) return json({ ok: false, reason: "Unknown plan." }, 400);
+  const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : "plan", item = String(body.item || "");
+  const thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : PLANS[item];
+  if (!thing || (kind === "plan" && item === "free")) return json({ ok: false, reason: kind === "tool" ? "Unknown tool." : "Unknown plan." }, 400);
+  if (kind === "tool" && thing.on === false) return json({ ok: false, reason: thing.name + " is not available right now." }, 503);
   const cur = activePlan(b);
   if (kind === "plan" && rank(item) < rank(cur)) return json({ ok: false, reason: "Your " + PLANS[cur].name + " plan is active until " + b.plan_until.slice(0, 10) + ". You can switch to a smaller plan after that." }, 409);
   const phone = String(body.phone || b.phone || "").replace(/\D/g, "").slice(-10);
@@ -248,7 +250,7 @@ async function checkout(request, env, u, b, body) {
   }
   const oid = "fo_" + randId(20);
   const o = await cf(env, "POST", "/orders", { order_id: oid, order_amount: thing.price, order_currency: "INR", customer_details: cust,
-    order_meta: { return_url: site + "/account/?order_id=" + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : thing.name + " — 1 month")).slice(0, 200),
+    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + " — 1 run" : thing.name + " — 1 month")).slice(0, 200),
     order_tags: { kind, item, user: b.id.slice(0, 40) } }, oid);
   await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.cf_order_id || ""), nowIso()).run();
   return json({ ok: true, paymentSessionId: o.payment_session_id, orderId: oid, mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox" });

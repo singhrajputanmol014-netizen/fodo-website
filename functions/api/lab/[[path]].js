@@ -6,6 +6,8 @@
  *   GET  monitor                      → your monitored websites + recent changes + your limit
  *   POST monitor {url, kind: own|competitor, label?} · POST monitor/remove {id} · POST monitor/check {id} · POST monitor/seen
  *   GET  share?jobId= · POST share {jobId, mode: on | off | 7 | 30 | 90}   (v17.1 — switch a report's share link off or give it an expiry)
+ *   v18 standalone tools: GET tools/me (your bought runs + what your plan includes) · POST tool/start {tool, url}
+ *     → reuses your recent full X-Ray of that site (no new research) or opens a fresh scan · GET tool/runs · GET tool/run?id=
  * Everything here is per user: nobody can read another user's actions, Search Console or monitoring. */
 import { json, accountsOn, db, sessionUser, billingUser, sameOrigin, activePlan, isUnlimited, logEvent, count, randId, nowIso, sendMail } from "../../_lib/accounts.js";
 import { PLANS, PACKS, ORDER } from "../../_lib/plans.js";
@@ -14,6 +16,8 @@ import { applyConfig, toolOn, current as cfgCurrent } from "../../_lib/config.js
 import { gscOn, gdb, makeState, checkState, authUrl, exchange, seal, unseal, revoke, refresh, listSites } from "../../_lib/gsc.js";
 import { mdb, runCheck } from "../../_lib/monitor.js";
 import { engines as aiEngines } from "../../_lib/aivis.js";
+import { PRODUCTS, toolTier, includedIn, plansIncluding, tdb, toolCredits, spendTool } from "../../_lib/products.js";
+import { isOwner } from "../../_lib/accounts.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const STATUS = ["todo", "doing", "done"];
@@ -38,6 +42,10 @@ export async function onRequest(ctx) {
     if (path === "gsc/disconnect" && m === "POST") { const d = await gdb(env), row = await d.prepare("SELECT refresh_enc FROM lab_gsc WHERE user_id=?1").bind(u.id).first(); if (row) { try { await revoke(env, await unseal(env, row.refresh_enc)); } catch (e) {} await d.prepare("DELETE FROM lab_gsc WHERE user_id=?1").bind(u.id).run(); await logEvent(env, u.id, "gsc_disconnect", ""); } return json({ ok: true, connected: false }); }
     if (path.indexOf("monitor") === 0) return await monitor(env, u, b, m, path, body);
     if (path === "share") return await share(env, u, m === "GET" ? { jobId: q.get("jobId") } : body, m);
+    if (path === "tools/me" && m === "GET") return json(Object.assign({ ok: true }, await toolsMe(env, b)));
+    if (path === "tool/start" && m === "POST") return await toolStart(env, u, b, body);
+    if (path === "tool/runs" && m === "GET") { const r = (await (await tdb(env)).prepare("SELECT id, tool, domain, job_id, source, status, price, reused, created_at, done_at FROM lab_tool_runs WHERE owner_id=?1 ORDER BY created_at DESC LIMIT 100").bind(b.id).all()).results || []; return json({ ok: true, items: r.map((x) => Object.assign(x, { name: PRODUCTS[x.tool] ? PRODUCTS[x.tool].name : x.tool })) }); }
+    if (path === "tool/run" && m === "GET") { const r = await (await tdb(env)).prepare("SELECT id, tool, domain, url, job_id, source, status, created_at, done_at FROM lab_tool_runs WHERE id=?1 AND owner_id=?2").bind(clean(q.get("id"), 40), b.id).first(); return r ? json({ ok: true, run: r }) : json({ ok: false, reason: "Tool run not found." }, 404); }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
     console.log(JSON.stringify({ svc: "lab", route: path, ok: false, err: String(e && e.message || e).slice(0, 200) }));
@@ -78,8 +86,48 @@ export function catalog(env) {
   const c = cfgCurrent(), P = providers(env), eng = aiEngines(env, toolOn).map((e) => e.name), xr = c.plans;
   const perXray = ORDER.filter((id) => id !== "free").map((id) => Math.round(xr[id].price / Math.max(1, xr[id].xrays))), cheapest = Math.min.apply(null, perXray.concat(Object.keys(c.packs).map((k) => Math.round(c.packs[k].price / Math.max(1, c.packs[k].xrays)))));
   return { ok: true, plans: c.plans, packs: c.packs, freeXrays: xr.free.xrays, fromPerXray: cheapest, starter: { price: xr.starter.price, xrays: xr.starter.xrays },
-    tools: CATALOG.map((t) => Object.assign({}, t, { on: t.id === "business-xray" ? toolOn("xray") : t.monitor ? toolOn("monitoring") : true, planName: t.plan ? PLANS[t.plan].name : null })),
+    tools: CATALOG.map((t) => { const pr = PRODUCTS[t.id]; return Object.assign({}, t, { on: t.id === "business-xray" ? toolOn("xray") : t.monitor ? toolOn("monitoring") : pr ? pr.on !== false && toolOn("xray") : true, planName: t.plan ? PLANS[t.plan].name : null },
+      // v18: every PRO tool has its own page, its own one-run price (admin-controlled) and the plans whose X-Rays already include it
+      pr ? { where: "growth-lab/" + t.id + "/", price: pr.price, buy: true, time: pr.time, view: pr.view, focus: pr.focus || null, includedIn: plansIncluding(t.id).map((p) => PLANS[p].name) } : {}); }),
     sources: { search: P.searchName || null, places: P.places || (env.SERPER_API_KEY && toolOn("places") ? "Google Maps results via Serper" : null), ai: eng, searchConsole: gscOn(env) && toolOn("gsc"), seoVolumes: !!P.seo } };
+}
+
+/* ---------- v18 standalone tools (prompt §4, §7, §47) ---------- */
+// what this account can do with each tool right now: owner = free · bought runs · included in the plan's X-Rays
+const effTier = (b) => { const p = activePlan(b); return p !== "free" ? p : b.pack_left > 0 ? "starter" : "free"; };
+async function toolsMe(env, b) {
+  const own = isOwner(b) || !!b.unlimited, tier = effTier(b), cr = own ? {} : await toolCredits(env, b.id), out = {};
+  Object.keys(PRODUCTS).forEach((id) => { out[id] = { credits: cr[id] || 0, included: own || includedIn(id, tier), free: own }; });
+  return { tier, owner: own, tools: out, xrays: own ? "∞" : (tier === "free" ? b.free_left : (activePlan(b) !== "free" ? b.monthly_left : 0) + b.pack_left) };
+}
+async function toolStart(env, u, b, body) {
+  const id = String((body && body.tool) || ""), P = PRODUCTS[id];
+  if (!P) return json({ ok: false, reason: "Unknown tool." }, 400);
+  if (P.on === false || !toolOn("xray")) return json({ ok: false, maintenance: true, reason: P.name + " is being updated right now. Please try again in a little while." }, 503);
+  const s = safeUrl(String((body && body.url) || "").trim()); if (!s.ok) return json({ ok: false, reason: s.reason || "Enter a valid website address." }, 400);
+  const domain = regDomain(s.host), d = await tdb(env), own = isOwner(b) || !!b.unlimited, tier = effTier(b), now = nowIso();
+  if (await count(env, "toolstart:" + b.id, 30, 3600)) return json({ ok: false, reason: "Too many tool runs this hour. Please try again later." }, 429);
+  // §47: reuse a recent X-Ray of this website (same account, last 30 days) that already holds what the tool needs — no new research
+  const since = new Date(Date.now() - 30 * 864e5).toISOString();
+  const prev = ((await d.prepare("SELECT job_id, features, created_at FROM acct_runs WHERE owner_id=?1 AND domain=?2 AND status='COMPLETE' AND created_at >= ?3 ORDER BY created_at DESC LIMIT 10").bind(b.id, domain, since).all()).results || [])
+    .filter((r) => { let f = []; try { f = JSON.parse(r.features || "[]"); } catch (e) {} return P.need.every((x) => f.indexOf(x) > -1); })[0];
+  const included = own || includedIn(id, tier), rid = "tr_" + randId(16);
+  let source = null;
+  if (prev && (included || own)) source = own ? "owner" : "included";
+  else if (prev && await spendTool(env, b.id, id)) source = "tool";   // a bought run used on an existing X-Ray: no new research needed
+  if (prev && source) {
+    await d.prepare("INSERT INTO lab_tool_runs (id, user_id, owner_id, tool, domain, url, job_id, source, status, price, reused, created_at, done_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'done',?9,1,?10,?10)").bind(rid, u.id, b.id, id, domain, s.url, prev.job_id, source, source === "tool" ? P.price : 0, now).run();
+    await logEvent(env, u.id, "tool_use", id + " · " + domain + " · reused");
+    return json({ ok: true, runId: rid, jobId: prev.job_id, reused: true, from: prev.created_at, source });
+  }
+  // a fresh scan: owner → free; plan that includes the tool → one of the plan's X-Rays (spent at /api/xray/start); otherwise a bought run
+  if (own) source = "owner";
+  else if (included && (tier === "free" ? b.free_left > 0 : (activePlan(b) !== "free" ? b.monthly_left : 0) + b.pack_left > 0)) source = "xray";
+  else if (await spendTool(env, b.id, id)) source = "tool";
+  if (!source) return json({ ok: false, buy: true, tool: id, price: P.price, includedIn: plansIncluding(id).map((p) => PLANS[p].name), reason: "Buy one " + P.name + " run (₹" + P.price.toLocaleString("en-IN") + ")" + (plansIncluding(id).length ? " — or pick a plan that includes it (" + plansIncluding(id).map((p) => PLANS[p].name).join(", ") + ")." : ".") }, 402);
+  await d.prepare("INSERT INTO lab_tool_runs (id, user_id, owner_id, tool, domain, url, job_id, source, status, price, created_at, done_at) VALUES (?1,?2,?3,?4,?5,?6,NULL,?7,'scan',?8,?9,NULL)").bind(rid, u.id, b.id, id, domain, s.url, source, source === "tool" ? P.price : 0, now).run();
+  await logEvent(env, u.id, "tool_use", id + " · " + domain + " · scan (" + source + ")");
+  return json({ ok: true, runId: rid, needScan: true, source, tier: source === "tool" ? toolTier(id) : null });
 }
 
 /* ---------- action tracker (prompt §100) ---------- */

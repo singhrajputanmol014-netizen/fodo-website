@@ -27,7 +27,8 @@ STATIC_FOOTER = ('<nav class="container" aria-label="Site" style="padding:24px 0
      ("pricing/", "Pricing"), ("faq/", "FAQ"), ("reviews/", "Reviews"), ("contact/", "Contact"), ("locations/", "Where we work"), ("locations/delhi/", "Delhi"), ("locations/uae/", "UAE"), ("locations/uk/", "UK"), ("locations/usa/", "USA"),
      ("growth-lab/", "Growth Lab"), ("business-x-ray/", "Business X-Ray"), ("plans/", "Growth Lab Plans"), ("marketing-budget/", "Marketing Budget Planner"), ("competitor-finder/", "Competitor Finder"), ("growth-score/", "Growth Score"), ("roi-calculator/", "ROI Calculator"), ("marketing-quiz/", "Marketing Quiz"), ("fodo-challenge/", "FODO Challenge"),
      ("teardowns/", "Ad Teardowns"), ("templates/", "Templates"), ("resources/", "Checklists"), ("founding-programme/", "Founding Programme"), ("legal/", "Privacy &amp; Terms")])
-  + '</ul><p>anmol@fodo.co.in · +91 7827007676 · 65 M Block, New Roshanpura, Najafgarh, New Delhi 110043, India</p></nav>')
+  # v17.2: real tel: / WhatsApp / mailto links in the HTML itself (the JS footer replaces this, but crawlers and no-JS visitors see these)
+  + '</ul><p><a href="mailto:anmol@fodo.co.in">anmol@fodo.co.in</a> · <a href="tel:+917827007676">Call +91 7827007676</a> · <a href="https://wa.me/917827007676" rel="noopener">WhatsApp FODO</a> · 65 M Block, New Roshanpura, Najafgarh, New Delhi 110043, India</p></nav>')
 # 3D background starts after the page has loaded and the browser is idle, so it never competes with first paint (v9 performance)
 # v10 opening animation: first page of a visit only. The FODO logo appears, particles burst out of its dot
 # and settle into the 3D background as the page is revealed. Skipped for reduced motion and automated browsers.
@@ -558,7 +559,7 @@ pages["xray"] = ("xray", "/business-x-ray/", T("Business X-Ray — Free Website 
  hero("Business X-Ray", "See what's really happening inside your business.",
       "Enter a website. FODO reads it, researches the market and real competitors, and shows what is wrong, what you are missing and what to do first — with the evidence behind every finding.",
       '<a class="btn" href="#xr-form">Run Business X-Ray</a><a class="btn ghost" href="#xr-how">How it works</a>',
-      visual=ASIDE("What you get", [("Overall Growth Health score", "#xr-how"), ("Biggest problem & opportunity", "#xr-how"), ("Competitors compared", "#xr-how"), ("30-day action plan", "#xr-how"), ("Evidence for every finding", "#xr-how")]))
+      visual=ASIDE("What you get", [("Digital Growth Health score", "#xr-how"), ("Biggest problem & opportunity", "#xr-how"), ("Competitors compared", "#xr-how"), ("30-day action plan", "#xr-how"), ("Evidence for every finding", "#xr-how")]))
  + '<section class="cf-sec xr-sec-form" id="xr-form-sec"><div class="container">'
  + '<form class="cf-form panel hud" id="xr-form" autocomplete="off" novalidate><div class="cf-fields xr-fields">'
  + '<div class="cf-f xr-f-url"><label for="xr-url">Website address</label><input id="xr-url" name="url" type="text" inputmode="url" placeholder="e.g. yourbusiness.com" required maxlength="300" autocapitalize="off" spellcheck="false"></div>'

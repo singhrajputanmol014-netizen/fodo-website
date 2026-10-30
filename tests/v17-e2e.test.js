@@ -123,7 +123,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   await p.waitForFunction(() => /Monitoring started for tandoortales/.test(document.body.textContent), null, { timeout: 20000 }).catch(async () => { console.log("DEBUG monitoring:", (await p.textContent("#monitoring-b")).slice(0, 800)); });
   await p.waitForSelector("[data-monchk]", { timeout: 15000 }); ok(/Monitoring started for tandoortales\.test/.test(await p.textContent("#monitoring-b")) || /tandoortales\.test/.test(await p.textContent("#monitoring-b")), "monitoring: competitor added with a baseline snapshot");
   await p.click("[data-monchk]"); await p.waitForFunction(() => /nothing meaningful changed|change\(s\) found/.test(document.getElementById("mon-st").textContent), null, { timeout: 20000 });
-  ok(/nothing meaningful changed/.test(await p.textContent("#mon-st")), "'Check now': unchanged site → no false alarm");
+  { const ms = await p.textContent("#mon-st"); if (!/nothing meaningful/.test(ms)) console.log("DEBUG check-now:", ms, (await p.textContent("#monitoring-b")).slice(0, 1500)); } ok(/nothing meaningful changed/.test(await p.textContent("#mon-st")), "'Check now': unchanged site → no false alarm");
   const tk = await fetch(BASE + "/api/monitor/tick", { method: "POST", headers: { "x-cron-key": "cron_test_KEY_123456789", "content-type": "application/json" }, body: "{}" }).then((r) => r.json());
   ok(tk.ok && tk.remaining === 0, "cron tick endpoint answers (nothing due right after a check)");
   await p.click("#mr-go"); await p.waitForSelector(".ac-mr", { timeout: 20000 });

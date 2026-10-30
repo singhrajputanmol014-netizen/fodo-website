@@ -34,6 +34,8 @@
   /* ======================= URLs ======================= */
   var TRACK = /^(utm_[a-z]+|gclid|fbclid|msclkid|mc_[a-z]+|_ga|ref|yclid|igshid|srsltid)$/i;
   E.skipExt = /\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?|zip|rar|7z|gz|tar|mp4|mp3|m4a|wav|webm|avi|mov|mkv|docx?|xlsx?|pptx?|csv|css|js|mjs|json|woff2?|ttf|otf|eot|exe|dmg|apk|ipa|rss|atom)$/i;
+  // v17.2: service paths added by the host/CDN, not pages of the business (Cloudflare email protection decodes in the browser)
+  E.skipSvc = /^\/cdn-cgi\//i;
   E.normUrl = function (u, base) {
     var x; try { x = new URL(String(u || "").trim(), base); } catch (e) { return null; }
     if (x.protocol !== "http:" && x.protocol !== "https:") return null;
@@ -148,7 +150,12 @@
       var fields = [].slice.call(f.querySelectorAll("input,select,textarea")).filter(function (x) { var ty = (x.getAttribute("type") || "").toLowerCase(); return ["hidden", "submit", "button", "reset", "image"].indexOf(ty) < 0; })
         .map(function (x) { var id = x.getAttribute("id"), lb = id ? doc.querySelector('label[for="' + id + '"]') : null; return { type: (x.getAttribute("type") || x.tagName).toLowerCase(), name: x.getAttribute("name") || "", required: x.hasAttribute("required") || x.getAttribute("aria-required") === "true", label: clip(lb ? textOf(lb) : x.getAttribute("placeholder") || x.getAttribute("aria-label") || "", 60) }; });
       var isSearch = (f.getAttribute("role") === "search") || fields.length === 1 && /search|^q$|^s$/i.test(fields[0].name + fields[0].type);
-      return { action: f.getAttribute("action") || "", method: (f.getAttribute("method") || "get").toLowerCase(), fields: fields.slice(0, 30), fieldCount: fields.length, required: fields.filter(function (x) { return x.required; }).length, search: isSearch };
+      // v17.2: a group of radio buttons / checkboxes with one name is ONE question for the visitor, not 4 fields
+      var grp = {}, asked = fields.filter(function (x) { if (x.type !== "radio" && x.type !== "checkbox") return true; var k = x.type + ":" + (x.name || x.label); if (grp[k]) return false; grp[k] = 1; return true; });
+      // v17.2: only a form that asks for contact details is a LEAD form — a quiz, calculator or filter is a tool, not friction
+      var contact = fields.some(function (x) { return x.type === "email" || x.type === "tel" || /e-?mail|phone|mobile|whats ?app|contact|full ?name|^name$|your name|company/i.test(x.name + " " + x.label); });
+      var choice = fields.filter(function (x) { return x.type === "radio" || x.type === "checkbox"; }).length;
+      return { action: f.getAttribute("action") || "", method: (f.getAttribute("method") || "get").toLowerCase(), fields: fields.slice(0, 30), fieldCount: asked.length, rawFields: fields.length, required: asked.filter(function (x) { return x.required; }).length, search: isSearch, lead: !isSearch && contact, tool: !isSearch && !contact && (choice > asked.length / 2 || choice >= 6 || fields.some(function (x) { return x.type === "number" || x.type === "range"; })) };
     });
     var all = qa("a,button,input[type=submit],input[type=button]"), ctas = [];
     all.forEach(function (el, idx) {
@@ -207,7 +214,7 @@
     var t0 = Date.now(), startN = E.normUrl(start), origin = new URL(startN).origin, site = E.domainOf(startN);
     var out = { start: startN, pages: [], robots: null, robotsFound: false, robotsStatus: 0, sitemapFound: false, sitemapUrls: [], sitemapSource: "", skippedRobots: [], skippedExternal: 0, skippedNonHtml: [], errors: [], limitsHit: [], durationMs: 0, linkStatus: {} };
     var seen = {}, crawled = {}, queue = [], stopped = false; out.duplicates = [];
-    var push = function (u, depth, nav, sm, from) { var n = E.normUrl(u); if (!n || seen[n]) return; if (E.domainOf(n) !== site) { out.skippedExternal++; return; } if (E.skipExt.test(new URL(n).pathname)) return; if (depth > opts.MAX_DEPTH) return; seen[n] = 1; queue.push({ url: n, depth: depth, prio: prioOf(n, depth, nav, sm), from: from }); };
+    var push = function (u, depth, nav, sm, from) { var n = E.normUrl(u); if (!n || seen[n]) return; if (E.domainOf(n) !== site) { out.skippedExternal++; return; } if (E.skipExt.test(new URL(n).pathname) || E.skipSvc.test(new URL(n).pathname)) return; if (depth > opts.MAX_DEPTH) return; seen[n] = 1; queue.push({ url: n, depth: depth, prio: prioOf(n, depth, nav, sm), from: from }); };
     var timeUp = function () { return Date.now() - t0 > opts.MAX_TOTAL_RUNTIME; };
     return fetcher(origin + "/robots.txt").then(function (r) {
       out.robotsStatus = r.status;
@@ -261,7 +268,7 @@
       out.durationMs = Date.now() - t0;
       // inbound link counts + broken links (internal links pointing at crawled 4xx/5xx/unreachable URLs)
       var inbound = {}, broken = [];
-      out.pages.forEach(function (p) { (p.internalLinks || []).forEach(function (l) { var u = l.url; inbound[u] = (inbound[u] || 0) + 1; var st = out.linkStatus[u]; if (st != null && (st >= 400 || st === 0)) broken.push({ from: p.url, to: u, status: st }); }); });
+      out.pages.forEach(function (p) { (p.internalLinks || []).forEach(function (l) { var u = l.url; try { if (E.skipSvc.test(new URL(u).pathname)) return; } catch (x) {} inbound[u] = (inbound[u] || 0) + 1; var st = out.linkStatus[u]; if (st != null && (st >= 400 || st === 0)) broken.push({ from: p.url, to: u, status: st }); }); });
       out.inbound = inbound; out.broken = uniq(broken).slice(0, 100);
       return out;
     });
@@ -456,7 +463,9 @@
     var noTitle = pages.filter(function (p) { return !p.title; }), badLen = pages.filter(function (p) { return p.title && (p.title.length < 15 || p.title.length > 65); });
     var pT = pct(n - noTitle.length, n);
     add({ id: "T_title", name: "Page titles", status: noTitle.length ? band(pT, 98, 85) : badLen.length > n / 2 ? "warn" : "pass", score: Math.round(pT * 0.7 + pct(n - badLen.length, n) * 0.3), weight: 3, detail: noTitle.length + " of " + n + " pages have no title; " + badLen.length + " are shorter than 15 or longer than 65 characters.", pages: listPages(noTitle.concat(badLen)), evidence: e("Title check across " + n + " crawled pages", "Homepage title: “" + home.title + "” (" + home.title.length + " chars)") });
-    var dupT = {}; pages.forEach(function (p) { if (p.title) (dupT[low(p.title)] = dupT[low(p.title)] || []).push(p); });
+    var dupT = {}; pages.forEach(function (p) { if (p.title && !p.noindex && !(p.status >= 300)) (dupT[low(p.title)] = dupT[low(p.title)] || []).push(p); });
+    // v17.2: URL variants that point to one canonical page are the same page — not a duplicate-title problem
+    Object.keys(dupT).forEach(function (k) { var seenC = {}; dupT[k] = dupT[k].filter(function (p) { var c = E.normUrl(p.canonical || p.finalUrl || p.url) || p.url; if (seenC[c]) return false; seenC[c] = 1; return true; }); });
     var dups = Object.keys(dupT).filter(function (k) { return dupT[k].length > 1; });
     var dupPages = [].concat.apply([], dups.map(function (k) { return dupT[k]; }));
     add({ id: "T_dupTitle", name: "Unique titles", status: dupPages.length ? (dupPages.length > n / 4 ? "fail" : "warn") : "pass", score: pct(n - dupPages.length, n), weight: 2, detail: dups.length ? dups.length + " title(s) are shared by " + dupPages.length + " pages, e.g. “" + clip(dupT[dups[0]][0].title, 70) + "”." : "Every crawled page has its own title.", pages: listPages(dupPages), evidence: dups.length ? e("Duplicate titles", dups.slice(0, 3).map(function (k) { return "“" + clip(dupT[k][0].title, 60) + "” ×" + dupT[k].length; }).join(" | ")) : [] });
@@ -504,11 +513,11 @@
     add({ id: "C_ctaText", area: "conversion", group: "CTA clarity", name: "Specific button wording", status: !home.ctas.length ? "na" : gen.length > hc.length ? "fail" : gen.length ? "warn" : "pass", score: home.ctas.length ? pct(hc.length, hc.length + gen.length) : null, weight: 1, detail: gen.length ? gen.length + " generic button(s) like “" + gen[0].text + "” — say what happens next (e.g. “Get a free quote”)." : "Buttons say what the visitor gets.", evidence: gen.length ? e("Generic buttons", gen.slice(0, 5).map(function (c) { return c.text; }).join(" · ")) : [] });
     var svc = pages.filter(function (p) { return p.type === "service" || p.type === "product"; }), svcCta = svc.filter(function (p) { return p.ctas.some(function (c) { return !c.generic && !c.nav; }) || p.forms.some(function (f) { return !f.search; }); });
     if (svc.length) add({ id: "C_nextStep", area: "conversion", group: "CTA clarity", name: "Next step on service/product pages", status: band(pct(svcCta.length, svc.length), 90, 60), score: pct(svcCta.length, svc.length), weight: 2, detail: svcCta.length + " of " + svc.length + " service/product pages have their own call to action or form.", pages: svc.filter(function (p) { return svcCta.indexOf(p) < 0; }).map(function (p) { return p.finalUrl; }).slice(0, 10), evidence: e("Service pages without an action", svc.filter(function (p) { return svcCta.indexOf(p) < 0; }).slice(0, 4).map(function (p) { return p.finalUrl; }).join(" | ") || "all have one") });
-    var ct = B.contacts, ways = (ct.phones.length ? 1 : 0) + (ct.emails.length ? 1 : 0) + (ct.whatsapp.length ? 1 : 0) + (pages.some(function (p) { return p.forms.some(function (f) { return !f.search && f.fieldCount >= 2; }); }) ? 1 : 0);
+    var ct = B.contacts, ways = (ct.phones.length ? 1 : 0) + (ct.emails.length ? 1 : 0) + (ct.whatsapp.length ? 1 : 0) + (pages.some(function (p) { return p.forms.some(function (f) { return f.lead !== false && !f.search && !f.tool && f.fieldCount >= 2; }); }) ? 1 : 0);
     add({ id: "C_contact", area: "conversion", group: "Contact friction", name: "Ways to get in touch", status: ways >= 3 ? "pass" : ways === 2 ? "warn" : "fail", score: Math.min(100, ways * 30 + 10), weight: 2, detail: ways + " contact method(s): " + [ct.phones.length && "phone", ct.emails.length && "email", ct.whatsapp.length && "WhatsApp", ways > (ct.phones.length ? 1 : 0) + (ct.emails.length ? 1 : 0) + (ct.whatsapp.length ? 1 : 0) && "form"].filter(Boolean).join(", ") + ".", evidence: ct.evidence });
     var cp = pages.filter(function (p) { return p.type === "contact"; }), navContact = home.internalLinks.some(function (l) { return l.nav && /contact|enquir|inquir|get-in-touch/.test(l.url); });
     add({ id: "C_contactPage", area: "conversion", group: "Contact friction", name: "Contact page linked in the menu", status: cp.length && navContact ? "pass" : cp.length || navContact ? "warn" : "fail", score: (cp.length ? 50 : 0) + (navContact ? 50 : 0), weight: 1, detail: (cp.length ? "Contact page found" : "No contact page found") + (navContact ? " and linked in the main menu." : ", not linked in the main menu."), evidence: e("Contact page", cp.length ? cp[0].finalUrl : "none", cp.length ? cp[0].finalUrl : home.finalUrl) });
-    var lead = [].concat.apply([], pages.map(function (p) { return p.forms.filter(function (f) { return !f.search && f.fieldCount >= 2; }).map(function (f) { return { f: f, url: p.finalUrl }; }); })), maxF = lead.reduce(function (m, x) { return Math.max(m, x.f.fieldCount); }, 0);
+    var lead = [].concat.apply([], pages.map(function (p) { return p.forms.filter(function (f) { return !f.search && !f.tool && (f.lead || f.lead == null) && f.fieldCount >= 2; }).map(function (f) { return { f: f, url: p.finalUrl }; }); })), maxF = lead.reduce(function (m, x) { return Math.max(m, x.f.fieldCount); }, 0);
     if (lead.length) add({ id: "C_form", area: "conversion", group: "Contact friction", name: "Short enquiry forms", status: maxF <= 6 ? "pass" : maxF <= 9 ? "warn" : "fail", score: maxF <= 6 ? 100 : maxF <= 9 ? 60 : 25, weight: 2, detail: "Longest lead form has " + maxF + " fields.", pages: lead.filter(function (x) { return x.f.fieldCount > 6; }).map(function (x) { return x.url; }).slice(0, 6), evidence: e("Form fields", lead.slice(0, 3).map(function (x) { return x.url + ": " + x.f.fieldCount + " fields (" + x.f.fields.map(function (fl) { return fl.label || fl.name || fl.type; }).slice(0, 10).join(", ") + ")"; }).join(" | "), lead[0].url) });
     var telLinks = pages.some(function (p) { return p.telLinks > 0; });
     add({ id: "C_tap", area: "conversion", group: "Contact friction", name: "Tap-to-call or WhatsApp button", status: telLinks || ct.whatsapp.length ? "pass" : "warn", score: telLinks || ct.whatsapp.length ? 100 : 40, weight: 1, detail: telLinks || ct.whatsapp.length ? "Phone visitors can call or WhatsApp in one tap." : "No tap-to-call or WhatsApp button found — phone visitors must copy the number.", evidence: e("Tap-to-call / WhatsApp", (ct.whatsapp[0] || "") + (telLinks ? " tel: link present" : "") || "none") });
@@ -709,6 +718,24 @@
   };
   var THEMES = [["Price & value", /\b(price|pricing|cost|expensive|cheap|affordable|budget|value|fees?|charges?|worth)\b/i], ["Speed & timing", /\b(late|delay|slow|quick|fast|on time|wait(ing)?|hours?|days?|same day)\b/i], ["Quality of work / product", /\b(quality|taste|result|results|work|product|finish|fresh|clean|broken|defect)\b/i],
     ["Staff & service", /\b(staff|service|rude|friendly|polite|support|response|reply|communication|professional)\b/i], ["Trust & honesty", /\b(trust|scam|fraud|legit|honest|hidden|fake|genuine|transparent)\b/i], ["Location & access", /\b(location|parking|near|distance|area|delivery|reach)\b/i]];
+  /* v17.2 entity resolution: a search result that names the brand is only counted when it is clearly about THIS business —
+     it mentions the domain, or the brand together with the business's category / services / city. Otherwise it is set aside
+     (another company with the same name — e.g. "Fodo, the photo printing app"). */
+  var STOPW = /^(and|the|for|with|your|our|you|best|top|from|that|this|new|more|get|free|near|all|services?|solutions?|company|agency|business|india|online|digital)$/i;
+  E.entityContext = function (B, input) {
+    var words = [].concat((B.industry && B.industry.value) || "", (B.services && B.services.value) || [], input && input.product || "", input && input.city || B.city || "", B.location || "")
+      .join(" ").toLowerCase().split(/[^a-z0-9\u0900-\u097f]+/).filter(function (w) { return w.length > 2 && !STOPW.test(w); });
+    var dom = String(B.domain || "").toLowerCase(), root = dom.split(".")[0];
+    return { name: low((B.name && B.name.value) || root), domain: dom, root: root, words: uniq(words).slice(0, 40) };
+  };
+  E.aboutUs = function (text, url, ctx) {
+    var t = low(text) + " " + low(url || "");
+    if (ctx.domain && t.indexOf(ctx.domain) > -1) return { ok: true, why: "names your website" };
+    var nameHit = ctx.name && new RegExp("(^|[^a-z0-9])" + ctx.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z0-9]|$)").test(t);
+    if (!nameHit) return { ok: true, why: "about the market, not the brand", market: true };
+    var hit = ctx.words.filter(function (w) { return t.indexOf(w) > -1; });
+    return hit.length ? { ok: true, why: "names you with " + hit.slice(0, 2).join(", ") } : { ok: false, why: "names “" + ctx.name + "” but nothing about your business — probably a different company" };
+  };
   E.voice = function (items) {
     // items: [{ text, url, source, evidence }]
     var groups = {}; Object.keys(VOICE).forEach(function (k) { groups[k] = {}; });
@@ -738,9 +765,14 @@
   E.presence = function (B, brandSerp, place, srcName) {
     srcName = srcName || (brandSerp && brandSerp.providerName) || "search";
     var found = {}, name = low(B.name.value), rating = [];
-    var nameWords = name.split(/\s+/).filter(function (w) { return w.length > 2; });
+    var nameWords = name.split(/\s+/).filter(function (w) { return w.length > 2; }), ectx = E.entityContext(B, {});
+    B.presenceOut = [];
     ((brandSerp && brandSerp.web) || []).forEach(function (r) {
       var mentions = nameWords.length && nameWords.every(function (w) { return low(r.title + " " + r.description).indexOf(w) > -1; });
+      // v17.2: a listing or rating for a different company with the same name must not count as yours (own social links from the site always count)
+      if (mentions && !(B.socials && Object.keys(B.socials).some(function (k) { var su = low(String(B.socials[k] || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")); return su.length > 6 && low(r.url).indexOf(su) > -1; }))) {
+        var who = E.aboutUs(r.title + " " + r.description, r.url, ectx); if (!who.ok) { mentions = false; B.presenceOut.push({ url: r.url, title: r.title, why: who.why }); }
+      }
       PLATFORMS.forEach(function (p) { if (p[1].test(r.url) && mentions && !found[p[0]]) found[p[0]] = { url: r.url, title: r.title, pos: r.pos }; });
       var m = /(\d(?:\.\d)?)\s*(?:\/\s*5|out of 5|stars?|★)/i.exec(r.description || ""); var rv = /([\d,]+)\s*(reviews|ratings)/i.exec(r.description || "");
       if (r.rating != null && mentions && +r.rating <= 5) rating.push({ value: +r.rating, count: r.ratingCount, url: r.url, host: r.host });
@@ -750,7 +782,7 @@
     var siteSocial = Object.keys(B.socials || {});
     var onSiteOnly = siteSocial.filter(function (s) { return !Object.keys(found).some(function (f) { return low(f).indexOf(s) > -1; }); });
     var phones = B.contacts.phones;
-    return { listings: found, ratings: rating.slice(0, 6), siteSocials: B.socials, onSiteOnly: onSiteOnly, phoneCount: phones.length, nameVariants: uniq([B.name.value, (B.schemaChecks || []).filter(function (x) { return x.field === "name"; }).map(function (x) { return x.value; })[0]].filter(Boolean)), mapListing: place || null, searched: !!brandSerp };
+    return { listings: found, ratings: rating.slice(0, 6), excluded: (B.presenceOut || []).slice(0, 8), siteSocials: B.socials, onSiteOnly: onSiteOnly, phoneCount: phones.length, nameVariants: uniq([B.name.value, (B.schemaChecks || []).filter(function (x) { return x.field === "name"; }).map(function (x) { return x.value; })[0]].filter(Boolean)), mapListing: place || null, searched: !!brandSerp };
   };
   E.visibility = function (answers, B, comps) {
     var names = [low(B.name.value), B.domain].filter(Boolean), dom = B.domain, rows = answers.map(function (a) {
@@ -799,11 +831,11 @@
       var brandPart = brand ? (brand.ourPos === 1 ? 100 : brand.ourPos ? 60 : 10) : null;
       var mk = [{ name: "Owns its brand search", score: brandPart }, { name: "Share of market searches (" + top10 + "/" + cat.length + ")", score: serpScore }, { name: "Listed on platforms (" + listings + " found)", score: Math.min(100, listings * 20) }];
       if (mods.presence && mods.presence.ratings.length) { var avg = mods.presence.ratings.reduce(function (s, r) { return s + r.value; }, 0) / mods.presence.ratings.length; mk.push({ name: "Public rating (avg " + avg.toFixed(1) + "/5 in search snippets)", score: Math.round(avg / 5 * 100) }); }
-      A.market = { name: "Market Position", score: groupScore(mk.filter(function (x) { return x.score != null; }).map(function (x) { return { score: x.score, weight: 1, status: "x" }; })), components: mk.filter(function (x) { return x.score != null; }), quality: "MEDIUM", note: "From a sample of public search results." };
+      A.market = { name: "Digital Market Presence", score: groupScore(mk.filter(function (x) { return x.score != null; }).map(function (x) { return { score: x.score, weight: 1, status: "x" }; })), components: mk.filter(function (x) { return x.score != null; }), quality: "MEDIUM", note: "From a sample of public search results." };
     } else {
       var why = !mods.serp || !mods.serp.length ? "no search provider connected" : "only " + catOk.length + " market search(es) returned results — too few to score";
       A.search = { name: "Search Visibility", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable — " + why + "." };
-      A.market = { name: "Market Position", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable — " + why + "." };
+      A.market = { name: "Digital Market Presence", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable — " + why + "." };
     }
     if (mods.competitive && mods.competitive.length) {
       A.competitive = { name: "Competitive Position", score: Math.round(mods.competitive.reduce(function (s, m) { return s + m.score; }, 0) / mods.competitive.length), components: mods.competitive.map(function (m) { return { name: m.name, score: m.score }; }), quality: "MEDIUM", note: "Like-for-like comparison of public pages with " + mods.compCount + " competitor(s)." };
@@ -872,6 +904,7 @@
     R_https: ["Site is not secure", "Trust", 5, 1, 5, "Enable HTTPS.", "web"],
     S_absent: ["Not found for the searches buyers use", "Search", 5, 4, 4, "Create a dedicated page per key service (+ location) and earn local links/listings.", "seo"],
     S_brand: ["Your own name doesn't lead to your site in search", "Search", 4, 2, 4, "Claim/complete Google Business Profile and directory listings; add Organization schema with the same name.", "local"],
+    D_nameClash: ["Your brand name is shared with other companies", "Presence", 4, 2, 4, "Use your full name with your category and city in titles and profiles (e.g. “FODO — Digital Growth Agency, Delhi”), add Organization schema with sameAs links to your own profiles, and keep the same name, logo and description everywhere so Google and AI assistants can tell you apart.", "seo"],
     D_listings: ["Missing from key listing platforms", "Presence", 3, 2, 3, "Claim and complete the main listings for your category with the same name, phone and address.", "local"],
     D_social: ["Social profiles not linked from the site", "Presence", 1, 1, 1, "Link your active social profiles in the footer.", "social"],
     K_gap: ["Competitors appear for commercial searches you don't", "Search", 4, 3, 4, "Build pages that match these searches, starting with the High-opportunity ones.", "seo"],
@@ -991,6 +1024,15 @@
       ["Chat / WhatsApp on the site", /WhatsApp|Intercom|Tawk|Crisp|Zendesk|Freshworks|Tidio|LiveChat|Drift|SalesIQ|WATI/, "Visitors with questions can reach you before they leave."],
       ["Cookie consent", /Cookie consent/, "Needed in many markets before ad pixels may load."],
     ].map(function (r) { return { item: r[0], you: has(mine, r[1]), competitors: n(r[1]), of: C.length, why: r[2] }; });
+    // v17.2: "not in the page HTML" is not the same as "not installed". Tags can sit inside Tag Manager, load after cookie
+    // consent, or come from the site's own scripts — in those cases the honest answer is UNKNOWN, with the reason.
+    var gtm = has(mine, /Tag Manager/), ownJs = (code.match(/<script[^>]+src=["'][^"']*(analytics|track|consent|cookie|gdpr|privacy)[^"']*["']/gi) || []).map(function (t) { return (/src=["']([^"']+)/i.exec(t) || [])[1] || ""; }).filter(function (u) { return u && !/^(https?:)?\/\//i.test(u); });   // the site's own (relative) scripts only
+    rows.forEach(function (r) {
+      r.how = r.you ? "Found in the page code" : "Not found in the page code";
+      if (r.you !== false) return;
+      if (gtm && /Analytics|Pixel|Ads tag|LinkedIn/.test(r.item)) { r.you = null; r.how = "Not in the page code, but Google Tag Manager is — it may be set up inside GTM"; }
+      else if (ownJs.length && /Analytics|Cookie consent/.test(r.item)) { r.you = null; r.how = "The site loads its own script (" + ownJs[0].split("?")[0].split("/").pop() + ") that may do this — can't tell from outside"; }
+    });
     rows.push({ item: "Google Search Console verified", you: /google-site-verification/i.test(code) ? true : null, competitors: null, of: C.length, why: "Shows which searches you appear for. (Verified by DNS is invisible to us — check your account if this says unknown.)" });
     var gaps = rows.filter(function (r) { return r.you === false && r.competitors > 0; }).map(function (r) { return r.item + " — " + r.competitors + " of " + r.of + " competitors use it"; });
     return { rows: rows, gaps: gaps };

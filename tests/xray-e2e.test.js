@@ -93,7 +93,7 @@ const integrity = (tag, r) => {
   ok(r.providers.searchName === "Google Search (via Serper)" && r.evidence.some((e) => /google\.com\/search\?q=/.test(e.sourceUrl)), "restaurant: search evidence links to the Google search it came from");
   // UI: report sections + evidence drawer + tool links
   const H = await p.textContent("#xr-report");
-  ok(["Executive Summary", "Overall Growth Health", "Business Overview", "Market Position", "Biggest Problem", "Website X-Ray", "SEO / Search X-Ray", "Competitor X-Ray", "Customer Voice", "Offer & Positioning", "Conversion X-Ray", "Digital Presence", "AI Visibility", "Biggest Opportunities", "Top 5 Actions", "30-Day Action Plan", "Evidence & Sources"].every((t) => H.indexOf(t) > -1), "report has all 17 sections");
+  ok(["Executive Summary", "Digital Growth Health", "Business Overview", "Digital Market Presence", "Biggest Problem", "Website X-Ray", "SEO / Search X-Ray", "Competitor X-Ray", "Customer Voice", "Offer & Positioning", "Conversion X-Ray", "Digital Presence", "AI Visibility", "Biggest Opportunities", "Top 5 Actions", "30-Day Action Plan", "Evidence & Sources"].every((t) => H.indexOf(t) > -1), "report has all 17 sections");
   ok(/BIGGEST PROBLEM/.test(H) && /BIGGEST OPPORTUNITY/.test(H) && /TOP 5 ACTIONS/.test(H) && /Search volume: Data unavailable/.test(H) && /Sampled AI visibility|Data unavailable — no AI source/.test(H), "hero blocks shown; unavailable data says so");
   await p.click("#xr-s5 .xr-why"); await p.waitForSelector("#xr-evd:not([hidden])");
   ok(/E\d+/.test(await p.textContent("#xr-evd")) && /OBSERVED|INFERRED/.test(await p.textContent("#xr-evd")), "“Why did FODO say this?” opens the evidence");

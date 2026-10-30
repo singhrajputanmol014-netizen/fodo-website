@@ -123,3 +123,37 @@ Nothing needs to change in `wrangler.toml`. New tables are created automatically
 - **Cloudflare Queues**: Pages Functions cannot consume a queue, so it needs a separate Worker. The X-Ray keeps running stage by stage against the real server steps.
 - **Paid data** is still not used: DataForSEO, ChatGPT/Perplexity and the Google Places API.
 - The AI engines, Search Console and monitoring were tested with stand-in servers. Test them on a real business once the keys are added.
+
+## v17.1.1 – v17.2: fixes after the first live reports
+
+### Live fixes (v17.1.1 – v17.1.4)
+- **Groq and Gemini models.**
+  - Groq retired `llama-3.3-70b-versatile` on 16 Aug 2026, and new keys get 404 on `gemini-2.5-flash`.
+  - Each engine now walks a chain of current models:
+    - Groq: `openai/gpt-oss-120b` first.
+    - Gemini: `gemini-flash-latest` first.
+  - A retired model is skipped automatically.
+  - Failed calls write the provider's own error text (keys masked) into Admin → report → API calls → "Prompt / tool".
+- **AI questions use a clean service name** ("SEO", "Meta Ads"), never a tagline fragment.
+- **AI Visibility:** a question that already names the brand ("FODO alternatives") is shown as "Not counted" and left out of the score.
+- **Account page never stays on "Loading…".** After 15 s it shows the real reason and a Try again button.
+
+### v17.2: X-Ray quality (from the findings review)
+
+| Problem in the review | Fix |
+|---|---|
+| ~100 internal links to `/cdn-cgi/l/email-protection` reported as 404 | That is Cloudflare Email Obfuscation (it decodes in the browser). `/cdn-cgi/` paths are never crawled or counted. |
+| "Longest lead form has 37 fields" | That was the Growth Score quiz. Radio and checkbox groups now count as one question. Only a form that asks for contact details (name, email, phone…) is a lead form. Quizzes and calculators are tools. |
+| Duplicate titles across URL variants | Pages that share one canonical URL count once. Noindex and non-2xx pages are ignored. |
+| "Not detected" treated as "not installed" | Tracking shows **Not detected**, or **Unknown** with the reason: inside Google Tag Manager, or loaded by the site's own analytics/consent script. |
+| Other companies named "FODO" in Customer Voice, listings and ratings | Entity resolution: a result that names the brand only counts when it also names the website, or the category/services/city. Left-out results are listed in the report. When 2+ results are about a same-name company, a new opportunity **"Your brand name is shared with other companies"** appears. |
+| "Overall 54/100" read as a business score | Renamed **Digital Growth Health**, with the note "your online presence, not your sales or profit". |
+| "Market Position 10/100" read as "bad business" | Renamed **Digital Market Presence**, with what it measures. |
+| Confidence hard to read | Each opportunity shows Confidence **HIGH / MEDIUM / LOW**, from rules (OBSERVED / INFERRED / ESTIMATED). |
+| No tap-to-call or WhatsApp found | The site already had them, but only after JavaScript runs. Every page's HTML footer now has real `tel:`, `wa.me` and `mailto:` links. |
+| Monitoring "Check now" message vanished | The status message survives the list refresh. This was a real UI bug and the cause of the flaky test. |
+
+Tests: `tests/v172-engine.test.js` has 11 checks. The other suites are unchanged and pass:
+- v17 functions: 92
+- v17 e2e: 58
+- X-Ray e2e: 116

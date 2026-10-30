@@ -25,6 +25,8 @@ import * as AU from "../../_lib/brain/automations.js";
 import { brainDaily } from "../../_lib/brain/insights.js";
 const sameKey = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 
+/* every startup step has a time limit, so a stuck step answers with its name instead of hanging the page */
+const step = (name, p, ms) => { const t0 = Date.now(); return Promise.race([Promise.resolve(p), new Promise((_, no) => setTimeout(() => no(new Error("timeout at " + name)), ms || 10000))]).then((v) => { const d = Date.now() - t0; if (d > 1500) console.log("owner-brain slow step", name, d + "ms"); return v; }); };
 const deny = () => json({ ok: false, reason: "Not available." }, 403);
 export async function gate(env, request) {
   if (String(env.BRAIN_ENABLED || "1") === "0" || !accountsOn(env)) return null;
@@ -41,12 +43,12 @@ export async function onRequest(ctx) {
       const r = await AU.tick(env), daily = new Date(Date.now() + 5.5 * 3600e3).getUTCHours() >= 6 ? await brainDaily(env, request) : { skipped: "before 06:00 IST" };
       return json({ ok: true, automations: r, briefing: daily });
     }
-    const u = await gate(env, request);
+    const u = await step("session", gate(env, request));
     if (!u) return deny();
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !/json/.test(request.headers.get("content-type") || "")))) return json({ ok: false, reason: "Bad request." }, 403);   // CSRF
-    await applyConfig(env); await brainDb(env);
+    await step("config", applyConfig(env)); await step("database setup", brainDb(env), 15000);
     const base = { env, request, owner: u }, q = new URL(request.url).searchParams, body = m === "GET" || m === "DELETE" ? null : ((await request.json().catch(() => null)) || {});
-    const settings = await getSettings(env), ctxT = Object.assign({}, base, { settings, scope: "fodo" });
+    const settings = await step("settings", getSettings(env)), ctxT = Object.assign({}, base, { settings, scope: "fodo" });
 
     /* ---------- GET ---------- */
     if (m === "GET") {
@@ -54,7 +56,7 @@ export async function onRequest(ctx) {
         const d = await brainDb(env), mem = await d.prepare("SELECT count(*) n FROM brain_memory WHERE status='active'").first(), al = await d.prepare("SELECT count(*) n FROM brain_alerts WHERE status='open'").first(), tk = await d.prepare("SELECT count(*) n FROM brain_tasks WHERE status IN ('todo','doing')").first();
         let db = "healthy"; try { await env.XRAY_DB.prepare("SELECT 1").first(); } catch (e) { db = "failed"; }
         const av = availableProviders(env);
-        return json({ ok: true, brain: "online", owner: { name: u.name || "", email: u.email }, database: db, memory: { active: mem.n }, ai: { providers: av, status: av["workers-ai"] || av.groq || av.gemini ? "online" : "offline (degraded mode)" }, runner: bgOn(env) ? "configured" : "not set up", tools: Object.keys(TOOLS).filter((k) => TOOLS[k].level < 5).length, connectors: { github: GH.ghOn(env), google: (await GO.status(env)).connected || false }, voice: { tts: !!env.AI, stt: !!env.AI }, active_alerts: al.n, open_tasks: tk.n, settings: { provider: settings.provider, memory: settings.memory, voice: settings.voice, wakeWord: settings.wakeWord } });
+        return json({ ok: true, brain: "online", owner: { name: u.name || "", email: u.email }, database: db, memory: { active: mem.n }, ai: { providers: av, status: av["workers-ai"] || av.groq || av.gemini ? "online" : "offline (degraded mode)" }, runner: bgOn(env) ? "configured" : "not set up", tools: Object.keys(TOOLS).filter((k) => TOOLS[k].level < 5).length, connectors: { github: GH.ghOn(env), google: (await step("google status", GO.status(env), 6000).catch(() => ({}))).connected || false }, voice: { tts: !!env.AI, stt: !!env.AI }, active_alerts: al.n, open_tasks: tk.n, settings: { provider: settings.provider, memory: settings.memory, voice: settings.voice, wakeWord: settings.wakeWord } });
       }
       if (p0 === "briefing") return json(Object.assign({ ok: true }, await briefing(ctxT, { force: q.get("force") === "1", ai: q.get("ai") !== "0" })));
       if (p0 === "diagnostics") { const r = await systemCheck(ctxT, true); await audit(env, { owner: u.email, kind: "diagnostics", status: r.overall }); return json(Object.assign({ ok: true, auth: { status: "PASS", evidence: "owner session verified on the server" } }, r)); }

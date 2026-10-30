@@ -30,7 +30,10 @@
   }
 
   /* ---------------- boot: authenticate on the server, then render ---------------- */
+  var bootT = setTimeout(function () { app.innerHTML = "<div><h1>FODO Brain is taking too long</h1><p>The server didn't answer in 30 seconds. Refresh the page; if it keeps happening, open <a href=\"/api/owner-brain/status\">the status check</a> and send the message you see.</p></div>"; }, 30000);
   api("status").then(function (s) {
+    clearTimeout(bootT);
+    if (!s.ok && s._s === 500) { app.className = "ob-gate"; app.innerHTML = "<div><h1>FODO Brain hit a problem</h1><p>" + esc(s.reason || "Unknown error") + "</p><p><a href=\"\">Try again</a></p></div>"; return; }
     if (!s.ok) { document.title = "Page not found — FODO"; app.className = "ob-gate"; app.innerHTML = "<div><h1>Page not found</h1><p>This page doesn't exist. <a href=\"/\">Go to FODO</a></p></div>"; return; }
     S.status = s; frame(); window.addEventListener("hashchange", go); go();
     setInterval(function () { if (!document.hidden) api("status").then(function (x) { if (x.ok) { S.status = x; pill(); } }); }, 60000);

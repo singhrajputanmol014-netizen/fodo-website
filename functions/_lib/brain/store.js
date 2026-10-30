@@ -31,7 +31,12 @@ const MIGRATIONS = ["ALTER TABLE brain_memory ADD COLUMN emb TEXT", "ALTER TABLE
 const made = new WeakSet();
 export async function brainDb(env) {
   const d = env && env.XRAY_DB; if (!d) return null;
-  if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); for (const m of MIGRATIONS) { try { await d.prepare(m).run(); } catch (e) {} } made.add(d); }
+  if (!made.has(d)) {
+    await d.batch(DDL.map((s) => d.prepare(s)));
+    // add only the columns that are missing (no failing ALTERs on every cold start)
+    for (const m of MIGRATIONS) { const x = /ALTER TABLE (\w+) ADD COLUMN (\w+)/.exec(m); try { const cols = ((await d.prepare("PRAGMA table_info(" + x[1] + ")").all()).results || []).map((c) => c.name); if (cols.indexOf(x[2]) < 0) await d.prepare(m).run(); } catch (e) {} }
+    made.add(d);
+  }
   return d;
 }
 export const nowIso = () => new Date().toISOString();

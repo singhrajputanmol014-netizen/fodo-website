@@ -11,6 +11,7 @@ import { onRequest as tick } from "../functions/api/monitor/tick.js";
 import { PLANS, PACKS } from "../functions/_lib/plans.js";
 import { diff, parseSnap } from "../functions/_lib/monitor.js";
 import { seal, unseal } from "../functions/_lib/gsc.js";
+import { ask as aiAsk, _resetModels } from "../functions/_lib/aivis.js";
 import { onRequestPost as beacon } from "../functions/api/t.js";
 import { getPrompt } from "../functions/_lib/prompts.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
@@ -41,8 +42,8 @@ globalThis.fetch = async (u, o = {}) => {
   if (/google\.serper\.dev\/search/.test(u)) { if (serperDown) return new Response('{"message":"credits exhausted"}', { status: 403 }); return new Response(JSON.stringify({ organic: [{ title: "Tandoor Tales", link: "https://tandoortales.test/", snippet: "Tandoori", position: 1 }] })); }
   if (/api\.search\.brave\.com/.test(u)) return new Response(JSON.stringify({ web: { results: [{ title: "Curry House", url: "https://curryhouse.test/", description: "Curry" }] } }));
   if (/google\.serper\.dev\/places/.test(u)) return new Response(JSON.stringify({ places: [{ title: "Tandoor Tales", address: "Dwarka", rating: 4.5, ratingCount: 640, category: "Restaurant", website: "https://tandoortales.test/", cid: "9" }, { title: "No Site Dhaba", rating: "4.0", ratingCount: "", cid: "8" }] }));
-  if (/api\.groq\.com/.test(u)) { if (JSON.parse(o.body).model !== "llama-3.3-70b-versatile") return new Response("{}", { status: 400 }); return new Response(JSON.stringify({ choices: [{ message: { content: "Try Tandoor Tales or Spice Hub." } }] })); }
-  if (/generativelanguage\.googleapis\.com/.test(u)) { const b = JSON.parse(o.body); if (b.tools && /refuse/.test(b.contents[0].parts[0].text)) return new Response("{}", { status: 429 });
+  if (/api\.groq\.com/.test(u)) { if (JSON.parse(o.body).model === "llama-3.3-70b-versatile") return new Response('{"error":{"message":"The model `llama-3.3-70b-versatile` has been decommissioned","code":"model_decommissioned"}}', { status: 400 }); if (JSON.parse(o.body).model === "retired-groq") return new Response("{}", { status: 404 }); return new Response(JSON.stringify({ choices: [{ message: { content: "Try Tandoor Tales or Spice Hub." } }] })); }
+  if (/generativelanguage\.googleapis\.com/.test(u)) { if (/models\/gemini-2\.5-flash:/.test(u)) return new Response('{"error":{"code":404,"message":"models/gemini-2.5-flash is not found"}}', { status: 404 }); const b = JSON.parse(o.body); if (b.tools && /refuse/.test(b.contents[0].parts[0].text)) return new Response("{}", { status: 429 });
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: b.tools ? "Grounded: Tandoor Tales" : "Plain answer" }] }, groundingMetadata: b.tools ? { webSearchQueries: ["x"], groundingChunks: [{ web: { uri: "https://vertexaisearch.cloud.google.com/r", title: "tandoortales.test" } }, { web: { uri: "javascript:alert(1)", title: "<b>bad</b>" } }] } : undefined }] })); }
   if (/oauth2\.googleapis\.com\/token/.test(u)) { const f = new URLSearchParams(o.body); if (f.get("client_secret") !== "gs_SECRET") return new Response('{"error":"invalid_client"}', { status: 401 });
     if (f.get("grant_type") === "authorization_code") return f.get("code") === "good" ? new Response(JSON.stringify({ access_token: "AT", refresh_token: "RT1", scope: "https://www.googleapis.com/auth/webmasters.readonly" })) : new Response('{"error":"invalid_grant"}', { status: 400 });
@@ -84,6 +85,10 @@ const U = env.XRAY_DB.db.prepare("SELECT provider, ok, cost_usd, cost_kind, cach
 const cost = (p) => U.filter((x) => x.provider === p).reduce((s, x) => s + x.cost_usd, 0);
 ok(U.some((x) => x.provider === "serper" && x.ok === 1 && x.cost_usd === 0.001) && U.some((x) => x.provider === "serper" && x.ok === 0 && x.cost_usd === 0) && U.some((x) => x.provider === "brave" && x.cost_usd === 0.005), "cost log: Serper success $0.001, failed call $0, Brave $0.005 (list prices, estimated)");
 ok(cost("groq") === 0 && cost("workers-ai") === 0 && cost("gemini") === 0 && U.filter((x) => x.provider === "groq").length === 2 && U.some((x) => x.provider === "serper_places"), "free engines logged at ₹0, every call counted");
+{ _resetModels(); const E = { GROQ_API_KEY: "k", GEMINI_API_KEY: "k", GROQ_MODEL: "retired-groq", GEMINI_MODEL: "gemini-2.5-flash" };
+  const g = await aiAsk(E, "groq", "best biryani"), m = await aiAsk(E, "gemini", "best biryani");
+  ok(g.model === "openai/gpt-oss-120b" && /Tandoor/.test(g.answer) && m.model === "gemini-flash-latest" && m.grounded, "retired model ids (404 / decommissioned) fall back to the next current model (" + g.model + ", " + m.model + ")");
+  _resetModels(); const d = await aiAsk({ GROQ_API_KEY: "k" }, "groq", "x"); ok(d.model === "openai/gpt-oss-120b", "default Groq model is a current one, not the retired llama-3.3"); _resetModels(); }
 r = await call(env, "xray/search", { jobId: job, q: "best biryani dwarka", country: "India" });
 ok(env.XRAY_DB.db.prepare("SELECT COUNT(*) n FROM api_usage WHERE job_id=? AND cached=1").get(job).n >= 0, "cache hits are logged as cost 0 (Cache API is per-colo; in node it may miss)");
 

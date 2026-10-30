@@ -271,10 +271,10 @@ export function checkSynthesis(s, ids) {
   }, dropped };
 }
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
-async function runAI(env, messages, max) {
+async function runAI(env, messages, max, firstWait) {   // firstWait: ms before giving up on the big model (visibility answers use a shorter wait, then the small model)
   let last;
   for (let i = 0; i < MODELS.length; i++) {
-    try { const r = await Promise.race([env.AI.run(MODELS[i], { messages, max_tokens: max || 1800, temperature: 0.2 }), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), i ? 20000 : 45000))]);
+    try { const r = await Promise.race([env.AI.run(MODELS[i], { messages, max_tokens: max || 1800, temperature: 0.2 }), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), i ? 20000 : (firstWait || 45000)))]);
       const text = typeof r === "string" ? r : r && (r.response || (r.result && r.result.response)) || ""; if (text) return { text: typeof text === "string" ? text : JSON.stringify(text), model: MODELS[i] }; }
     catch (e) { last = e; }
   }
@@ -293,7 +293,7 @@ async function ai(env, job, b, t0) {
     ENG.forEach((e) => qs.slice(0, e.id === "gemini" ? Math.min(5, AIQ) : AIQ).forEach((q) => jobs.push({ e, q })));
     const answers = [], pool = jobs.slice(); let pi = 0;
     const worker = async () => { while (pi < pool.length) { const it = pool[pi++], t1 = Date.now();
-      try { const a = await aiAsk(env, it.e.id, it.q, (m, x) => runAI(env, m, x), VP.text); answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, live: it.e.live && a.grounded, answer: a.answer, model: a.model, citations: a.citations || [], searches: a.searches || [], grounded: !!a.grounded, groundingRefused: a.groundingRefused || null });
+      try { const a = await aiAsk(env, it.e.id, it.q, (m, x) => runAI(env, m, x, 25000), VP.text); answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, live: it.e.live && a.grounded, answer: a.answer, model: a.model, citations: a.citations || [], searches: a.searches || [], grounded: !!a.grounded, groundingRefused: a.groundingRefused || null });
         await logUsage(env, { provider: it.e.id, endpoint: "aivis", tool: "prompt:visibility@" + VP.ver, job: job.id, status: a.status || 200, ms: Date.now() - t1 }); }
       catch (e) { answers.push({ q: it.q, engine: it.e.id, engineName: it.e.name, answer: "", error: "no answer" }); await logUsage(env, { provider: it.e.id, endpoint: "aivis", job: job.id, status: e.status || 0, ok: false, ms: Date.now() - t1 }); } } };
     await Promise.all([worker(), worker(), worker(), worker()]);

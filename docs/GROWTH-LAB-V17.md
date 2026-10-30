@@ -37,7 +37,7 @@ Everything in v17 runs on free services. Each new data source is **optional**. I
 2. **Gemini (AI engine #3, answers from live Google Search)**
    - Go to https://aistudio.google.com/apikey → Create API key.
    - Add `GEMINI_API_KEY` as a Secret.
-   - Optional: set `GEMINI_MODEL` (default `gemini-2.5-flash`).
+   - Optional: set `GEMINI_MODEL` / `GROQ_MODEL` to force a model. Without them FODO tries current models in order (Gemini: gemini-flash-latest → gemini-3.8-flash → …; Groq: openai/gpt-oss-120b → …) and skips any model the provider has retired.
 3. **Google Search Console connect**
    - Google Cloud Console (same project as the Google login) → APIs & Services → Library → **Google Search Console API** → Enable.
    - OAuth consent screen → Data access → Add scope `.../auth/webmasters.readonly`.

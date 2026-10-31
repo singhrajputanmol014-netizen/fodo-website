@@ -784,11 +784,17 @@ open(os.path.join(ROOT, "owner-brain", "index.html"), "w").write(f"""<!doctype h
 <script src="/js/owner-brain-voice.js?v={_V}" defer></script><script src="/js/owner-brain-live.js?v={_V}" defer></script><script src="/js/owner-brain-orb.js?v={_V}" defer></script><script src="/js/owner-brain.js?v={_V}" defer></script><script src="/js/owner-brain-social.js?v={_V}" defer></script><script src="/js/owner-brain-engineer.js?v={_V}" defer></script></body></html>""")
 # ---- v28 FODO WEBSITE BUILDER (/website-builder/): customer-facing app. Its own shell; all data from /api/sites/* (session + tenant checks
 # on the server). The editor canvas is a sandboxed iframe. Indexed: it is a product page.
+# v33.1: every builder module is versioned through an import map, so a new deploy can never mix a fresh file with a
+# cached old one (that gave "render.js does not provide an export named embedUrl").
+WB_IMPORTMAP = json.dumps({"imports": dict(("/" + f, "/" + f + "?v=" + _V) for f in sorted(
+    ["js/website-builder.js", "js/website-store.js"] + ["js/" + x for x in os.listdir(os.path.join(ROOT, "js")) if x.startswith("wb-") and x.endswith(".js") and x != "wb-guard.js"]
+    + ["sites/lib/" + x for x in os.listdir(os.path.join(ROOT, "sites", "lib")) if x.endswith(".js")]))})
 os.makedirs(os.path.join(ROOT, "website-builder"), exist_ok=True)
 open(os.path.join(ROOT, "website-builder", "index.html"), "w").write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FODO Website Builder, build your business website with AI</title><meta name="description" content="Build a professional, mobile-ready website for your business in minutes. AI writes it, you edit anything by clicking, connect your own domain and publish. Export any time."><link rel="canonical" href="https://www.fodo.co.in/website-builder/"><meta name="theme-color" content="#07070c">
 <link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}"></head>
 <body class="wb-body"><div id="wb"><p class="wb-pad">Loading FODO Website Builder…</p></div><noscript><p style="padding:24px">The builder needs JavaScript.</p></noscript>
+<script type="importmap">{WB_IMPORTMAP}</script>
 <script src="/js/wb-guard.js?v={_V}"></script><script src="/js/account.js?v={_V}" defer></script><script type="module" src="/js/website-builder.js?v={_V}"></script></body></html>""")
 # 404
 open(os.path.join(ROOT,"404.html"),"w").write(shell("404","/404.html","Page not found: FODO","This page has moved or never existed. Find your way back to FODO.",

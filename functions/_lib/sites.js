@@ -64,7 +64,7 @@ export function validateDoc(doc, lim) {
   if (out.settings.customCss) out.settings.customCss = sanitizeCss(out.settings.customCss);
   delete out.settings.customJs; delete out.settings.headCode;   // scripts are never accepted (a website is data)
   for (const p of pages) {
-    const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); seen.add(slug);
+    const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); if (/^(p|cart|checkout|order|blog)$/.test(slug)) throw err("“" + slug + "” is reserved for the store/blog — use another page address."); seen.add(slug);
     const secs = (Array.isArray(p.sections) ? p.sections : []).slice(0, 40).filter((s) => s && SECTION_TYPES.indexOf(s.type) > -1).map((s) => ({ type: s.type, props: cleanVal(s.props || {}, 0) || {} }));
     out.pages.push({ slug, title: clip(p.title || slug, 80), navLabel: p.navLabel ? clip(p.navLabel, 40) : undefined, nav: p.nav === false ? false : undefined, hidden: !!p.hidden || undefined, noindex: !!p.noindex || undefined, password: p.password && /^[0-9a-f]{64}$/.test(p.password) ? p.password : undefined, seo: cleanVal(p.seo || {}, 0) || {}, sections: secs });
   }

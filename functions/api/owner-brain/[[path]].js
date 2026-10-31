@@ -35,7 +35,7 @@ const SITE = (env) => env.SITE_ORIGIN || "https://www.fodo.co.in";
 /* which permission each page endpoint needs ("owner" = the two owner logins only) */
 const NEED = { GET: { status: null, briefing: "business", diagnostics: "business", memory: "memory", tasks: "tasks", projects: "tasks", docs: "memory", threads: null, thread: null, tools: null, alerts: "business", activity: "owner", analytics: "business", changes: "changes", automations: "automations", connectors: "owner", connect: "owner", settings: null, export: "owner", social: "social", members: "owner", ga: "owner", live: "chat", eng: "owner" },
   POST: { chat: "chat", ingest: "memory", confirm: null, memory: "memory", tasks: "tasks", feedback: null, tts: null, stt: null, automations: "automations", changes: "changes", connectors: "owner", settings: "owner", alerts: "business", social: "social", members: "owner", eng: "owner" },
-  PUT: { social: "social" }, PATCH: { memory: "memory", tasks: "tasks" }, DELETE: { memory: "memory", tasks: "tasks", automations: "automations", docs: "memory", thread: null, social: "owner", members: "owner" } };
+  PUT: { social: "social" }, PATCH: { memory: "memory", tasks: "tasks" }, DELETE: { memory: "memory", tasks: "tasks", automations: "automations", docs: "memory", thread: null, threads: null, social: "owner", members: "owner" } };
 const sameKey = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 
 /* every startup step has a time limit, so a stuck step answers with its name instead of hanging the page */
@@ -233,6 +233,10 @@ export async function onRequest(ctx) {
       if (p0 === "docs" && path[1]) { const r = await deleteDoc(env, path[1]); await audit(env, { owner: u.email, kind: "ingest", tool: "delete_doc", status: r ? "ok" : "missing" }); return r ? json({ ok: true }) : json({ ok: false, reason: "Not found." }, 404); }
       if (p0 === "social" && path[1] === "accounts" && path[2]) { const r = await SO.disconnect(env, decodeURIComponent(path[2])); await audit(env, { owner: u.email, kind: "connector", tool: "social", status: "disconnected", detail: r.disconnected }); return json({ ok: true }); }
       if (p0 === "members" && path[1]) { const r = await AC.remove(env, decodeURIComponent(path[1])); await audit(env, { owner: u.email, kind: "access", tool: "revoke", status: r.removed ? "ok" : "missing", detail: decodeURIComponent(path[1]) }); return json({ ok: true }); }
+      if (p0 === "threads" && !path[1]) {   // delete ALL chat history this person may open (owner: all; a team member: only their own)
+        const d = await brainDb(env), mine = ((await d.prepare("SELECT * FROM brain_threads").all()).results || []).filter((t) => mayOpenThread(t, W));
+        for (let i = 0; i < mine.length; i += 40) { const part = mine.slice(i, i + 40); await d.batch(part.flatMap((t) => [d.prepare("DELETE FROM brain_messages WHERE thread_id=?1").bind(t.id), d.prepare("DELETE FROM brain_threads WHERE id=?1").bind(t.id)])); }
+        await audit(env, { owner: u.email, kind: "chat", tool: "delete_history", status: "ok", detail: mine.length + " conversations" }); return json({ ok: true, deleted: mine.length }); }
       if (p0 === "thread" && path[1]) { const d = await brainDb(env), t = await d.prepare("SELECT * FROM brain_threads WHERE id=?1").bind(path[1]).first(); if (!mayOpenThread(t, W)) return json({ ok: false, reason: "Not found." }, 404); await d.batch([d.prepare("DELETE FROM brain_messages WHERE thread_id=?1").bind(path[1]), d.prepare("DELETE FROM brain_threads WHERE id=?1").bind(path[1])]); return json({ ok: true }); }
       return json({ ok: false, reason: "Not found." }, 404);
     }

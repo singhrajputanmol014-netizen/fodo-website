@@ -50,7 +50,9 @@
   var qs = new URLSearchParams(location.search);
   if (qs.get("url")) $("xr-url").value = qs.get("url");
   form.addEventListener("submit", function (e) { e.preventDefault(); run(); });
-  function status(t, kind) { var s = $("xr-status"); s.textContent = t; s.className = "cf-status" + (kind ? " " + kind : ""); }
+  function status(t, kind) { var s = $("xr-status"); s.textContent = t; s.className = "cf-status" + (kind ? " " + kind : ""); toParent({ fodo: "xray-status", text: String(t).slice(0, 200), kind: kind || "" }); }
+  /* v30: embedded by FODO Brain (same site, ?embed=1) → tell the Brain what happens; nothing is sent to any other site */
+  function toParent(msg) { try { if (qs && qs.get("embed") === "1" && window.parent && window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
   function stageUI(done, cur, note) {
     $("xr-progress").hidden = false;
     var pct = Math.round(done.length / STAGES.length * 100);
@@ -84,10 +86,11 @@
       return execute(j, Object.assign(input, { url: j.jobId && input.url }));
     }).then(function (rep) {
       busy = false; $("xr-run").disabled = false; report = rep; render(rep); status(rep.crawl.blocked ? "Limited X-Ray complete — the site blocked FODO's reader (" + rep.crawl.blocked.error + "), so this uses Google Search and PageSpeed data. " + rep.opportunities.length + " opportunities found." : "X-Ray complete — " + rep.crawl.pages + " pages read, " + rep.opportunities.length + " opportunities found.", "ok"); track("xray_complete", { score: rep.scores.overall }); if (window.FODO_TRACK) window.FODO_TRACK("tool_complete", { tool: "xray" });
-      try { history.replaceState(null, "", location.pathname + "?r=" + rep.jobId + (qs.get("tool") ? "&tool=" + encodeURIComponent(qs.get("tool")) : "")); } catch (e) {}
+      try { history.replaceState(null, "", location.pathname + "?r=" + rep.jobId + (qs.get("tool") ? "&tool=" + encodeURIComponent(qs.get("tool")) : "") + (qs.get("embed") === "1" ? "&embed=1" : "")); } catch (e) {}
+      toParent({ fodo: "xray-done", ok: true, jobId: rep.jobId, domain: rep.business && rep.business.domain, score: rep.scores && rep.scores.overall, opportunities: rep.opportunities.length });
       return rep;
     }, function (e) {
-      busy = false; $("xr-run").disabled = false;
+      busy = false; $("xr-run").disabled = false; toParent({ fodo: "xray-done", ok: false, error: String((e && e.message) || "X-Ray stopped").slice(0, 200) });
       status(e.user ? e.message : "The X-Ray stopped: " + (e.message || "unknown error") + ". Please try again.", "warn"); track("xray_fail", {});
       // the site could not be read at all → give the X-Ray credit back (the server checks that almost nothing was used)
       if (curJob && e.refundable && ACC) callJ("refund", { jobId: curJob }, { tries: 1 }).then(function (j) { if (j.refunded) { status(e.message + " Your X-Ray credit was returned.", "warn"); ACC.me(true); } }, function () {});

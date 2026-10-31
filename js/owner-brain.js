@@ -157,7 +157,12 @@
     else hello();
     function hello() { log.innerHTML = '<div class="ob-msg a"><p><b>FODO Brain is ready.</b> I work from FODO\'s live data, my memory and the documents you give me. Try:</p><ul><li>How is FODO doing today?</li><li>Check the whole system.</li><li>Analyze my latest X-Ray.</li><li>Remember that we are focusing on agency clients this quarter.</li><li>What can you do?</li></ul></div>'; }
   };
-  function threads() { api("threads").then(function (j) { var el = document.getElementById("ob-tl"); if (!el) return; el.innerHTML = (j.items || []).map(function (t) { return '<a href="#chat/' + esc(t.id) + '" class="' + (t.id === S.thread ? "on" : "") + '" title="' + esc(t.title) + '">' + esc(t.title) + "</a>"; }).join("") || '<p class="ob-empty">No conversations yet.</p>'; }); }
+  function threads() { api("threads").then(function (j) { var el = document.getElementById("ob-tl"); if (!el) return; var L = j.items || [];
+    el.innerHTML = L.map(function (t) { return '<div class="ob-thr' + (t.id === S.thread ? " on" : "") + '"><a href="#chat/' + esc(t.id) + '" class="' + (t.id === S.thread ? "on" : "") + '" title="' + esc(t.title) + '">' + esc(t.title) + '</a><button class="ob-thx" data-tdel="' + esc(t.id) + '" title="Delete this conversation" aria-label="Delete conversation ' + esc(t.title) + '">✕</button></div>'; }).join("") +
+      (L.length ? '<button class="ob-btn sm" id="ob-tdall" style="width:100%;margin-top:10px">🗑 Delete all chat history</button>' : '<p class="ob-empty">No conversations yet.</p>');
+    el.querySelectorAll("[data-tdel]").forEach(function (b) { b.onclick = function (e) { e.preventDefault(); if (!confirm("Delete this conversation permanently?")) return; api("thread/" + encodeURIComponent(b.dataset.tdel), "DELETE").then(function (r) { if (!r.ok) return; if (S.thread === b.dataset.tdel) { S.thread = null; try { sessionStorage.removeItem("ob-thread"); } catch (x) {} VIEWS.chat(); } else threads(); }); }; });
+    var all = document.getElementById("ob-tdall"); if (all) all.onclick = function () { if (prompt("This deletes ALL " + L.length + " conversations permanently (memory, tasks and documents stay). Type DELETE to confirm.") !== "DELETE") return; api("threads", "DELETE").then(function (r) { if (!r.ok) return alert(r.reason || "Couldn't delete."); S.thread = null; try { sessionStorage.removeItem("ob-thread"); } catch (x) {} VIEWS.chat(); }); };
+  }); }
   function LOG() { return document.getElementById("ob-log") || S.vlog || (S.vlog = document.createElement("div")); }
   function bubbleU(t) { var d = document.createElement("div"); d.className = "ob-msg u"; d.textContent = t; LOG().appendChild(d); return d; }
   function bubbleA(r) {
@@ -181,6 +186,40 @@
     else if (u.action === "open") setTimeout(function () { location.hash = "#" + u.value; }, 400);
     else if (u.action === "voice") { if (u.value === "off") setTimeout(hfStop, 2500); else hfStart(); }
     else if (u.action === "speak") { S.voiceOut = u.value !== "off"; try { localStorage.setItem("ob-voice", S.voiceOut ? "1" : "0"); } catch (e) {} }
+    else if (u.action === "xray") runXray(u.value, u.domain || u.value);
+  }
+  /* v30: a Business X-Ray run from the Brain — the real X-Ray page works in a hidden frame (same site, same login), tells this
+     page its progress, and when it finishes the Brain summarises the saved report here and says it out loud (live voice too). */
+  var XRJ = null;
+  function runXray(url, domain) {
+    if (XRJ) { bubbleA({ answer: "An X-Ray of **" + XRJ.domain + "** is already running — I'll report that one first." }); return; }
+    var hi = /\b(ka|ki|ke|karo|kar|karke|do|hai|batao|bata|chahiye|mujhe)\b/i.test(S.lastQ || "");
+    var f = document.createElement("iframe"); f.title = "X-Ray runner"; f.setAttribute("aria-hidden", "true"); f.tabIndex = -1;
+    f.style.cssText = "position:fixed;left:-4000px;top:0;width:1280px;height:900px;border:0;opacity:0;pointer-events:none";
+    f.src = "/business-x-ray/?u=" + encodeURIComponent(url) + "&go=1&embed=1";
+    var card = document.createElement("div"); card.className = "ob-msg a ob-xrjob";
+    card.innerHTML = '<b>🔬 Business X-Ray · ' + esc(domain) + '</b><div class="ob-steps"><span class="ob-orb busy" style="width:14px;height:14px"></span><span class="xr-st">Starting…</span></div><small class="ob-empty">Runs here in 2–4 min — keep this page open. <a href="/business-x-ray/?u=' + esc(encodeURIComponent(url)) + '&go=1" target="_blank" rel="noopener">Watch it in full</a> · <button class="ob-btn sm" data-xrstop>Stop</button></small>';
+    var lg = LOG(); lg.appendChild(card); lg.scrollTop = lg.scrollHeight;
+    var st = card.querySelector(".xr-st"), job = XRJ = { domain: domain, f: f, card: card };
+    var end = function (ok, info) {
+      if (XRJ !== job) return; XRJ = null; clearTimeout(job.t); window.removeEventListener("message", onm); try { f.remove(); } catch (e) {}
+      var o = card.querySelector(".ob-orb"); if (o) o.remove(); var sm = card.querySelector("small"); if (sm) sm.remove();
+      if (!ok) { st.textContent = "✗ " + (info || "The X-Ray stopped."); var msg = (hi ? domain + " ka X-Ray poora nahi ho paya: " : "The X-Ray of " + domain + " didn't finish: ") + (info || ""); if (window.FodoLive && FodoLive.isActive()) FodoLive.say("[X-RAY RESULT] " + msg + " — tell him briefly."); else if (S.voiceOut || HF.on) speak(msg); return; }
+      st.innerHTML = "✓ Done" + (info && info.score != null ? " — score <b>" + esc(info.score) + "/100</b>" : "") + (info && info.jobId ? ' · <a href="/business-x-ray/?r=' + esc(info.jobId) + '" target="_blank" rel="noopener">full report</a>' : "");
+      var q = hi ? domain + " ka latest X-Ray result batao — score, sabse weak areas aur top 3 fixes, short me." : "Summarise the latest X-Ray of " + domain + " — score, weakest areas and the top 3 fixes, briefly.";
+      api("chat", "POST", { message: q, threadId: S.thread, voice: !!(window.FodoLive && FodoLive.isActive()) }).then(function (r) {
+        if (!r.ok) return; if (r.threadId) S.thread = r.threadId; bubbleA(r); var l2 = LOG(); l2.scrollTop = l2.scrollHeight;
+        if (window.FodoLive && FodoLive.isActive()) FodoLive.say("[X-RAY RESULT] Read this to him now, short and natural, in his language: " + plainSpeech(r.answer).slice(0, 1500));
+        else if (S.voiceOut || HF.on) speak(r.answer);
+      });
+    };
+    var onm = function (e) { if (e.origin !== location.origin || e.source !== f.contentWindow || !e.data) return;
+      if (e.data.fodo === "xray-status") st.textContent = e.data.text;
+      if (e.data.fodo === "xray-done") end(!!e.data.ok, e.data.ok ? e.data : e.data.error); };
+    window.addEventListener("message", onm);
+    card.querySelector("[data-xrstop]").onclick = function () { end(false, "Stopped."); };
+    job.t = setTimeout(function () { end(false, "It took longer than 7 minutes — open the full X-Ray page to finish it."); }, 7 * 60e3);
+    document.body.appendChild(f);
   }
   function send(q, opt) {
     opt = opt || {};
@@ -189,16 +228,15 @@
     if (!log && opt.voice) log = LOG();   // voice works on any page: answers go to the voice panel
     if (!log) { location.hash = "#chat"; setTimeout(function () { send(q, opt); }, 80); return; }
     if (/FODO Brain is ready/.test(log.textContent) && log.children.length === 1) log.innerHTML = "";
-    S.busy = true; busy(true); bubbleU(q);
+    S.busy = true; busy(true); bubbleU(q); S.lastQ = q;
     var w = document.createElement("div"); w.className = "ob-msg a"; w.innerHTML = '<div class="ob-steps"><span class="ob-orb busy" style="width:14px;height:14px"></span><span id="ob-step">' + STEPS[0] + "</span></div>"; log.appendChild(w); log.scrollTop = log.scrollHeight;
     var i = 0, tick = setInterval(function () { var s = document.getElementById("ob-step"); if (s) s.textContent = STEPS[++i % STEPS.length]; }, 1600);
     if (opt.voice) orbState("thinking");
     api("chat", "POST", { message: q, threadId: S.thread, voice: !!opt.voice }).then(function (r) {
       clearInterval(tick); w.remove(); S.busy = false; busy(false);
       if (!r.ok) { var em = "**I couldn't answer:** " + (r.reason || r.error || "error"); bubbleA({ answer: em }); if (opt.done) opt.done({ answer: em }); if (opt.voice) speak("Sorry, I couldn't do that."); return; }
-      (r.ui || []).forEach(applyUi);
       if (r.threadId && r.threadId !== S.thread) { S.thread = r.threadId; try { sessionStorage.setItem("ob-thread", r.threadId); } catch (e) {} threads(); }
-      bubbleA(r); log.scrollTop = log.scrollHeight; if (S.voiceOut || opt.voice) speak(r.answer); else if (HF.on) orbState("listening"); if (opt.done) opt.done(r);
+      bubbleA(r); (r.ui || []).forEach(applyUi); log.scrollTop = log.scrollHeight; if (S.voiceOut || opt.voice) speak(r.answer); else if (HF.on) orbState("listening"); if (opt.done) opt.done(r);
       if (r.memory_updates && r.memory_updates.length || /create_task|remember/.test(r.intent || "")) api("status").then(function (x) { if (x.ok) { S.status = x; pill(); } });
     });
   }
@@ -232,6 +270,7 @@
     FodoLive.start({ text: text || null, voice: S.status.settings.liveVoice, tool: brainTool }).then(function (ok) { if (ok) { HF.on = true; hfLabel(); } });
   }
   function brainTool(req) {   // Gemini asked FODO Brain → the normal chat with all rules and confirmations
+    S.lastQ = req;
     return api("chat", "POST", { message: req, threadId: S.thread, voice: true }).then(function (r) {
       if (!r.ok) return { answer: "FODO Brain couldn't do that: " + (r.reason || r.error || "error") };
       if (r.threadId) { S.thread = r.threadId; try { sessionStorage.setItem("ob-thread", r.threadId); } catch (e) {} }

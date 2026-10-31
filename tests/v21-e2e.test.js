@@ -52,6 +52,15 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     if (!(await p.$(".ob-act"))) console.log("LOG>>", (await p.textContent(".ob-log")).slice(-600));
     await p.waitForSelector(".ob-act button[data-d=run]", { timeout: 5000 }); await shot(p, "brain-chat");
     await p.click(".ob-act button[data-d=run]"); await p.waitForFunction(() => /Done\./.test(document.querySelector(".ob-act").textContent), null, { timeout: 15000 });
+    // v30: "<site> ka xray karke do" → the X-Ray runs inside the Brain page and the result is reported here
+    await p.fill("#ob-in", "spicehub.test ka xray karke do"); await p.press("#ob-in", "Enter");
+    await p.waitForSelector(".ob-xrjob", { timeout: 30000 }); ok(/X-Ray shuru/.test(await p.textContent(".ob-log")), "v30: X-Ray started from chat (honest 2–4 min answer)");
+    await p.waitForFunction(() => /✓ Done/.test(document.querySelector(".ob-xrjob").textContent), null, { timeout: 300000 });
+    await p.waitForFunction(() => { const a = [...document.querySelectorAll(".ob-msg.a")].pop(); return a && /latest xray/i.test(a.textContent) && !a.classList.contains("ob-xrjob"); }, null, { timeout: 60000 }).catch(async (e) => { console.log("XRLOG>>", (await p.textContent(".ob-log")).slice(-900)); throw e; });
+    ok(!(await p.$('iframe[title="X-Ray runner"]')), "v30: X-Ray finished in the Brain page → summary of the saved report posted (runner frame removed)"); await shot(p, "brain-xray");
+    // v30: chat history — delete all
+    await p.waitForSelector("#ob-tdall", { timeout: 10000 }); p.once("dialog", (d) => d.accept("DELETE")); await p.click("#ob-tdall");
+    await p.waitForFunction(() => /No conversations yet/.test(document.getElementById("ob-tl").textContent), null, { timeout: 15000 }); ok(true, "v30: delete all chat history");
     ok(true, "destructive 'forget' → confirmation card → Execute → done");
     // pages
     await p.goto(BASE + "/owner-brain/#tasks"); await p.waitForSelector("#ob-tf");
@@ -89,7 +98,18 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     await p.click(".wb-bar .wb-name"); await p.keyboard.press("Control+z"); await p.waitForTimeout(500); ok(await fr.locator("h1").first().textContent() !== "Gentle care for every smile", "v28: undo (Ctrl+Z)");
     await p.waitForFunction(() => /Saved/.test(document.getElementById("wb-save").textContent), null, { timeout: 15000 }); ok(true, "v28: autosave");
     await p.click("#wb-pub"); await p.waitForSelector(".wb-modal", { timeout: 15000 }); ok(/fix these first|is live/i.test(await p.textContent(".wb-modal")), "v28: publish runs the checks"); await shot(p, "builder-publish");
-    await p.click(".wb-modal [data-x]"); await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(400); await shot(p, "builder-mobile"); await p.setViewportSize({ width: 1440, height: 900 });
+    await p.click(".wb-modal [data-x]");
+    // v29 Store & Blog manager
+    await p.click('[data-tab="store"]'); await p.waitForSelector("[data-sto=products]"); await p.click("[data-sto=products]"); await p.waitForSelector("#np", { timeout: 10000 });
+    await p.click("#np"); await p.fill('#pf [name=title]', "Whitening kit"); await p.fill('#pf [name=price]', "799"); await p.check('#pf [name=track]'); await p.fill('#pf [name=stock]', "5"); await p.click("#pf .wb-btn.pri");
+    await p.waitForSelector(".wb-tbl", { timeout: 10000 }); ok(/Whitening kit/.test(await p.textContent(".wb-tbl")) && /₹799/.test(await p.textContent(".wb-tbl")), "v29: Store manager — add a product (₹799, stock 5)"); await shot(p, "store-products");
+    await p.click("[data-st=blog]"); await p.waitForSelector("#npo"); await p.click("#npo"); await p.fill("#pof [name=title]", "Caring for your teeth"); await p.fill("#pb", "## Brush twice\n**Floss** daily.");
+    ok(/<h2>Brush twice<\/h2>/.test(await p.innerHTML("#pv")), "v29: blog editor live markdown preview"); await p.selectOption("#pst", "published"); await p.click("#pof .wb-btn.pri"); await p.waitForSelector(".wb-tbl");
+    ok(/Caring for your teeth/.test(await p.textContent(".wb-tbl")) && /Published/.test(await p.textContent(".wb-tbl")), "v29: publish a blog post"); await shot(p, "store-blog");
+    await p.click("[data-st=settings]"); await p.waitForSelector("#sf"); ok(/Cash on delivery/.test(await p.textContent("#sf")) && /Cashfree/.test(await p.textContent(".wb-stb")), "v29: store settings + payment connection panel");
+    await p.click("[data-st=orders]"); await p.waitForSelector(".wb-stb #of"); ok(/No orders yet/.test(await p.textContent(".wb-stb")), "v29: orders (none yet — no fake data)");
+    await p.click(".wb-store [data-close]"); await p.waitForTimeout(800); ok(/1<\/b>products/.test(await p.innerHTML("#wb-lp")), "v29: editor knows the real product count");
+    await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(400); await shot(p, "builder-mobile"); await p.setViewportSize({ width: 1440, height: 900 });
     await p.goto(BASE + "/owner-brain/#automations"); await p.waitForFunction(() => /Tell me about every payment/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
     ok(true, "v22: Automations page lists the default automations"); await shot(p, "brain-automations", true);
     await p.goto(BASE + "/owner-brain/#connectors"); await p.waitForFunction(() => /Google/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });

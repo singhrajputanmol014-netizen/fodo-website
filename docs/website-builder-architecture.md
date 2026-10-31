@@ -86,3 +86,7 @@ These are planned next, not done:
 - Comments/approvals
 - Website importer/migration
 - Advanced code mode (custom JS is deliberately not allowed)
+
+
+## v29 — Store & Blog
+See `docs/website-builder-store.md`. New files: `functions/_lib/shop.js` (server), `sites/lib/shop.js` (store/blog pages + cart script), `js/website-store.js` (Store & Blog manager UI). `sites/lib/serve.js` serves `p/`, `cart/`, `checkout/`, `order/`, `blog/` and reads the website's own products/posts read-only.

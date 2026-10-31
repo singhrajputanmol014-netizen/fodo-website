@@ -273,3 +273,7 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
 .eg-tok i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid var(--b-line2)}
 .eg-hit{padding:10px 0;border-bottom:1px solid var(--b-line);overflow-wrap:anywhere}.eg-hit pre{white-space:pre-wrap;font:12px/1.45 var(--b-mono);color:var(--b-muted);margin:6px 0 0}
 @media (max-width:860px){.eg-split,.eg-pgrid{grid-template-columns:1fr}.eg-list{max-height:none}.eg-parts div{grid-template-columns:100px 1fr 30px}.eg-diff{font-size:11px}}
+/* v30: chat history delete + X-Ray job card */
+.ob-thr{display:flex;align-items:center;gap:2px;border-radius:10px}.ob-thr a{flex:1;min-width:0}.ob-thx{flex:0 0 auto;width:26px;height:26px;border:0;background:transparent;color:var(--b-muted);border-radius:8px;cursor:pointer;opacity:0;font-size:12px}.ob-thr:hover .ob-thx,.ob-thr.on .ob-thx,.ob-thx:focus-visible{opacity:1}.ob-thx:hover{color:#ff6b81;background:rgba(255,107,129,.12)}
+@media (hover:none){.ob-thx{opacity:.7}}
+.ob-xrjob{border:1px solid rgba(139,123,255,.4)}.ob-xrjob .ob-steps{margin:6px 0}

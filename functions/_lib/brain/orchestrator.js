@@ -36,7 +36,7 @@ import { getPrompt } from "../prompts.js";
 /* ---------------- intent: fast rules (cheap, no model) ---------------- */
 const Q = /^\s*(what|which|when|who|how|kya|kaun|kab|kaise|kitn[ae]|do you|did we|have we|are we|show|list|batao|dikhao)\b|\?\s*$/i;
 const DOMAIN = /\b((?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s]*)?)\b/i;
-export const WAKE = /^\s*(?:hey|hi|hello|ok|okay|oye|arre|suno)?[\s,]*(?:fodo|phodo|fodu|फोडो|फ़ोडो|brain|jarvis)(?![a-z0-9])[\s,!.:?-]*/i;
+export const WAKE = /^\s*(?:hey|hi|hello|ok|okay|oye|arre|suno)?[\s,]*(?:fodo|phodo|fodu|फोडो|फ़ोडो|brain|jarvis)(?![a-z0-9]|\.[a-z])[\s,!.:?-]*/i;
 const WAKE_END = /[\s,]+(?:hey\s+)?(?:fodo|phodo|fodu|फोडो|फ़ोडो)[\s!.?]*$/i;
 const tailWake = (m) => { const x = WAKE_END.exec(m); if (!x) return m; const before = m.slice(0, x.index), prev = (/(\S+)\s*$/.exec(before) || [])[1] || "";
   if (/,\s*$/.test(before + x[0].slice(0, 2)) || (!/^(at|to|of|for|from|with|on|in|by|about|ka|ki|ke|se|pe|par|join|joined|use|using|try|visit|the|our|my)$/i.test(prev) && before.split(/\s+/).length <= 7)) return before; return m; };
@@ -45,9 +45,12 @@ const PAGES = { home: "home", overview: "home", dashboard: "home", chat: "chat",
 const SOCIAL = /\b(instagram|insta|facebook|fb|linkedin|twitter|youtube|yt|social media|socials|sab jagah|everywhere|all (my )?(accounts|platforms|socials))\b|\bx\b(?= (pe|par|account|handle|and|aur|,))/i;
 const CODE = /\b(website|site|homepage|home page|page|landing|admin|dashboard|panel|button|section|heading|headline|title|text|colou?r|font|footer|header|menu|navbar|banner|form|feature|code|css|logo|pricing page|plans page)\b/i;
 const CHANGE = /\b(change|edit|update|add|remove|delete|replace|fix|rename|move|make|create|build|implement|badal(o|na|do)?|badlo|hata(o|do|na)?|daal(o|do)?|dal(o|do)|jod(o|do)?|laga(o|do)?|bana(o|do)?|kar do|theek karo)\b/i;
+/* voice transcripts: "fodo dot co dot in" → fodo.co.in, "x ray" / "एक्स रे" → x-ray */
+export function spoken(m) { return String(m || "").replace(/\b([a-z0-9-]+)\s*(?:\bdot\b|डॉट|\s\.\s)\s*(?=[a-z0-9-]+)/gi, "$1.").replace(/\b(?:x|ex|eks)[\s-]?rays?\b|\bxray\b|एक्स[\s-]?रे/gi, (w) => (/^x-ray$/i.test(w) ? w : "X-Ray")).replace(/\b(www)\s+\./gi, "$1."); }
+const XR = /\bx-ray\b/i;
 export function route(msg, env) {
   env = env || {};
-  msg = stripWake(msg).text;
+  msg = stripWake(spoken(msg)).text;
   const m = String(msg || "").trim(), n = m.toLowerCase(), calls = [], add = (name, args) => { if (!calls.some((c) => c.name === name)) calls.push({ name, args: args || {} }); };
   // small talk: "fodo tum kaise ho", "how are you", "hi" → a warm reply with a live pulse
   if (/^(hi+|hello+|hey+|namaste|good (morning|afternoon|evening|night)|thanks?|thank you|shukriya|dhanyavaad|(tum|aap|you)\s*(kaise|kaisi|how)\s*(ho|hai|are you)|how are you( doing)?|kya haal( hai)?|kaise ho|sab theek\??|what'?s up|wassup)[\s!?.]*$/i.test(m)) return { intent: "smalltalk", calls: [{ name: "pulse", args: {} }] };
@@ -57,6 +60,12 @@ export function route(msg, env) {
   if (pg && PAGES[pg[1].trim().toLowerCase()]) return { intent: "ui", calls: [{ name: "ui", args: { action: "open", value: PAGES[pg[1].trim().toLowerCase()] } }] };
   if (/\b(stop listening|mic (band|off)|sunna band|voice off|hands-?free off|chup ho ja(o)?|mute)\b/i.test(m)) return { intent: "ui", calls: [{ name: "ui", args: { action: "voice", value: "off" } }] };
   if (/\b(read (it |answers )?(aloud|out loud)|bol ke batao|bolkar batao|speak (the )?answers)\b/i.test(m)) return { intent: "ui", calls: [{ name: "ui", args: { action: "speak", value: /\b(don'?t|mat|band|off|stop)\b/i.test(m) ? "off" : "on" } }] };
+  // Business X-Ray of a website — before the website/code rules ("website ka x-ray bana do" is NOT a code change)
+  { const d0 = (DOMAIN.exec(m.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, " ")) || [])[1];
+    if (XR.test(m) && d0 && !/\b(email|mail|send|bhej|reply|message)\b/i.test(m)) {
+      if (/\b(latest|last|recent|pichl[ae]|purana|old|previous|report|result|dikhao|show|compare|kya aaya|score)\b/i.test(m) && !/\b(start|run|new|naya|fresh|again|dobara|phir se|abhi|now|chala|karo|kar do|karke|kar ke|nikalo|bana)\b/i.test(m)) return { intent: "latest_xray", calls: [{ name: "latest_xray", args: { website: d0 } }] };
+      return { intent: "start_xray", calls: [{ name: "start_xray", args: { website: d0 } }] };
+    } }
   // social media: post everywhere / numbers
   if (SOCIAL.test(m) && /\b(post|share|publish|upload|daalo|daal do|dal do|tweet)\b/i.test(m) && !/^\s*(what|which|how|kya|kaun|kaise|did|have)\b/i.test(m)) { const tx = (/["“](.+?)["”]/.exec(m) || /:\s*([\s\S]{3,})$/.exec(m) || [])[1]; if (tx) { const pl = []; [["instagram", /insta/i], ["facebook", /\b(facebook|fb)\b/i], ["linkedin", /linkedin/i], ["x", /\b(twitter|x)\b/i], ["youtube", /\b(youtube|yt)\b/i]].forEach((q) => { if (q[1].test(m.replace(tx, ""))) pl.push(q[0]); }); return { intent: "social_post", calls: [{ name: "social_post", args: { text: tx.trim(), platforms: /sab jagah|everywhere|all/i.test(m) || !pl.length ? "all" : pl.join(",") } }] }; } return { intent: "social_post", calls: [], plan: true }; }
   if (SOCIAL.test(m) && /\b(followers?|stats|numbers|reach|likes|views|subscribers|engagement|performance|kaisa (chal|ja) raha|growth|kitne)\b/i.test(m)) { const pf = /insta/i.test(m) ? "instagram" : /\b(facebook|fb)\b/i.test(m) ? "facebook" : /linkedin/i.test(m) ? "linkedin" : /twitter|\bx\b/i.test(m) ? "x" : /youtube|\byt\b/i.test(m) ? "youtube" : ""; return { intent: "social_stats", calls: [{ name: "social_stats", args: pf ? { platform: pf } : {} }] }; }
@@ -101,6 +110,8 @@ export function route(msg, env) {
   if (isQ && /\b(decide|decision|focus(ing)?|we said|yaad hai|remember|told you|goal|goals|preference|policy|pehle kya)\b/i.test(m)) add("search_memory", { query: m });
   if (/\b(tasks?|to-?dos?|kaam (list|baki))\b/i.test(m) && isQ) add("list_tasks");
   if (/\bprojects?\b/i.test(m) && isQ) add("list_projects");
+  if (dom && !XR.test(m) && /\b(check|dekh(o|ke|kar)?|padh(o|ke)?|kya (hai|likha|bech|karte)|open|khol(o|ke)|summar(y|i[sz]e)|about|ke baare|bata(o)?|analy[sz]e)\b/i.test(m) && !/@/.test(dom)) add("read_webpage", { url: dom });
+  if (/\b(search|dhoond(o|h)?|dhund(o|h)?|khoj(o)?|google (pe|par|kar|karo|it)|internet (pe|par)|online (dekh|check)|latest news|news (kya|batao)|look up|find (me )?(\d+ )?competitors)\b/i.test(m) && !/\b(search console|memory|document|task)\b/i.test(m)) add("web_search", { query: m.replace(/^(please )?(search( the web)?( for)?|google karo|look up|dhoondo|khojo)\s*/i, "").replace(/\s*(search|google) (karo|kar do|kar ke batao|karke batao)\s*$/i, "") || m });
   if (/\b(research|search the web|google (kar|karo|it)|look up|find (me )?(\d+ )?competitors)\b/i.test(m)) add("web_search", { query: m.replace(/^(please )?(research|search the web for|google karo|look up)\s*/i, "") });
   if (/^https?:\/\/\S+$/i.test(m) || /\b(read|open|check|summari[sz]e|padho)\b.{0,20}https?:\/\//i.test(m)) add("read_webpage", { url: (/(https?:\/\/\S+)/.exec(m) || [])[1] });
   // a message that asks to DO something (send, change, block, delete, draft…) always goes through the planner too
@@ -181,7 +192,7 @@ function plain(results) {
 
 /* ---------------- the main entry: one owner message ---------------- */
 export async function chat(base, body) {
-  const env = base.env, t0 = Date.now(), raw = clean(body.message, 4000), sw = stripWake(raw), msg = sw.text, voice = !!body.voice;
+  const env = base.env, t0 = Date.now(), raw = clean(body.message, 4000), sw = stripWake(spoken(raw)), msg = sw.text, voice = !!body.voice;
   if (!raw) return { ok: false, error: "Say something." };
   const settings = await getSettings(env), av = availableProviders(env), ai = av["workers-ai"] || av.groq || av.gemini;
   const W = base.who || null, th = await thread(env, body.threadId, msg, W), d = await brainDb(env);
@@ -254,7 +265,15 @@ export async function chat(base, body) {
     const [mem, docs] = await Promise.all([recall(env, msg, { scope, limit: 6 }).catch(() => []), calls.some((c) => c.name === "search_documents") ? Promise.resolve([]) : vectorStore.search(env, msg, { limit: 3 }).catch(() => [])]);
     const liveOk = results.some((x) => x.ok && !x.pending && TOOLS[x.tool] && TOOLS[x.tool].cat !== "Memory");
     confidence = liveOk ? "HIGH" : mem.length || results.some((x) => x.ok && !x.pending) ? "MEDIUM" : "LOW";
-    if (ai) {
+    const sx = results.filter((x) => x.tool === "start_xray")[0];
+    if (sx && sx.ok && r.intent === "start_xray") {   // fixed, honest answer: the X-Ray really takes minutes
+      const v = sx.result, hi = /\b(ka|ki|ke|karo|kar|karke|do|hai|batao|bata|chahiye|mujhe)\b/i.test(msg);
+      answer = v.inBrain ? (hi ? "X-Ray shuru — **" + v.domain + "**. Isme 2–4 minute lagenge; ye isi page pe chal raha hai (page band mat karna). Khatam hote hi main score, weak areas aur top fixes yahin bata dunga" + (voice ? " — bol ke bhi." : ".") : "Starting the X-Ray of **" + v.domain + "** — it takes 2–4 minutes and runs right here (keep this page open). As soon as it's done I'll tell you the score, weak areas and top fixes" + (voice ? " — out loud too." : "."))
+        : v.background ? (hi ? "X-Ray background me chal raha hai — **" + v.domain + "**. Ready hote hi email aayega; phir mujhse 'latest X-Ray batao' bolna." : "The X-Ray of **" + v.domain + "** is running in the background — you'll get an email when it's ready; then ask me for the latest X-Ray.")
+        : (v.note || "X-Ray link: " + v.link);
+      confidence = "HIGH"; model = "rules";
+    }
+    if (ai && answer == null) {
       steps.push("Analyzing");
       const P = await getPrompt(env, "brainCore");
       let budget = 9000; const toolText = results.map((x) => { const s = "### " + x.tool + (x.ok ? x.pending ? " — WAITING FOR OWNER CONFIRMATION (not executed): " + x.action.preview : "\n" + JSON.stringify(x.result) : " — FAILED: " + x.error); const c = clip(s, Math.max(400, Math.min(4500, budget))); budget -= c.length; return c; }).join("\n\n");

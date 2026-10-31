@@ -243,12 +243,12 @@ export async function setOrderStatus(env, s, oid, status, opt) {
 }
 async function refundStart(env, s, o, opt) {
   const d = await shopDb(env), amount = opt.amount ? Math.min(o.total, Math.max(100, Math.round(+opt.amount * 100) || o.total)) : o.total, reason = clip(opt.reason || "Refund", 200), now = nowIso();
-  const rec = { id: "rf_" + o.id.slice(3), amount, reason, requested_at: now, manual: false, status: "processing" };
+  const rec = { id: "rf_" + o.id.slice(3), amount, partial: amount < o.total, reason, requested_at: now, manual: false, status: "processing" };   // v35: partial refunds
   if (o.method !== "online" || !o.pay_ref) {   // cash / WhatsApp payments: FODO can't move that money, the merchant confirms they paid it back
     if (!opt.manual) throw err("This order wasn't paid online. Pay the customer back yourself, then confirm “I have refunded this customer”.", 400);
     Object.assign(rec, { manual: true, status: "refunded", completed_at: now });
     const u = await d.prepare("UPDATE site_orders SET status='refunded', refund=?3, updated_at=?4 WHERE id=?1 AND site_id=?2 AND status=?5").bind(o.id, s.id, JSON.stringify(rec), now, o.status).run(); if (!u.meta.changes) throw err("This order was just changed somewhere else.", 409);
-    if (o.status !== "delivered" && o.status !== "shipped") await restoreStock(d, o.id); return { status: "refunded", refund: rec };
+    if (!rec.partial && o.status !== "delivered" && o.status !== "shipped") await restoreStock(d, o.id); return { status: "refunded", refund: rec };
   }
   // claim first: two clicks (or two admins) can't start two refunds
   const c = await d.prepare("UPDATE site_orders SET status='refund_processing', refund=?3, updated_at=?4 WHERE id=?1 AND site_id=?2 AND status=?5").bind(o.id, s.id, JSON.stringify(rec), now, o.status).run(); if (!c.meta.changes) throw err("A refund for this order is already being processed.", 409);
@@ -257,7 +257,7 @@ async function refundStart(env, s, o, opt) {
   const j = r ? await r.json().catch(() => ({})) : {};
   if (!r || (!r.ok && !/already exists/i.test(j.message || ""))) { await refundFail(d, o, rec, (j && j.message) || "Cashfree did not accept the refund."); throw err("Cashfree did not accept the refund: " + clip((j && j.message) || "no answer", 120), 502); }
   rec.gateway_id = String(j.cf_refund_id || rec.gateway_id || ""); await d.prepare("UPDATE site_orders SET refund=?2 WHERE id=?1").bind(o.id, JSON.stringify(rec)).run();
-  if (o.status === "paid") await restoreStock(d, o.id);   // never shipped: the item is back on the shelf
+  if (o.status === "paid" && !rec.partial) await restoreStock(d, o.id);   // full refund of an unshipped order: the item is back on the shelf (a partial refund keeps the stock as it is)
   return Object.assign({ status: "refund_processing", refund: rec }, j.refund_status === "SUCCESS" ? await refundCheck(env, s, o.id) : {});
 }
 async function refundFail(d, o, rec, why) { Object.assign(rec, { status: "failed", failure: clip(why, 200), failed_at: nowIso() }); await d.prepare("UPDATE site_orders SET status='refund_failed', refund=?2, updated_at=?3 WHERE id=?1").bind(o.id, JSON.stringify(rec), nowIso()).run(); }

@@ -14,7 +14,7 @@ export const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => 
 export function safeUrl(u, allowMedia) {
   u = String(u == null ? "" : u).trim(); if (!u) return "";
   if (/^(https?:\/\/|mailto:|tel:|#)/i.test(u)) return /^javascript:/i.test(u) ? "" : u;
-  if (/^\/api\/sites\/media\/[a-z0-9]{20}$/.test(u)) return allowMedia === false ? "" : u;
+  if (/^\/api\/sites\/media\/[a-z0-9]{20}(#[a-z0-9=&,.]{1,60})?$/.test(u)) return allowMedia === false ? "" : u;   // v35: optional #w=…&h=…&fp=x,y (size + focal point from the media library)
   if (/^[a-z0-9\-\/._?=&]*$/i.test(u) && !/^\/\//.test(u)) return u;   // relative page links
   return "";
 }
@@ -28,7 +28,10 @@ export const money = (paise, cur) => { const n = (+paise || 0) / 100; return (cu
 const link = (u) => (/^[a-z0-9-]+\/(#[\w-]*)?$/.test(u) ? BASE + u : u);
 
 /* ---------- sections ---------- */
-const img = (src, alt, cls, eager) => { const u = safeUrl(src); return u ? '<img class="' + (cls || "") + '" src="' + esc(u) + '" alt="' + esc(alt || "") + '"' + (eager ? ' fetchpriority="high"' : ' loading="lazy" decoding="async"') + ">" : '<div class="ph ' + (cls || "") + '" role="img" aria-label="' + esc(alt || "Image") + '"></div>'; };
+/* v35: media-library images carry their size and focal point in the URL fragment → width/height (no layout shift) + object-position */
+const imgMeta = (u) => { const m = /#(.+)$/.exec(u || ""), o = {}; if (!m) return ""; m[1].split("&").forEach((kv) => { const [k, v] = kv.split("="); o[k] = v; });
+  const w = parseInt(o.w, 10), h = parseInt(o.h, 10), fp = /^(\d{1,3}),(\d{1,3})$/.exec(o.fp || ""); return (w > 0 && w < 10000 && h > 0 && h < 10000 ? ' width="' + w + '" height="' + h + '"' : "") + (fp ? ' style="object-position:' + Math.min(100, +fp[1]) + "% " + Math.min(100, +fp[2]) + '%"' : ""); };
+const img = (src, alt, cls, eager) => { const u = safeUrl(src); return u ? '<img class="' + (cls || "") + '" src="' + esc(u) + '" alt="' + esc(alt || "") + '"' + imgMeta(u) + (eager ? ' fetchpriority="high"' : ' loading="lazy" decoding="async"') + ">" : '<div class="ph ' + (cls || "") + '" role="img" aria-label="' + esc(alt || "Image") + '"></div>'; };
 const btn = (b, cls, track) => { if (!b || !b.label) return ""; const u = link(safeUrl(b.href) || "#contact"); return '<a class="btn ' + (cls || "") + '" href="' + esc(u) + '"' + (/^https?:/.test(u) ? ' rel="noopener" target="_blank"' : "") + (track ? ' data-cta="' + esc(b.label) + '"' : "") + ">" + esc(b.label) + "</a>"; };
 const F = (k, edit) => (edit ? ' data-f="' + k + '"' : "");
 const head = (p, edit, tag) => (p.title ? "<" + (tag || "h2") + F("title", edit) + ">" + esc(p.title) + "</" + (tag || "h2") + ">" : "") + (p.subtitle ? '<p class="sub"' + F("subtitle", edit) + ">" + esc(p.subtitle) + "</p>" : "");
@@ -292,7 +295,7 @@ export function liveScript(endpoint, siteId) {   // v32: respects cookie consent
   return "<script>(function(){var E=" + JSON.stringify(endpoint) + ",S=" + JSON.stringify(siteId) + ",d=innerWidth<640?'mobile':innerWidth<1024?'tablet':'desktop';" +
     "function ok(){if(!document.getElementById('fodo-cc'))return true;try{var c=JSON.parse(localStorage.getItem('fodo-consent')||'null');return !!(c&&c.analytics)}catch(e){return false}}" +
     "function b(t,x){if(!ok())return;try{navigator.sendBeacon(E+'/e',new Blob([JSON.stringify({s:S,t:t,p:location.pathname,x:x||'',d:d,r:document.referrer.slice(0,200)})],{type:'text/plain'}))}catch(e){}}window.__fodoView=function(){b('view')};b('view');" +
-    "document.addEventListener('click',function(e){var a=e.target.closest('[data-cta]');if(a)b('cta',a.getAttribute('data-cta'))});" +
+    "document.addEventListener('click',function(e){var a=e.target.closest('[data-cta]');if(a)return b('cta',a.getAttribute('data-cta'));var l=e.target.closest('a[href]');if(!l)return;var h=l.getAttribute('href')||'';if(/^tel:/i.test(h))b('cta','contact:phone');else if(/^mailto:/i.test(h))b('cta','contact:email');else if(/wa\\.me|whatsapp\\.com/i.test(h))b('cta','contact:whatsapp')});" +   // v35: phone / email / WhatsApp taps count as contacts
     "document.querySelectorAll('[data-fodo-form]').forEach(function(f){f.addEventListener('submit',function(e){e.preventDefault();var o={};new FormData(f).forEach(function(v,k){v=String(v).slice(0,4000);o[k]=o[k]?o[k]+', '+v:v});o._page=location.pathname;var btn=f.querySelector('button[type=submit]');btn.disabled=true;" +
     "fetch(E+'/f/'+S,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify(o)}).then(function(r){return r.json()}).then(function(j){if(j.ok){var rd=f.getAttribute('data-redirect');if(rd){location.href=rd;return}f.reset();f.querySelector('.form-ok').hidden=false}else alert(j.reason||'Could not send')}).catch(function(){alert('Could not send, please try again')}).finally(function(){btn.disabled=false})})})})()</script>";
 }

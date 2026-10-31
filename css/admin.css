@@ -161,3 +161,8 @@ body.ad-menu-on{overflow:hidden}
 .ad-form{display:grid;gap:12px;max-width:720px}.ad-form h2{margin:12px 0 0;font-size:18px}
 .ad-lab{display:grid;gap:5px;font-weight:600;font-size:14px}.ad-lab small{font-weight:400}
 .ad-lead textarea.ad-in{width:100%;margin-top:8px;resize:vertical}
+
+/* v35: long emails / URLs in the activity feed wrap instead of widening the page */
+.ad-feed li>div{min-width:0;overflow-wrap:anywhere}
+/* v35: on a phone nothing may widen the page: a wider layout viewport pushed the fixed bottom bar off-screen */
+@media (max-width:1000px){html,body{overflow-x:hidden}.ad-app{max-width:100%;min-width:0}.ad-main{min-width:0;max-width:100%;overflow-x:clip}}

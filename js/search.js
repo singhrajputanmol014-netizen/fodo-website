@@ -128,8 +128,8 @@
     else if (e.key === "Escape") { e.preventDefault(); close(); }
   }
   function ask(q) {
-    close(); var fab = document.querySelector(".bot-fab");
-    var go = function () { var f = document.querySelector(".bot-fab"); if (!f) return false; f.click(); setTimeout(function () { var i = document.getElementById("bot-in"); if (i) { i.value = q; i.focus(); } }, 350); return true; };
+    close(); var fab = document.querySelector(".bot-fab:not(.bot-ph)"); if (!fab && window.FODO_BOT_LOAD) window.FODO_BOT_LOAD();   // v35: the bot loads on demand
+    var go = function () { var f = document.querySelector(".bot-fab:not(.bot-ph)"); if (!f) return false; f.click(); setTimeout(function () { var i = document.getElementById("bot-in"); if (i) { i.value = q; i.focus(); } }, 350); return true; };
     if (fab) { go(); return; }
     document.dispatchEvent(new Event("pointerdown")); window.dispatchEvent(new Event("scroll"));
     var n = 0, t = setInterval(function () { if (go() || ++n > 40) clearInterval(t); }, 150);

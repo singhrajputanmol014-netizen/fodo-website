@@ -12,7 +12,7 @@
   var KIND = { login_google: "Logged in · Google", login_email: "Logged in · email code", xray_start: "Started an X-Ray", xray_done: "Finished an X-Ray", xray_refund: "X-Ray refunded (site unreadable)", limit_hit: "Ran out of X-Rays", checkout: "Opened payment", paid: "Paid",
     export_pdf: "Downloaded PDF", export_xlsx: "Downloaded Excel", export_csv: "Downloaded findings CSV", export_plan: "Downloaded plan CSV", export_json: "Downloaded JSON", share: "Copied share link", finder_export: "Downloaded competitor sheet",
     edge_fixPack: "FODO Edge · AI Fix Pack", edge_battleCards: "FODO Edge · Battle cards", edge_roadmap90: "FODO Edge · 90-day roadmap", edge_clientPitch: "FODO Edge · Client pitch", linkcheck: "Broken-link check", authority: "Domain authority", copy_schema: "Copied schema code", copy_pitch: "Copied client pitch", blocked_try: "Tried to log in while blocked", admin_grant: "Given free by FODO", admin_block: "Blocked / unblocked by FODO" };
-  var kind = function (k) { return KIND[k] || k; };
+  var kind = function (k) { return KIND[k] || (k === "tool_use" ? "Used a tool" : String(k).replace(/_/g, " ").replace(/^./, function (c) { return c.toUpperCase(); })); };
   var PLAN_C = { free: "", starter: "t-s", growth: "t-g", pro: "t-p", agency: "t-a", owner: "t-o" };
   var badge = function (plan) { return '<span class="ad-plan ' + (PLAN_C[plan] || "") + '">' + esc(plan) + "</span>"; };
   var csv = function (rows, name) { var t = rows.map(function (r) { return r.map(function (v) { v = v == null ? "" : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\n"); var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + t], { type: "text/csv" })); a.download = name + "-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 500); };
@@ -35,11 +35,11 @@
     ["xrays", "X-Rays", "M11 2a9 9 0 1 0 5.6 16l4.7 4.7 1.4-1.4-4.7-4.7A9 9 0 0 0 11 2zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"], ["leads", "Leads", "M12 2l2.9 6.9L22 9.3l-5.5 4.7L18.2 21 12 17.3 5.8 21l1.7-7L2 9.3l7.1-.4z"],
     ["payments", "Payments", "M2 6h20v12H2zm2 2v2h16V8zm0 6v2h6v-2z"], ["activity", "Activity", "M3 12h4l3-8 4 16 3-8h4"], ["lab", "Growth Lab", "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"], ["businesses", "Businesses", "M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1"], ["findings", "Findings", "M4 6h16M4 12h10M4 18h7M18 15l3 3-3 3"], ["quality", "Quality", "M9 12l2 2 4-4M12 3l8 4v5c0 5-3.4 8.6-8 9-4.6-.4-8-4-8-9V7z"], ["prompts", "AI prompts", "M4 5h16v11H8l-4 4zM8 9h8M8 12h5"], ["costs", "Costs & profit", "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"], ["monitoring", "Monitoring", "M2 12h4l2-6 4 12 2-6h8"], ["settings", "Prices & tools", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.5-3a8.5 8.5 0 0 0-.1-1.3l2-1.6-2-3.4-2.4 1a8.6 8.6 0 0 0-2.2-1.3L15.5 2h-4l-.4 2.5a8.6 8.6 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.6a8.5 8.5 0 0 0 0 2.6l-2 1.6 2 3.4 2.4-1a8.6 8.6 0 0 0 2.2 1.3l.4 2.5h4l.4-2.5a8.6 8.6 0 0 0 2.2-1.3l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.3z"], ["team", "Team", "M12 1l9 4v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V5z"]];
   // v34 enquiries + website settings
-  TABS.push(["enquiries", "Enquiries", "M4 4h16v12H5.2L4 17.2zM8 8h8M8 11h5"], ["sitesettings", "Website settings", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7.5-2.2-1.9-1.1-1.6 1.6L14 8.5 13 6.5h-2l-1 2-2 .9-1.6-1.6-1.9 1.1.5 2.2L3 12l2.1.7-.5 2.2 1.9 1.1 1.6-1.6 2 .9 1 2h2l1-2 2-.9 1.6 1.6 1.9-1.1-.5-2.2z"]);
+  TABS.push(["security", "Security reports", "M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"], ["enquiries", "Enquiries", "M4 4h16v12H5.2L4 17.2zM8 8h8M8 11h5"], ["sitesettings", "Website settings", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7.5-2.2-1.9-1.1-1.6 1.6L14 8.5 13 6.5h-2l-1 2-2 .9-1.6-1.6-1.9 1.1.5 2.2L3 12l2.1.7-.5 2.2 1.9 1.1 1.6-1.6 2 .9 1 2h2l1-2 2-.9 1.6 1.6 1.9-1.1-.5-2.2z"]);
   // v20 help desk
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -100,7 +100,7 @@
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -445,6 +445,16 @@
       $("#eq-csv").onclick = function () { csv([["Date", "Type", "Name", "Business", "Email", "Phone", "Status", "Page", "Source", "Campaign", "Notes"]].concat(j.items.map(function (l) { return [l.created_at, l.mode, l.name, l.business, l.email, l.phone, l.status, l.page, l.source, l.campaign, l.notes]; })), "fodo-enquiries.csv"); };
       $$(".ad-lead[data-id]").forEach(function (c) { var id = c.dataset.id, save = function (b) { api("enquiries/" + encodeURIComponent(id), b).then(function (r) { toast(r.ok ? "Saved" : (r.reason || "Not saved"), !r.ok); }); };
         var sel = c.querySelector(".eq-st"), n = c.querySelector(".eq-n"); if (sel) sel.onchange = function () { save({ status: sel.value }); }; if (n) n.onchange = function () { save({ notes: n.value }); }; });
+    });
+  }
+  /* v35: what the report-only Content-Security-Policy would block (grouped; no visitor data) */
+  function securityView() {
+    api("security").then(function (j) {
+      if (!j.ok) return fail(j);
+      $("#ad-view").innerHTML = head("Security reports", "fodo.co.in sends a Content-Security-Policy in report-only mode: nothing is blocked yet. Each row is something the policy WOULD block. When a row is a real tool you use, add its address to the policy in _headers; when the list stays empty for a few weeks, the policy can be switched to enforcing.", j.canEdit && j.items.length ? '<button class="btn sm ghost" id="sec-clr" type="button">Clear list</button>' : "") +
+        (j.items.length ? '<div class="panel ad-card"><div class="xr-scroll"><table class="ad-t"><thead><tr><th>Directive</th><th>Would block</th><th>Page</th><th>Times</th><th>Last</th></tr></thead><tbody>' + j.items.map(function (x) { return '<tr><td data-l="Directive">' + esc(x.directive) + '</td><td data-l="Would block">' + esc(x.blocked || "?") + '</td><td data-l="Page">' + esc(x.page || "") + '</td><td data-l="Times">' + x.n + '</td><td data-l="Last">' + esc(ago(x.last_at)) + "</td></tr>"; }).join("") + "</tbody></table></div></div>"
+          : '<div class="panel ad-card"><p>No reports yet. That is good news: nothing on the site would be blocked by the policy.</p></div>');
+      if ($("#sec-clr")) $("#sec-clr").onclick = function () { if (confirm("Clear all reports?")) api("security/clear", {}).then(function () { securityView(); }); };
     });
   }
   /* v34: settings the team changes without a deploy */

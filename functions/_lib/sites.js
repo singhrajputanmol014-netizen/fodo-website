@@ -277,25 +277,53 @@ export async function beacon(env, b) {
   if (b.t === "view" && b.r) { try { const h = new URL(b.r).hostname.replace(/^www\./, ""); if (h) await bump(env, b.s, "ref", "ref:" + clip(h, 60)); } catch (e) {} }
 }
 export async function stats(env, s, days) {
-  const d = await sdb(env), since = new Date(Date.now() - (days || 30) * 864e5).toISOString().slice(0, 10), rows = (await d.prepare("SELECT day, path, metric, n FROM site_stats WHERE site_id=?1 AND day >= ?2").bind(s.id, since).all()).results || [];
+  const d = await sdb(env), n0 = days || 30, since = new Date(Date.now() - n0 * 864e5).toISOString().slice(0, 10), rows = (await d.prepare("SELECT day, path, metric, n FROM site_stats WHERE site_id=?1 AND day >= ?2").bind(s.id, since).all()).results || [];
   const sum = (f) => rows.filter(f).reduce((a, r) => a + r.n, 0), group = (f, key) => { const o = {}; rows.filter(f).forEach((r) => { const k = key(r); o[k] = (o[k] || 0) + r.n; }); return Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 10); };
-  return { days: days || 30, views: sum((r) => /^view:/.test(r.metric)), forms: sum((r) => r.metric === "form"), ctaClicks: sum((r) => /^cta:/.test(r.metric)), topPages: group((r) => /^view:/.test(r.metric), (r) => r.path), devices: group((r) => /^view:/.test(r.metric), (r) => r.metric.slice(5)), ctas: group((r) => /^cta:/.test(r.metric), (r) => r.metric.slice(4)), sources: group((r) => /^ref:/.test(r.metric), (r) => r.metric.slice(4)), byDay: group((r) => /^view:/.test(r.metric), (r) => r.day).sort() };
+  const views = sum((r) => /^view:/.test(r.metric)), forms = sum((r) => r.metric === "form"), contacts = sum((r) => /^cta:contact:/.test(r.metric));
+  let orders = 0; try { orders = ((await d.prepare("SELECT COUNT(*) AS n FROM site_orders WHERE site_id=?1 AND created_at >= ?2 AND status NOT IN ('cancelled')").bind(s.id, since).first()) || {}).n || 0; } catch (e) {}
+  const trend = []; for (let k = n0 - 1; k >= 0; k--) { const day = new Date(Date.now() - k * 864e5).toISOString().slice(0, 10); trend.push([day, rows.filter((r) => r.day === day && /^view:/.test(r.metric)).reduce((a, r) => a + r.n, 0)]); }
+  return { days: n0, views, forms, ctaClicks: sum((r) => /^cta:/.test(r.metric) && !/^cta:contact:/.test(r.metric)), contacts, orders, conversions: forms + contacts + orders,   // v35
+    conversionRate: views ? Math.round((forms + contacts + orders) / views * 1000) / 10 : null, trend,
+    topPages: group((r) => /^view:/.test(r.metric), (r) => r.path), devices: group((r) => /^view:/.test(r.metric), (r) => r.metric.slice(5)), ctas: group((r) => /^cta:/.test(r.metric) && !/^cta:contact:/.test(r.metric), (r) => r.metric.slice(4)),
+    contactBy: group((r) => /^cta:contact:/.test(r.metric), (r) => r.metric.slice(12)), sources: group((r) => /^ref:/.test(r.metric), (r) => r.metric.slice(4)) };
 }
 export async function forms(env, s) { const d = await sdb(env); return ((await d.prepare("SELECT id, page, data, created_at FROM site_forms WHERE site_id=?1 ORDER BY created_at DESC LIMIT 200").bind(s.id).all()).results || []).map((r) => Object.assign(r, { data: JSON.parse(r.data || "{}") })); }
 
 /* ---------- media (images, re-encoded in the browser to WebP; stored in KV) ---------- */
-export async function putMedia(env, u, s, bytes, mime, name) {
+/* v35 media library columns (additive): alt text, folder, size, focal point, content hash (de-duplication) */
+const mediaMade = new WeakSet();
+async function mediaCols(d) { if (mediaMade.has(d)) return; for (const c of ["alt TEXT", "folder TEXT", "width INTEGER", "height INTEGER", "focal TEXT", "hash TEXT", "updated_at TEXT"]) { try { await d.prepare("ALTER TABLE site_media ADD COLUMN " + c).run(); } catch (e) {} } mediaMade.add(d); }
+export async function putMedia(env, u, s, bytes, mime, name, meta) {
   if (!env.CHAT_KV) throw err("Media storage is not set up.", 503);
   if (!/^image\/(webp|jpeg|png|gif|svg\+xml|avif)$/.test(mime)) throw err("Only images can be uploaded here.");
   if (mime === "image/svg+xml") throw err("SVG files can contain scripts, upload PNG, JPG or WebP.");
   if (bytes.byteLength > 2.5e6) throw err("Images up to 2.5 MB (the editor compresses them for you).");
   const d = await sdb(env), n = ((await d.prepare("SELECT COUNT(*) AS n FROM site_media WHERE site_id=?1").bind(s.id).first()) || {}).n || 0; if (n >= limitsFor(u).media) throw err("Media limit reached for your plan.", 402);
-  const id = randId(20); await env.CHAT_KV.put("site:media:" + id, bytes, { metadata: { mime, site: s.id } });
-  await d.prepare("INSERT INTO site_media (id, site_id, mime, size, name, created_at) VALUES (?1,?2,?3,?4,?5,?6)").bind(id, s.id, mime, bytes.byteLength, clip(name || "", 120), nowIso()).run();
+  // v35: the same image uploaded twice is stored once (sha-256 of the bytes, per website)
+  const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+  await mediaCols(d); const dup = await d.prepare("SELECT id FROM site_media WHERE site_id=?1 AND hash=?2").bind(s.id, hash).first(); if (dup) return { id: dup.id, url: "/api/sites/media/" + dup.id, size: bytes.byteLength, duplicate: true };
+  const id = randId(20), M = meta || {}, dim = (v) => { const n = parseInt(v, 10); return n > 0 && n < 10000 ? n : null; }; await env.CHAT_KV.put("site:media:" + id, bytes, { metadata: { mime, site: s.id } });
+  await d.prepare("INSERT INTO site_media (id, site_id, mime, size, name, created_at, alt, folder, width, height, hash, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?6)").bind(id, s.id, mime, bytes.byteLength, clip(name || "", 120), nowIso(), clip(M.alt || "", 200), clip(M.folder || "", 40), dim(M.w), dim(M.h), hash).run();
   return { id, url: "/api/sites/media/" + id, size: bytes.byteLength };
 }
 export async function getMedia(env, id) { if (!/^[a-z0-9]{20}$/.test(String(id)) || !env.CHAT_KV) return null; const r = await env.CHAT_KV.getWithMetadata("site:media:" + id, "arrayBuffer"); return r && r.value ? { body: r.value, mime: (r.metadata && r.metadata.mime) || "image/jpeg" } : null; }
-export async function listMedia(env, s) { const d = await sdb(env); return ((await d.prepare("SELECT id, mime, size, name, created_at FROM site_media WHERE site_id=?1 ORDER BY created_at DESC LIMIT 300").bind(s.id).all()).results || []).map((m) => Object.assign(m, { url: "/api/sites/media/" + m.id })); }
+export async function listMedia(env, s) { const d = await sdb(env); await mediaCols(d); return ((await d.prepare("SELECT id, mime, size, name, created_at, alt, folder, width, height, focal, updated_at FROM site_media WHERE site_id=?1 ORDER BY created_at DESC LIMIT 500").bind(s.id).all()).results || []).map((m) => Object.assign(m, { url: "/api/sites/media/" + m.id })); }
+/* v35: rename / alt text / folder / focal point. The id must belong to THIS website. */
+export async function updateMedia(env, s, id, b) {
+  const d = await sdb(env); await mediaCols(d); b = b || {}; const fp = /^(\d{1,3}),(\d{1,3})$/.exec(String(b.focal || "")), focal = b.focal === "" ? "" : fp && +fp[1] <= 100 && +fp[2] <= 100 ? fp[1] + "," + fp[2] : null;
+  if (b.focal != null && focal == null) throw err("Focal point is x,y in percent (0–100).");
+  const r = await d.prepare("UPDATE site_media SET name=COALESCE(?3, name), alt=COALESCE(?4, alt), folder=COALESCE(?5, folder), focal=COALESCE(?6, focal), updated_at=?7 WHERE id=?1 AND site_id=?2")
+    .bind(String(id), s.id, b.name == null ? null : clip(b.name, 120), b.alt == null ? null : clip(b.alt, 200), b.folder == null ? null : clip(String(b.folder).replace(/[^\w \-]/g, ""), 40), focal, nowIso()).run();
+  if (!r.meta.changes) throw err("Image not found.", 404); return { ok: true };
+}
+/* v35: delete only when no page uses it (or force); returns where it is used */
+export async function deleteMedia(env, s, id, force) {
+  const d = await sdb(env), row = await d.prepare("SELECT id FROM site_media WHERE id=?1 AND site_id=?2").bind(String(id), s.id).first(); if (!row) throw err("Image not found.", 404);
+  const doc = JSON.parse(s.doc || "{}"), used = (doc.pages || []).filter((p) => JSON.stringify(p).indexOf("/api/sites/media/" + id) > -1).map((p) => p.title).concat(JSON.stringify(doc.settings || {}).indexOf("/api/sites/media/" + id) > -1 ? ["Website settings"] : []).concat(JSON.stringify(doc.components || []).indexOf("/api/sites/media/" + id) > -1 ? ["Components"] : []);
+  if (used.length && !force) return { ok: false, inUse: used, reason: "This image is used on: " + used.join(", ") + ". Replace it there first, or delete anyway." };
+  await d.prepare("DELETE FROM site_media WHERE id=?1 AND site_id=?2").bind(String(id), s.id).run(); try { await env.CHAT_KV.delete("site:media:" + id); } catch (e) {}
+  return { ok: true, deleted: true, wasUsed: used };
+}
 
 /* ---------- custom domains + DNS (real DNS-over-HTTPS checks; SSL by Cloudflare Pages) ---------- */
 export const PROVIDERS = {

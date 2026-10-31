@@ -60,6 +60,7 @@ export async function onRequest(ctx) {
       if (p0 === "health") return json(Object.assign({ ok: true, role }, await health(env)));
       if (p0 === "config") return json({ ok: true, role, canEdit, config: cfgCurrent(), defaults: cfgDefaults() });
       if (p0 === "site-settings") return json({ ok: true, role, canEdit, config: await getSiteCfg(env, true), defaults: SITE_DEFAULTS });   // v34
+      if (p0 === "security") { await d.prepare("CREATE TABLE IF NOT EXISTS csp_reports (k TEXT PRIMARY KEY, directive TEXT, blocked TEXT, page TEXT, n INTEGER, first_at TEXT, last_at TEXT)").run(); const r = await d.prepare("SELECT directive, blocked, page, n, first_at, last_at FROM csp_reports ORDER BY n DESC, last_at DESC LIMIT 300").all(); return json({ ok: true, role, canEdit, items: r.results || [] }); }   // v35 CSP reports
       if (p0 === "enquiries") return json({ ok: true, role, canEdit, statuses: LEAD_STATUS, items: await listLeads(env, { status: q.get("status") || "" }) });
       if (p0 === "monitoring") return json(Object.assign({ ok: true, role }, await monitoringAll(d)));
       if (p0 === "lab") return json(Object.assign({ ok: true, role }, await labStats(env, d, Math.round(+q.get("days") || 30))));
@@ -74,6 +75,7 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "security" && path[1] === "clear" && m === "POST") { await d.prepare("DELETE FROM csp_reports").run().catch(() => {}); return json({ ok: true }); }
     if (p0 === "site-settings" && m === "POST") { const b = await request.json().catch(() => ({})); const r = await saveSiteCfg(env, b, u.email); if (r.ok) await logEvent(env, u.id, "site_settings", Object.keys(b).join(",")).catch(() => {}); return json(r, r.ok ? 200 : 400); }
     if (p0 === "enquiries" && path[1] && m === "POST") { const b = await request.json().catch(() => ({})); try { return json(await updateLead(env, path[1], b)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400); } }
     const body = await request.json().catch(() => ({}));

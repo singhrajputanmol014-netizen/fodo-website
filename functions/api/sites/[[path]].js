@@ -61,7 +61,7 @@ export async function onRequest(ctx) {
     const ctype = request.headers.get("content-type") || "";
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !(/json/.test(ctype) || (path[1] === "media" && /^image\//.test(ctype)))))) return json({ ok: false, reason: "Bad request." }, 403);
     if (m !== "GET" && (await count(env, "sites:" + u.id, 600, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
-    const body = m === "POST" || m === "PUT" ? (path[1] === "media" ? null : (await request.json().catch(() => null)) || {}) : null, q = new URL(request.url).searchParams;
+    const body = m === "POST" || m === "PUT" ? (path[1] === "media" && !path[2] ? null : (await request.json().catch(() => null)) || {}) : null, q = new URL(request.url).searchParams;
     if (p0 === "list" && m === "GET") return json({ ok: true, sites: await W.listSites(env, u, q.get("all") === "1", q.get("archived") === "1"), limits: W.limitsFor(u), owner: isOwner(u), hosting: W.hostingOn(env), sitesHost: env.SITES_HOST || null });
     if (p0 === "recommend" && m === "GET") return json({ ok: true, templates: W.recommend(q.get("q") || "") });
     if (p0 === "create" && m === "POST") { if (await count(env, "sites-ai:" + u.id, W.limitsFor(u).ai, 86400)) return json({ ok: false, reason: "Daily AI limit reached." }, 429); return json(Object.assign({ ok: true }, await W.createSite(env, u, body))); }
@@ -94,7 +94,9 @@ export async function onRequest(ctx) {
     }
     if (p1 === "media") {
       if (m === "GET") return json({ ok: true, items: await W.listMedia(env, s) });
-      if (m === "POST") { const buf = await request.arrayBuffer(); return json(Object.assign({ ok: true }, await W.putMedia(env, u, s, buf, ctype.split(";")[0], q.get("name") || ""))); }
+      if (m === "POST" && !path[2]) { W.need(s, "edit"); const buf = await request.arrayBuffer(); return json(Object.assign({ ok: true }, await W.putMedia(env, u, s, buf, ctype.split(";")[0], q.get("name") || "", { alt: q.get("alt"), folder: q.get("folder"), w: q.get("w"), h: q.get("h") }))); }
+      if (m === "POST" && path[2]) { W.need(s, "edit"); return json(await W.updateMedia(env, s, path[2], body)); }   // v35: name / alt / folder / focal
+      if (m === "DELETE" && path[2]) { W.need(s, "edit"); const r = await W.deleteMedia(env, s, path[2], q.get("force") === "1"); return json(r, r.ok ? 200 : 409); }
     }
     if (p1 === "password" && m === "POST") { const pw = String(body.password || ""); if (pw && pw.length < 6) return json({ ok: false, reason: "Use at least 6 characters." }, 400); return json({ ok: true, hash: pw ? await hashPw(pw.slice(0, 200)) : null }); }   // v34: PBKDF2; the editor stores the hash on the page
     /* ---- v29 store + blog (every query is scoped to s.id, which siteFor() already checked belongs to you) ---- */

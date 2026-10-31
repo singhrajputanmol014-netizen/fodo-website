@@ -1,5 +1,7 @@
 # FODO v34: final audit
 
+> **v35 update:** the asset manager, site-wide CSP (report-only), client-site analytics and partial refunds from the lists below are done in v35. See `FODO-V35-REPORT.md`.
+
 **Scope:** hardening and Website Builder upgrade on the existing platform (no rewrite, no framework change).
 
 **Baseline:** `docs/v34-audit-baseline.md`.

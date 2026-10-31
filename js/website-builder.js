@@ -8,6 +8,7 @@ import { openStore, loadStoreData } from "/js/website-store.js";
 import * as PN from "/js/wb-panels.js";
 import * as CR from "/js/wb-create.js";
 import * as V from "/js/wb-v34.js";
+import * as AS from "/js/wb-assets.js";
 import { legalText as legalTextFor } from "/sites/lib/industry.js";
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
@@ -52,7 +53,7 @@ async function editor(id, hello) {
   $("#wb-undo").onclick = undo; $("#wb-redo").onclick = redo; $("#wb-prev").onclick = () => preview(); $("#wb-pub").onclick = publishFlow; $("#wb-ai-open").onclick = openCmd;
   $("#wb-audit").onclick = () => PN.auditPanel(); $("#wb-share").onclick = () => PN.sharePanel(); $("#wb-set").onclick = () => PN.settingsPage("general"); $("#wb-help").onclick = () => PN.helpPanel();
   $("#wb-adv").onchange = function () { ED.adv = this.checked; ls.set("wb-adv", this.checked ? "1" : "0"); $(".wb-left .wb-tabs").innerHTML = TABS().map((x) => '<button data-tab="' + x[0] + '">' + x[1] + "</button>").join(""); $$("[data-tab]").forEach((b) => { b.onclick = () => { ED.tab = b.dataset.tab; left(); }; }); if (!TABS().some((x) => x[0] === ED.tab)) ED.tab = "add"; left(); right(); };
-  PN.bind(panelX()); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
+  PN.bind(panelX()); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
   $("#wb-cf").onsubmit = (e) => { e.preventDefault(); askAI($("#wb-ci").value); };
   window.onmessage = onFrame; document.onkeydown = keys; window.onbeforeunload = () => (ED && ED.dirty ? "You have unsaved changes." : undefined);
   paint(); left(); right(); if (hello && hello !== "paused") toast(hello); if (ED.dirty) queueSave();
@@ -254,17 +255,12 @@ function right() {
   $$("[data-ix]", el).forEach((b) => { b.onclick = () => change(() => { const [pa, i] = b.dataset.ix.split("|"); get(pa).splice(+i, 1); right(); }); });
   $$("[data-iu]", el).forEach((b) => { b.onclick = () => change(() => { const [pa, i] = b.dataset.iu.split("|"), a = get(pa); if (+i > 0) { const [x] = a.splice(+i, 1); a.splice(+i - 1, 0, x); } right(); }); });
   $$("[data-rw]", el).forEach((s) => { s.onchange = async () => { const mode = s.value; if (!mode) return; const cur = get(s.dataset.rw); s.disabled = true; const r = await api(ED.id + "/rewrite", "POST", { text: cur, mode }); s.disabled = false; s.value = ""; if (!r.ok) return toast(r.reason, true); change(() => set(s.dataset.rw, r.text)); right(); }; });
-  $$("[data-up]", el).forEach((b) => { b.onclick = () => upload((url) => change(() => { set(b.dataset.up, url); right(); })); });
+  $$("[data-up]", el).forEach((b) => { b.onclick = () => upload((url, item) => { change(() => { set(b.dataset.up, url); const ak = b.dataset.up.replace(/(image|img|photo|logoImg|logo)$/i, (x) => x + "Alt"); if (item && item.alt && ak !== b.dataset.up) { try { if (!get(ak)) set(ak, item.alt); } catch (e) {} } }); right(); }); });
   $("#wb-secai").onclick = () => { openCmd(); $("#wb-ci").value = "For the selected " + SECTION_LABELS[sec.type] + " section: "; $("#wb-ci").focus(); };
 }
 /* image upload: resized in the browser (max 1600px) and re-encoded to WebP before it leaves the device */
-function upload(done) {
-  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/png,image/jpeg,image/webp,image/gif";
-  inp.onchange = () => { const f = inp.files[0]; if (!f) return; const img = new Image(), url = URL.createObjectURL(f); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-    c.toBlob(async (b) => { toast("Uploading " + Math.round(b.size / 1024) + " KB…"); const r = await api(ED.id + "/media?name=" + encodeURIComponent(f.name), "POST", null, { type: b.type, data: b }); if (!r.ok) return toast(r.reason, true); done(r.url); }, "image/webp", 0.82); }; img.src = url; };
-  inp.click();
-}
-/* AI command bar (⌘K), the AI only sees and returns THIS website */
+/* v35: every image field opens the media library (upload, choose, crop, alt text…); done(url, item) */
+function upload(done) { AS.library({ onPick: (url, item) => done(url, item) }); }
 function openCmd() { $("#wb-cmd").hidden = false; $("#wb-ci").focus(); }
 async function askAI(text) {
   text = String(text || "").trim(); if (!text) return; openCmd(); $("#wb-cs").textContent = "Working on it…"; $("#wb-cf button").disabled = true;
@@ -319,10 +315,14 @@ async function domainPanel() {
   $$("[data-rm]", el).forEach((b) => { b.onclick = async () => { if (!confirm("Remove " + b.dataset.rm + "?")) return; await api(ED.id + "/domains/" + encodeURIComponent(b.dataset.rm), "DELETE"); domainPanel(); }; });
 }
 async function formsPanel() { const el = $("#wb-forms"), r = await api(ED.id + "/forms"); el.innerHTML = r.ok ? (r.items.length ? '<ul class="wb-msgs">' + r.items.map((m) => "<li><small>" + fmt(m.created_at) + " · " + esc(m.page) + "</small>" + Object.keys(m.data).filter((k) => k[0] !== "_").map((k) => "<div><b>" + esc(k) + ":</b> " + esc(m.data[k]) + "</div>").join("") + "</li>").join("") + "</ul>" : '<p class="wb-muted">No messages yet. They appear here (and by email) when visitors use your contact form.</p>') : esc(r.reason); }
-async function statsPanel() { const el = $("#wb-stats"), r = await api(ED.id + "/stats?days=30"); if (!r.ok) { el.textContent = r.reason; return; } el.innerHTML = '<div class="wb-kpis"><div><b>' + r.views + "</b>views</div><div><b>" + r.forms + "</b>enquiries</div><div><b>" + r.ctaClicks + "</b>button clicks</div></div>" + (r.views ? "<p><b>Top pages</b> " + r.topPages.map((x) => esc(x[0]) + " (" + x[1] + ")").join(", ") + "</p><p><b>Devices</b> " + r.devices.map((x) => esc(x[0]) + " " + x[1]).join(" · ") + "</p>" + (r.sources.length ? "<p><b>Sources</b> " + r.sources.map((x) => esc(x[0]) + " " + x[1]).join(" · ") + "</p>" : "") : '<p class="wb-muted">Last 30 days. Numbers start when your website is live, nothing here is estimated.</p>'); }
+async function statsPanel() { const el = $("#wb-stats"), r = await api(ED.id + "/stats?days=30"); if (!r.ok) { el.textContent = V.friendly(r, "loading visitors"); return; }
+  const mx = Math.max(1, ...(r.trend || []).map((x) => x[1])), spark = (r.trend || []).length ? '<div class="wb-spark" role="img" aria-label="Views per day, last 30 days">' + r.trend.map((x) => '<i title="' + esc(x[0]) + ": " + x[1] + '" style="height:' + Math.max(2, Math.round(x[1] / mx * 100)) + '%"></i>').join("") + "</div>" : "", L = (a) => a.map((x) => esc(x[0]) + " " + x[1]).join(" · ");
+  el.innerHTML = '<div class="wb-kpis"><div><b>' + r.views + "</b>views</div><div><b>" + r.conversions + "</b>conversions" + (r.conversionRate != null ? " · " + r.conversionRate + "%" : "") + "</div><div><b>" + r.forms + "</b>form enquiries</div><div><b>" + r.contacts + "</b>calls / WhatsApp / email taps</div>" + (r.orders ? "<div><b>" + r.orders + "</b>orders</div>" : "") + "<div><b>" + r.ctaClicks + "</b>button clicks</div></div>" + spark +
+    (r.views ? "<p><b>Top pages</b> " + r.topPages.map((x) => esc(x[0]) + " (" + x[1] + ")").join(", ") + "</p><p><b>Devices</b> " + L(r.devices) + "</p>" + (r.sources.length ? "<p><b>Sources</b> " + L(r.sources) + "</p>" : "") + (r.ctas.length ? "<p><b>Buttons</b> " + L(r.ctas) + "</p>" : "") + (r.contactBy.length ? "<p><b>Contact taps</b> " + L(r.contactBy) + "</p>" : "") + '<p class="wb-muted">Last 30 days, counted without cookies (and only after consent when your cookie banner is on). Nothing is estimated.</p>'
+      : '<p class="wb-muted">Last 30 days. Numbers start when your website is live, nothing here is estimated.</p>'); }
 async function versionsPanel() { const el = $("#wb-vers"), r = await api(ED.id + "/versions"); if (!r.ok) { el.textContent = r.reason; return; } el.innerHTML = '<button class="wb-btn sm" id="wb-savev">Save a version now</button><ul class="wb-vers">' + r.versions.map((v) => "<li><span>" + esc(v.note) + "<small>" + fmt(v.created_at) + '</small></span><button class="wb-btn sm" data-rv="' + v.id + '">Restore</button></li>').join("") + "</ul>";
   $("#wb-savev").onclick = async () => { if (ED.dirty) await save(); const n = prompt("Name this version", "Before changes"); if (n == null) return; const x = await api(ED.id + "/versions", "POST", { note: n }); if (x.ok) { ED.rev = x.rev || ED.rev; versionsPanel(); toast("Version saved."); } };
   $$("[data-rv]", el).forEach((b) => { b.onclick = async () => { if (!confirm("Restore this version? (Your current version is kept in history.)")) return; if (ED.dirty) await save(); const x = await api(ED.id + "/restore/" + b.dataset.rv, "POST", {}); if (!x.ok) return toast(x.reason, true); ED.undo.push(JSON.stringify(ED.doc)); ED.doc = x.doc; ED.rev = x.rev; ED.dirty = false; paint(); left(); right(); toast("Restored."); }; }); }
-async function mediaPanel() { const el = $("#wb-media"), r = await api(ED.id + "/media"); el.innerHTML = '<button class="wb-btn sm" id="wb-upm">Upload image</button><div class="wb-mgrid">' + (r.items || []).map((m) => '<button class="wb-mi" data-u="' + esc(m.url) + '" title="Copy address"><img src="' + esc(m.url) + '" alt="' + esc(m.name) + '" loading="lazy"></button>').join("") + "</div>"; $("#wb-upm").onclick = () => upload(() => mediaPanel()); $$("[data-u]", el).forEach((b) => { b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.u); toast("Image address copied, paste it into an image field."); } catch (e) {} }; }); }
+async function mediaPanel() { const el = $("#wb-media"); el.innerHTML = '<p class="wb-muted">Upload, organise, crop and add alt text to your images.</p><button class="wb-btn sm pri" id="wb-upm">Open media library</button>'; $("#wb-upm").onclick = () => AS.library({}); }
 
 boot();

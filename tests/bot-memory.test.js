@@ -23,8 +23,9 @@ const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") 
     const tag = vp.width + "px";
     await p.goto(BASE + "/", { waitUntil: "load" });
     await p.waitForTimeout(4500);
-    ok(await p.evaluate(() => document.querySelector(".bot-panel").hidden === true), `${tag} chat stays closed on page load`);
-    await p.mouse.move(5, 5);
+    ok(await p.evaluate(() => { const b = document.querySelector(".bot-panel"); return (!b || b.hidden === true) && !!document.querySelector(".bot-fab"); }), `${tag} chat stays closed on page load (the Ask FODO button is there)`);
+    ok(await p.evaluate(() => !window.FODO_BOT), `${tag} v35: the bot's code is not downloaded until someone wants it`);
+    await p.hover(".bot-fab");
     await p.waitForFunction(() => window.FODO_BOT_LLM && window.FODO_BOT && window.FODO_BOT.ask, null, { timeout: 20000 });
     await p.waitForTimeout(900); // probe
     await p.click(".bot-fab");

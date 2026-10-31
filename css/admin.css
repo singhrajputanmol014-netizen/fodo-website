@@ -1,4 +1,4 @@
-/* FODO Admin (v15) — app shell on top of the site's design tokens (styles.css / theme-glass.css / studio.css) */
+/* FODO Admin (v15), app shell on top of the site's design tokens (styles.css / theme-glass.css / studio.css) */
 .ad-body{margin:0;background:var(--bg);color:var(--text);min-height:100vh}
 .ad-app{display:grid;grid-template-columns:232px 1fr;grid-template-rows:auto 1fr;grid-template-areas:"top top" "nav main";min-height:100vh}
 .ad-load{padding:40px;color:var(--muted)}

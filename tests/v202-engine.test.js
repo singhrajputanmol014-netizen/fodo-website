@@ -1,4 +1,4 @@
-/* v20.2 — X-Ray quality fixes from the expocitytravels.com review: service names (not taglines), slow pages are not "broken",
+/* v20.2: X-Ray quality fixes from the expocitytravels.com review: service names (not taglines), slow pages are not "broken",
    customer voice keeps only snippets about the business or its market, a rating is not a price, industry-matched copy examples.
    Runs the real engine in Chromium. */
 const path = require("path"), fs = require("fs");
@@ -10,7 +10,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else fail++; conso
   await p.addScriptTag({ content: fs.readFileSync(path.join(__dirname, "../js/xray-engine.js"), "utf8") });
   const r = await p.evaluate(() => {
     const E = window.FODO_XRAY_ENGINE, out = {}, ev = new E.Evidence();
-    const nav = "<nav><a href='/solutions/corporate-travel'>Corporate Travel</a><a href='/solutions/mice-events'>MICE &amp; Events</a><a href='/solutions'>All Solutions -&gt;</a><a href='/solutions/x'>Meetings, Incentives, Conferences &amp; Events — Managed End-to…</a></nav>";
+    const nav = "<nav><a href='/solutions/corporate-travel'>Corporate Travel</a><a href='/solutions/mice-events'>MICE &amp; Events</a><a href='/solutions'>All Solutions -&gt;</a><a href='/solutions/x'>Meetings, Incentives, Conferences &amp; Events: Managed End-to…</a></nav>";
     const pg = (u, title, h1, body, d) => { const x = E.parsePage("<html><head><title>" + title + "</title></head><body>" + nav + "<h1>" + h1 + "</h1><p>" + (body || "") + "</p></body></html>", u, { status: 200 }); x.depth = d || 1; x.status = 200; return x; };
     const home = pg("https://expo.test/", "Expocity Travels | Corporate Travel Management", "Your Business. Your Journeys. One Travel Partner.", "Corporate travel management in Gurugram. Google rating Rs.4.2 out of 5. Packages from Rs.18,450. Hotels at Rs.9,800/night.", 0);
     const dm = pg("https://expo.test/solutions/destination-management", "Destination Management | Expocity", "Local Expertise. Seamless On-Ground Execution.");

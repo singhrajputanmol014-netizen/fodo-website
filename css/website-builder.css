@@ -1,4 +1,4 @@
-/* FODO Website Builder (v28) — app UI. The websites themselves are styled by sites/lib/render.js. */
+/* FODO Website Builder (v28), app UI. The websites themselves are styled by sites/lib/render.js. */
 :root{--w-bg:#07070c;--w-panel:#101019;--w-panel2:#161624;--w-line:rgba(255,255,255,.09);--w-line2:rgba(255,255,255,.16);--w-text:#ecebf5;--w-mut:#9b99b1;--w-acc:#7B61FF;--w-ok:#3ddc97;--w-warn:#ffbf47;--w-err:#ff5d73;--w-f:Inter,"Segoe UI",system-ui,sans-serif}
 [data-theme="light"]{--w-bg:#f6f5fb;--w-panel:#fff;--w-panel2:#f1f0f7;--w-line:rgba(20,16,60,.1);--w-line2:rgba(20,16,60,.18);--w-text:#17142b;--w-mut:#5d5a75}
 body.wb-body{margin:0;background:var(--w-bg);color:var(--w-text);font:15px/1.55 var(--w-f)}

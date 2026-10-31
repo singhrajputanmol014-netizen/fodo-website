@@ -1,4 +1,4 @@
-/* FODO Website Builder API (/api/sites/*) — v28. Two kinds of routes:
+/* FODO Website Builder API (/api/sites/*), v28. Two kinds of routes:
    PUBLIC (no session, no cookies used): GET templates · GET view/<slug>/<page…> (FODO's fallback address for a live site, sandboxed)
      GET media/<id> · POST e (analytics beacon) · POST f/<siteId> (contact form)
      v29 store: POST shop/<siteId>/checkout (server-priced) · GET shop/<siteId>/order/<orderId>?t=<token> (verifies online payment)
@@ -8,7 +8,7 @@
           <id>/domains/<domain>/verify · <id>/media (raw image bytes) · <id>/password
      PUT  <id> {doc, baseRev}      DELETE <id> · <id>/domains/<domain>
      v29: <id>/products[/<pid>] · <id>/orders[/<oid>] · <id>/discounts[/<code>] · <id>/posts[/<pid>] · <id>/payments · <id>/store-stats
-   Writes need same-origin + JSON (or image bytes for media) — CSRF. */
+   Writes need same-origin + JSON (or image bytes for media): CSRF. */
 import { json, accountsOn, sessionUser, isOwner, sameOrigin, count, sha256 } from "../../_lib/accounts.js";
 import * as W from "../../_lib/sites.js";
 import * as SH from "../../_lib/shop.js";
@@ -29,7 +29,7 @@ export async function onRequest(ctx) {
       if (!sh) return new Response("<!doctype html><meta name=robots content=noindex><title>Expired</title><p style='font:16px system-ui;padding:40px'>This preview link has expired or was revoked.</p>", { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
       const doc = JSON.parse(sh.doc), slug = (path[2] || "").replace(/\/$/, "") || "home", u0 = new URL(request.url), base = "/api/sites/preview/" + path[1] + "/";
       if (!doc.pages.some((p) => p.slug === slug)) return Response.redirect(u0.origin + base, 302);
-      const bar = '<div id="fodo-rv" style="position:fixed;left:0;right:0;bottom:0;z-index:99;background:#0b0a16;color:#fff;font:14px system-ui;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;box-shadow:0 -10px 40px rgba(0,0,0,.4)"><b style="margin-right:auto">Preview of “' + W.esc(sh.name) + '” — your feedback</b><input id="rv-n" placeholder="Your name" style="padding:8px;border-radius:8px;border:0;min-width:120px"><input id="rv-c" placeholder="Comments (what should change?)" style="padding:8px;border-radius:8px;border:0;flex:1;min-width:200px"><button data-d="changes" style="padding:9px 14px;border-radius:999px;border:0;background:#ffbf47;font-weight:700;cursor:pointer">Request changes</button><button data-d="approve" style="padding:9px 14px;border-radius:999px;border:0;background:#3ddc97;font-weight:700;cursor:pointer">Approve ✓</button></div><script>document.getElementById("fodo-rv").addEventListener("click",function(e){var b=e.target.closest("[data-d]");if(!b)return;b.disabled=true;fetch(' + JSON.stringify(base + "review") + ',{method:"POST",headers:{"content-type":"text/plain"},body:JSON.stringify({decision:b.getAttribute("data-d"),name:document.getElementById("rv-n").value,comment:document.getElementById("rv-c").value})}).then(function(r){return r.json()}).then(function(j){document.getElementById("fodo-rv").innerHTML=j.ok?"<b>Thank you — your "+(j.decision==="approved"?"approval":"feedback")+" was sent.</b>":"<b>"+(j.reason||"Could not send")+"</b>"})})</script><div style="height:70px"></div>';
+      const bar = '<div id="fodo-rv" style="position:fixed;left:0;right:0;bottom:0;z-index:99;background:#0b0a16;color:#fff;font:14px system-ui;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;box-shadow:0 -10px 40px rgba(0,0,0,.4)"><b style="margin-right:auto">Preview of “' + W.esc(sh.name) + '”, your feedback</b><input id="rv-n" placeholder="Your name" style="padding:8px;border-radius:8px;border:0;min-width:120px"><input id="rv-c" placeholder="Comments (what should change?)" style="padding:8px;border-radius:8px;border:0;flex:1;min-width:200px"><button data-d="changes" style="padding:9px 14px;border-radius:999px;border:0;background:#ffbf47;font-weight:700;cursor:pointer">Request changes</button><button data-d="approve" style="padding:9px 14px;border-radius:999px;border:0;background:#3ddc97;font-weight:700;cursor:pointer">Approve ✓</button></div><script>document.getElementById("fodo-rv").addEventListener("click",function(e){var b=e.target.closest("[data-d]");if(!b)return;b.disabled=true;fetch(' + JSON.stringify(base + "review") + ',{method:"POST",headers:{"content-type":"text/plain"},body:JSON.stringify({decision:b.getAttribute("data-d"),name:document.getElementById("rv-n").value,comment:document.getElementById("rv-c").value})}).then(function(r){return r.json()}).then(function(j){document.getElementById("fodo-rv").innerHTML=j.ok?"<b>Thank you, your "+(j.decision==="approved"?"approval":"feedback")+" was sent.</b>":"<b>"+(j.reason||"Could not send")+"</b>"})})</script><div style="height:70px"></div>';
       return new Response(W.renderPage(doc, slug, { base, origin: u0.origin, noindex: true, badge: false, bodyExtra: bar }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "content-security-policy": "sandbox allow-scripts allow-forms allow-popups; default-src 'self' https: data:; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self'; frame-ancestors 'self'" } });
     }
     if (p0 === "view" && path[1]) {   // fallback live address, sandboxed so it can never act as fodo.co.in
@@ -40,15 +40,15 @@ export async function onRequest(ctx) {
     const ip = request.headers.get("cf-connecting-ip") || "";
     if (p0 === "e" && m === "POST") { if (!(await count(env, "site-e:" + ip, 600, 3600))) { const b = JSON.parse((await request.text()).slice(0, 2000) || "{}"); await W.beacon(env, b); } return new Response(null, { status: 204, headers: CORS }); }
     if (p0 === "f" && path[1] && m === "POST") {
-      if (await count(env, "site-f:" + ip, 20, 3600)) return json({ ok: false, reason: "Too many messages — please try later." }, 429, CORS);
+      if (await count(env, "site-f:" + ip, 20, 3600)) return json({ ok: false, reason: "Too many messages, please try later." }, 429, CORS);
       let b = {}; try { b = JSON.parse((await request.text()).slice(0, 20000)); } catch (e) {}
       try { return json(await W.submitForm(env, path[1], b, ip), 200, CORS); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400, CORS); }
     }
     if (p0 === "shop" && path[1]) {   // v29 public store routes (no cookies; prices and stock decided here)
       if (path[2] === "checkout" && m === "POST") {
-        if (await count(env, "shop-co:" + ip, 30, 3600)) return json({ ok: false, reason: "Too many attempts — please try later." }, 429, CORS);
+        if (await count(env, "shop-co:" + ip, 30, 3600)) return json({ ok: false, reason: "Too many attempts, please try later." }, 429, CORS);
         let b = {}; try { b = JSON.parse((await request.text()).slice(0, 30000)); } catch (e) {}
-        try { return json(await SH.checkout(env, path[1], b, ip), 200, CORS); } catch (e) { return json({ ok: false, reason: e.status ? e.message : "Checkout failed — please try again." }, e.status || 500, CORS); }
+        try { return json(await SH.checkout(env, path[1], b, ip), 200, CORS); } catch (e) { return json({ ok: false, reason: e.status ? e.message : "Checkout failed, please try again." }, e.status || 500, CORS); }
       }
       if (path[2] === "order" && path[3] && m === "GET") { const o = await SH.orderFor(env, path[1], path[3], new URL(request.url).searchParams.get("t")); return json(o ? { ok: true, order: { number: o.number, status: o.status, items: o.items.map((i) => ({ title: i.title, variant: i.variant, qty: i.qty, price: i.price })), subtotal: o.subtotal, discount: o.discount, shipping: o.shipping, tax: o.tax, total: o.total, method: o.method, createdAt: o.created_at } } : { ok: false, reason: "Order not found." }, o ? 200 : 404, Object.assign({ "cache-control": "no-store" }, { "access-control-allow-origin": "*" })); }
       return json({ ok: false, reason: "Not found." }, 404, CORS);
@@ -57,7 +57,7 @@ export async function onRequest(ctx) {
     const u = await sessionUser(env, request); if (!u) return json({ ok: false, reason: "Log in to use the Website Builder.", login: true }, 401);
     const ctype = request.headers.get("content-type") || "";
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !(/json/.test(ctype) || (path[1] === "media" && /^image\//.test(ctype)))))) return json({ ok: false, reason: "Bad request." }, 403);
-    if (m !== "GET" && (await count(env, "sites:" + u.id, 600, 3600))) return json({ ok: false, reason: "Too many changes this hour — slow down a little." }, 429);
+    if (m !== "GET" && (await count(env, "sites:" + u.id, 600, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
     const body = m === "POST" || m === "PUT" ? (path[1] === "media" ? null : (await request.json().catch(() => null)) || {}) : null, q = new URL(request.url).searchParams;
     if (p0 === "list" && m === "GET") return json({ ok: true, sites: await W.listSites(env, u, q.get("all") === "1", q.get("archived") === "1"), limits: W.limitsFor(u), owner: isOwner(u), hosting: W.hostingOn(env), sitesHost: env.SITES_HOST || null });
     if (p0 === "recommend" && m === "GET") return json({ ok: true, templates: W.recommend(q.get("q") || "") });

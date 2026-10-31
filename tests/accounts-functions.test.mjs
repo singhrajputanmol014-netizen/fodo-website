@@ -1,4 +1,4 @@
-// Growth Lab accounts, plans, credits and Cashfree payments — functions/api/account + X-Ray start with plans.
+// Growth Lab accounts, plans, credits and Cashfree payments, functions/api/account + X-Ray start with plans.
 // D1 = real SQLite (node:sqlite); Google (real RS256 tokens from a test key), Resend and Cashfree are mocked.
 // Run: node --no-warnings tests/accounts-functions.test.mjs
 import { DatabaseSync } from "node:sqlite";
@@ -289,7 +289,7 @@ const waHook = (obj, secret) => { const raw = JSON.stringify(obj); return accoun
 const msgOf = (from, text) => ({ object: "whatsapp_business_account", entry: [{ changes: [{ value: { messages: [{ from, type: "text", text: { body: text } }] } }] }] });
 ok((await waHook(msgOf("919811122233", "FODO LOGIN " + W.code), "wrong")).status === 401, "webhook with a wrong signature is ignored");
 r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); ok(r.j.waiting, "…so still waiting");
-ok((await waHook(msgOf("919811122233", "FODO LOGIN " + W.code.toLowerCase() + " — please log me in"))).status === 200 && waSent.length === 1 && waSent[0].to === "919811122233" && /logged in/.test(waSent[0].text.body), "signed message from WhatsApp → number verified, free reply sent");
+ok((await waHook(msgOf("919811122233", "FODO LOGIN " + W.code.toLowerCase() + ", please log me in"))).status === 200 && waSent.length === 1 && waSent[0].to === "919811122233" && /logged in/.test(waSent[0].text.body), "signed message from WhatsApp → number verified, free reply sent");
 r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); const wu = D.db.prepare("SELECT * FROM acct_users WHERE wa_phone='919811122233'").get();
 ok(r.j.ok && /^fodo_s=/.test(r.sc || "") && wu && wu.phone === "9811122233" && wu.email === null && r.j.user.credits.free === 2, "poll → logged in with the WhatsApp number, new account with 2 free X-Rays");
 r = await call(waEnv, "wa/poll", { poll: W.poll }, { cookie: "", ip: "3.3.3.1" }); ok(r.status === 409, "a code logs in only once");

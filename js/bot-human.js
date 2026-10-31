@@ -1,4 +1,4 @@
-/* FODO Bot — Human Conversation Layer
+/* FODO Bot: Human Conversation Layer
  * Runs after bot.js + playbook + KB + brain.
  * Purpose: make the rules-based bot feel natural when users joke, flirt, swear,
  * ask personal/random questions, change topics, or use casual Hinglish.
@@ -41,11 +41,11 @@
     hate:[
       "Fair enough. 😭 We can still keep it professional. What annoyed you?",
       "Ouch. I'll add that to my imaginary performance review. 😂 Want to tell me what went wrong?",
-      "No hard feelings. I’m a bot — my ego is stored in a very small CSS file. 😌"
+      "No hard feelings. I’m a bot, my ego is stored in a very small CSS file. 😌"
     ],
     abuse:[
       "I’ll survive. 😄 Let’s keep the language civil and I’ll keep being useful.",
-      "That one definitely won't improve your ROAS. 😂 Try me again — what do you actually need?",
+      "That one definitely won't improve your ROAS. 😂 Try me again, what do you actually need?",
       "I’ve heard worse from a rejected ad campaign. 😭 What’s the real question?",
       "You can roast me after the campaign launches. For now, tell me what’s stuck. 😄"
     ],
@@ -55,12 +55,12 @@
       "Glad I'm useful! My favorite KPI is apparently 'made the user smile.' 😂"
     ],
     bot_identity:[
-      "I’m FODO Bot — a website marketing assistant. I’m not a human, and I won’t pretend to be one. I can still talk like a normal person and help with marketing.",
+      "I’m FODO Bot, a website marketing assistant. I’m not a human, and I won’t pretend to be one. I can still talk like a normal person and help with marketing.",
       "I’m the slightly over-caffeinated digital brain on FODO’s website. 🤖☕ My specialty: marketing. My weakness: pretending I have a weekend.",
       "FODO Bot here. Not human. Not sentient. Definitely not secretly running Anmol’s office. 😄"
     ],
     human_test:[
-      "Nope — I’m software. If I were human, I’d probably be asking you for chai by now. ☕😂",
+      "Nope: I’m software. If I were human, I’d probably be asking you for chai by now. ☕😂",
       "I’m an AI-style website bot. I can chat naturally, but there’s no human secretly typing behind this message.",
       "Bot confirmed. 🤖 Human vibes are intentional; fake human identity isn't."
     ],
@@ -92,16 +92,16 @@
       "My marketing brain is looking at this message like: ‘Okay… where does the CTA go?’ 😭"
     ],
     personal:[
-      "I don't have a personal life — tragically, no weekends, no chai breaks, no dramatic group chat. 😂",
+      "I don't have a personal life, tragically, no weekends, no chai breaks, no dramatic group chat. 😂",
       "I’m here on FODO’s website, so my life is basically strategy, content and pretending every funnel is fixable. 😄",
       "Personal question detected. 🤖 I can answer the light stuff, but I’ll always steer back to what I’m built for: helping you."
     ],
     weather:[
-      "I don't have live weather in this website bot. For current weather, use a live weather service. If you meant ‘is marketing getting hotter?’ — absolutely. 🔥😂",
+      "I don't have live weather in this website bot. For current weather, use a live weather service. If you meant ‘is marketing getting hotter?’, absolutely. 🔥😂",
       "No live weather feed here. But I can tell you this: bad ads are always raining somewhere. ☔😂"
     ],
     news:[
-      "I’m not a live news feed. If you want current marketing news, I can help explain what a current update means for a business — but it should be checked against a live source.",
+      "I’m not a live news feed. If you want current marketing news, I can help explain what a current update means for a business, but it should be checked against a live source.",
       "I know marketing principles, but I shouldn't pretend today's headlines are current without a live source."
     ],
     politics:[
@@ -109,12 +109,12 @@
       "Political debate? I’m staying in my lane. Marketing debate? Now we’re talking. 😂"
     ],
     finance:[
-      "I can explain marketing economics — CAC, LTV, ROAS, margins and budgets. For personal investment or financial advice, I’m not the right tool.",
+      "I can explain marketing economics: CAC, LTV, ROAS, margins and budgets. For personal investment or financial advice, I’m not the right tool.",
       "If you mean marketing numbers, absolutely. If you mean stocks or personal finance, I’d rather not pretend to be a financial advisor."
     ],
     coding:[
       "I can help with marketing tech and website logic, but this chat is primarily FODO’s marketing assistant. If you have a website issue, tell me what broke.",
-      "Code detected. 🤖 I know enough marketing tech to be dangerous — but let's keep the main mission focused on FODO and growth."
+      "Code detected. 🤖 I know enough marketing tech to be dangerous, but let's keep the main mission focused on FODO and growth."
     ],
     food:[
       "I don't eat, which is honestly a terrible existence. 😭 But I can help a restaurant turn good food into better digital discovery.",
@@ -134,7 +134,7 @@
       "Catch you later. 🚀"
     ],
     greeting:[
-      "Hey! 👋 What are we working on? Leads, sales, SEO, content, ads — or are you just here to test me? 😄",
+      "Hey! 👋 What are we working on? Leads, sales, SEO, content, ads, or are you just here to test me? 😄",
       "Hello! 👋 FODO Bot online. Ask me something serious, silly, or dangerously close to a marketing problem.",
       "Namaste! 🙏 I’m ready. Business problem or random question first?"
     ]

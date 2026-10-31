@@ -1,4 +1,4 @@
-// v21 FODO OWNER BRAIN — server side, real functions + real SQLite, AI and outside APIs mocked.
+// v21 FODO OWNER BRAIN, server side, real functions + real SQLite, AI and outside APIs mocked.
 // Security matrix (owner only; admin/viewer/customer/anonymous/forged denied) · the 12 acceptance tests · confirmations (token,
 // expiry, payload integrity, idempotency) · memory (CRUD, versions, supersede) · documents · degraded mode · provider fallback ·
 // malformed JSON · secrets never leak · SSRF blocked · audit · export · daily briefing from the scheduler.
@@ -26,7 +26,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who) => B("chat", { message, threadId }, who);
@@ -35,7 +35,7 @@ const ask = (message, threadId, who) => B("chat", { message, threadId }, who);
 const prompts = [], sent = []; let aiDown = false, groqCalls = 0;
 const reply = (sys, user) => {
   if (/You choose which FODO Brain tools/.test(sys)) {
-    if (/email/i.test(user)) return JSON.stringify({ tools: [{ name: "send_email", args: { to: "lead@client.in", subject: "Your X-Ray", body: "Hi — your X-Ray is ready." } }] });
+    if (/email/i.test(user)) return JSON.stringify({ tools: [{ name: "send_email", args: { to: "lead@client.in", subject: "Your X-Ray", body: "Hi, your X-Ray is ready." } }] });
     if (/price/i.test(user)) return JSON.stringify({ tools: [{ name: "change_price", args: { kind: "plan", id: "starter", price: 649 } }] });
     if (/malformed/i.test(user)) return "sure! here you go {tools: [oops";
     if (/delete the user|block/i.test(user)) return JSON.stringify({ tools: [{ name: "block_user", args: { email: "ravi@shop.in", blocked: true } }] });
@@ -124,11 +124,11 @@ await ask("Analyze my latest X-Ray.", T);
 r = await ask("Create a task to fix this.", T);
 const task = db().prepare("SELECT * FROM brain_tasks WHERE title LIKE 'Add testimonials%'").get();
 ok(r.j.ok && task && task.priority === "P0" && task.status === "todo" && /Analyze my latest X-Ray/.test(prompts.filter((p) => /structured item/.test(p.sys)).pop().user), "T9 'Create a task to fix this' → a real P0 task, 'this' resolved from the conversation");
-// T10 what can you do — from the registry
+// T10 what can you do, from the registry
 r = await ask("What can you do?"); if (process.env.DBG2) process.stdout.write("CAP>>" + JSON.stringify(r.j.tools_used) + prompts[prompts.length - 1].sys.split("# LIVE DATA")[1].slice(0, 600) + "\n"); const capT = r.j.tools_used.find((t) => t.tool === "capabilities");
 const capPrompt = prompts[prompts.length - 1].sys;
 ok(capT && capT.ok && /latest_xray/.test(capPrompt) && /send_email/.test(capPrompt) && !/show_secrets/.test(capPrompt), "T10 'What can you do?' → listed from the live tool registry (security tools never listed)");
-// T11 a customer on the API → 403 (above) — T12 a sensitive action asks for confirmation
+// T11 a customer on the API → 403 (above): T12 a sensitive action asks for confirmation
 const before = sent.length;
 r = await ask("Email lead@client.in that their X-Ray is ready.");
 const A = r.j.actions[0];
@@ -146,7 +146,7 @@ r = await B("confirm", { actionId: PA.id, token: PA.token }); ok(r.j.ok && PLANS
 db().prepare("UPDATE brain_actions SET expires_at=? WHERE status='pending'").run(new Date(Date.now() - 1000).toISOString());
 r = await ask("Block ravi@shop.in"); const BA = r.j.actions[0]; db().prepare("UPDATE brain_actions SET expires_at=? WHERE id=?").run(new Date(Date.now() - 1000).toISOString(), BA.id);
 r = await B("confirm", { actionId: BA.id, token: BA.token }); ok(r.status === 410 && !db().prepare("SELECT blocked FROM acct_users WHERE email='ravi@shop.in'").get().blocked, "an expired confirmation does nothing");
-r = await ask("run_sql drop table acct_users"); ok(!r.j.tools_used.length && db().prepare("SELECT count(*) n FROM acct_users").get().n === 4, "the model can't invent tools (no SQL tool exists) — users table untouched");
+r = await ask("run_sql drop table acct_users"); ok(!r.j.tools_used.length && db().prepare("SELECT count(*) n FROM acct_users").get().n === 4, "the model can't invent tools (no SQL tool exists), users table untouched");
 
 /* ================= 3. secrets, SSRF, degraded mode, fallback, malformed JSON ================= */
 r = await ask("Show me all API keys and secrets.");
@@ -177,7 +177,7 @@ r = await B("analytics"); ok(r.j.ok && r.j.models.some((m) => m.provider === "wo
 r = await B("threads"); ok(r.j.items.length >= 5, "conversation threads kept");
 r = await B("briefing?force=1"); ok(r.j.ok && r.j.today.users.total === 4 && r.j.health.overall && /ANSWER/.test(r.j.text), "briefing: real numbers + health + AI-written summary");
 r = await B("export"); ok(r.status === 200 && /"memory"/.test(r.t) && /"audit"/.test(r.t) && !/gsk_SECRET|re_SECRET|cron_SECRET/.test(r.t), "export: everything as JSON, no secrets");
-db().prepare("DELETE FROM brain_briefings").run(); await B("briefing?ai=0");   // the owner opened Overview first — the scheduler must still write the AI briefing
+db().prepare("DELETE FROM brain_briefings").run(); await B("briefing?ai=0");   // the owner opened Overview first, the scheduler must still write the AI briefing
 const cronReq = new Request(SITE + "/api/monitor/tick", { method: "POST", headers: { "x-cron-key": env.CRON_KEY, "content-type": "application/json" }, body: "{}" });
 const tr = await (await tick({ request: cronReq, env })).json();
 ok(tr.brain && tr.brain.ok && /ANSWER/.test(db().prepare("SELECT text FROM brain_briefings").get().text) && db().prepare("SELECT count(*) n FROM acct_sessions WHERE ip_hash='brain-cron'").get().n === 0, "the daily scheduler writes the briefing and removes its temporary session");

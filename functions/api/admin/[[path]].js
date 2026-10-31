@@ -1,4 +1,4 @@
-/* FODO admin dashboard API (v15) — /api/admin/*
+/* FODO admin dashboard API (v15): /api/admin/*
  * Who may open it:
  *   owner  = the two FODO owner logins (OWNER_EMAILS in _lib/accounts.js): see everything, block/unblock, give any plan, credits or feature free, add viewers
  *   viewer = an email an owner added under Team: read-only, cannot change anything
@@ -88,7 +88,7 @@ export async function onRequest(ctx) {
     if (p0 === "config") { const r = await saveConfig(env, body, u.email); if (r.ok) await logEvent(env, u.id, "admin_config", (body.reset ? "reset to defaults" : JSON.stringify({ plans: body.plans || {}, packs: body.packs || {}, tools: body.tools || {} })).slice(0, 280)); return json(r, r.ok ? 200 : 400); }
     if (p0 === "viewers") {
       const email = cleanEmail(body.email); if (!email) return json({ ok: false, reason: "Enter a valid email." }, 400);
-      if (isOwner({ email })) return json({ ok: false, reason: "That is a FODO owner login — it always has full control." }, 409);
+      if (isOwner({ email })) return json({ ok: false, reason: "That is a FODO owner login, it always has full control." }, 409);
       if (body.remove) await d.prepare("DELETE FROM acct_admins WHERE email=?1").bind(email).run();
       else await d.prepare("INSERT OR REPLACE INTO acct_admins (email, role, added_by, added_at) VALUES (?1,?2,?3,?4)").bind(email, body.role === "admin" ? "admin" : "viewer", u.email, nowIso()).run();
       return json({ ok: true });
@@ -100,7 +100,7 @@ export async function onRequest(ctx) {
         const on = !!body.blocked;
         await d.prepare("UPDATE acct_users SET blocked=?2, admin_note=COALESCE(NULLIF(?3,''),admin_note) WHERE id=?1").bind(t.id, on ? 1 : 0, clean(body.note, 200)).run();
         if (on) await d.prepare("DELETE FROM acct_sessions WHERE user_id=?1").bind(t.id).run();   // logged out everywhere at once
-        await logEvent(env, t.id, "admin_block", (on ? "blocked" : "unblocked") + " by " + u.email + (body.note ? " — " + clean(body.note, 120) : ""));
+        await logEvent(env, t.id, "admin_block", (on ? "blocked" : "unblocked") + " by " + u.email + (body.note ? ": " + clean(body.note, 120) : ""));
         return json({ ok: true, blocked: on });
       }
       if (path[2] === "grant") return grant(env, d, u, t, body);
@@ -192,13 +192,13 @@ async function userDetail(d, id, role) {
   return json({ ok: true, role, user: { id: t.id, email: t.email, name: t.name, picture: t.picture, phone: t.phone, plan: activePlan(t), rawPlan: t.plan, planUntil: t.plan_until, monthly: t.monthly_left, packs: t.pack_left, free: t.free_left, blocked: !!t.blocked, unlimited: !!t.unlimited, owner: isOwner(t), features: extraFeatures(t), note: t.admin_note || "", created: t.created_at, lastLogin: t.last_login, google: !!t.google_sub, sessions: sessions.n || 0 },
     usage, events, runs, orders, ledger, team });
 }
-/* people who ran out of free X-Rays (or hit the hourly limit) and have not paid — warm sales leads */
+/* people who ran out of free X-Rays (or hit the hourly limit) and have not paid, warm sales leads */
 async function leads(d) {
   return all(d, "SELECT u.id, u.email, u.name, u.phone, u.created_at, max(e.created_at) last_hit, count(e.id) hits, (SELECT count(*) FROM acct_runs r WHERE r.user_id = u.id) runs, (SELECT group_concat(DISTINCT r.domain) FROM acct_runs r WHERE r.user_id = u.id) domains " +
     "FROM acct_events e JOIN acct_users u ON u.id = e.user_id WHERE e.kind = 'limit_hit' AND NOT EXISTS (SELECT 1 FROM acct_orders o WHERE o.user_id = u.id AND o.status = 'PAID') GROUP BY u.id ORDER BY last_hit DESC LIMIT 200");
 }
 
-/* ---------- v17: API cost + profitability (prompt §57–59, §105) — estimates are labelled; revenue is real paid orders ---------- */
+/* ---------- v17: API cost + profitability (prompt §57–59, §105), estimates are labelled; revenue is real paid orders ---------- */
 async function costs(env, d, days) {
   const U = await usageReport(env, days); if (!U.ok) return U;
   const rate = usdInr(env), since = U.since + "T00:00:00.000Z";
@@ -237,7 +237,7 @@ async function health(env) {
   const P = providers(env), U = await usageReport(env, 1), h = {}; (U.health || []).forEach((x) => { h[x.provider] = x; });
   const row = (id, name, configured, keys, note) => { const all = keys.map((k) => h[k]).filter(Boolean), calls = all.reduce((s, x) => s + x.calls, 0), failed = all.reduce((s, x) => s + x.failed, 0), last = all.map((x) => x.last).sort().pop() || null, lastOk = all.map((x) => x.lastOk).filter(Boolean).sort().pop() || null;
     // "down" only on real evidence: enough calls, mostly failing, and the latest call failed too (a recovered source or 2 bad
-    // calls out of 4 — e.g. one customer's unverified Search Console property — is "degraded", not a critical outage)
+    // calls out of 4, e.g. one customer's unverified Search Console property, is "degraded", not a critical outage)
     const recovered = !!(lastOk && last && lastOk >= last);
     const st = !configured ? "not connected" : !calls ? "no calls (24 h)" : failed / calls >= 0.5 && calls >= 5 && !recovered ? "down" : failed / calls >= 0.1 ? "degraded" : "healthy";
     return { id, name, configured: !!configured, status: st, calls, failed, last, note: note || "" }; };
@@ -251,7 +251,7 @@ async function health(env) {
     row("ai", "AI (Workers AI" + (eng.indexOf("groq") > -1 ? " + Groq" : "") + (eng.indexOf("gemini") > -1 ? " + Gemini" : "") + ")", !!env.AI, ["workers-ai", "groq", "gemini"]),
     row("gsc", "Google Search Console", gscOn(env) && toolOn("gsc"), ["gsc"], gscOn(env) ? "" : "Needs GOOGLE_CLIENT_SECRET."),
     row("opr", "Open PageRank", !!env.OPR_API_KEY, ["opr"]),
-    row("seo", "DataForSEO (search volume)", !!P.seo, ["dataforseo"], "Paid provider — optional."),
+    row("seo", "DataForSEO (search volume)", !!P.seo, ["dataforseo"], "Paid provider, optional."),
     { id: "db", name: "Database (D1)", configured: !!env.XRAY_DB, status: dbOk ? "healthy" : "down", calls: null, failed: null, last: null, note: "" },
     { id: "payments", name: "Payments (Cashfree)", configured: !!(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY), status: env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY ? (env.CASHFREE_ENV === "production" ? "live" : "sandbox") : "not connected", note: "" },
     { id: "email", name: "Email (Resend)", configured: !!env.RESEND_API_KEY, status: env.RESEND_API_KEY ? "configured" : "not connected", note: "" },
@@ -292,7 +292,7 @@ async function labStats(env, d, days) {
   const leads = Object.keys(W.conv_kind || {}).filter((k) => /generate_lead|form_submit|whatsapp_click|booking_click|phone_click|email_click|audit_cta_click|service_cta_click/.test(k)).reduce((s0, k) => s0 + W.conv_kind[k], 0);
   // revenue funnel (prompt §102): each step from its own source; steps are counts in the period, not one tracked cohort
   const funnel = [["Visitors", g("uv", "all"), "Unique visitors a day, summed (first-party analytics)"], ["Used a free tool", toolDone, "Completed Growth Score, ROI, quiz, game, Competitor Finder or Budget Planner"],
-    ["Signed up", S.n || 0, "New Growth Lab accounts"], ["Saw the plans page", g("page", "/plans/"), "Views of /plans/"], ["Started checkout", E("checkout").n, "Opened Cashfree checkout"], ["Paid", O.n || 0, "Paid orders"],
+    ["Signed up", S.n || 0, "New Growth Lab accounts"], ["Saw the plans page", g("page", "/plans/"), "Views of /plans/"], ["Started checkout", E("checkout").n, "Opened the payment checkout"], ["Paid", O.n || 0, "Paid orders"],
     ["Got a report", R.done || 0, "X-Rays completed"], ["Started monitoring", E("monitor_add").n, "Websites added to monitoring"], ["Asked FODO for help", leads, "Contact, WhatsApp, call, booking and lead-form actions"]].map((x) => ({ step: x[0], n: x[1], note: x[2] }));
   // v18 standalone tools: runs (reused vs fresh scan), bought runs and revenue per tool
   const TR = await safeAll(d, "SELECT tool, source, status, reused, COUNT(*) n FROM lab_tool_runs WHERE created_at >= ?1 GROUP BY tool, source, status, reused", since);
@@ -351,27 +351,27 @@ async function promptsList(env, d) {
   for (const k of Object.keys(PROMPTS)) { const P = await getPrompt(env, k), def = await getPrompt({}, k);
     const vers = Object.keys(stats).filter((t) => t.indexOf("prompt:" + k + "@") === 0).map((t) => Object.assign({ ver: t.split("@")[1] }, stats[t]));
     out.push({ key: k, name: PROMPTS[k].name, ver: P.ver, custom: P.custom, defaultVer: def.ver, text: P.text, model: "Workers AI (Llama 3.3 70B → 3.1 8B fallback)" + (k === "visibility" ? " + Groq + Gemini" : ""), versions: vers, history: hist.filter((h) => h.pkey === k).slice(0, 20) }); }
-  return { prompts: out, note: "Output-format rules (JSON shape, evidence-id checks) are fixed in code and always appended — editing a prompt cannot switch off FODO's checks." };
+  return { prompts: out, note: "Output-format rules (JSON shape, evidence-id checks) are fixed in code and always appended, editing a prompt cannot switch off FODO's checks." };
 }
 /* next best actions for the FODO team (rule-based, from the data) */
 async function insights(env, d) {
   const out = [], add = (level, title, detail, link) => out.push({ level, title, detail, link });
   const lim = await safeOne(d, "SELECT count(DISTINCT e.user_id) n FROM acct_events e LEFT JOIN acct_orders o ON o.user_id = e.user_id AND o.status='PAID' WHERE e.kind='limit_hit' AND e.created_at >= ?1 AND o.order_id IS NULL", daysAgo(30));
-  if (lim.n) add("money", lim.n + " user(s) ran out of free X-Rays and have not paid", "Send them a plan or pack offer — they already saw the value.", "users");
+  if (lim.n) add("money", lim.n + " user(s) ran out of free X-Rays and have not paid", "Send them a plan or pack offer, they already saw the value.", "users");
   const low = await safeOne(d, "SELECT count(*) n FROM acct_runs WHERE status='COMPLETE' AND completeness < 60 AND created_at >= ?1 AND (qc IS NULL OR qc='')", daysAgo(30));
-  if (low.n) add("quality", low.n + " report(s) with data completeness under 60% not reviewed", "Open them in Quality — usually a missing data source or a site that blocks readers.", "quality");
+  if (low.n) add("quality", low.n + " report(s) with data completeness under 60% not reviewed", "Open them in Quality, usually a missing data source or a site that blocks readers.", "quality");
   const stuck = await safeOne(d, "SELECT count(*) n FROM acct_runs WHERE status='running' AND created_at >= ?1 AND created_at < ?2", daysAgo(7), daysAgo(1 / 24));
   if (stuck.n) add("quality", stuck.n + " X-Ray(s) never finished", "Visitors closed the tab or a step failed. Check Costs → System health.", "xrays");
   const ai = await safeOne(d, "SELECT count(*) calls, sum(ok=0) failed FROM api_usage WHERE t >= ?1 AND (provider IN ('workers-ai','groq','gemini'))", daysAgo(1));
   if (ai.calls >= 10 && ai.failed / ai.calls > 0.2) add("health", "AI engines failing " + Math.round(ai.failed / ai.calls * 100) + "% of the time (24 h)", "Check keys and quotas in Costs → System health.", "costs");
-  if (!env.GROQ_API_KEY) add("setup", "Groq not connected (free)", "Add GROQ_API_KEY — a second AI engine for AI Visibility.", "settings");
-  if (!env.GEMINI_API_KEY) add("setup", "Gemini not connected (free tier)", "Add GEMINI_API_KEY — answers from live Google Search with citations.", "settings");
+  if (!env.GROQ_API_KEY) add("setup", "Groq not connected (free)", "Add GROQ_API_KEY, a second AI engine for AI Visibility.", "settings");
+  if (!env.GEMINI_API_KEY) add("setup", "Gemini not connected (free tier)", "Add GEMINI_API_KEY, answers from live Google Search with citations.", "settings");
   if (!gscOn(env)) add("setup", "Search Console connection is off", "Add GOOGLE_CLIENT_SECRET so customers can add their real clicks and impressions.", "settings");
   if (!env.CRON_KEY) add("setup", "Monitoring runs only when users press “Check now”", "Add CRON_KEY in Cloudflare and FODO_CRON_KEY in GitHub for daily checks.", "monitoring");
-  if (!(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY)) add("money", "Payments are not connected", "Finish Cashfree KYC and add the keys — plans can't be bought yet.", "payments");
+  if (!(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY)) add("money", "Payments are not connected", "Finish Cashfree KYC and add the keys, plans can't be bought yet.", "payments");
   const hi = await safeOne(d, "SELECT count(*) n FROM mon_events WHERE severity='high' AND t >= ?1", daysAgo(7));
   if (hi.n) add("customers", hi.n + " high-severity change(s) found for customers this week", "Good moment to reach out with help (noindex, downtime, competitor price moves).", "monitoring");
   const repeat = await safeOne(d, "SELECT count(*) n FROM (SELECT user_id FROM acct_runs WHERE created_at >= ?1 GROUP BY user_id HAVING count(DISTINCT domain) >= 3)", daysAgo(30));
-  if (repeat.n) add("money", repeat.n + " user(s) X-Rayed 3+ different websites this month", "Likely agencies — offer the Agency plan (white-label, bulk, client folders).", "users");
+  if (repeat.n) add("money", repeat.n + " user(s) X-Rayed 3+ different websites this month", "Likely agencies, offer the Agency plan (white-label, bulk, client folders).", "users");
   return { items: out };
 }

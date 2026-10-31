@@ -1,6 +1,6 @@
-/* FODO BRAIN — voice on the server.
+/* FODO BRAIN, voice on the server.
    Hearing: the page detects when someone starts/stops speaking (VAD) and sends just that clip here. Whisper large-v3-turbo
-   (Workers AI) transcribes it — Hindi, English and Hinglish — guided by an initial prompt with FODO's own words ("FODO",
+   (Workers AI) transcribes it: Hindi, English and Hinglish, guided by an initial prompt with FODO's own words ("FODO",
    "X-Ray", "Growth Lab"…) so the wake word and product names come out right. Whisper's known silence hallucinations
    ("Thank you.", "Subscribe…") are dropped; Urdu-script output is retried as Hindi; Deepgram Nova-3 is the backup engine.
    Speaking: English → Deepgram Aura-2 (natural, 40 voices; Aura-1 as backup). Hindi/Hinglish → the device's Hindi voice reads a

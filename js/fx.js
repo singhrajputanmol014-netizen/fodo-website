@@ -1,4 +1,4 @@
-/* FODO fx — small, dependency-free interaction layer (Aceternity-inspired, rebuilt in vanilla JS).
+/* FODO fx, small, dependency-free interaction layer (Aceternity-inspired, rebuilt in vanilla JS).
    floating navbar · flip words · spotlight cards · sticky Growth System · footer wordmark glow · before/after compare · copy/print templates.
    Every effect respects prefers-reduced-motion and degrades to plain content. */
 (function () {

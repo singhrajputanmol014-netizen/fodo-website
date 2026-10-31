@@ -1,4 +1,4 @@
-/* FODO OWNER BRAIN — Google connector: ANY NUMBER of the owner's Google accounts (Gmail, Calendar, Analytics 4, YouTube,
+/* FODO OWNER BRAIN: Google connector: ANY NUMBER of the owner's Google accounts (Gmail, Calendar, Analytics 4, YouTube,
    Drive, Sheets). OAuth with the site's existing Google client (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). Each account's refresh
    token is stored AES-GCM encrypted in D1 (brain_connectors, id "google:<email>") and can be disconnected (revoked) any time.
    Reading is automatic; sending email, creating calendar events and uploading to YouTube always wait for confirmation.
@@ -24,15 +24,15 @@ async function token(env, params) {
   const r = await outbound(env)("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(Object.assign({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET }, params)).toString(), signal: AbortSignal.timeout(12000) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error("Google: " + (j.error_description || j.error || r.status)); return j;
 }
-/* v22 stored one account under id "google" — move it to "google:<email>" once */
+/* v22 stored one account under id "google", move it to "google:<email>" once */
 async function migrate(d) { const old = await d.prepare("SELECT * FROM brain_connectors WHERE id='google'").first(); if (!old) return; if (old.account) await d.prepare("INSERT OR IGNORE INTO brain_connectors (id, data, scopes, account, connected_at, last_used) VALUES (?1,?2,?3,?4,?5,?6)").bind(KEY(old.account), old.data, old.scopes, old.account, old.connected_at, old.last_used).run(); await d.prepare("DELETE FROM brain_connectors WHERE id='google'").run(); }
 export async function accounts(env) { const d = await brainDb(env); await migrate(d); return ((await d.prepare("SELECT id, scopes, account, connected_at, last_used FROM brain_connectors WHERE id LIKE 'google:%' ORDER BY connected_at").all()).results || []); }
 export async function finishConnect(env, origin, userId, code, state, by) {
-  if (!(await checkState(env, String(state || "").replace(/^brain\./, ""), userId))) throw new Error("The Google sign-in link expired — try Connect again.");
+  if (!(await checkState(env, String(state || "").replace(/^brain\./, ""), userId))) throw new Error("The Google sign-in link expired, try Connect again.");
   const t = await token(env, { code, redirect_uri: redirect(origin), grant_type: "authorization_code" });
-  if (!t.refresh_token) throw new Error("Google did not return offline access — remove FODO from your Google account's third-party access and connect again.");
+  if (!t.refresh_token) throw new Error("Google did not return offline access, remove FODO from your Google account's third-party access and connect again.");
   let account = ""; try { account = JSON.parse(atob(String(t.id_token || "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email || ""; } catch (e) {}
-  if (!account) throw new Error("Google did not say which account this is — try again.");
+  if (!account) throw new Error("Google did not say which account this is, try again.");
   const d = await brainDb(env); await migrate(d);
   await d.prepare("INSERT INTO brain_connectors (id, data, scopes, account, connected_at, last_used) VALUES (?1, ?2, ?3, ?4, ?5, ?5) ON CONFLICT(id) DO UPDATE SET data=?2, scopes=?3, connected_at=?5").bind(KEY(account), await seal(env, t.refresh_token), t.scope || SCOPES.join(" "), account.toLowerCase(), nowIso()).run();
   delete cache[account.toLowerCase()];
@@ -54,7 +54,7 @@ const cache = {};
 /* pick the account(s) for a job: an exact email, else every account that granted the scope */
 async function pick(env, scope, account) {
   const L = (await accounts(env)).filter((r) => !scope || has(r.scopes, scope));
-  if (!L.length) throw new Error((await accounts(env)).length ? "None of the connected Google accounts allowed " + (SCOPE_LABELS[scope] || scope) + " — connect again and tick it." : "No Google account is connected — open Brain → Connectors → Connect Google.");
+  if (!L.length) throw new Error((await accounts(env)).length ? "None of the connected Google accounts allowed " + (SCOPE_LABELS[scope] || scope) + ", connect again and tick it." : "No Google account is connected, open Brain → Connectors → Connect Google.");
   if (account) { const a = String(account).toLowerCase(), m = L.filter((r) => r.account === a || r.account.split("@")[0] === a); if (!m.length) throw new Error(account + " is not a connected Google account with " + (SCOPE_LABELS[scope] || scope) + ". Connected: " + L.map((r) => r.account).join(", ")); return m; }
   return L;
 }
@@ -161,7 +161,7 @@ export async function driveRead(env, id, account) {
     let meta; try { meta = await g(env, a.account, "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + "?fields=id,name,mimeType,size,webViewLink"); } catch (e) { continue; }
     if (meta.mimeType === "application/vnd.google-apps.spreadsheet") return Object.assign({ account: a.account, name: meta.name, link: meta.webViewLink }, await sheetRead(env, id, "", a.account));
     let url = "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + (/google-apps\.(document|presentation)/.test(meta.mimeType) ? "/export?mimeType=text/plain" : "?alt=media");
-    if (!/google-apps|^text\/|json|csv/.test(meta.mimeType) && (+meta.size || 0) > 10e6) return { account: a.account, name: meta.name, link: meta.webViewLink, note: "File is larger than 10 MB — open it in Drive." };
+    if (!/google-apps|^text\/|json|csv/.test(meta.mimeType) && (+meta.size || 0) > 10e6) return { account: a.account, name: meta.name, link: meta.webViewLink, note: "File is larger than 10 MB, open it in Drive." };
     const r = await g(env, a.account, url, { response: true, timeout: 25000 }); if (!r.ok) throw new Error("Drive " + r.status);
     if (/google-apps|^text\/|json|csv/.test(meta.mimeType)) return { account: a.account, name: meta.name, link: meta.webViewLink, text: clip(await r.text(), 12000) };
     if (env.AI && typeof env.AI.toMarkdown === "function") { const md = await env.AI.toMarkdown({ name: meta.name, blob: new Blob([await r.arrayBuffer()], { type: meta.mimeType }) }); const one = [].concat(md)[0] || {}; return { account: a.account, name: meta.name, link: meta.webViewLink, text: clip(one.data || "", 12000) }; }

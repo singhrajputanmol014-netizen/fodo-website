@@ -1,6 +1,6 @@
-/* FODO Website Builder — server library (v28). Architecture: docs/website-builder-architecture.md · docs/tenant-security.md
+/* FODO Website Builder, server library (v28). Architecture: docs/website-builder-architecture.md · docs/tenant-security.md
    TENANT RULE: every function that touches a website takes the AUTHENTICATED user (from the server session) and resolves the
-   website with siteFor(): the site's owner_user_id must be that user — or the user is a FODO owner (global access, audited).
+   website with siteFor(): the site's owner_user_id must be that user, or the user is a FODO owner (global access, audited).
    A site id from the browser is only a lookup key; a stranger's id answers "not found" (no hint that it exists).
    The client AI only ever sees ONE website's document and can only return edits to it. */
 import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail } from "./accounts.js";
@@ -35,7 +35,7 @@ export async function sdb(env) { const d = await accountsDb(env); if (!d) return
 const clip = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) : s; };
 const err = (msg, status) => Object.assign(new Error(msg), { status: status || 400 });
 
-/* plan limits — architecture only (billing lives in accounts/plans; the editor never checks plans itself) */
+/* plan limits, architecture only (billing lives in accounts/plans; the editor never checks plans itself) */
 export const LIMITS = { free: { sites: 1, pages: 6, media: 30, domains: 0, ai: 40 }, starter: { sites: 3, pages: 15, media: 150, domains: 1, ai: 200 }, pro: { sites: 10, pages: 40, media: 600, domains: 5, ai: 800 }, agency: { sites: 50, pages: 100, media: 3000, domains: 50, ai: 4000 } };
 export const limitsFor = (u) => (isOwner(u) ? { sites: 9999, pages: 200, media: 99999, domains: 999, ai: 99999, owner: true } : LIMITS[activePlan(u)] || LIMITS.free);
 
@@ -85,14 +85,14 @@ export function validateDoc(doc, lim) {
   if (out.theme.font && !FONTS[out.theme.font]) delete out.theme.font; if (out.theme.headingFont && !FONTS[out.theme.headingFont]) delete out.theme.headingFont;
   if (out.settings.customCss) out.settings.customCss = sanitizeCss(out.settings.customCss);
   delete out.settings.customJs; delete out.settings.headCode;
-  // v32 custom code (advanced): stored, but only ever served on the website's OWN connected domain (its own origin) — never on
+  // v32 custom code (advanced): stored, but only ever served on the website's OWN connected domain (its own origin), never on
   // FODO's shared address or inside the builder, so it can't touch FODO or another customer's website
   ["customHead", "customBody"].forEach((k) => { if (out.settings[k] != null) out.settings[k] = clip(String(out.settings[k]), 20000); });
   if (out.settings.forms && out.settings.forms.webhook && !/^https:\/\/[^\s]{4,300}$/.test(out.settings.forms.webhook)) delete out.settings.forms.webhook;
   const comps = (Array.isArray(doc.components) ? doc.components : []).slice(0, 40).filter((k) => k && /^cmp_[a-z0-9]{6,16}$/.test(String(k.id)) && SECTION_TYPES.indexOf(k.type) > -1).map((k) => ({ id: k.id, name: clip(k.name || k.type, 60), type: k.type, props: cleanVal(k.props || {}, 0) || {} }));
   if (comps.length) out.components = comps;
   for (const p of pages) {
-    const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); if (/^(p|cart|checkout|order|blog|thank-you|search)$/.test(slug)) throw err("“" + slug + "” is reserved (store, blog, search, thank-you) — use another page address."); seen.add(slug);
+    const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); if (/^(p|cart|checkout|order|blog|thank-you|search)$/.test(slug)) throw err("“" + slug + "” is reserved (store, blog, search, thank-you), use another page address."); seen.add(slug);
     const secs = (Array.isArray(p.sections) ? p.sections : []).slice(0, 40).filter((s) => s && SECTION_TYPES.indexOf(s.type) > -1).map((s) => Object.assign({ type: s.type, props: cleanVal(s.props || {}, 0) || {} }, s.style && typeof s.style === "object" ? { style: cleanVal(s.style, 0) } : {}, s.ref && comps.some((k) => k.id === s.ref) ? { ref: s.ref } : {}));
     out.pages.push({ slug, title: clip(p.title || slug, 80), navLabel: p.navLabel ? clip(p.navLabel, 40) : undefined, nav: p.nav === false ? false : undefined, hidden: !!p.hidden || undefined, noindex: !!p.noindex || undefined, password: p.password && /^[0-9a-f]{64}$/.test(p.password) ? p.password : undefined, seo: cleanVal(p.seo || {}, 0) || {}, sections: secs });
   }
@@ -119,9 +119,9 @@ function mergeText(a, b) {   // take the AI's strings; keep structure, links and
   if (typeof a === "object") { const o = Object.assign({}, a); Object.keys(a).forEach((k) => { if (/^(href|image|src|logoImg|bg|align|url|icon|featured|_s|form|number|date|limit|collection|generated|reviewed)$/.test(k)) return; if (b && b[k] != null) o[k] = mergeText(a[k], b[k]); }); return o; }
   return a;
 }
-/* create — four ways (v32): "ai" (sitemap + design system → pages → AI copy → automatic QA), "template", "blank", "import".
+/* create, four ways (v32): "ai" (sitemap + design system → pages → AI copy → automatic QA), "template", "blank", "import".
    Every stage that actually ran is reported back (the onboarding shows them); if the AI fails the built website is still saved
-   ("Generation paused — your work is safe", Continue generation = POST <id>/generate). */
+   ("Generation paused, your work is safe", Continue generation = POST <id>/generate). */
 export async function createSite(env, u, body) {
   const d = await sdb(env), lim = limitsFor(u), n = ((await d.prepare("SELECT COUNT(*) AS n FROM sites WHERE owner_user_id=?1 AND deleted_at IS NULL").bind(u.id).first()) || {}).n || 0;
   if (n >= lim.sites) throw err("Your plan allows " + lim.sites + " website" + (lim.sites > 1 ? "s" : "") + ". Upgrade to add more.", 402);
@@ -168,10 +168,10 @@ export async function createSite(env, u, body) {
   return { id, slug, template: tid, mode, ai: !!ai.ai, paused: mode !== "blank" && body.ai !== false && !ai.ai, stages, qa: { before: before.overall, after: after.overall, fixed: fx.fixed.length, remaining: after.count } };
 }
 function designForVariant(theme, styleId) { const t = designFor({ profile: "local", style: styleId }); return Object.assign({}, theme, t, { motion: t.motion }); }
-/* continue generation (after a paused / failed AI step) — returns the improved document (the editor keeps or undoes it) */
+/* continue generation (after a paused / failed AI step), returns the improved document (the editor keeps or undoes it) */
 export async function generateCopy(env, u, s) {
   const doc = JSON.parse(s.doc), b = (doc.settings || {}).business || {}, r = await personalize(env, doc, { name: b.name || s.name, industry: b.industry || s.industry, location: b.city || b.address, lang: (doc.settings || {}).lang, about: b.description });
-  if (!r.ai) throw err("The AI didn't answer — your website is safe. Try again in a minute.", 503);
+  if (!r.ai) throw err("The AI didn't answer, your website is safe. Try again in a minute.", 503);
   await aiLog(env, s.id, u.id, "generate", "continue generation", "ok · " + r.model);
   return { doc: validateDoc(r.doc, limitsFor(u)) };
 }
@@ -199,9 +199,9 @@ export async function aiEdit(env, u, s, instruction, selected) {
   instruction = clip(instruction, 1500).trim(); if (instruction.length < 3) throw err("Tell the AI what to change.");
   const doc = JSON.parse(s.doc), brief = { theme: doc.theme, pages: doc.pages.map((p) => ({ slug: p.slug, title: p.title, sections: p.sections.map((x, i) => ({ i, type: x.type, props: x.props })) })) };
   const r = await brainAI(env, { kind: "code", json: true, purpose: "site-edit", max: 6000, messages: [
-    { role: "system", content: "You edit ONE customer website. The website is JSON: theme + pages of sections. Section types: " + SECTION_TYPES.join(", ") + ". Reply JSON only: {\"say\":\"one short sentence for the user\",\"ops\":[...]} with ops from: {\"op\":\"update\",\"page\":slug,\"i\":index,\"props\":{partial props}} · {\"op\":\"add\",\"page\":slug,\"at\":index,\"type\":t,\"props\":{}} · {\"op\":\"remove\",\"page\":slug,\"i\":index} · {\"op\":\"move\",\"page\":slug,\"from\":i,\"to\":j} · {\"op\":\"theme\",\"theme\":{mode,primary,accent,font,headingFont,radius}} · {\"op\":\"addPage\",\"slug\":s,\"title\":t,\"sections\":[{type,props}]} · {\"op\":\"seo\",\"page\":slug,\"seo\":{title,description}}. Fonts: " + Object.keys(FONTS).join(", ") + ". Colours as #hex. Never invent reviews, numbers or people — use [placeholders]. No HTML, no scripts. Text in the language the user writes in." },
+    { role: "system", content: "You edit ONE customer website. The website is JSON: theme + pages of sections. Section types: " + SECTION_TYPES.join(", ") + ". Reply JSON only: {\"say\":\"one short sentence for the user\",\"ops\":[...]} with ops from: {\"op\":\"update\",\"page\":slug,\"i\":index,\"props\":{partial props}} · {\"op\":\"add\",\"page\":slug,\"at\":index,\"type\":t,\"props\":{}} · {\"op\":\"remove\",\"page\":slug,\"i\":index} · {\"op\":\"move\",\"page\":slug,\"from\":i,\"to\":j} · {\"op\":\"theme\",\"theme\":{mode,primary,accent,font,headingFont,radius}} · {\"op\":\"addPage\",\"slug\":s,\"title\":t,\"sections\":[{type,props}]} · {\"op\":\"seo\",\"page\":slug,\"seo\":{title,description}}. Fonts: " + Object.keys(FONTS).join(", ") + ". Colours as #hex. Never invent reviews, numbers or people, use [placeholders]. No HTML, no scripts. Text in the language the user writes in." },
     { role: "user", content: "INSTRUCTION: " + instruction + (selected ? "\nSELECTED: page " + clip(selected.page, 40) + " section " + (+selected.i) : "") + "\nWEBSITE: " + clip(JSON.stringify(brief), 30000) }] });
-  const j = parseJson(r.text); if (!j || !Array.isArray(j.ops) || !j.ops.length) throw err("The AI couldn't work out a change for that — try saying it differently.");
+  const j = parseJson(r.text); if (!j || !Array.isArray(j.ops) || !j.ops.length) throw err("The AI couldn't work out a change for that, try saying it differently.");
   const res = applyOps(doc, j.ops.slice(0, 30));
   const clean = validateDoc(res.doc, limitsFor(u));
   await aiLog(env, s.id, u.id, "edit", instruction, res.applied + " ops · " + (j.say || ""));
@@ -257,12 +257,12 @@ export async function submitForm(env, siteId, body, ip) {
   if (data.email && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/i.test(data.email)) throw err("Please enter a valid email.");
   const ipHash = (await sha256("form|" + (ip || ""))).slice(0, 16), now = nowIso();
   const recent = ((await d.prepare("SELECT COUNT(*) AS n FROM site_forms WHERE site_id=?1 AND ip_hash=?2 AND created_at > ?3").bind(s.id, ipHash, new Date(Date.now() - 3600e3).toISOString()).first()) || {}).n || 0;
-  if (recent >= 8) throw err("Too many messages — please try later.", 429);
+  if (recent >= 8) throw err("Too many messages, please try later.", 429);
   await d.prepare("INSERT INTO site_forms (id, site_id, page, data, ip_hash, created_at) VALUES (?1,?2,?3,?4,?5,?6)").bind("wf_" + randId(12), s.id, clip(data._page || "", 120), JSON.stringify(data), ipHash, now).run();
   await bump(env, s.id, data._page || "/", "form");
   const pubS = (JSON.parse(s.published || "{}").settings) || {}, hook = (pubS.forms || {}).webhook;
   if (hook && /^https:\/\//.test(hook) && netSafe(hook).ok) { try { await safeFetch(hook, { method: "POST", headers: { "content-type": "application/json", "user-agent": "FODO-Forms/1.0" }, body: JSON.stringify({ site: s.name, form: data._form || "contact", page: data._page || "", data, at: now }) }, { timeout: 6000, env, maxHops: 0 }); } catch (e) { /* the lead is already stored */ } }
-  try { const pub = JSON.parse(s.published || "{}"), to = (pub.settings || {}).notifyEmail; if (to && /@/.test(to)) await sendMail(env, to, "New " + (data._form && data._form !== "contact" ? data._form : "enquiry") + " from your website — " + clip(s.name, 60), "<p>You have a new message from <b>" + esc(s.name) + "</b>:</p><table>" + Object.keys(data).filter((k) => k[0] !== "_").map((k) => "<tr><td><b>" + esc(k) + "</b></td><td>" + esc(data[k]) + "</td></tr>").join("") + "</table><p>See all messages in FODO Website Builder.</p>"); } catch (e) {}
+  try { const pub = JSON.parse(s.published || "{}"), to = (pub.settings || {}).notifyEmail; if (to && /@/.test(to)) await sendMail(env, to, "New " + (data._form && data._form !== "contact" ? data._form : "enquiry") + " from your website: " + clip(s.name, 60), "<p>You have a new message from <b>" + esc(s.name) + "</b>:</p><table>" + Object.keys(data).filter((k) => k[0] !== "_").map((k) => "<tr><td><b>" + esc(k) + "</b></td><td>" + esc(data[k]) + "</td></tr>").join("") + "</table><p>See all messages in FODO Website Builder.</p>"); } catch (e) {}
   return { ok: true };
 }
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -285,7 +285,7 @@ export async function forms(env, s) { const d = await sdb(env); return ((await d
 export async function putMedia(env, u, s, bytes, mime, name) {
   if (!env.CHAT_KV) throw err("Media storage is not set up.", 503);
   if (!/^image\/(webp|jpeg|png|gif|svg\+xml|avif)$/.test(mime)) throw err("Only images can be uploaded here.");
-  if (mime === "image/svg+xml") throw err("SVG files can contain scripts — upload PNG, JPG or WebP.");
+  if (mime === "image/svg+xml") throw err("SVG files can contain scripts, upload PNG, JPG or WebP.");
   if (bytes.byteLength > 2.5e6) throw err("Images up to 2.5 MB (the editor compresses them for you).");
   const d = await sdb(env), n = ((await d.prepare("SELECT COUNT(*) AS n FROM site_media WHERE site_id=?1").bind(s.id).first()) || {}).n || 0; if (n >= limitsFor(u).media) throw err("Media limit reached for your plan.", 402);
   const id = randId(20); await env.CHAT_KV.put("site:media:" + id, bytes, { metadata: { mime, site: s.id } });
@@ -307,7 +307,7 @@ export const PROVIDERS = {
 };
 export function normDomain(x) { x = String(x || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\.$/, ""); if (!/^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/.test(x)) throw err("That doesn't look like a domain (e.g. mybusiness.com)."); if (/(^|\.)fodo\.co\.in$|\.pages\.dev$|\.workers\.dev$/.test(x)) throw err("That domain can't be connected."); return x; }
 export const target = (env) => (env.SITES_PROJECT || "fodo-sites") + ".pages.dev";
-export function dnsRecords(env, dom) { const www = /^www\./.test(dom) ? dom : "www." + dom.replace(/^www\./, ""), apex = dom.replace(/^www\./, ""); return [{ type: "TXT", name: "_fodo." + apex, value: null, why: "Proves the domain is yours" }, { type: "CNAME", name: www, value: target(env), why: "Points your website address to FODO" }, { type: "CNAME / ALIAS", name: apex, value: target(env), why: "Optional — makes " + apex + " work without www (if your provider allows CNAME/ALIAS at the root; otherwise set a redirect to www)." }]; }
+export function dnsRecords(env, dom) { const www = /^www\./.test(dom) ? dom : "www." + dom.replace(/^www\./, ""), apex = dom.replace(/^www\./, ""); return [{ type: "TXT", name: "_fodo." + apex, value: null, why: "Proves the domain is yours" }, { type: "CNAME", name: www, value: target(env), why: "Points your website address to FODO" }, { type: "CNAME / ALIAS", name: apex, value: target(env), why: "Optional, makes " + apex + " work without www (if your provider allows CNAME/ALIAS at the root; otherwise set a redirect to www)." }]; }
 export async function addDomain(env, u, s, domain) {
   const dom = normDomain(domain), d = await sdb(env), lim = limitsFor(u), n = ((await d.prepare("SELECT COUNT(*) AS n FROM site_domains m JOIN sites s ON s.id=m.site_id WHERE s.owner_user_id=?1").bind(s.owner_user_id).first()) || {}).n || 0;
   if (n >= lim.domains) throw err(lim.domains ? "Your plan allows " + lim.domains + " custom domain(s)." : "Custom domains are on paid plans.", 402);
@@ -330,10 +330,10 @@ export async function verifyDomain(env, s, domain) {
   const d = await sdb(env), r = await d.prepare("SELECT * FROM site_domains WHERE domain=?1 AND site_id=?2").bind(normDomain(domain), s.id).first(); if (!r) throw err("Domain not found.", 404);
   const apex = r.domain.replace(/^www\./, ""), www = "www." + apex, tgt = target(env), out = { checks: [] }, add = (name, ok, detail) => out.checks.push({ name, ok, detail });
   const txt = await doh("_fodo." + apex, "TXT").catch(() => null), cname = await doh(www, "CNAME").catch(() => null), cnameApex = await doh(apex, "CNAME").catch(() => []), ns = await doh(apex, "NS").catch(() => []);
-  if (txt == null || cname == null) { add("DNS lookup", false, "Couldn't reach the DNS service — try again in a minute."); }
+  if (txt == null || cname == null) { add("DNS lookup", false, "Couldn't reach the DNS service, try again in a minute."); }
   const txtOk = (txt || []).some((v) => v.indexOf(r.token.toLowerCase()) > -1), cnOk = (cname || []).some((v) => v === tgt) || cnameApex.some((v) => v === tgt);
-  add("Ownership (TXT _fodo." + apex + ")", txtOk, txtOk ? "Found." : (txt || []).length ? "A TXT record exists but the value is different — it must be exactly " + r.token : "Not found yet. DNS changes usually appear within minutes, sometimes up to 24 hours.");
-  add("Website address (CNAME " + www + " → " + tgt + ")", cnOk, cnOk ? "Found." : (cname || []).length ? "www points to " + cname[0] + " — change it to " + tgt + "." : "Not found yet.");
+  add("Ownership (TXT _fodo." + apex + ")", txtOk, txtOk ? "Found." : (txt || []).length ? "A TXT record exists but the value is different, it must be exactly " + r.token : "Not found yet. DNS changes usually appear within minutes, sometimes up to 24 hours.");
+  add("Website address (CNAME " + www + " → " + tgt + ")", cnOk, cnOk ? "Found." : (cname || []).length ? "www points to " + cname[0] + ", change it to " + tgt + "." : "Not found yet.");
   if (ns.length) add("Nameservers", true, ns.slice(0, 4).join(", "));
   let status = txtOk && cnOk ? "dns_ok" : txtOk || cnOk ? "propagating" : (txt || []).length || (cname || []).length ? "error" : "pending", detail = "", ssl = r.ssl;
   if (status === "dns_ok") {
@@ -341,9 +341,9 @@ export async function verifyDomain(env, s, domain) {
     else {
       let c = await cf(env, "GET", "/domains/" + encodeURIComponent(www)); if (c.status === 404 || (c.j && c.j.errors && c.j.errors.length && !c.ok)) c = await cf(env, "POST", "/domains", { name: www });
       const st = c.j && c.j.result ? c.j.result.status : null; add("Hosting + SSL (Cloudflare)", st === "active", st ? "Status: " + st : "Cloudflare said: " + JSON.stringify((c.j && c.j.errors) || c.status).slice(0, 200));
-      if (st === "active") { status = "connected"; ssl = "active"; detail = "Connected ✓ — https://" + www + " is live with SSL."; } else { status = "propagating"; ssl = "pending"; detail = "DNS is correct; Cloudflare is issuing the SSL certificate (usually under 15 minutes)."; }
+      if (st === "active") { status = "connected"; ssl = "active"; detail = "Connected ✓, https://" + www + " is live with SSL."; } else { status = "propagating"; ssl = "pending"; detail = "DNS is correct; Cloudflare is issuing the SSL certificate (usually under 15 minutes)."; }
     }
-  } else detail = status === "error" ? "A record exists but points somewhere else — see the red check." : "Waiting for the DNS records to appear.";
+  } else detail = status === "error" ? "A record exists but points somewhere else, see the red check." : "Waiting for the DNS records to appear.";
   await d.prepare("UPDATE site_domains SET status=?2, detail=?3, ssl=?4, checked_at=?5 WHERE id=?1").bind(r.id, status, detail, ssl || null, nowIso()).run();
   return Object.assign(domainView(env, Object.assign(r, { status, detail, ssl, checked_at: nowIso() })), { checks: out.checks });
 }
@@ -353,7 +353,7 @@ export async function domains(env, s) { const d = await sdb(env); return ((await
 /* ---------- export (no lock-in): static HTML of every page + sitemap + robots + the site JSON, as a ZIP ---------- */
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = (u) => { let c = 0xffffffff; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-export function zip(files) {   // files: [{name, data: Uint8Array}] — "stored" ZIP (no compression), valid everywhere
+export function zip(files) {   // files: [{name, data: Uint8Array}]: "stored" ZIP (no compression), valid everywhere
   const enc = new TextEncoder(), parts = [], central = []; let off = 0;
   for (const f of files) { const name = enc.encode(f.name), data = f.data, crc = crc32(data), h = new DataView(new ArrayBuffer(30));
     h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(8, 0, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, name.length, true);
@@ -367,7 +367,7 @@ export async function exportZip(env, s, origin) {
   const doc = JSON.parse(s.doc), enc = new TextEncoder(), files = [];
   for (const p of doc.pages) files.push({ name: (p.slug === "home" ? "" : p.slug + "/") + "index.html", data: enc.encode(renderPage(doc, p.slug, { base: "/", origin: origin || "", badge: false })) });
   files.push({ name: "sitemap.xml", data: enc.encode(sitemap(doc, origin || "https://example.com", "/")) }, { name: "robots.txt", data: enc.encode("User-agent: *\nAllow: /\n") }, { name: "site.json", data: enc.encode(JSON.stringify(doc, null, 1)) },
-    { name: "README.txt", data: enc.encode("Your website exported from FODO Website Builder.\nUpload these files to any static host (Cloudflare Pages, Netlify, GitHub Pages, cPanel).\nImages hosted by FODO are linked as /api/sites/media/… — download them from the Media panel if you move hosts.\nContact forms need a form service when hosted elsewhere.\n") });
+    { name: "README.txt", data: enc.encode("Your website exported from FODO Website Builder.\nUpload these files to any static host (Cloudflare Pages, Netlify, GitHub Pages, cPanel).\nImages hosted by FODO are linked as /api/sites/media/…, download them from the Media panel if you move hosts.\nContact forms need a form service when hosted elsewhere.\n") });
   return zip(files);
 }
 /* ---------- health of one website (real checks) ---------- */
@@ -381,7 +381,7 @@ export async function duplicateSite(env, u, s) {
   const d = await sdb(env), lim = limitsFor(u), n = ((await d.prepare("SELECT COUNT(*) AS n FROM sites WHERE owner_user_id=?1 AND deleted_at IS NULL").bind(u.id).first()) || {}).n || 0;
   if (n >= lim.sites) throw err("Your plan allows " + lim.sites + " website(s).", 402);
   const doc = JSON.parse(s.doc), name = clip("Copy of " + s.name, 80), id = "ws_" + randId(12), slug = await uniqueSlug(d, name), now = nowIso();
-  // design, pages, components and animations are copied — never form submissions, analytics, domains, members or orders
+  // design, pages, components and animations are copied, never form submissions, analytics, domains, members or orders
   await d.prepare("INSERT INTO sites (id, tenant_id, owner_user_id, name, slug, status, doc, rev, template_id, created_at, updated_at, industry) VALUES (?1,?2,?2,?3,?4,'draft',?5,1,?6,?7,?7,?8)").bind(id, u.id, name, slug, JSON.stringify(doc), "copy:" + s.id, now, s.industry || null).run();
   await version(env, id, 1, doc, "Duplicated from " + s.name, u.id);
   return { id, slug, name };
@@ -427,7 +427,7 @@ export async function addMember(env, u, s, email, role) {
 }
 export async function removeMember(env, s, email) { const d = await sdb(env); await d.prepare("DELETE FROM site_members WHERE site_id=?1 AND email=?2").bind(s.id, String(email || "").toLowerCase()).run(); return { removed: true }; }
 export async function transferSite(env, u, s, email) {
-  const d = await sdb(env), to = await d.prepare("SELECT id, email FROM acct_users WHERE email=?1").bind(String(email || "").trim().toLowerCase()).first(); if (!to) throw err("No FODO account uses that email — ask them to sign up first.");
+  const d = await sdb(env), to = await d.prepare("SELECT id, email FROM acct_users WHERE email=?1").bind(String(email || "").trim().toLowerCase()).first(); if (!to) throw err("No FODO account uses that email, ask them to sign up first.");
   if (to.id === s.owner_user_id) throw err("They already own it.");
   const old = await d.prepare("SELECT email FROM acct_users WHERE id=?1").bind(s.owner_user_id).first();
   await d.prepare("UPDATE sites SET owner_user_id=?2, tenant_id=?2, updated_at=?3 WHERE id=?1").bind(s.id, to.id, nowIso()).run();
@@ -456,7 +456,7 @@ export async function analyzeSite(env, url) {
   const kind = findIndustry(title + " " + desc + " " + heads.slice(0, 6).map((h) => h.text).join(" "));
   return { url: finalUrl, host, title, description: desc, navigation: links, headings: heads, paragraphs: paras, colors: Object.entries(colors).sort((a, b) => b[1] - a[1]).slice(0, 6).map((x) => x[0]), fonts: Object.entries(fonts).sort((a, b) => b[1] - a[1]).slice(0, 4).map((x) => x[0]), images: imgs, counts: { sections, forms, images: imgs.length, headings: heads.length }, responsive, phone, email, industry: kind ? kind.name : "", profile: kind ? kind.profile : "local" };
 }
-/* map an analysis onto a plan (pages from its navigation) — the generated website is an ORIGINAL implementation */
+/* map an analysis onto a plan (pages from its navigation), the generated website is an ORIGINAL implementation */
 export function importPlan(a) {
   const map = [[/about|story|who/i, "about", ["about", "team"]], [/service|solution|what we do|treatment|practice/i, "services", ["services", "process"]], [/work|portfolio|project|case/i, "work", ["portfolio"]], [/price|pricing|plan|package/i, "pricing", ["pricing", "faq"]], [/contact|reach|location/i, "contact", ["contact", "map"]], [/blog|news|insight|article/i, "articles", ["blog"]], [/faq|question/i, "faq", ["faq"]], [/team|doctor|people|staff/i, "team", ["team"]], [/gallery|photo/i, "gallery", ["gallery"]], [/book|appointment|reserv/i, "book", ["booking"]], [/menu/i, "menu", ["services"]], [/shop|store|product/i, "shop", ["products"]]];
   const pages = [{ slug: "home", title: "Home", sections: ["hero", "services", "process", "cta"] }];

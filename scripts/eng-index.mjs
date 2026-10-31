@@ -1,4 +1,4 @@
-// FODO Website Engineer — project indexer (v27). Runs in GitHub Actions on every push to main (and on demand), scans the real
+// FODO Website Engineer, project indexer (v27). Runs in GitHub Actions on every push to main (and on demand), scans the real
 // checkout and sends the project map to the Brain: pages/routes, APIs, D1 tables, env variable NAMES (never values), design tokens,
 // components (class usage), dependents (which pages load each JS/CSS file), symbols and CTAs.
 // Local test: node scripts/eng-index.mjs --print      CI: SITE + KEY (= FODO_CRON_KEY) → POST /api/owner-brain/eng/index
@@ -55,6 +55,6 @@ const map = { project: "FODO", sha: process.env.GITHUB_SHA || process.env.SHA ||
 const out = JSON.stringify(map);
 if (process.argv.includes("--print")) { console.log(JSON.stringify({ files: map.files, pages: pages.length, apis: apis.length, tables: tables.length, env: map.env.length, tokens: Object.keys(tokens).length, components: Object.keys(components).length, symbols: symbols.length, ctas: ctas.length, bytes: out.length })); process.exit(0); }
 const SITE = process.env.SITE || "https://www.fodo.co.in", KEY = process.env.KEY;
-if (!KEY) { console.log("FODO_CRON_KEY is not set — index built (" + out.length + " bytes) but not sent."); process.exit(0); }
+if (!KEY) { console.log("FODO_CRON_KEY is not set, index built (" + out.length + " bytes) but not sent."); process.exit(0); }
 const r = await fetch(SITE + "/api/owner-brain/eng/index", { method: "POST", headers: { "content-type": "application/json", "x-cron-key": KEY }, body: out });
 console.log("index → Brain:", r.status, (await r.text()).slice(0, 200));

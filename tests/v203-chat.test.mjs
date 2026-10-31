@@ -1,4 +1,4 @@
-// v20.3 — /api/chat (the "Ask FODO" bot): live Growth Lab knowledge, the member's own account + latest X-Ray, paid limits, Groq fallback.
+// v20.3: /api/chat (the "Ask FODO" bot): live Growth Lab knowledge, the member's own account + latest X-Ray, paid limits, Groq fallback.
 // Run: node --no-warnings tests/v203-chat.test.mjs
 import { DatabaseSync } from "node:sqlite";
 import { onRequest as account } from "../functions/api/account/[[path]].js";
@@ -39,7 +39,7 @@ const health = async (who) => (await chatGet({ request: new Request(SITE + "/api
 /* 1. a visitor: the bot knows the Growth Lab with LIVE prices (an admin price change shows at once) */
 await saveConfig(env, { plans: { starter: { price: 599 } } }, "test");
 let r = await chat("what plans do you have?", "v", "1.1.1.1"), sys = prompts[prompts.length - 1];
-ok(r.j.ok && /Starter ₹599\/month/.test(sys) && /Competitor War Room ₹2,999/.test(sys) && /Business X-Ray: enter any website/.test(sys), "prompt has the Growth Lab, Pro tools and LIVE prices (admin changed Starter to ₹599)");
+ok(r.j.ok && /Starter ₹599\/month/.test(sys) && /Competitor War Room ₹299/.test(sys) && /Business X-Ray: enter any website/.test(sys), "prompt has the Growth Lab, Pro tools and LIVE prices (admin changed Starter to ₹599)");
 ok(/# PLANS IN DETAIL/.test(sys) && /# PRO TOOLS/.test(sys) && /HELP ARTICLES/.test(sys), "a plans question adds plan details, every tool and the matching help articles");
 ok(/Not logged in/.test(sys) && !/latestXray/.test(sys), "visitor: no account data");
 r = await chat("how do I write a good instagram caption?", "v", "1.1.1.2"); sys = prompts[prompts.length - 1];

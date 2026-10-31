@@ -116,7 +116,7 @@ async function local(p, type) { await p.fill("#cf-type", type || "Cafe"); await 
     const st = await p.textContent("#cf-status"), list = await p.textContent("#cf-list"), chips = await p.textContent("#cf-srcs");
     ok(/competitors of/.test(st) && /AI/.test(st), "brand missing on Wikidata → no dead end: " + st.slice(0, 80));
     ok(/Swiggy/.test(list) && /Heads Up For Tails/.test(list) && /Tiny Pet Startup/.test(list), "AI names, keyword matches and AI-only names all listed");
-    ok(/AI suggestion — verify/.test(list) && /AI \+ Wikidata/.test(list) && /Similar description/.test(list), "each card says how it was found; unconfirmed AI names flagged");
+    ok(/AI suggestion, verify/.test(list) && /AI \+ Wikidata/.test(list) && /Similar description/.test(list), "each card says how it was found; unconfirmed AI names flagged");
     ok(calls.ai === 1 && calls.aiBody.brand === "pet food startup", "AI asked once");
     ok(/AI suggestions · 2 suggested · 1 confirmed/.test(chips) && /brand not on Wikidata/.test(chips), "chips explain each layer: " + chips);
     ok(/Not on Wikidata yet/.test(await p.textContent("#cf-brandcard")), "search card explains the brand is not on Wikidata");

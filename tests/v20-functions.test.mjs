@@ -1,4 +1,4 @@
-// v20 Help desk — server side: help articles + live prices, AI help assistant (grounded on the asker's own account, falls back
+// v20 Help desk, server side: help articles + live prices, AI help assistant (grounded on the asker's own account, falls back
 // to the articles), chat → ticket, ticket form, ticket access (owner / secret link only), replies, inbound email (Resend webhook,
 // Svix-signed, threading by [FODO #T…], no hijacking, duplicates ignored), every email logged (login codes never stored),
 // admin Help desk / Mail / AI chats (reply, note, status, compose), viewers read-only.   Run: node --no-warnings tests/v20-functions.test.mjs
@@ -101,7 +101,7 @@ r = await call("admin/help", undefined, { as: "own" });
 ok(r.j.ok && r.j.items.length >= 4 && r.j.counts.open >= 3 && r.j.kpi.chats7 >= 2 && r.j.kpi.escalated7 === 1 && r.j.email && r.j.inbound, "admin Help desk: tickets, counts, AI chat numbers, email + inbound connected");
 r = await call("admin/help/" + T1, undefined, { as: "own" });
 ok(r.j.customer.plan === "Growth" && r.j.messages.length === 2 && r.j.chat.length >= 6 && r.j.mails.length >= 2, "ticket detail: customer plan, the thread, the AI chat before it, its emails");
-r = await call("admin/help/" + T1, { action: "reply", text: "Refund approved — 5–7 working days.", status: "solved" }, { as: "own" });
+r = await call("admin/help/" + T1, { action: "reply", text: "Refund approved, 5–7 working days.", status: "solved" }, { as: "own" });
 const last = sent[sent.length - 1]; ok(r.j.ok && r.j.mailed && last.to[0] === "rohit@shop.in" && /Refund approved/.test(last.text) && db().prepare("SELECT status, first_reply_at FROM help_tickets WHERE id=?").get(T1).status === "solved", "admin reply → emailed to the customer, ticket solved, first-reply time recorded");
 r = await call("admin/help/" + T1, { action: "note", text: "Checked Cashfree: paid once." }, { as: "own" });
 r = await call("help/ticket/" + T1); ok(r.j.messages.every((m) => m.text.indexOf("Checked Cashfree") < 0) && r.j.messages.some((m) => /Refund approved/.test(m.text)), "customer sees the reply on the help page, never the internal note");

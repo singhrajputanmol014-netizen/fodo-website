@@ -1,8 +1,8 @@
-/* FODO BRAIN — media store for social posting. Files are kept BYTE-FOR-BYTE as uploaded (no resizing, no re-encoding), split
+/* FODO BRAIN, media store for social posting. Files are kept BYTE-FOR-BYTE as uploaded (no resizing, no re-encoding), split
    into 4 MiB parts (the part size LinkedIn video upload expects; within X's 5 MB segment limit; a multiple of YouTube's 256 KiB).
    Storage: Cloudflare R2 when a MEDIA bucket is bound (wrangler.toml), otherwise the existing CHAT_KV namespace (free 1 GB;
    KV is eventually consistent, so URL-pulled posts (Instagram/Facebook) wait ~65 s after upload when KV is used).
-   Platforms that pull a URL (Instagram, Facebook) read GET /api/owner-brain/m/<id>/<name> — public, unguessable 32-char id,
+   Platforms that pull a URL (Instagram, Facebook) read GET /api/owner-brain/m/<id>/<name>, public, unguessable 32-char id,
    Range requests supported, deleted 7 days after the post finishes. */
 import { brainDb, nowIso, rid, clip, clean } from "./store.js";
 
@@ -34,7 +34,7 @@ export async function finish(env, id) {
   const pre = "brain-media/" + id + "/", have = new Set();
   if (m.store === "r2") { const L = await env.MEDIA.list({ prefix: pre, limit: 1000 }); (L.objects || []).forEach((o) => have.add(o.key)); }
   else { const L = await env.CHAT_KV.list({ prefix: pre, limit: 1000 }); (L.keys || []).forEach((k) => have.add(k.name)); }
-  for (let i = 0; i < m.parts; i++) if (!have.has(key(id, i))) throw new Error("Part " + (i + 1) + " of " + m.parts + " is missing — upload it again.");
+  for (let i = 0; i < m.parts; i++) if (!have.has(key(id, i))) throw new Error("Part " + (i + 1) + " of " + m.parts + " is missing, upload it again.");
   const d = await brainDb(env); await d.prepare("UPDATE brain_media SET status='ready', ready_at=?2 WHERE id=?1").bind(id, nowIso()).run();
   return { id, ready: true, url: null };
 }
@@ -54,7 +54,7 @@ export const publicUrl = (origin, m) => origin + "/api/owner-brain/m/" + m.id + 
 /* KV needs ~60 s before a brand-new key is readable everywhere */
 export const pullReadyIn = (m) => (m.store === "kv" ? Math.max(0, Date.parse(m.ready_at || m.created_at) + 65e3 - Date.now()) : 0);
 
-/* GET /api/owner-brain/m/<id>/<name> — public download (Range supported) */
+/* GET /api/owner-brain/m/<id>/<name>, public download (Range supported) */
 export async function serve(env, request, id) {
   const m = await get(env, id); if (!m || m.status !== "ready" || !/^[a-z0-9]{32}$/.test(id)) return new Response("Not found", { status: 404 });
   const h = { "content-type": m.mime, "accept-ranges": "bytes", "cache-control": "private, max-age=3600", "x-robots-tag": "noindex", "content-disposition": "inline; filename=\"" + m.name.replace(/"/g, "") + "\"" };

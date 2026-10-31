@@ -1,6 +1,6 @@
-/* FODO BRAIN — social media: connect Facebook Pages + Instagram (Meta), LinkedIn (profile; company pages once LinkedIn approves
+/* FODO BRAIN, social media: connect Facebook Pages + Instagram (Meta), LinkedIn (profile; company pages once LinkedIn approves
    the Community Management API), X, YouTube (through the Google connector), post ONE upload everywhere, and read the numbers.
-   Official APIs only. Tokens are AES-GCM encrypted in D1 (brain_social). Files are sent exactly as uploaded — FODO never resizes
+   Official APIs only. Tokens are AES-GCM encrypted in D1 (brain_social). Files are sent exactly as uploaded: FODO never resizes
    or re-encodes them; each platform then applies its own processing (that part is outside anyone's control).
    Publishing is a resumable state machine: every call to runPost() does as much as fits in its time budget (one upload part,
    one container check…) and saves where it is, so big videos and slow platforms never time out. The Social page keeps calling
@@ -55,7 +55,7 @@ async function upsert(env, a, by) {
   return id;
 }
 export async function finishConnect(env, platform, origin, userId, code, state, by) {
-  const s = String(state || ""), i = s.indexOf("~"); if (s.slice(0, i) !== platform || !(await checkState(env, s.slice(i + 1), userId))) throw new Error("The sign-in link expired — try Connect again.");
+  const s = String(state || ""), i = s.indexOf("~"); if (s.slice(0, i) !== platform || !(await checkState(env, s.slice(i + 1), userId))) throw new Error("The sign-in link expired, try Connect again.");
   const got = [];
   if (platform === "meta") {
     const v = MV(env), t = await http(env, "https://graph.facebook.com/" + v + "/oauth/access_token?" + new URLSearchParams({ client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, redirect_uri: redirect(origin, "meta"), code }), {}, "Facebook");
@@ -100,7 +100,7 @@ async function token(env, a) {
     await d.prepare("UPDATE brain_social SET token=?2, refresh=?3, expires_at=?4 WHERE id=?1").bind(row.id, await seal(env, t.access_token), await seal(env, t.refresh_token || (await unseal(env, row.refresh))), new Date(Date.now() + (+t.expires_in || 7200) * 1000).toISOString()).run();
     return t.access_token;
   }
-  if (/^linkedin/.test(row.platform) && row.expires_at && Date.parse(row.expires_at) < Date.now()) throw new Error("The LinkedIn connection expired (LinkedIn allows 60 days) — reconnect LinkedIn on the Social page.");
+  if (/^linkedin/.test(row.platform) && row.expires_at && Date.parse(row.expires_at) < Date.now()) throw new Error("The LinkedIn connection expired (LinkedIn allows 60 days), reconnect LinkedIn on the Social page.");
   return await unseal(env, row.token);
 }
 
@@ -110,7 +110,7 @@ export async function createPost(env, p, by) {
   const caption = clean(p.caption, 63000), captions = p.captions && typeof p.captions === "object" ? p.captions : {};
   const all = await accounts(env), targets = [].concat(p.targets || []).map(String).filter((t, i, a) => a.indexOf(t) === i);
   if (!targets.length) throw new Error("Choose at least one account to post to.");
-  const media = []; for (const id of [].concat(p.media || []).slice(0, 20)) { const m = await MD.get(env, id); if (!m || m.status !== "ready") throw new Error("A file is still uploading or missing — wait for it to finish."); media.push(m); }
+  const media = []; for (const id of [].concat(p.media || []).slice(0, 20)) { const m = await MD.get(env, id); if (!m || m.status !== "ready") throw new Error("A file is still uploading or missing, wait for it to finish."); media.push(m); }
   const vids = media.filter(isVid), imgs = media.filter((m) => !isVid(m)), problems = [];
   for (const t of targets) {
     const a = all.filter((x) => x.id === t)[0]; if (!a) { problems.push(t + " is not connected"); continue; }
@@ -120,7 +120,7 @@ export async function createPost(env, p, by) {
     if (imgs.length > P.images) problems.push(P.name + ": up to " + P.images + " photos");
     if (!P.text && !media.length) problems.push(P.name + " needs a photo or video");
     if (a.platform === "youtube" && vids.length !== 1) problems.push("YouTube needs exactly one video");
-    if (P.chars && text.length > P.chars && env.X_LONG_POSTS !== "1") problems.push(P.name + ": " + text.length + "/" + P.chars + " characters — shorten it or write a separate X caption");
+    if (P.chars && text.length > P.chars && env.X_LONG_POSTS !== "1") problems.push(P.name + ": " + text.length + "/" + P.chars + " characters, shorten it or write a separate X caption");
     if (!text && !media.length) problems.push(P.name + ": nothing to post");
   }
   if (problems.length) throw new Error(problems.join(" · "));
@@ -179,7 +179,7 @@ STEP.facebook = async (env, origin, a, text, media, r) => {
 };
 STEP.instagram = async (env, origin, a, text, media, r) => {
   const v = MV(env), tok = await token(env, a), G_ = "https://graph.facebook.com/" + v + "/";
-  const src = async (m) => { if (!isVid(m) && m.mime !== "image/jpeg") { const d = await brainDb(env), j = await d.prepare("SELECT * FROM brain_media WHERE variant_of=?1 AND status='ready'").bind(m.id).first(); if (!j) throw Object.assign(new Error("Instagram accepts JPG photos only — this one is " + m.mime + ". Re-upload it from the Social page (it makes a JPG copy automatically)."), { status: 400 }); return j; } return m; };
+  const src = async (m) => { if (!isVid(m) && m.mime !== "image/jpeg") { const d = await brainDb(env), j = await d.prepare("SELECT * FROM brain_media WHERE variant_of=?1 AND status='ready'").bind(m.id).first(); if (!j) throw Object.assign(new Error("Instagram accepts JPG photos only, this one is " + m.mime + ". Re-upload it from the Social page (it makes a JPG copy automatically)."), { status: 400 }); return j; } return m; };
   for (const m of media) { const w = MD.pullReadyIn(await src(m)); if (w) return waitPull(w); }
   if (!r.container) {
     if (media.length === 1) { const m = await src(media[0]); const j = await http(env, G_ + a.ext_id + "/media", { method: "POST", headers: FORM, body: form(isVid(m) ? { media_type: "REELS", video_url: MD.publicUrl(origin, m), caption: text, share_to_feed: "true", access_token: tok } : { image_url: MD.publicUrl(origin, m), caption: text, access_token: tok }) }, "Instagram"); r.container = j.id; return; }

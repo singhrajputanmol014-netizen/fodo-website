@@ -1,5 +1,5 @@
-/* FODO OWNER BRAIN — semantic memory with Workers AI embeddings (@cf/baai/bge-m3, multilingual: English, Hindi, Hinglish).
-   Vectors are stored next to the rows in D1 (base64 Float32) — no new binding. Retrieval = keyword score + cosine similarity.
+/* FODO OWNER BRAIN, semantic memory with Workers AI embeddings (@cf/baai/bge-m3, multilingual: English, Hindi, Hinglish).
+   Vectors are stored next to the rows in D1 (base64 Float32), no new binding. Retrieval = keyword score + cosine similarity.
    Every call is best-effort: without the AI binding the Brain falls back to keyword retrieval. */
 import { logUsage } from "../usage.js";
 const MODEL = "@cf/baai/bge-m3";

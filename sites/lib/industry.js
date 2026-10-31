@@ -1,7 +1,7 @@
-/* FODO Website Builder — industry intelligence (v32). What works for each kind of business: which pages it needs (sitemap),
+/* FODO Website Builder, industry intelligence (v32). What works for each kind of business: which pages it needs (sitemap),
    which sections each page has, the right call-to-action, colours, fonts and motion. Used by the onboarding (sitemap you can
    edit before generating), by the server (builds the website from the plan, then the AI writes the copy) and by the audit.
-   Rules: every page has a purpose; no fake reviews, numbers, logos or credentials — those stay clearly marked placeholders. */
+   Rules: every page has a purpose; no fake reviews, numbers, logos or credentials, those stay clearly marked placeholders. */
 import { applyStyle, applyPalette, applyPairing, STYLES } from "./design.js";
 
 /* ---------- searchable industry list (grouped) → profile ---------- */
@@ -117,7 +117,7 @@ export function sectionDefaults(type, ctx) {
   switch (type) {
     case "navbar": return { cta };
     case "footer": return { text: ctx.tagline || "" };
-    case "hero": return { eyebrow: (ctx.industry || "") + (city ? " · " + city : ""), title: ctx.tagline || n + " — " + (ctx.industry || "done right"), subtitle: ctx.description || "Tell visitors in one sentence what you do and who you help" + (city ? " in " + city : "") + ".", cta, cta2: { label: "Learn more", href: (ctx.secondHref || "about/") }, align: "left", bg: "gradient" };
+    case "hero": return { eyebrow: (ctx.industry || "") + (city ? " · " + city : ""), title: ctx.tagline || n + ": " + (ctx.industry || "done right"), subtitle: ctx.description || "Tell visitors in one sentence what you do and who you help" + (city ? " in " + city : "") + ".", cta, cta2: { label: "Learn more", href: (ctx.secondHref || "about/") }, align: "left", bg: "gradient" };
     case "services": case "features": return { title: type === "features" ? "Why choose " + n : "What we offer", items: it3((ctx.services && ctx.services.length ? ctx.services : ["Service one", "Service two", "Service three"]).slice(0, 6).map((s, i) => [s, "Explain this " + (type === "features" ? "benefit" : "service") + " in one or two sentences.", ["✦", "◆", "●", "▲", "■", "★"][i]])) };
     case "about": return { title: "About " + n, text: ctx.about || "Share how " + n + " started, who you serve and what makes your " + ind + " different.", points: [], cta: { label: cta.label, href: cta.href } };
     case "process": return { title: "How it works", items: it3([["Get in touch", "Call, WhatsApp or fill the form."], ["We plan", "A clear plan and price."], ["Done", "Delivered on time."]]) };
@@ -126,12 +126,12 @@ export function sectionDefaults(type, ctx) {
     case "team": return { title: "Our team", items: [{ name: "[Team member name]", role: "[Role]" }] };
     case "logos": return { title: "Trusted by", items: [] };
     case "pricing": return { title: "Plans & prices", items: [{ name: "Basic", price: "[Add price]", period: "", features: ["What's included"], cta }, { name: "Popular", price: "[Add price]", period: "", features: ["Everything in Basic", "More value"], featured: true, cta }] };
-    case "faq": return { title: "Questions", items: [{ q: "How do I get started?", a: "Contact us — we reply quickly." }, { q: "Where are you located?", a: city ? "We are in " + city + "." : "[Add your location]" }] };
+    case "faq": return { title: "Questions", items: [{ q: "How do I get started?", a: "Contact us, we reply quickly." }, { q: "Where are you located?", a: city ? "We are in " + city + "." : "[Add your location]" }] };
     case "gallery": return { title: "Gallery", images: [{}, {}, {}, {}, {}, {}] };
     case "portfolio": return { title: "Selected work", items: [{ title: "Project one", category: "", text: "What you did and the result." }, { title: "Project two", category: "", text: "What you did and the result." }, { title: "Project three", category: "", text: "What you did and the result." }] };
     case "cta": return { title: "Ready to start?", text: "Talk to " + n + " today.", button: cta };
-    case "contact": return { title: "Get in touch", text: "Tell us what you need — we reply quickly.", button: "Send message", phone: ctx.phone || "", whatsapp: ctx.whatsapp || "", email: ctx.email || "", address: ctx.address || city };
-    case "booking": return { title: ctx.cta || "Book an appointment", text: "Pick a date and time — we'll confirm by phone or WhatsApp.", services: (ctx.services || []).slice(0, 12), button: "Request booking", hours: [] };
+    case "contact": return { title: "Get in touch", text: "Tell us what you need, we reply quickly.", button: "Send message", phone: ctx.phone || "", whatsapp: ctx.whatsapp || "", email: ctx.email || "", address: ctx.address || city };
+    case "booking": return { title: ctx.cta || "Book an appointment", text: "Pick a date and time, we'll confirm by phone or WhatsApp.", services: (ctx.services || []).slice(0, 12), button: "Request booking", hours: [] };
     case "map": return { title: "Find us", address: ctx.address || city };
     case "hours": return { title: "Opening hours", items: [{ day: "Monday – Saturday", time: "[Add timings]" }, { day: "Sunday", time: "[Add timings]" }] };
     case "newsletter": return { title: "Get updates", text: "", button: "Subscribe" };
@@ -158,13 +158,13 @@ export function buildDoc(plan, biz, theme) {
   return { theme, settings, pages };
 }
 
-/* ---------- legal pages (generated drafts — the editor marks them "review for your business and jurisdiction") ---------- */
+/* ---------- legal pages (generated drafts, the editor marks them "review for your business and jurisdiction") ---------- */
 export function legalText(kind, biz) {
   const n = (biz && biz.name) || "We", e = (biz && biz.email) || "[your email]", c = (biz && (biz.city || biz.location)) || "[your city]", d = new Date().toISOString().slice(0, 10);
   const T = {
-    privacy: ["Privacy Policy", "## Who we are\n" + n + " (" + c + "). Contact: " + e + ".\n\n## What we collect\n- Details you send us through forms (name, phone, email, message)\n- Basic, anonymous visit statistics (pages viewed, device type) — no advertising cookies unless you agree\n\n## Why we use it\n- To reply to your enquiry or booking\n- To improve this website\n\n## Sharing\nWe do not sell your data. We share it only with service providers who help us run this website, or when the law requires it.\n\n## How long we keep it\nOnly as long as needed for the purpose above.\n\n## Your rights\nYou can ask us to see, correct or delete your data: write to " + e + "."],
+    privacy: ["Privacy Policy", "## Who we are\n" + n + " (" + c + "). Contact: " + e + ".\n\n## What we collect\n- Details you send us through forms (name, phone, email, message)\n- Basic, anonymous visit statistics (pages viewed, device type), no advertising cookies unless you agree\n\n## Why we use it\n- To reply to your enquiry or booking\n- To improve this website\n\n## Sharing\nWe do not sell your data. We share it only with service providers who help us run this website, or when the law requires it.\n\n## How long we keep it\nOnly as long as needed for the purpose above.\n\n## Your rights\nYou can ask us to see, correct or delete your data: write to " + e + "."],
     terms: ["Terms of Use", "## Using this website\nBy using this website you agree to these terms.\n\n## Content\nThe content is for general information. We may change it at any time.\n\n## Orders and services\nPrices, availability and delivery times are confirmed when you order or book.\n\n## Liability\nWe are not liable for indirect losses from using this website, as far as the law allows.\n\n## Law\nThese terms follow the laws of India; courts in " + c + " have jurisdiction.\n\n## Contact\n" + e],
-    refund: ["Returns & Refunds", "## Returns\nYou can request a return within [X] days of delivery if the item is unused and in its original packaging.\n\n## Refunds\nApproved refunds are paid to the original payment method within [X] working days.\n\n## Damaged or wrong items\nWrite to " + e + " within 48 hours with a photo — we will replace or refund.\n\n## Non-returnable items\n[List items that cannot be returned]"],
+    refund: ["Returns & Refunds", "## Returns\nYou can request a return within [X] days of delivery if the item is unused and in its original packaging.\n\n## Refunds\nApproved refunds are paid to the original payment method within [X] working days.\n\n## Damaged or wrong items\nWrite to " + e + " within 48 hours with a photo, we will replace or refund.\n\n## Non-returnable items\n[List items that cannot be returned]"],
     shipping: ["Shipping Policy", "## Where we deliver\n[Your delivery area]\n\n## Delivery time\nOrders are dispatched within [X] working days; delivery usually takes [X–Y] days.\n\n## Charges\nShipping charges are shown at checkout.\n\n## Tracking\nYou receive tracking details once your order is dispatched. Questions: " + e],
     cookies: ["Cookie Policy", "## Cookies we use\n- **Necessary:** to make the website and cart work\n- **Analytics (only with your consent):** anonymous visit statistics\n- **Marketing (only with your consent):** none unless stated\n\n## Your choice\nYou can change your choice any time by clearing this site's data in your browser.\n\nQuestions: " + e],
   };

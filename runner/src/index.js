@@ -1,4 +1,4 @@
-/* FODO background runner — its own Cloudflare Worker (free plan): a Queue + Browser Rendering (+ optional GitHub Actions).
+/* FODO background runner, its own Cloudflare Worker (free plan): a Queue + Browser Rendering (+ optional GitHub Actions).
    The website (Pages) queues a background X-Ray here; this Worker opens the job's runner page in a headless browser, the page
    runs the normal X-Ray engine against the website's own API and saves the report, then we tell the website it is done.
      POST /enqueue {jobId}        (header x-runner-key)  → puts the job on the queue

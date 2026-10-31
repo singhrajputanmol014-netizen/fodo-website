@@ -1,4 +1,4 @@
-/* FODO BRAIN — owner command center. Deep dark, glass panels, thin borders, FODO violet. Works on desktop (priority), tablet, phone. */
+/* FODO BRAIN, owner command center. Deep dark, glass panels, thin borders, FODO violet. Works on desktop (priority), tablet, phone. */
 :root{--b-bg:#030306;--b-bg2:#09090f;--b-panel:rgba(255,255,255,.035);--b-panel2:rgba(255,255,255,.06);--b-line:rgba(255,255,255,.09);--b-line2:rgba(255,255,255,.16);--b-text:#ecebf5;--b-muted:#9b99b1;--b-dim:#6d6b84;--b-acc:#8b7bff;--b-acc2:#5b4bd8;--b-ok:#3ddc97;--b-warn:#ffbf47;--b-err:#ff5d73;--b-info:#5fb8ff;--b-r:16px;--b-font:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;--b-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 html,body{background:var(--b-bg);color:var(--b-text);margin:0}
 body.ob{font:15px/1.55 var(--b-font);min-height:100vh;background:radial-gradient(1200px 600px at 80% -10%,rgba(139,123,255,.07),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(95,184,255,.035),transparent 60%),var(--b-bg)}
@@ -181,7 +181,7 @@ body.ob-vo-on{overflow:hidden}
 .ob-hfb{background:transparent;border-color:transparent}.ob-hfb canvas{width:38px;height:38px}.ob-hfb.on{border-color:rgba(61,220,200,.4);box-shadow:none;background:var(--b-panel)}
 .ob-bnav #ob-bvo canvas{background:radial-gradient(circle,rgba(20,18,40,.9),rgba(7,7,12,.95));border:1px solid rgba(139,123,255,.35)}
 [data-theme="light"] .ob-bnav #ob-bvo canvas{background:#15132a}
-/* ===== v24: chat composer — one slim pill ===== */
+/* ===== v24: chat composer, one slim pill ===== */
 .ob-compose{display:flex;align-items:flex-end;gap:4px;padding:6px;border:1px solid var(--b-line2);border-radius:26px;background:var(--b-panel);margin-top:10px}
 .ob-compose .ob-ta{flex:1;min-height:40px;max-height:140px;height:40px;resize:none;border:0;background:transparent;padding:9px 12px;line-height:1.4;box-shadow:none}
 .ob-compose .ob-ta:focus{box-shadow:none}
@@ -201,7 +201,7 @@ body.ob-vo-on{overflow:hidden}
   .ob-msg.a{padding:12px 13px;border-radius:4px 16px 16px 16px}.ob-msg.u{padding:9px 13px}
   .ob-meta{font-size:11px;gap:4px}.ob-meta button{padding:1px 7px}
   .ob-log{gap:10px;padding-bottom:8px}
-  /* tables become cards on phones — nothing gets cut off */
+  /* tables become cards on phones, nothing gets cut off */
   .ob-card .ob-table,.ob-scroll .ob-table{display:block}
   .ob-table thead{display:none}.ob-table tbody,.ob-table tr,.ob-table td{display:block;width:auto!important}
   .ob-table tr{padding:10px 0;border-bottom:1px solid var(--b-line)}.ob-table td{border:0;padding:2px 0;white-space:normal;word-break:break-word}
@@ -223,7 +223,7 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
 .ob-vo-stage canvas{filter:drop-shadow(0 0 30px rgba(255,170,80,.0))}
 .ob-vo[data-state="speaking"] .ob-vo-bg{background:radial-gradient(40% 35% at 50% 42%,rgba(255,160,70,.20),transparent 70%),radial-gradient(30% 30% at 30% 30%,rgba(255,200,120,.10),transparent 70%)}
 .ob-vo[data-state="speaking"] .ob-micbtn.on{background:linear-gradient(140deg,#ffb35c,#e0702a)}
-/* v26 — confirmations shown inside the live voice screen */
+/* v26, confirmations shown inside the live voice screen */
 .ob-vo-acts{display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin:10px auto 0;max-height:34vh;overflow:auto}
 .ob-vo-acts:empty{display:none}
 .ob-vo-act{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px 14px;text-align:left;backdrop-filter:blur(8px)}
@@ -231,7 +231,7 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
 .ob-vo-act .ob-row{display:flex;gap:8px;justify-content:flex-end}
 [data-theme="light"] .ob-vo-act{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.12)}
 
-/* v26.1 — darker voice screen; the orb glows on pure black */
+/* v26.1, darker voice screen; the orb glows on pure black */
 .ob-vo{background:#000}
 .ob-vo-bg{opacity:.45}
 .ob-vo-stage{background:radial-gradient(closest-side,rgba(255,255,255,.02),transparent 70%);border:0}
@@ -294,3 +294,35 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
   .ob-thr .ob-thx{opacity:.8}.ob-threads a{font-size:14px;padding:11px 10px}
 }
 @media (prefers-reduced-motion:reduce){.ob-vo-log p{animation:none}.ob-threads{transition:none}}
+/* v33, clean voice screen: orb, the conversation, and three controls (only-when-FODO switch · mic mute · end) */
+.ob-vo{justify-content:flex-start;gap:0;padding:calc(10px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))}
+.ob-vo-h{max-width:760px;gap:10px;flex:none}
+.ob-vo-h .ob-vo-st{margin:0;font:600 11px var(--b-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--b-text);padding:5px 10px 5px 22px;border-radius:999px;background:rgba(255,255,255,.07);position:relative;white-space:nowrap}
+.ob-vo-h .ob-vo-st::before{content:"";position:absolute;left:10px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#3ddcc8;box-shadow:0 0 8px #3ddcc8}
+.ob-vo[data-state="thinking"] .ob-vo-st::before{background:#ffb347;box-shadow:0 0 8px #ffb347}.ob-vo[data-state="speaking"] .ob-vo-st::before{background:#ff8f5c;box-shadow:0 0 8px #ff8f5c}.ob-vo[data-state="idle"] .ob-vo-st::before{background:var(--b-dim);box-shadow:none}
+[data-theme="light"] .ob-vo-h .ob-vo-st{background:rgba(20,16,60,.07)}
+.ob-vo-stage{flex:none;width:auto;height:clamp(150px,32vh,300px);max-height:none;aspect-ratio:1;margin:4px auto 6px}
+.ob-vo-log{position:relative;z-index:2;flex:1 1 auto;min-height:0;max-height:none;width:100%;max-width:720px;margin:0 auto;padding:6px 2px 10px;font-size:15.5px;line-height:1.5;gap:8px;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
+.ob-vo-log:empty{display:flex}
+.ob-vo-log p{padding:9px 13px;border-radius:16px;max-width:86%;white-space:pre-wrap;word-break:break-word}
+.ob-vo-log p.u{background:rgba(139,123,255,.22);border-bottom-right-radius:5px}.ob-vo-log p.a{background:rgba(255,255,255,.07);border-bottom-left-radius:5px}
+[data-theme="light"] .ob-vo-log p.a{background:#fff;box-shadow:0 1px 3px rgba(20,16,60,.08)}[data-theme="light"] .ob-vo-log p.u{background:rgba(108,92,231,.14)}
+.ob-vo-log p.live{opacity:.75}.ob-vo-log p.live::after{content:"▍";margin-left:2px;animation:obBlink 1s steps(2) infinite}
+@keyframes obBlink{50%{opacity:0}}
+.ob-vo-log .ob-vo-empty{align-self:center;margin:auto 0;background:none!important;color:var(--b-dim);font-size:14px;text-align:center}
+.ob-vo-acts{position:relative;z-index:2;flex:none;margin:6px auto 0}
+.ob-vo-bar{position:relative;z-index:2;flex:none;width:100%;max-width:720px;margin:10px auto 0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.ob-vo-bar .ob-vo-ctrl{margin:0}
+.ob-vo-sw{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--b-muted);cursor:pointer;justify-self:start;line-height:1.25}
+.ob-vo-sw input{position:absolute;opacity:0;width:1px;height:1px}
+.ob-vo-sw i{flex:none;width:38px;height:22px;border-radius:999px;background:rgba(255,255,255,.14);position:relative;transition:background .2s}
+.ob-vo-sw i::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.ob-vo-sw input:checked+i{background:#6c5ce7}.ob-vo-sw input:checked+i::after{transform:translateX(16px)}
+.ob-vo-sw input:focus-visible+i{outline:2px solid #8b7bff;outline-offset:2px}
+[data-theme="light"] .ob-vo-sw i{background:rgba(20,16,60,.18)}
+.ob-vo-end{justify-self:end;border:1px solid rgba(255,90,90,.45);background:rgba(255,90,90,.12);color:#ff8a8a;font:600 14px var(--b-font);padding:10px 20px;border-radius:999px;cursor:pointer}
+.ob-vo-end:hover{background:rgba(255,90,90,.22)}[data-theme="light"] .ob-vo-end{color:#d33}
+.ob-micbtn .off{display:none}.ob-micbtn.muted .on{display:none}.ob-micbtn.muted .off{display:inline}
+.ob-micbtn.muted{background:rgba(255,90,90,.16);color:#ff8a8a;box-shadow:none}
+.ob-vo-hint{position:relative;z-index:2;flex:none;text-align:center;min-height:1.3em;margin:8px 0 0;font-size:12.5px;color:var(--b-dim)}.ob-vo-hint.warn{color:#ffb347}
+@media (max-width:520px){.ob-vo-stage{height:clamp(110px,22vh,190px)}.ob-vo-sw span{font-size:12px;max-width:92px}.ob-vo-end{padding:9px 14px}.ob-vo-log{font-size:15px}}

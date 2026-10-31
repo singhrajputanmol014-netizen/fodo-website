@@ -1,4 +1,4 @@
-/* FODO — Cyber-tactile growth lab stylesheet */
+/* FODO: Cyber-tactile growth lab stylesheet */
 :root{--bg:#050505;--surface:#0B0B0B;--panel:#111;--panel-raised:#171717;--line:#222;--text:#F5F3EE;--muted:#8C8C8C;--iron:#555;--signal:#FF5A1F;--signal-2:#FF6A00;--ok:#3DDC84;--warn:#FFC857;--err:#FF6B6B;
 --font-display:"Space Grotesk","Sora",system-ui,sans-serif;--font-body:"Inter","Manrope",system-ui,sans-serif;--font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 --r:4px;--gap:clamp(16px,3vw,32px);--header-h:68px;--max:1240px}

@@ -1,4 +1,4 @@
-/* FODO Website Builder — tiny SAFE Markdown (v32, shared): text is escaped first, then only a small subset is formatted
+/* FODO Website Builder, tiny SAFE Markdown (v32, shared): text is escaped first, then only a small subset is formatted
    (## headings, **bold**, *italic*, - lists, [links](https://…), ![images](https://…)). No raw HTML ever. */
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function safeUrl(u) { u = String(u == null ? "" : u).trim(); if (!u || /^javascript:/i.test(u)) return ""; if (/^(https?:\/\/|mailto:|tel:|#)/i.test(u)) return u; if (/^\/api\/sites\/media\/[a-z0-9]{20}$/.test(u)) return u; if (/^[a-z0-9\-\/._?=&]*$/i.test(u) && !/^\/\//.test(u)) return u; return ""; }

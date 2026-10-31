@@ -1,4 +1,4 @@
-/* FODO BRAIN — the living orb (v24). A WebGL "creature of light": a soft sphere whose surface breathes and ripples (noise-
+/* FODO BRAIN, the living orb (v24). A WebGL "creature of light": a soft sphere whose surface breathes and ripples (noise-
    deformed edge), with plasma flowing inside (domain-warped fractal noise), an iridescent rim, a corona that flickers outwards
    and sparks that orbit it. It reacts to sound: the microphone while you talk, the Brain's own voice while it speaks.
    States: idle (violet, slow breath) · listening (teal, alert) · hearing (bright cyan, ripples with your voice) · thinking
@@ -50,10 +50,10 @@
     " if(uLight>.5){outc*=1.05;}",
     " gl_FragColor=vec4(outc*al,al);}",
   ].join("\n");
-  /* ---------- v26: the FODO particle sphere (default) — the website's 3-D sphere, alive ----------
+  /* ---------- v26: the FODO particle sphere (default), the website's 3-D sphere, alive ----------
      Thousands of glowing particles on a sphere (the same look as fodo.co.in's background) that breathe, ripple with sound and
-     drift through noise. Its "mood" wanders on its own: now and then it flows into a ring, a double helix, a nebula — or spells
-     FODO — and back. Listening: teal and alert. You speaking: waves run through it. Thinking: it twists into a helix and spins.
+     drift through noise. Its "mood" wanders on its own: now and then it flows into a ring, a double helix, a nebula, or spells
+     FODO, and back. Listening: teal and alert. You speaking: waves run through it. Thinking: it twists into a helix and spins.
      FODO speaking: warm gold pulses with every syllable. Everything is computed live; nothing loops. */
   var PST = {
     idle: { c1: [0.62, 0.55, 1.0], c2: [0.35, 0.65, 1.0], amp: 0.07, spin: 0.10, size: 1.0 },
@@ -187,12 +187,12 @@
       emotion: function (name) { if (!EMO[name]) return; var fresh = emo !== name || performance.now() > emoUntil; emo = name; emoUntil = performance.now() + 9000; if (fresh) nextMood = performance.now() + 150; },
       shape: function (k) { if (SH[k]) { goTo(k, FLAT[k] ? .94 : .85); nextMood = performance.now() + 10000; } },
       info: function () { return { shape: target, morph: +morph.toFixed(2), goal: morphGoal, emotion: emo, t: +T.toFixed(1) }; },
-      destroy: function () { dead = true; cancelAnimationFrame(raf); try { var x = gl.getExtension("WEBGL_lose_context"); if (x) x.loseContext(); } catch (e) {} }, particles: true };
+      destroy: function () { dead = true; cancelAnimationFrame(raf); try { var x = gl.getExtension("WEBGL_lose_context"); if (x) x.loseContext(); } catch (e) {} }, isLost: function () { try { return gl.isContextLost(); } catch (e) { return true; } }, particles: true };
   }
   /* ---------- v25: the FODO neural circuit sphere (default) ----------
      Glowing traces grow across three shells of a 3-D sphere like circuitry being drawn live, branch, fade and are replaced by new
      ones; broken ring arcs orbit it on drifting axes. Nothing is pre-recorded: every trace is generated on the fly, and the
-     "mood" (spin, tilt, density, growth speed) keeps wandering towards new random targets — and jumps whenever the voice peaks —
+     "mood" (spin, tilt, density, growth speed) keeps wandering towards new random targets, and jumps whenever the voice peaks:
      so it never repeats. Sound drives it: louder speech → more traces, faster growth, brighter glow, a pulsing radius. */
   var CIRC = {
     idle: { c: [150, 130, 255], c2: [95, 170, 255], spin: 0.10, grow: 0.5, dens: 0.55 },

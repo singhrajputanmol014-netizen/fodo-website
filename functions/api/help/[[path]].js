@@ -1,4 +1,4 @@
-/* FODO Help Desk v20 API — /api/help/*
+/* FODO Help Desk v20 API: /api/help/*
  *   GET  kb                                   → help articles + live prices (public)
  *   POST chat {chatId?, message}              → AI help assistant (knows the asker's own account when logged in) → {chatId, reply, suggestTicket}
  *   POST chat/escalate {chatId, email?, name?, note?} → turns the chat into a ticket (transcript attached)
@@ -27,7 +27,7 @@ export async function onRequest(ctx) {
     if (!accountsOn(env) || !env.XRAY_DB) return json({ ok: false, disabled: true, reason: "The help desk is not switched on yet. Email " + supportAddr(env) + "." }, 503);
     if (m === "POST" && (!sameOrigin(request) || !/json/.test(request.headers.get("content-type") || ""))) return json({ ok: false, reason: "Bad request." }, 403);
     const u = await sessionUser(env, request), body = m === "POST" ? await request.json().catch(() => ({})) : null, ip = await hashIp(request);
-    // v20.3: the person's OWN account facts for the "Ask FODO" bot (plan, X-Rays left, latest X-Ray, open tickets) — never anyone else's
+    // v20.3: the person's OWN account facts for the "Ask FODO" bot (plan, X-Rays left, latest X-Ray, open tickets), never anyone else's
     if (path[0] === "me" && m === "GET") return json({ ok: true, facts: u ? await accountFacts(env, u, await billingUser(env, u)) : null }, 200, { "cache-control": "no-store" });
     if (path[0] === "chat" && !path[1] && m === "POST") return await chat(env, u, body, ip);
     if (path[0] === "chat" && path[1] === "escalate" && m === "POST") return await escalate(env, u, body, ip, origin);
@@ -41,7 +41,7 @@ export async function onRequest(ctx) {
       if (!mine) return json({ ok: false, reason: "Ticket not found." }, 404);
       if (m === "GET") return json({ ok: true, ticket: pub(t), messages: th.messages.map((x) => ({ dir: x.dir, source: x.source, text: x.text, at: x.created_at, from: x.dir === "out" ? "FODO" : "You" })) });
       if (path[2] === "reply" && m === "POST") {
-        if (await count(env, "helpreply:" + t.id, 30, 3600)) return json({ ok: false, reason: "Too many messages — please wait a little." }, 429);
+        if (await count(env, "helpreply:" + t.id, 30, 3600)) return json({ ok: false, reason: "Too many messages, please wait a little." }, 429);
         const text = clean(body.text, 8000); if (text.length < 2) return json({ ok: false, reason: "Write a message." }, 400);
         await addMessage(env, t, { dir: "in", source: "web", author: t.email, text }); return json({ ok: true });
       }
@@ -56,7 +56,7 @@ export async function onRequest(ctx) {
 
 async function chat(env, u, b, ip) {
   const msg = clean(b && b.message, 1500); if (msg.length < 2) return json({ ok: false, reason: "Type your question." }, 400);
-  if (await count(env, "helpchat:" + (u ? u.id : ip), u ? 60 : 25, 3600)) return json({ ok: false, reason: "That's a lot of questions for one hour — please open a ticket and a person will reply." }, 429);
+  if (await count(env, "helpchat:" + (u ? u.id : ip), u ? 60 : 25, 3600)) return json({ ok: false, reason: "That's a lot of questions for one hour, please open a ticket and a person will reply." }, 429);
   const d = await hdb(env), now = nowIso();
   let id = clean(b.chatId, 40), c = id ? await d.prepare("SELECT * FROM help_chats WHERE id=?1").bind(id).first() : null;
   if (c && !(c.ip_hash === ip || (u && c.user_id === u.id))) c = null;   // a chat id from someone else starts a new chat
@@ -80,11 +80,11 @@ async function escalate(env, u, b, ip, origin) {
   if (await count(env, "helpticket:" + (u ? u.id : ip), 6, 3600)) return json({ ok: false, reason: "Too many tickets this hour." }, 429);
   const msgs = (await d.prepare("SELECT role, text FROM help_chat_msgs WHERE chat_id=?1 ORDER BY id").bind(c.id).all()).results || [];
   const first = (msgs.filter((x) => x.role === "user")[0] || {}).text || "Help request";
-  const text = (clean(b.note, 2000) ? clean(b.note, 2000) + "\n\n" : "") + "— Chat with the FODO Help Assistant —\n" + msgs.map((x) => (x.role === "user" ? "Customer: " : "Assistant: ") + x.text).join("\n");
+  const text = (clean(b.note, 2000) ? clean(b.note, 2000) + "\n\n" : "") + "Chat with the FODO Help Assistant:\n" + msgs.map((x) => (x.role === "user" ? "Customer: " : "Assistant: ") + x.text).join("\n");
   const t = await createTicket(env, { userId: u && u.id, email, name: clean(b.name, 80) || (u && u.name) || "", subject: first.slice(0, 120), category: guessCat(first + " " + text), text, channel: "chat", chatId: c.id });
   await d.prepare("UPDATE help_chats SET ticket_id=?2 WHERE id=?1").bind(c.id, t.id).run();
   if (u) await logEvent(env, u.id, "help_ticket", t.id + " · chat");
-  let mailed = false; try { await mailTicket(env, origin, t, "Hi" + (t.name ? " " + t.name : "") + ",\n\nThanks — your question is ticket " + t.id + ". A person at FODO will reply by email (usually within one working day). You can also follow it here: " + ticketLink(env, origin, t)); mailed = true; } catch (e) {}
+  let mailed = false; try { await mailTicket(env, origin, t, "Hi" + (t.name ? " " + t.name : "") + ",\n\nThanks, your question is ticket " + t.id + ". A person at FODO will reply by email (usually within one working day). You can also follow it here: " + ticketLink(env, origin, t)); mailed = true; } catch (e) {}
   return json({ ok: true, ticket: t.id, link: ticketLink(env, origin, t), mailed });
 }
 const guessCat = (s) => /refund|paid|payment|charged|deducted|invoice|gst/i.test(s) ? "Payments & refunds" : /plan|price|pricing|pack|upgrade|cancel|renew/i.test(s) ? "Plans & pricing" : /x-?ray|report|score|crawl/i.test(s) ? "Business X-Ray" : /tool|war room|visibility|blueprint|roadmap/i.test(s) ? "Pro tools" : /login|otp|code|account|password/i.test(s) ? "Account & login" : /bug|error|broken|not working|stuck|loading/i.test(s) ? "Bug / something broken" : "Other";
@@ -92,10 +92,10 @@ async function newTicket(env, u, b, ip, origin) {
   if (b.website) return json({ ok: true, ticket: "T0000000" });   // honeypot: bots fill hidden fields
   const email = u && u.email ? u.email : cleanEmail(b.email); if (!email) return json({ ok: false, reason: "Enter a valid email so FODO can reply." }, 400);
   const text = clean(b.message, 8000); if (text.length < 10) return json({ ok: false, reason: "Describe the problem in a sentence or two." }, 400);
-  if (await count(env, "helpticket:" + (u ? u.id : ip), 6, 3600)) return json({ ok: false, reason: "Too many tickets this hour — please reply on your existing ticket." }, 429);
+  if (await count(env, "helpticket:" + (u ? u.id : ip), 6, 3600)) return json({ ok: false, reason: "Too many tickets this hour, please reply on your existing ticket." }, 429);
   const t = await createTicket(env, { userId: u && u.id, email, name: clean(b.name, 80) || (u && u.name) || "", subject: clean(b.subject, 160) || text.slice(0, 80), category: CATS.indexOf(b.category) > -1 ? b.category : guessCat(text), text, channel: "web" });
   if (u) await logEvent(env, u.id, "help_ticket", t.id + " · form");
-  let mailed = false; try { await mailTicket(env, origin, t, "Hi" + (t.name ? " " + t.name : "") + ",\n\nWe got your message — it is ticket " + t.id + ". A person at FODO will reply by email, usually within one working day.\n\nYour message:\n" + text); mailed = true; } catch (e) {}
+  let mailed = false; try { await mailTicket(env, origin, t, "Hi" + (t.name ? " " + t.name : "") + ",\n\nWe got your message, it is ticket " + t.id + ". A person at FODO will reply by email, usually within one working day.\n\nYour message:\n" + text); mailed = true; } catch (e) {}
   return json({ ok: true, ticket: t.id, link: ticketLink(env, origin, t), mailed });
 }
 async function inbound(request, env, origin) {

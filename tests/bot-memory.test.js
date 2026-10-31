@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* FODO Bot — memory, follow-up routing and "opens only on click" checks.
+/* FODO Bot, memory, follow-up routing and "opens only on click" checks.
  * Needs the site served on http://localhost:8765 (e.g. `python3 -m http.server 8765` from the fodo folder).
  * /api/chat is mocked here, so no Cloudflare account is needed. */
 const { chromium } = require("playwright");
@@ -16,7 +16,7 @@ const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") 
       const r = route.request();
       if (r.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, ai: true, kv: true }) });
       const body = JSON.parse(r.postData() || "{}"); posts.push(body);
-      const reply = /^haan$/i.test(body.message) ? "Great — here is your 3-step plan for the cafe." : "Want me to make a plan for your cafe?";
+      const reply = /^haan$/i.test(body.message) ? "Great, here is your 3-step plan for the cafe." : "Want me to make a plan for your cafe?";
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, reply }) });
     });
     const p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(e.message));

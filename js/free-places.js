@@ -1,9 +1,9 @@
-/* Free (no-key) place search for the FODO Competitor Finder — shared by the Cloudflare function
+/* Free (no-key) place search for the FODO Competitor Finder, shared by the Cloudflare function
    (functions/api/competitors.js) and the browser (copied to js/free-places.js by scripts/build_pages.py).
    Sources, tried in order until one returns businesses (v11):
-     1. /api/osm — this site's own Overpass proxy with a 24-hour shared cache (fastest; protects the public servers)
-     2. Overpass (OpenStreetMap) straight from the browser — 3 public servers, a second one only if the first is slow
-     3. Photon (komoot, OpenStreetMap) — fast category search, top 50
+     1. /api/osm, this site's own Overpass proxy with a 24-hour shared cache (fastest; protects the public servers)
+     2. Overpass (OpenStreetMap) straight from the browser, 3 public servers, a second one only if the first is slow
+     3. Photon (komoot, OpenStreetMap), fast category search, top 50
    Nominatim is used only to find the typed place (one look-up per search), never to list businesses:
    its usage policy does not allow downloading the points of interest of an area. */
 
@@ -114,7 +114,7 @@ export function fromTags(t, extra) {
   return Object.assign(rec, extra || {});
 }
 
-/* The Overpass query for one search — shared by the browser, the server fallback and /api/osm (which only accepts this shape). */
+/* The Overpass query for one search, shared by the browser, the server fallback and /api/osm (which only accepts this shape). */
 export function overpassQuery(type, c, radius, max) {
   radius = Math.round(Math.min(MAX_RADIUS, Math.max(200, +radius || 2000)));
   const tags = osmTags(type), around = `(around:${radius},${(+c.lat).toFixed(6)},${(+c.lng).toFixed(6)})`, word = String(type).replace(/["\\.*+?^${}()|[\]]/g, "").trim().slice(0, 40);
@@ -156,7 +156,7 @@ export function fromGeoapify(f) {
 }
 
 /* fetchT(url, options, ms) must add a time limit. headers: extra headers (the server adds a User-Agent; browsers may not).
-   opts.proxy: URL of this site's /api/osm (browser only) — tried first. */
+   opts.proxy: URL of this site's /api/osm (browser only), tried first. */
 export function freePlaces(fetchT, headers, opts) {
   opts = opts || {};
   headers = headers || {};

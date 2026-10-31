@@ -1,4 +1,4 @@
-/* FODO first-party website analytics (v16) — no cookies, nothing stored in the visitor's browser.
+/* FODO first-party website analytics (v16), no cookies, nothing stored in the visitor's browser.
    A visitor is counted once per day by a hash of (secret salt + day + IP + browser), the same idea as Plausible / Fathom, so no
    consent banner is needed for it and the IP itself is never stored. Daily totals live in D1 (web_daily), so the admin dashboard
    reads a few hundred rows, not every hit. Needs only the XRAY_DB binding (works with accounts on or off). */

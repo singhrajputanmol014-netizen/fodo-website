@@ -1,4 +1,4 @@
-// v27 Razorpay payments — order creation, server-side confirmation, signed webhook, no double credit, no secret leak, Brain tool.
+// v27 Razorpay payments, order creation, server-side confirmation, signed webhook, no double credit, no secret leak, Brain tool.
 // Run: node --no-warnings tests/v27-razorpay.test.mjs
 import { DatabaseSync } from "node:sqlite";
 import { onRequest as account } from "../functions/api/account/[[path]].js";
@@ -23,7 +23,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 import { createHmac } from "node:crypto";
@@ -59,7 +59,7 @@ r = await hook({ event: "order.paid", payload: { order: { entity: { id: ro2.id }
 ro2.amount_paid = ro2.amount;
 r = await hook({ event: "order.paid", payload: { order: { entity: { id: ro2.id } } } }, "deadbeef"); ok(r.status === 401 && (await me("a")).user.credits.total === c0, "unsigned / wrongly signed webhook rejected");
 r = await hook({ event: "order.paid", payload: { order: { entity: { id: ro2.id } } } }); ok(r.status === 200 && (await me("a")).user.credits.total > c0, "signed webhook → pack credited (the webhook alone completes a payment if the person closes the tab)");
-r = await call("checkout", { kind: "plan", item: "growth", phone: "9810012345" }, { as: "own" }); ok(r.status === 409, "owner logins are free — no checkout");
+r = await call("checkout", { kind: "plan", item: "growth", phone: "9810012345" }, { as: "own" }); ok(r.status === 409, "owner logins are free, no checkout");
 // the Brain
 r = await ask("aaj kitne payments aaye razorpay pe?", null, "own"); ok(r.j.ok && JSON.stringify(r.j).includes("razorpay"), "Brain: payment question → Razorpay tool");
 const { execute } = await import("../functions/_lib/brain/tools.js"); const owner = env.XRAY_DB.db.prepare("SELECT * FROM acct_users WHERE email='anmol@fodo.co.in'").get(), X = async (n, a) => ({ j: await execute({ env, request: new Request(SITE), owner, settings: { toolsOff: {} } }, n, a, {}) });

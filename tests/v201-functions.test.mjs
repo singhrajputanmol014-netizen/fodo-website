@@ -41,7 +41,7 @@ const q = (job, n, who) => call(env, "xray/search", { jobId: job, q: "query " + 
 await login(env, "anmol@fodo.co.in", null, "own");
 let r = await call(env, "xray/start", { url: "spicehub.test" }, { as: "own" }); const jo = r.j.jobId;
 const own = []; for (let i = 0; i < 6; i++) own.push((await q(jo, i, "own")).status);
-ok(own.every((s) => s === 200) && serper === 6, "owner X-Ray: 6 searches with a daily cap of 2 — all go through (no daily limit)");
+ok(own.every((s) => s === 200) && serper === 6, "owner X-Ray: 6 searches with a daily cap of 2, all go through (no daily limit)");
 r = await call(env, "xray/places", { jobId: jo, q: "restaurants dwarka" }, { as: "own" }); ok(r.status === 200, "owner: local listings also skip the daily limit");
 
 await login(env, "ravi@shop.in", "growth", "c");

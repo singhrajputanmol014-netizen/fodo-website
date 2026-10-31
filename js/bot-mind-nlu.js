@@ -1,4 +1,4 @@
-/* FODO Bot — MIND · Layer 1+2: INPUT UNDERSTANDING (normalisation, language, entities, intents)
+/* FODO Bot: MIND · Layer 1+2: INPUT UNDERSTANDING (normalisation, language, entities, intents)
  * Offline, dependency-free. Exposes window.FODO_NLU = { analyse, normalize, entities, intents, detectLang }.
  * Loaded after bot-human.js, before bot-mind.js. Touches no DOM.
  */
@@ -31,7 +31,7 @@
     dm:"dm",dms:"dms",
     hi:"hi",hii:"hi",hiii:"hi",helo:"hello",hlo:"hello",heyy:"hey"
   };
-  // Roman Hindi / Hinglish → English — applied ONLY when the message reads as Hinglish
+  // Roman Hindi / Hinglish → English, applied ONLY when the message reads as Hinglish
   const HFIX={
     kya:"what",kia:"what",kyaa:"what",kaise:"how",kese:"how",kaisay:"how",kaisey:"how",kyun:"why",kyu:"why",kyon:"why",kab:"when",kahan:"where",kaha:"where",kaun:"who",kon:"who",
     kitna:"how much",kitne:"how many",kitni:"how much",
@@ -83,7 +83,7 @@
     if(/[\u0900-\u097F]/.test(s)) return "hi";
     const m=(s.toLowerCase().match(HINGLISH_MARKERS)||[]).length;
     const words=(s.toLowerCase().match(/[a-z]+/g)||[]).length||1;
-    // a single marker like "to" or "me" is common English — require a real Hinglish signal
+    // a single marker like "to" or "me" is common English, require a real Hinglish signal
     const strong=/\b(rhe|rahe|kya|kaise|kyun|kyu|kitna|kitne|hai|hain|nahi|nhi|mera|meri|mere|mujhe|bhai|yaar|chahiye|batao|samjhao|accha|acha|haan|bekar|rahi|rhi|raha|rha|kuch|aap|hoon|toh|lekin|kharcha|dukaan|grahak|bohot|bahut|zyada|jyada|kaafi|karu|kare|karein|wala|wali)\b/i.test(s);
     if(strong && (m>=2 || words<=6)) return "hinglish";
     return "en";

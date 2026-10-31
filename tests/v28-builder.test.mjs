@@ -24,7 +24,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);
@@ -44,7 +44,7 @@ globalThis.fetch = async (u, o = {}) => { u = String(u);
   if (/\/api\/sites\/view\//.test(u)) return new Response("ok", { status: 200 });
   return new Response("x", { status: 599 }); };
 const AI = { run: async (model, x) => { const sys = x.messages[0].content, user = x.messages[x.messages.length - 1].content;
-  if (/write website copy/.test(sys)) { const j = JSON.parse(user.split("SECTIONS: ")[1]); j.pages.forEach((p) => p.sections.forEach((s) => { if (s && s.props && s.props.title) s.props.title = "Smile Dental — " + s.props.title; if (s && s.type === "testimonials") s.props.items = [{ quote: "Best clinic ever!", name: "Fake Person" }]; })); return { response: JSON.stringify(j) }; }
+  if (/write website copy/.test(sys)) { const j = JSON.parse(user.split("SECTIONS: ")[1]); j.pages.forEach((p) => p.sections.forEach((s) => { if (s && s.props && s.props.title) s.props.title = "Smile Dental: " + s.props.title; if (s && s.type === "testimonials") s.props.items = [{ quote: "Best clinic ever!", name: "Fake Person" }]; })); return { response: JSON.stringify(j) }; }
   if (/edit ONE customer website/.test(sys)) { if (/other site|admin|secret/i.test(user)) return { response: JSON.stringify({ say: "x", ops: [{ op: "update", page: "home", i: 1, props: { title: "<script>steal()</script>" } }, { op: "raw", html: "<script>" }] }) };
     return { response: JSON.stringify({ say: "Made the hero shorter and added an FAQ.", ops: [{ op: "update", page: "home", i: 1, props: { title: "Gentle dental care in Dwarka" } }, { op: "add", page: "home", at: 2, type: "faq", props: { title: "FAQ", items: [{ q: "Open on Sunday?", a: "Yes, 10–2." }] } }, { op: "theme", theme: { primary: "#0F766E" } }] }) }; }
   if (/Make it shorter/.test(sys)) return { response: "Short and sweet." };
@@ -67,7 +67,7 @@ r = await S("recommend?q=" + encodeURIComponent("premium dental clinic Delhi"));
 r = await S("create", { name: "Smile Dental", industry: "Dental clinic", location: "Dwarka, New Delhi", phone: "+91 98100 00000", email: "priya@smiledental.in", style: "Premium", goal: "Get bookings", pages: ["services", "about", "contact"] });
 const id = r.j.id; ok(r.j.ok && /^ws_/.test(id) && r.j.ai && r.j.template === "dental-premium" && r.j.slug === "smile-dental", "create: template + AI copy → draft website");
 r = await S(id); const doc0 = r.j.site.doc;
-ok(/Smile Dental — /.test(JSON.stringify(doc0.pages[0].sections[1])) && !/Fake Person|Best clinic ever/.test(JSON.stringify(doc0)), "AI personalises the copy — but its invented review was thrown away (reviews stay placeholders)");
+ok(/Smile Dental: /.test(JSON.stringify(doc0.pages[0].sections[1])) && !/Fake Person|Best clinic ever/.test(JSON.stringify(doc0)), "AI personalises the copy, but its invented review was thrown away (reviews stay placeholders)");
 ok(doc0.pages.map((p) => p.slug).join() === "home,services,about,contact,privacy" && doc0.settings.notifyEmail === "priya@smiledental.in", "chosen pages + notification email (+ privacy policy draft added by the automatic QA, because forms collect data)");
 r = await S(id, undefined, "b"); ok(r.status === 404 && /not found/i.test(r.j.reason), "another customer can't open it (404, no hint it exists)");
 r = await S(id, { doc: doc0, baseRev: 1 }, "b", { method: "PUT" }); ok(r.status === 404, "…or save over it");
@@ -98,7 +98,7 @@ r = await S(id + "/rewrite", { text: "x", mode: "hack" }); ok(r.status === 400, 
 
 /* publish: real checks block it */
 r = await S(id + "/publish", {}); ok(r.j.ok && r.j.published === false && r.j.issues.some((x) => x.level === "critical" && /Placeholder/.test(x.msg)), "publish is blocked while placeholder text (e.g. reviews) is on the page");
-r = await S(id); const clean = r.j.site.doc; clean.pages.forEach((p) => { p.sections = p.sections.filter((s) => s.type !== "testimonials" && s.type !== "stats" && s.type !== "team" && s.type !== "pricing"); p.seo = { title: p.title + " — Smile Dental", description: "Gentle dental care in Dwarka." }; });
+r = await S(id); const clean = r.j.site.doc; clean.pages.forEach((p) => { p.sections = p.sections.filter((s) => s.type !== "testimonials" && s.type !== "stats" && s.type !== "team" && s.type !== "pricing"); p.seo = { title: p.title + ": Smile Dental", description: "Gentle dental care in Dwarka." }; });
 r = await S(id, { doc: clean, baseRev: r.j.site.rev }, "a", { method: "PUT" });
 r = await S(id + "/publish", {}); ok(r.j.published === true && r.j.urls.sites === "https://sites.fodo.co.in/smile-dental/", "publish after fixing → live on the sites address");
 

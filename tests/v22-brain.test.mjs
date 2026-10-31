@@ -1,4 +1,4 @@
-// v22 FODO BRAIN — wake word & human talk, voice (Aura TTS / Whisper STT), the code agent (GitHub PR → preview → live, all
+// v22 FODO BRAIN, wake word & human talk, voice (Aura TTS / Whisper STT), the code agent (GitHub PR → preview → live, all
 // confirmed), semantic memory (embeddings), any-file knowledge (toMarkdown), automations (real-time events + schedules + email),
 // commitments, prep briefs, deep research, specialist agents, admin actions, Gmail/Calendar connector, security.
 // Run: node --no-warnings tests/v22-brain.test.mjs
@@ -25,7 +25,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);
@@ -110,7 +110,7 @@ r = await ask("Homepage headline ko 'Grow faster with FODO' kar do");
 const att = r.j.attachments.find((a) => a.kind === "change"), openAct = r.j.actions[0];
 ok(r.j.intent === "code_change" && att && att.files.indexOf("index.html") > -1 && att.files.indexOf("scripts/build_pages.py") > -1 && /Grow faster with FODO/.test(att.diff), "'headline ko … kar do' → exact diff prepared (page + its build source)");
 ok(att.files.indexOf("functions/_lib/accounts.js") < 0 && att.skipped.some((x) => /protected/.test(x)) && att.skipped.some((x) => /found 0 times/.test(x)), "protected file (login code) refused; an edit that doesn't apply is skipped");
-ok(openAct && openAct.risk === "external communication" && !gh.calls.some((c) => /^POST/.test(c)), "nothing written to GitHub yet — opening the PR needs confirmation");
+ok(openAct && openAct.risk === "external communication" && !gh.calls.some((c) => /^POST/.test(c)), "nothing written to GitHub yet, opening the PR needs confirmation");
 r = await B("confirm", { actionId: openAct.id, token: openAct.token });
 ok(r.j.ok && r.j.result.number === 7 && /^refs\/heads\/brain\/change-the-homepage-headline/.test(gh.branch) && gh.lastBlobs.some((b) => /<h1>Grow faster with FODO<\/h1>/.test(b)) && gh.tree.tree.every((t) => !/accounts\.js/.test(t.path)), "confirmed → branch + commit + pull request with the new headline (protected file not included)");
 ok(/^https:\/\/brain-change-the-homepage-he\.fodo-website\.pages\.dev$/.test(r.j.result.preview) && !gh.merged, "Cloudflare preview link; the live site is untouched");

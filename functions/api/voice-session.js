@@ -1,4 +1,4 @@
-/* FODO Bot — realtime VOICE session endpoint (Cloudflare Pages Function, route: /api/voice-session)
+/* FODO Bot, realtime VOICE session endpoint (Cloudflare Pages Function, route: /api/voice-session)
  *
  * OPTIONAL and PAID. Only used when js/config.js sets voiceProvider: "openai-realtime".
  * Mints a short-lived OpenAI Realtime client secret so the browser can open a WebRTC call directly with OpenAI.
@@ -143,7 +143,7 @@ export async function onRequestPost({ request, env }) {
     clearTimeout(timer);
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || typeof data.value !== "string") {
-      // log status only — never the key or the response body
+      // log status only, never the key or the response body
       console.log("voice-session upstream status", r.status);
       await bump(env, { voice_failed: 1 });
       return json({ ok: false, reason: "upstream" }, 502, h);

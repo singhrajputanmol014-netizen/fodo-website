@@ -1,4 +1,4 @@
-// v19 background X-Rays — server + runner Worker logic, in-process: the runner's calls to the website go straight into the
+// v19 background X-Rays, server + runner Worker logic, in-process: the runner's calls to the website go straight into the
 // real /api/xray handler (D1 = real SQLite), Browser Rendering and GitHub are stand-ins. Covers switched off / runner down
 // fallbacks, claim + token, capacity → wait → retry, GitHub fallback, crashes → retry → refund after 3 tries, waited too long →
 // refund (also for a bought tool run), cron sweep of dead runs, email once.   Run: node --no-warnings tests/v19-functions.test.mjs

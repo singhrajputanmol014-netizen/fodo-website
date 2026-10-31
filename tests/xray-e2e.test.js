@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Business X-Ray end-to-end: the real page + engine + Cloudflare Pages Functions (local workerd runtime, D1 + KV) against five
-   fictional businesses (tests/xray-fixtures/server.js) — restaurant, SaaS, e-commerce, agency, dental clinic.
+   fictional businesses (tests/xray-fixtures/server.js), restaurant, SaaS, e-commerce, agency, dental clinic.
    Also: engine unit checks in the page, real backend progress, API failure → partial report, invalid/unsafe URLs, exports
    (PDF/Excel/CSV/JSON), share link, phone download, rate limit, no secret exposed, existing pages still work.
    Env: WRANGLER (path to wrangler), NM (node_modules with xlsx). Run: node tests/xray-e2e.test.js */
@@ -14,7 +14,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log(
 const sh = (cmd, args, env) => spawnSync(cmd, args, { env: Object.assign({}, process.env, env || {}), encoding: "utf8" });
 const stop = () => { sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 8788|[w]orkerd serve'); do kill $p; done; sleep 1; true"]); };
 const start = (perHour) => { stop(); const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), [String(perHour || 100)], { WRANGLER, STATE }); if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
-const bodies = [];   // every response body the browser receives — scanned for the secret
+const bodies = [];   // every response body the browser receives, scanned for the secret
 
 async function newCtx(b, opt) {
   const ctx = await b.newContext(Object.assign({ acceptDownloads: true, viewport: { width: 1440, height: 950 } }, opt || {}));
@@ -35,7 +35,7 @@ const integrity = (tag, r) => {
   const ids = new Set(r.evidence.map((e) => e.id));
   ok(r.opportunities.every((o) => o.evidence.every((id) => ids.has(id))) && r.checks.every((c) => c.evidence.every((id) => ids.has(id))), `${tag}: every evidence link points to a real evidence item (${r.evidence.length} items)`);
   ok(r.evidence.every((e) => ["OBSERVED", "INFERRED", "ESTIMATED", "UNKNOWN"].indexOf(e.label) > -1 && e.sourceName && e.retrievedAt), `${tag}: every evidence item has a label, a source and a time`);
-  const A = r.scores.areas; ok(Object.keys(A).length === 6 && Object.values(A).every((a) => a.score === null || (a.score >= 0 && a.score <= 100 && a.components.length > 0)), `${tag}: 6 area scores, each 0–100 with its parts — or null (Data unavailable)`);
+  const A = r.scores.areas; ok(Object.keys(A).length === 6 && Object.values(A).every((a) => a.score === null || (a.score >= 0 && a.score <= 100 && a.components.length > 0)), `${tag}: 6 area scores, each 0–100 with its parts, or null (Data unavailable)`);
   ok(r.opportunities.every((o) => o.priorityScore === Math.min(100, Math.round(100 * (o.impact * o.confidence * o.urgency / o.effort) / 25))), `${tag}: every priority score = impact × confidence × urgency ÷ effort (normalised)`);
   ok(r.top.immediate.length <= 3 && r.top.growth.length <= 5 && r.top.strategic.length <= 5 && r.plan.length === 4 && r.plan.every((w) => w.items.every((i) => i.opportunity && i.problem && i.action)), `${tag}: top 3 / 5 / 5 + 4-week plan, every action tied to a problem`);
   ok(r.keywords.every((k) => k.volume === null) && !r.volumes, `${tag}: no search volume invented (no SEO provider)`);
@@ -76,7 +76,7 @@ const integrity = (tag, r) => {
   p.on("response", async (res) => { if (/api\/xray\/start$/.test(res.url())) { try { pollJob = (await res.json()).jobId; } catch (e) {} } });
   const poll = setInterval(async () => { if (!pollJob) return; try { const j = await (await fetch(BASE + "/api/xray/status/" + pollJob)).json(); seenStatus.push([j.progress, j.currentStage, j.status]); } catch (e) {} }, 150);
   let x = await xray(p, "spicehub.test"), r = x.r; clearInterval(poll);
-  ok(/X-Ray complete — \d+ pages read/.test(x.status), "restaurant: " + x.status);
+  ok(/X-Ray complete: \d+ pages read/.test(x.status), "restaurant: " + x.status);
   const prog = seenStatus.map((s) => s[0]);
   ok(seenStatus.length >= 3 && prog.every((v, i) => !i || v >= prog[i - 1]) && new Set(seenStatus.map((s) => s[1])).size >= 3 && seenStatus[seenStatus.length - 1][2] === "COMPLETE", `GET /api/xray/status shows real, rising progress through ${new Set(seenStatus.map((s) => s[1])).size} stages → COMPLETE`);
   integrity("restaurant", r);
@@ -94,7 +94,7 @@ const integrity = (tag, r) => {
   // UI: report sections + evidence drawer + tool links
   const H = await p.textContent("#xr-report");
   ok(["Executive Summary", "Digital Growth Health", "Business Overview", "Digital Market Presence", "Biggest Problem", "Website X-Ray", "SEO / Search X-Ray", "Competitor X-Ray", "Customer Voice", "Offer & Positioning", "Conversion X-Ray", "Digital Presence", "AI Visibility", "Biggest Opportunities", "Top 5 Actions", "30-Day Action Plan", "Evidence & Sources"].every((t) => H.indexOf(t) > -1), "report has all 17 sections");
-  ok(/BIGGEST PROBLEM/.test(H) && /BIGGEST OPPORTUNITY/.test(H) && /TOP 5 ACTIONS/.test(H) && /Search volume: Data unavailable/.test(H) && /Sampled AI visibility|Data unavailable — no AI source/.test(H), "hero blocks shown; unavailable data says so");
+  ok(/BIGGEST PROBLEM/.test(H) && /BIGGEST OPPORTUNITY/.test(H) && /TOP 5 ACTIONS/.test(H) && /Search volume: Data unavailable/.test(H) && /Sampled AI visibility|Data unavailable, no AI source/.test(H), "hero blocks shown; unavailable data says so");
   await p.click("#xr-s5 .xr-why"); await p.waitForSelector("#xr-evd:not([hidden])");
   ok(/E\d+/.test(await p.textContent("#xr-evd")) && /OBSERVED|INFERRED/.test(await p.textContent("#xr-evd")), "“Why did FODO say this?” opens the evidence");
   await p.keyboard.press("Escape");
@@ -105,7 +105,7 @@ const integrity = (tag, r) => {
   const dl = async (sel) => { const [d] = await Promise.all([p.waitForEvent("download", { timeout: 15000 }), p.click(sel)]); return { name: d.suggestedFilename(), buf: fs.readFileSync(await d.path()) }; };
   let f = await dl('#xr-report [data-x="pdf"]'); const pdfPath = path.join(os.tmpdir(), "xr-" + process.pid + ".pdf"); fs.writeFileSync(pdfPath, f.buf);
   const pt = sh("pdftotext", [pdfPath, "-"]).stdout || "", qp = sh("qpdf", ["--check", pdfPath]).stdout || "";
-  ok(f.buf.slice(0, 5).toString() === "%PDF-" && /No syntax or stream encoding errors/.test(qp) && /Executive Summary/.test(pt) && /Spice Hub/.test(pt) && /30-Day Action Plan/.test(pt) && /E\d+/.test(pt), `PDF: real text PDF (${Math.round(f.buf.length / 1024)} KB) with summary, plan and evidence IDs — not a screenshot`);
+  ok(f.buf.slice(0, 5).toString() === "%PDF-" && /No syntax or stream encoding errors/.test(qp) && /Executive Summary/.test(pt) && /Spice Hub/.test(pt) && /30-Day Action Plan/.test(pt) && /E\d+/.test(pt), `PDF: real text PDF (${Math.round(f.buf.length / 1024)} KB) with summary, plan and evidence IDs, not a screenshot`);
   f = await dl('#xr-report [data-x="xlsx"]'); const wb = XL.read(f.buf);
   ok(["Summary", "Opportunities", "30-day plan", "Checks", "Competitors", "Searches", "Pages", "Evidence"].every((s) => wb.SheetNames.indexOf(s) > -1) && XL.utils.sheet_to_json(wb.Sheets.Opportunities).length === r.opportunities.length, "Excel: 8 sheets, one row per opportunity");
   f = await dl('#xr-report [data-x="csv"]'); ok(f.buf.toString("utf8").replace(/^﻿/, "").split(/\r\n/).length === r.opportunities.length + 1 && /Evidence IDs/.test(f.buf.toString()), "findings CSV: header + one line per opportunity");
@@ -152,7 +152,7 @@ const integrity = (tag, r) => {
   x = await xray(p, "blockedco.test"); r = x.r;
   ok(/Limited X-Ray complete/.test(x.status) && /520/.test(x.status), "blocked site: limited X-Ray instead of stopping: " + x.status.slice(0, 90));
   ok(r && r.crawl.blocked && r.crawl.blocked.status === 520 && r.business.name.value === "QuickBite" && /Restaurant/.test(r.business.industry.value) && r.business.locations.value.indexOf("Delhi") > -1, "blocked site: name, industry and city read from how Google shows it");
-  ok(r.scores.areas.conversion.score === null && /could not be read/.test(r.scores.areas.conversion.note) && r.dataQuality["Website crawl"] === "UNAVAILABLE" && r.checks.every((c) => /^P_/.test(c.id) || /^R_offsite/.test(c.id)), "blocked site: page checks marked Data unavailable — only PageSpeed / public-rating checks, nothing guessed");
+  ok(r.scores.areas.conversion.score === null && /could not be read/.test(r.scores.areas.conversion.note) && r.dataQuality["Website crawl"] === "UNAVAILABLE" && r.checks.every((c) => /^P_/.test(c.id) || /^R_offsite/.test(c.id)), "blocked site: page checks marked Data unavailable, only PageSpeed / public-rating checks, nothing guessed");
   ok(r.opportunities.some((o) => o.key === "W_blocked") && !r.opportunities.some((o) => o.key === "T_home" || o.key === "D_social"), "blocked site: “turns away automated visitors” is reported; no false “homepage broken” / “no socials”");
   ok(r.competitors.length >= 1 && r.competitors.every((c) => c.insights.advantages.length === 0 && /could not be read/.test(c.insights.opportunity)) && !r.compMetrics.length, "blocked site: real competitors listed, no made-up side-by-side comparison");
   ok(/LIMITED X-RAY/.test(await p.textContent("#xr-report")), "blocked site: report shows a clear LIMITED X-RAY note");
@@ -160,7 +160,7 @@ const integrity = (tag, r) => {
   const fx = await (await fetch("http://127.0.0.1:9300/_calls")).json();
   ok(fx.pages.filter((u2) => /^blockedco:/.test(u2)).some((u2) => /FODO-BusinessXRay\/1\.0 \(\+/.test(u2)) && fx.pages.filter((u2) => /^blockedco:/.test(u2)).some((u2) => /compatible; FODO-BusinessXRay/.test(u2)), "blocked site: tried with FODO's agent, then a standard compatible agent (both name FODO)");
   x = await xray(p, "shyco.test"); r = x.r;
-  ok(/X-Ray complete — 1 pages read/.test(x.status) && r.business.name.value === "ShyCo" && !r.crawl.blocked, "site that refuses unknown agents (403) is read on the second try");
+  ok(/X-Ray complete: 1 page read/.test(x.status) && r.business.name.value === "ShyCo" && !r.crawl.blocked, "site that refuses unknown agents (403) is read on the second try");
   x = await xray(p, "spicehub.test/go-internal"); ok(/cannot be X-Rayed/.test(x.status) && !x.r, "a start address that redirects to a private network is still refused: " + x.status.slice(0, 70));
 
   /* ---------- phone: export through the save dialog + server download ---------- */

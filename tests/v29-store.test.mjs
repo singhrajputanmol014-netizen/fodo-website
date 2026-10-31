@@ -24,7 +24,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);
@@ -48,7 +48,7 @@ globalThis.fetch = async (u, o = {}) => { u = String(u);
     const oid = u.split("/orders/")[1]; if (/fodo-check/.test(u)) return J({ message: "order not found" }, 404); return J({ order_id: oid, order_status: cfPaid[oid] ? "PAID" : "ACTIVE", order_amount: cfPaid[oid] || 0 }); }
   return new Response("x", { status: 599 }); };
 const AI = { run: async (model, x) => { const sys = x.messages[0].content, user = x.messages[x.messages.length - 1].content;
-  if (/write website copy/.test(sys)) { const j = JSON.parse(user.split("SECTIONS: ")[1]); j.pages.forEach((p) => p.sections.forEach((s) => { if (s && s.props && s.props.title) s.props.title = "Smile Dental — " + s.props.title; if (s && s.type === "testimonials") s.props.items = [{ quote: "Best clinic ever!", name: "Fake Person" }]; })); return { response: JSON.stringify(j) }; }
+  if (/write website copy/.test(sys)) { const j = JSON.parse(user.split("SECTIONS: ")[1]); j.pages.forEach((p) => p.sections.forEach((s) => { if (s && s.props && s.props.title) s.props.title = "Smile Dental: " + s.props.title; if (s && s.type === "testimonials") s.props.items = [{ quote: "Best clinic ever!", name: "Fake Person" }]; })); return { response: JSON.stringify(j) }; }
   if (/edit ONE customer website/.test(sys)) { if (/other site|admin|secret/i.test(user)) return { response: JSON.stringify({ say: "x", ops: [{ op: "update", page: "home", i: 1, props: { title: "<script>steal()</script>" } }, { op: "raw", html: "<script>" }] }) };
     return { response: JSON.stringify({ say: "Made the hero shorter and added an FAQ.", ops: [{ op: "update", page: "home", i: 1, props: { title: "Gentle dental care in Dwarka" } }, { op: "add", page: "home", at: 2, type: "faq", props: { title: "FAQ", items: [{ q: "Open on Sunday?", a: "Yes, 10–2." }] } }, { op: "theme", theme: { primary: "#0F766E" } }] }) }; }
   if (/Make it shorter/.test(sys)) return { response: "Short and sweet." };
@@ -87,7 +87,7 @@ r = await S(id + "/orders", undefined, "b"); ok(r.status === 404, "orders are pr
 
 /* store settings + publish */
 r = await S(id); const doc = r.j.site.doc;
-doc.pages.forEach((p) => { p.sections = p.sections.filter((s) => s.type !== "testimonials"); p.seo = { title: p.title + " — Kavya", description: "Handmade clothing from Jaipur." }; });
+doc.pages.forEach((p) => { p.sections = p.sections.filter((s) => s.type !== "testimonials"); p.seo = { title: p.title + ": Kavya", description: "Handmade clothing from Jaipur." }; });
 doc.settings.store = { currency: "INR", cod: false, whatsapp: false, online: false, shipping: { flat: "60", freeAbove: "2000" }, tax: { pct: "5", inclusive: true } };
 r = await S(id, { doc, baseRev: r.j.site.rev }, "a", { method: "PUT" }); let rev = r.j.rev;
 r = await S(id + "/publish", {}); ok(r.j.published === false && r.j.issues.some((x) => /no way to order/.test(x.msg)), "publish blocked: a store with no payment method");
@@ -106,7 +106,7 @@ r = await site("https://sites.fodo.co.in/kavya-clothing/sitemap.xml"); ok(/\/p\/
 /* checkout: the server prices everything */
 const cust = { name: "Meera", phone: "9876543210", email: "meera@example.com", address: "12 MI Road", city: "Jaipur", pin: "302001" };
 r = await pub("shop/" + id + "/checkout", { method: "cod", customer: cust, items: [{ id: dup, qty: 2, price: 1 }], total: 1 });
-ok(r.j.ok && r.j.total === 99800 + 6000 && r.j.number === 1001, "COD order: browser's price ignored — 2 × ₹499 + ₹60 shipping = ₹1,058");
+ok(r.j.ok && r.j.total === 99800 + 6000 && r.j.number === 1001, "COD order: browser's price ignored, 2 × ₹499 + ₹60 shipping = ₹1,058");
 let o1 = r.j; r = await S(id + "/products"); ok(r.j.products.find((p) => p.id === dup).stock === 1, "stock taken at order time (3 → 1)");
 ok(mails.some((m) => /New order #1001/.test(m.subject) && m.to.indexOf("priya@smiledental.in") > -1) && mails.some((m) => /Your order #1001/.test(m.subject)), "emails: merchant + customer");
 r = await pub("shop/" + id + "/checkout", { method: "cod", customer: cust, items: [{ id: dup, qty: 5 }] }); ok(r.status === 409 && /only 1 left/.test(r.j.reason), "can't buy more than in stock");

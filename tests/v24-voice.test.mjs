@@ -1,4 +1,4 @@
-// v24 FODO BRAIN voice — hearing (Whisper + FODO vocabulary, hallucination filter, Urdu→Hindi retry, Nova-3 backup), speaking (Aura-2,
+// v24 FODO BRAIN voice, hearing (Whisper + FODO vocabulary, hallucination filter, Urdu→Hindi retry, Nova-3 backup), speaking (Aura-2,
 // Aura-1 backup, Hinglish → Devanagari for the Hindi voice), language mirroring, bigger model for voice, the browser WAV encoder.
 // Run: node --no-warnings tests/v24-voice.test.mjs
 
@@ -28,7 +28,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);

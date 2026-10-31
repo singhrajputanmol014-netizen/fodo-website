@@ -1,4 +1,4 @@
-/* FODO Help Desk v20 — the admin side: tickets (reply, note, status, priority, assign), the support Mail box (every email in
+/* FODO Help Desk v20, the admin side: tickets (reply, note, status, priority, assign), the support Mail box (every email in
    and out, compose to anyone), AI chat transcripts and help-desk numbers. Called from /api/admin/* (role already checked). */
 import { json, nowIso, logEvent, cleanEmail, randId } from "./accounts.js";
 import { hdb, clean, STATUSES, CATS, thread, addMessage, mailTicket, createTicket, supportAddr } from "./help.js";
@@ -70,7 +70,7 @@ export async function helpPost(env, p, body, me, origin) {
     if (a === "assign") { const em = body.email ? cleanEmail(body.email) : null; await d.prepare("UPDATE help_tickets SET assignee=?2 WHERE id=?1").bind(t.id, em).run(); return json({ ok: true }); }
     return json({ ok: false, reason: "Unknown action." }, 400);
   }
-  if (p[0] === "mail" && p[1] === "send") {   // compose a new email to anyone — it becomes a ticket so the reply comes back to the same thread
+  if (p[0] === "mail" && p[1] === "send") {   // compose a new email to anyone, it becomes a ticket so the reply comes back to the same thread
     const to = cleanEmail(body.to), subject = clean(body.subject, 160), text = clean(body.text, 10000);
     if (!to) return json({ ok: false, reason: "Enter the email address." }, 400); if (!subject || text.length < 2) return json({ ok: false, reason: "Add a subject and a message." }, 400);
     const u = await one(d, "SELECT id, name FROM acct_users WHERE email=?1", to);

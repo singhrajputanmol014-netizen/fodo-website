@@ -1,4 +1,4 @@
-/* FODO — scroll-driven 3D particle background (raw WebGL, no library, ~8 KB).
+/* FODO, scroll-driven 3D particle background (raw WebGL, no library, ~8 KB).
    As you scroll, one cloud of particles morphs through FODO's story:
      orb (attention) → ring (demand) → rising wave (growth) → double helix (system) → the FODO wordmark.
    Respects reduced motion (static orb), pauses in hidden tabs, lighter on phones, no-ops without WebGL. */

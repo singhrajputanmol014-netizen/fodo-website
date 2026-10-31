@@ -1,4 +1,4 @@
-/* FODO Growth Lab v18 — a standalone PRO tool page (/growth-lab/<tool>/).
+/* FODO Growth Lab v18, a standalone PRO tool page (/growth-lab/<tool>/).
    Shows the live price and what this account already has (owner · bought runs · included in the plan), then:
      login → POST /api/lab/tool/start → reuse a recent X-Ray (opens the tool report at once)
                                       → or a fresh scan (opens the Business X-Ray engine in tool mode)
@@ -23,7 +23,7 @@
   fetch(ROOT + "api/lab/catalog").then(function (r) { return r.ok ? r.json() : null; }).then(function (c) {
     tool = c && c.ok ? (c.tools || []).filter(function (t) { return t.id === id; })[0] : null; if (!tool) return;
     $("tl-price").innerHTML = "<b>" + inr(tool.price) + "</b> a run" + (tool.includedIn && tool.includedIn.length ? " · or included in the X-Rays of the " + esc(tool.includedIn.join(", ")) + " plan" + (tool.includedIn.length > 1 ? "s" : "") : "");
-    if (tool.on === false) { $("tl-go").disabled = true; say(tool.name + " is being updated right now — back shortly.", "warn"); }
+    if (tool.on === false) { $("tl-go").disabled = true; say(tool.name + " is being updated right now, back shortly.", "warn"); }
   }, function () {});
   // what this account has
   function mine() {
@@ -31,7 +31,7 @@
     lab("tools/me").then(function (j) {
       if (!j.ok) { box.textContent = ""; return; }
       var t = j.tools[id] || {};
-      box.innerHTML = t.free ? "<b>Owner access</b> — free." : t.credits ? "<b>You have " + t.credits + " run" + (t.credits === 1 ? "" : "s") + "</b> of this tool." : t.included ? "<b>Included in your plan</b> — reuses your recent X-Ray of the site, or uses one of your X-Rays (" + esc(j.xrays) + " left)." : "Not included in your current plan — buy one run, or see plans.";
+      box.innerHTML = t.free ? "<b>Owner access</b>, free." : t.credits ? "<b>You have " + t.credits + " run" + (t.credits === 1 ? "" : "s") + "</b> of this tool." : t.included ? "<b>Included in your plan</b>, reuses your recent X-Ray of the site, or uses one of your X-Rays (" + esc(j.xrays) + " left)." : "Not included in your current plan, buy one run, or see plans.";
     });
   }
   if (A) A.config().then(function (c) { if (c.enabled) A.onChange(mine); else $("tl-me").textContent = "Accounts open soon."; });
@@ -39,11 +39,11 @@
   function go(url) {
     if (busy) return; busy = true; $("tl-go").disabled = true; say("Checking your account…", "busy"); track("start", url);
     var start = function (again) { return lab("tool/start", { tool: id, url: url }).then(function (j) {
-      if (j._status === 401 && A && !again) { say("Log in to run it — it's free.", "busy"); track("login_required"); return A.login("Log in to run " + (tool ? tool.name : "this tool") + ".").then(function () { return start(true); }); }
+      if (j._status === 401 && A && !again) { say("Log in to run it, it's free.", "busy"); track("login_required"); return A.login("Log in to run " + (tool ? tool.name : "this tool") + ".").then(function () { return start(true); }); }
       return j; }); };
     start(false).then(function (j) {
       busy = false; $("tl-go").disabled = false;
-      if (j.ok && j.reused) { try { sessionStorage.removeItem(KEY); } catch (e) {} say("Using your X-Ray of this website from " + new Date(j.from).toLocaleDateString("en-IN") + " — opening the report…", "ok"); location.href = ROOT + "business-x-ray/?r=" + encodeURIComponent(j.jobId) + "&tool=" + encodeURIComponent(id); return; }
+      if (j.ok && j.reused) { try { sessionStorage.removeItem(KEY); } catch (e) {} say("Using your X-Ray of this website from " + new Date(j.from).toLocaleDateString("en-IN") + ", opening the report…", "ok"); location.href = ROOT + "business-x-ray/?r=" + encodeURIComponent(j.jobId) + "&tool=" + encodeURIComponent(id); return; }
       if (j.ok && j.needScan) { try { sessionStorage.removeItem(KEY); } catch (e) {} say("Starting the research…", "ok"); location.href = ROOT + "business-x-ray/?tool=" + encodeURIComponent(id) + "&run=" + encodeURIComponent(j.runId) + "&u=" + encodeURIComponent(url); return; }
       if (j._status === 402 && j.buy) return offer(j, url);
       say(j.reason || "Could not start.", "warn");
@@ -72,7 +72,7 @@
       try { history.replaceState(null, "", location.pathname); } catch (e) {}
       if (!j.paid) return say(j.reason || "The payment is not complete yet (" + (j.status || "pending") + "). If money was taken, it is confirmed automatically within a few minutes.", "warn");
       var p = null; try { p = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch (e) {}
-      say("Payment received — thank you.", "ok"); mine();
+      say("Payment received, thank you.", "ok"); mine();
       if (p && p.url) { $("tl-url").value = p.url; go(p.url); }
     });
   }

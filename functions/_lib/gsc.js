@@ -1,9 +1,9 @@
-/* FODO Growth Lab v17 — Google Search Console (prompt §17): the user's OWN search data, read with OAuth (read-only scope).
+/* FODO Growth Lab v17: Google Search Console (prompt §17): the user's OWN search data, read with OAuth (read-only scope).
    FODO never asks for a password. Secrets: GOOGLE_CLIENT_ID (already set for login) + GOOGLE_CLIENT_SECRET (new).
    Optional GSC_ENC_KEY (any long random text) encrypts the stored refresh token (AES-GCM); without it a key is derived
    from GOOGLE_CLIENT_SECRET. Scope: https://www.googleapis.com/auth/webmasters.readonly only. Revocable from the account page
    (FODO deletes the token and asks Google to revoke it). Data stays per user: a report only shows Search Console numbers to
-   the person who connected that property (shared report links never include them — prompt §76). */
+   the person who connected that property (shared report links never include them, prompt §76). */
 import { outbound, regDomain } from "./xray-core.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
@@ -14,7 +14,7 @@ async function aesKey(env) { const raw = await crypto.subtle.digest("SHA-256", e
 export async function seal(env, text) { const iv = crypto.getRandomValues(new Uint8Array(12)), ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(env), enc.encode(text))); return b64(iv) + "." + b64(ct); }
 export async function unseal(env, s) { const [iv, ct] = String(s || "").split("."); return dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await aesKey(env), unb64(ct))); }
 async function hmac(env, s) { const k = await crypto.subtle.importKey("raw", enc.encode("fodo-gsc-state|" + (env.GOOGLE_CLIENT_SECRET || "")), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); return [...new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32); }
-/* state = userId.time.signature — ties the Google answer to the logged-in user, valid 15 minutes */
+/* state = userId.time.signature, ties the Google answer to the logged-in user, valid 15 minutes */
 export async function makeState(env, userId) { const t = Date.now().toString(36); return userId + "." + t + "." + (await hmac(env, userId + "." + t)); }
 export async function checkState(env, state, userId) { const p = String(state || "").split("."); if (p.length !== 3 || p[0] !== userId) return false; if (Date.now() - parseInt(p[1], 36) > 15 * 60e3) return false; return (await hmac(env, p[0] + "." + p[1])) === p[2]; }
 export const redirectUri = (origin) => origin + "/api/lab/gsc/callback";
@@ -47,11 +47,11 @@ export async function gscForJob(env, userId, domain) {
   if (!row) return { ok: false, connected: false, reason: "Connect Google Search Console in your account to add your real clicks and impressions." };
   let at, calls = 0;
   try { at = (await refresh(env, await unseal(env, row.refresh_enc))).access_token; calls++; }
-  catch (e) { if (e.code === "invalid_grant") await d.prepare("DELETE FROM lab_gsc WHERE user_id=?1").bind(userId).run(); return { ok: false, connected: false, calls, reason: e.code === "invalid_grant" ? "Your Search Console connection expired or was revoked — connect it again in your account." : "Google did not answer — Search Console data unavailable this time." }; }
+  catch (e) { if (e.code === "invalid_grant") await d.prepare("DELETE FROM lab_gsc WHERE user_id=?1").bind(userId).run(); return { ok: false, connected: false, calls, reason: e.code === "invalid_grant" ? "Your Search Console connection expired or was revoked, connect it again in your account." : "Google did not answer: Search Console data unavailable this time." }; }
   let sites; try { sites = await listSites(env, at); calls++; } catch (e) { return { ok: false, connected: true, calls, reason: "Could not list your Search Console properties." }; }
   await d.prepare("UPDATE lab_gsc SET sites=?2, last_used=?3 WHERE user_id=?1").bind(userId, JSON.stringify(sites.map((s) => s.siteUrl)).slice(0, 4000), new Date().toISOString()).run();
   const mine = sites.filter((s) => siteDomain(s.siteUrl) === domain).sort((a, b) => (/^sc-domain:/.test(b.siteUrl) ? 1 : 0) - (/^sc-domain:/.test(a.siteUrl) ? 1 : 0))[0];
-  if (!mine) return { ok: false, connected: true, noProperty: true, calls, properties: sites.length, reason: "Your Google account has no Search Console property for " + domain + " — add and verify it in Search Console, then run the X-Ray again." };
+  if (!mine) return { ok: false, connected: true, noProperty: true, calls, properties: sites.length, reason: "Your Google account has no Search Console property for " + domain + ", add and verify it in Search Console, then run the X-Ray again." };
   const startDate = day(30), endDate = day(3), base = { startDate, endDate, dataState: "final" };
   try {
     const [tot, qs, pages, dev, ctry, dates] = await Promise.all([query(env, at, mine.siteUrl, base), query(env, at, mine.siteUrl, Object.assign({ dimensions: ["query"], rowLimit: 100 }, base)),
@@ -62,5 +62,5 @@ export async function gscForJob(env, userId, domain) {
     return { ok: true, connected: true, calls, property: mine.siteUrl, startDate, endDate, retrievedAt: new Date().toISOString(), source: "Google Search Console (your property, first-party data)",
       totals: { clicks: row0.clicks, impressions: row0.impressions, ctr: pct(row0.ctr || 0), position: r1(row0.position || 0) },
       queries: qs.map(map), pages: pages.map(map), devices: dev.map(map), countries: ctry.map(map), dates: dates.map(map) };
-  } catch (e) { return { ok: false, connected: true, calls, property: mine.siteUrl, reason: "Search Console answered " + (e.status || "an error") + " — data unavailable this time." }; }
+  } catch (e) { return { ok: false, connected: true, calls, property: mine.siteUrl, reason: "Search Console answered " + (e.status || "an error") + ", data unavailable this time." }; }
 }

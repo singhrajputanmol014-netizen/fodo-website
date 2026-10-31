@@ -1,5 +1,5 @@
 /* =====================================================================================
-   FODO STUDIO — design system layer (loaded after styles.css + theme-glass.css)
+   FODO STUDIO, design system layer (loaded after styles.css + theme-glass.css)
    Direction: white editorial foundation · ink & graphite · one restrained accent (FODO iris)
               · Liquid Glass reserved for controls and navigation · solid content surfaces.
    Everything here is tokens + components; page markup and scripts are unchanged except the home hero.
@@ -113,7 +113,7 @@ html[data-theme="dark"] .btn{ /* on dark pages the primary becomes a porcelain c
 html[data-theme="dark"] .btn::before{background:linear-gradient(180deg,rgba(255,255,255,.8),rgba(255,255,255,0))}
 html[data-theme="dark"] .btn[aria-busy="true"]::after{border-color:rgba(0,0,0,.2);border-top-color:#121316}
 
-/* Secondary — Liquid Glass capsule. Edge, tint and shadow carry the boundary; blur is only a bonus. */
+/* Secondary: Liquid Glass capsule. Edge, tint and shadow carry the boundary; blur is only a bonus. */
 html[data-theme] .btn.ghost{
   --b-bg:linear-gradient(180deg,rgba(255,255,255,.92) 0%,rgba(240,241,244,.78) 100%);
   color:var(--ink);border:1px solid rgba(21,22,26,.14);
@@ -165,7 +165,7 @@ html[data-theme] .btn.header-cta{display:none;min-height:42px;padding:0 18px;fon
 .drawer .dlist a{border-radius:var(--r-sm);min-height:48px;display:flex;align-items:center}
 .mobile-bar{background:color-mix(in srgb,var(--paper) 88%,transparent)!important;-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);border-top:1px solid var(--hairline)!important}
 
-/* ---------- 7. SURFACES (solid content cards — glass is reserved for controls) ---------- */
+/* ---------- 7. SURFACES (solid content cards, glass is reserved for controls) ---------- */
 .panel,.detail,.acc,.notice,.stage,.kpi .panel{background:var(--surface)!important;background-image:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;border:1px solid var(--hairline)!important;border-radius:var(--r);box-shadow:var(--shadow-card);color:var(--graphite)}
 .panel.hud{border-color:var(--hairline)!important}
 .panel h3,.detail h3{color:var(--ink)}
@@ -215,7 +215,7 @@ html[data-theme="dark"] ::placeholder{color:#7E838D}
 .footer a{color:var(--graphite);text-decoration:none}
 .footer a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 
-/* ---------- 10. HOME HERO — the lens ----------
+/* ---------- 10. HOME HERO, the lens ----------
    One idea: the headline's last word is fading out; a glass lens brings it back into focus.
    That is literally what FODO does for a brand. The crisp copy under the lens is aria-hidden. */
 .hero.hero-lens{padding:clamp(108px,11vw,150px) 0 clamp(56px,7vw,96px);border:0;overflow:hidden}
@@ -276,7 +276,7 @@ html[data-theme="light"] .msg.me,html[data-theme="light"] .msg.me a{color:#fff!i
 .bv-wave b{background:var(--accent)}
 .cookie{background:var(--surface)!important;border:1px solid var(--hairline)!important;border-radius:var(--r)!important;box-shadow:var(--shadow-lift)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 
-/* ---------- 13. MOTION — one orchestrated moment (hero) + responsive feedback only ---------- */
+/* ---------- 13. MOTION, one orchestrated moment (hero) + responsive feedback only ---------- */
 .reveal{opacity:1!important;transform:none!important}           /* no fade-up on every section */
 @media (prefers-reduced-motion:no-preference){
   .hero-lens .eyebrow,.hero-lens .lens-type:not(.lens-copy),.hero-copy,.hero-index{animation:fodoRise .9s var(--ease) both}
@@ -308,7 +308,7 @@ html[data-theme] .tag.hot,html[data-theme] .tag.warn{background:var(--accent-sof
 html[data-theme] .tag.warn{background:rgba(154,100,8,.10);color:var(--warn)}
 html[data-theme] .tag.ok{background:rgba(23,131,76,.10);border-color:transparent;color:var(--ok)}
 
-/* ---------- 16. CONTROLLED DARK SURFACE — closing call to action ---------- */
+/* ---------- 16. CONTROLLED DARK SURFACE, closing call to action ---------- */
 html[data-theme] .cta-final>.container.panel{background:#15161A!important;border-color:#15161A!important;color:#C9CDD5;box-shadow:0 40px 80px -40px rgba(21,22,26,.6)!important;border-radius:var(--r-lg);position:relative;overflow:hidden}
 html[data-theme] .cta-final>.container.panel::before{content:"";position:absolute;inset:0;background:radial-gradient(60% 90% at 50% 0%,rgba(255,255,255,.10),rgba(255,255,255,0) 70%);pointer-events:none}
 html[data-theme] .cta-final h2{color:#fff;font-size:clamp(34px,5vw,68px)}
@@ -473,7 +473,7 @@ html[data-theme="dark"] .g.g-ink .gt.gt-s{color:#5B606B}
 .hero-lens .lens-type{text-wrap:wrap}
 
 /* =====================================================================================
-   18. EDITORIAL NOIR — the FODO identity (overrides everything above)
+   18. EDITORIAL NOIR, the FODO identity (overrides everything above)
    Dark cinematic canvas · Instrument Serif headlines with italic voice · Inter Tight for reading
    · one violet spotlight. Light theme = the same system printed on cool paper.
    ===================================================================================== */
@@ -624,7 +624,7 @@ html[data-theme="dark"] .msg.me a{color:#0D1015!important}
 .footer{background:var(--paper)!important}
 
 /* =====================================================================================
-   19. STUDIO TEMPLATE SYSTEM (v4) — marketplace-grade agency layout
+   19. STUDIO TEMPLATE SYSTEM (v4), marketplace-grade agency layout
    Light stone canvas · white bento cards · tight bold grotesk with a serif-italic voice ·
    black pill CTAs with an arrow chip · section pills · dark feature tiles · one violet accent.
    Dark theme = the same system on charcoal.
@@ -801,7 +801,7 @@ html.has-3d main .cta-final .lead,html.has-3d main .cta-final h2,html.has-3d .ct
 
 .fodo-3d-scrim{transition:opacity .2s linear}
 
-/* ---------- 22. "disappear." — self-running dissolve + touch/pointer reveal ---------- */
+/* ---------- 22. "disappear.", self-running dissolve + touch/pointer reveal ---------- */
 .vanish-on .lens-copy,.vanish-on .lens-ring{display:none!important}
 .vanish-on h1.lens-type .fade{background:none!important;-webkit-background-clip:border-box!important;background-clip:border-box!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;white-space:nowrap}
 .vanish-on .fade .ch{display:inline-block;transition:opacity .35s var(--ease),filter .35s var(--ease),transform .35s var(--ease)}
@@ -821,7 +821,7 @@ html.has-3d main .cta-final .lead,html.has-3d main .cta-final h2,html.has-3d .ct
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 /* =====================================================================================
-   23. GROWTH LAB — profile bar, toasts, juice, quiz speed-run, game progress, score plan, audit intro
+   23. GROWTH LAB, profile bar, toasts, juice, quiz speed-run, game progress, score plan, audit intro
    ===================================================================================== */
 .lab-bar{margin-bottom:16px;padding:14px 18px!important}
 .lab-bar-in{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
@@ -920,7 +920,7 @@ html.has-3d main .cta-final .lead,html.has-3d main .cta-final h2,html.has-3d .ct
 }
 
 /* =====================================================================================
-   §25 v5 — Signal-O identity + Aceternity-style interactions (vanilla, see js/fx.js)
+   §25 v5: Signal-O identity + Aceternity-style interactions (vanilla, see js/fx.js)
    ===================================================================================== */
 /* Signal-O wordmark (header, drawer, footer) */
 .wordmark b.so-mark{font-family:"Inter Tight",var(--font-body),sans-serif!important;font-weight:800!important;letter-spacing:-.065em!important;display:inline-flex;align-items:flex-start;line-height:.82}
@@ -1072,7 +1072,7 @@ section.afraid p.reveal{margin-inline:auto}
 .cmp-tag.r{background:#5B3DF5!important;color:#fff}
 .ad-after .ad-tiny{color:#B4B4BA}
 
-/* ===== §26 v6 — search, desktop top menu, competitor finder, AI images ===== */
+/* ===== §26 v6, search, desktop top menu, competitor finder, AI images ===== */
 /* header icon buttons: search sits right next to the theme toggle */
 .search-btn{width:42px;height:42px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--glass-border);background:var(--glass);color:var(--ink);box-shadow:inset 0 1px 0 var(--glass-hi);cursor:pointer;transition:background var(--t),border-color var(--t);flex:none}
 @media (hover:hover){.search-btn:hover{background:var(--surface);border-color:var(--edge)}}
@@ -1186,7 +1186,7 @@ section.afraid p.reveal{margin-inline:auto}
 .wc-photo{margin-top:6px;border-radius:20px}
 @media(min-width:900px){.case-art.case-photo{aspect-ratio:21/9;max-height:520px}}
 
-/* ===== §27 v6.2 — motion graphics (replaces AI images) + richer before/after mockups ===== */
+/* ===== §27 v6.2, motion graphics (replaces AI images) + richer before/after mockups ===== */
 .fc-art.fc-motion,.case-art.case-motion{padding:0;position:relative;overflow:hidden;color:var(--ink);
   background:radial-gradient(120% 90% at 85% 0%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 60%),var(--mist)}
 .fc-motion .mg,.case-motion .mg,.wc-art .mg{display:block;width:100%;height:100%}
@@ -1340,7 +1340,7 @@ section.afraid p.reveal{margin-inline:auto}
 .cf-ver{margin:6px 0 0;font-size:11px;color:var(--slate);opacity:.8}
 .cf-ver{opacity:1;color:var(--slate)}
 
-/* ===== §28 v7 — Competitor Finder: tabs, typing suggestions, brand mode, sheet export ===== */
+/* ===== §28 v7: Competitor Finder: tabs, typing suggestions, brand mode, sheet export ===== */
 .cf-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
 .cf-tabs [role=tab]{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:14px 18px;border-radius:18px;border:1px solid var(--hairline);background:var(--surface);color:var(--ink);font:700 16px/1.2 var(--font-body);cursor:pointer;min-height:64px;transition:border-color .2s,background .2s}
 .cf-tabs [role=tab] small{font-weight:500;font-size:12.5px;color:var(--slate)}
@@ -1369,7 +1369,7 @@ section.afraid p.reveal{margin-inline:auto}
 .cf-fields{position:relative;z-index:3}
 .cf-f:focus-within{z-index:40}
 
-/* ===== §29 v8 — finder: radius slider + typed km, all-pins map, contacts, show more ===== */
+/* ===== §29 v8, finder: radius slider + typed km, all-pins map, contacts, show more ===== */
 .cf-radius{display:flex;align-items:center;gap:10px;min-height:48px}
 .cf-radius input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:6px;border-radius:99px;background:linear-gradient(90deg,var(--accent) var(--fill,2%),var(--mist-2,#E9EBEF) var(--fill,2%));outline-offset:6px;cursor:pointer}
 .cf-radius input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.25)}
@@ -1403,7 +1403,7 @@ section.afraid p.reveal{margin-inline:auto}
 html[data-theme=dark] .cf-f .cf-radius input[type=range]{background:linear-gradient(90deg,var(--accent) var(--fill,2%),#2E3038 var(--fill,2%))!important}
 .cf-f .cf-radius input[type=range]:focus{outline:2px solid var(--accent);outline-offset:8px}
 
-/* §30 v9 SEO pages — static Insights articles + location link lists (uses existing tokens; no new visual language) */
+/* §30 v9 SEO pages, static Insights articles + location link lists (uses existing tokens; no new visual language) */
 .detail.art{max-width:780px}
 .detail .art-by{margin:0 0 24px;font-size:13px}
 .detail .art-by a{color:inherit;text-decoration:underline;text-underline-offset:3px}
@@ -1443,7 +1443,7 @@ h1 .dot.q,h2 .dot.q{margin-left:.07em}
 .status-pill .sp-go{color:var(--accent);font-weight:600;margin-left:2px}
 .status-pill:hover .sp-go{text-decoration:underline;text-underline-offset:3px}
 @media (max-width:560px){.status-pill{font-size:12.5px;padding:8px 14px;max-width:100%}.status-pill .sp-sep{display:none}}
-/* Growth System (home) — a calm six-step grid instead of the sticky panel with giant numbers */
+/* Growth System (home), a calm six-step grid instead of the sticky panel with giant numbers */
 .gs2{list-style:none;margin:clamp(24px,3vw,40px) 0 8px;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;counter-reset:none}
 .gs2-step{position:relative;background:var(--surface);border:1px solid var(--hairline,var(--line));border-radius:20px;padding:20px 22px 18px;display:flex;flex-direction:column}
 .gs2-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
@@ -1458,7 +1458,7 @@ h1 .dot.q,h2 .dot.q{margin-left:.07em}
 @media (max-width:640px){.gs2{grid-template-columns:1fr;gap:10px}.gs2-step{padding:18px}}
 html.has-3d .gs2-step{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 
-/* Selected work (home) — three featured concept studies, more air, less text */
+/* Selected work (home), three featured concept studies, more air, less text */
 .wl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:clamp(20px,3vw,32px)}
 .wl-card{display:flex;flex-direction:column;text-decoration:none;color:var(--ink);border-radius:22px;overflow:hidden;background:var(--surface);border:1px solid var(--hairline,var(--line));transition:transform .3s,box-shadow .3s}
 .wl-card:hover,.wl-card:focus-visible{transform:translateY(-3px);box-shadow:var(--shadow-lift)}
@@ -1470,7 +1470,7 @@ html.has-3d .gs2-step{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px
 .wl-meta{font-size:13px;color:var(--graphite,var(--text-2))}
 @media (max-width:900px){.wl-grid{grid-template-columns:1fr 1fr}}
 @media (max-width:600px){.wl-grid{grid-template-columns:1fr}}
-/* Growth Lab progress bar — explains itself on a first visit, "Level X of 8" afterwards */
+/* Growth Lab progress bar, explains itself on a first visit, "Level X of 8" afterwards */
 .lab-intro{flex:1 1 320px;min-width:0;display:grid;gap:4px}
 .lab-intro b{font-size:15px;color:var(--ink)}
 .lab-intro span{font-size:13.5px;line-height:1.5;color:var(--graphite,var(--slate))}
@@ -1626,7 +1626,7 @@ html[data-theme=dark] .xr-st.warn{color:#F2B45A}
 .xr-evd-box{max-width:640px}
 @media print{.xr-acts,#xr-form,.xr-why,header,footer,.aurora,.fodo-3d{display:none!important}}
 @media (max-width:899px){.xr-hero{grid-template-columns:auto 1fr;gap:16px}.xr-hero>div:first-child{grid-column:1/-1}.xr-ring{width:104px;height:104px}.xr-ring b{font-size:32px}.xr-acts .btn{padding-left:14px;padding-right:14px}}
-/* §33 contrast (WCAG AA) — explicit colours so labels stay readable in both themes */
+/* §33 contrast (WCAG AA), explicit colours so labels stay readable in both themes */
 :root{--xr-ok:#0E6B39;--xr-acc:#3F2BB8;--xr-warn:#7A5000;--xr-mid:#8A5A00}
 html[data-theme=dark]{--xr-ok:#5BD394;--xr-acc:#B9B0FF;--xr-warn:#F2B45A;--xr-mid:#F2B45A}
 .xr-lbl.observed,.xr-st.pass,.xr-dq.high,.xr-op.high{color:var(--xr-ok);background:color-mix(in srgb,var(--xr-ok) 10%,transparent)}
@@ -1807,3 +1807,13 @@ select.xr-act.doing{border-color:var(--warn);color:var(--warn)}select.xr-act.don
 .hp-contact{margin-top:18px}
 @media (max-width:760px){.hp-grid{grid-template-columns:1fr}.hp-m{max-width:94%}}
 .hp-tf textarea,.hp-tf input,.hp-tf select{font:inherit}
+/* v33: which-pricing-is-this note + per-run price levels */
+.pl-which{margin:0 0 22px;padding:14px 18px;font-size:15px;line-height:1.55;border-left:3px solid var(--accent,#8b7bff)}
+.pl-which a{font-weight:600}
+.pl-levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:14px 0 6px}
+.pl-level{padding:18px;display:flex;flex-direction:column;gap:4px}
+.pl-level small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.65}
+.pl-level b{font-size:18px}.pl-level .pl-lp{font-size:22px;font-weight:700}
+.pl-level p{margin:6px 0 0;font-size:13.5px;line-height:1.5}
+@media (max-width:900px){.pl-levels{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.pl-levels{grid-template-columns:1fr}}

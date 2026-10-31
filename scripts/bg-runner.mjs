@@ -1,4 +1,4 @@
-// FODO background X-Ray — GitHub Actions fallback (see .github/workflows/fodo-runner.yml).
+// FODO background X-Ray: GitHub Actions fallback (see .github/workflows/fodo-runner.yml).
 // Opens the job's runner page (it carries its own HMAC token), waits until the page has saved the report, then tells the website.
 import { chromium } from "playwright";
 const url = process.env.RUN_URL || "", job = process.env.JOB_ID || "", key = process.env.KEY || "";

@@ -1,4 +1,4 @@
-/* FODO site search — opens from the search icon (next to the theme toggle), Ctrl/⌘ K or "/".
+/* FODO site search, opens from the search icon (next to the theme toggle), Ctrl/⌘ K or "/".
    Reads data/search-index.json (built by scripts/build_pages.py). Suggestions appear while typing,
    results are ranked by title > keywords > headings > description > text, with typo tolerance
    and a few Hinglish synonyms ("kitna", "google pe aana" …). No network calls beyond the index file. */

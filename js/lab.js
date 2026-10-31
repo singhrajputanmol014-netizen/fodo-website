@@ -1,4 +1,4 @@
-/* FODO Growth Lab — shared player profile (XP, levels, badges, daily streak, best scores) + game "juice".
+/* FODO Growth Lab, shared player profile (XP, levels, badges, daily streak, best scores) + game "juice".
    Everything is stored ONLY in this browser (localStorage key "fodo-lab"); nothing is sent anywhere.
    Exposes window.FODO_LAB. Loaded on the Lab tool pages (score, quiz, game, roi). */
 (function () {
@@ -99,7 +99,7 @@
     var L = level(P.xp), nb = Object.keys(P.badges).length, total = Object.keys(BADGES).length, fresh = !P.xp && !nb;
     var badgesBtn = '<button type="button" class="lab-badges-btn" aria-expanded="false">See all ' + total + ' badges</button>';
     var head = fresh
-      ? '<div class="lab-intro"><b>Your Growth Lab progress</b><span>Finish any tool on this page to earn points (XP). Points move you up 8 levels — from Intern to Growth Legend — and unlock ' + total + ' badges. Just for fun: it is saved only in this browser and never sent anywhere.</span></div>'
+      ? '<div class="lab-intro"><b>Your Growth Lab progress</b><span>Finish any tool on this page to earn points (XP). Points move you up 8 levels, from Intern to Growth Legend, and unlock ' + total + ' badges. Just for fun: it is saved only in this browser and never sent anywhere.</span></div>'
       : '<div class="lab-who"><span class="lab-k">Level ' + L.n + ' of ' + LEVELS.length + '</span><b>' + esc(L.name) + '</b>' +
         '<i class="lab-xp" aria-hidden="true"><b style="width:' + Math.round(L.pct * 100) + '%"></b></i>' +
         '<span>' + P.xp + ' XP' + (L.to ? ' · ' + (L.to - P.xp) + ' XP to ' + esc(L.nextName) : ' · top level reached') + '</span></div>' +

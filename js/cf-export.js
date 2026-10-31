@@ -1,20 +1,20 @@
-/* FODO Competitor Finder — exports that work everywhere (v11)
+/* FODO Competitor Finder, exports that work everywhere (v11)
    • Excel (.xlsx) is written right here (no outside library, no CDN): a real Office Open XML workbook with a bold header row,
      filters, frozen first row + name column and column widths. CSV is UTF-8 with a BOM so Excel reads Hindi/accents correctly.
    • Phones and in-app browsers: a file made inside a page (blob: link) is often ignored by Instagram / Facebook / LinkedIn
-     browsers and some Android webviews — the user taps "Download" and nothing lands in Files. So on phones we offer:
-       1. "Save or share file" — the phone's own share sheet (Save to Files, Drive, WhatsApp, Mail …), when supported;
-       2. "Download" — the file is handed to /api/export and opened as a normal web download (works in every browser);
-       3. "Copy for Google Sheets" — with a select-and-copy box when the clipboard is blocked.
+     browsers and some Android webviews, the user taps "Download" and nothing lands in Files. So on phones we offer:
+       1. "Save or share file", the phone's own share sheet (Save to Files, Drive, WhatsApp, Mail …), when supported;
+       2. "Download", the file is handed to /api/export and opened as a normal web download (works in every browser);
+       3. "Copy for Google Sheets", with a select-and-copy box when the clipboard is blocked.
    • The sheet is kept in IndexedDB (hundreds of MB allowed) instead of localStorage (5 MB, failed silently before).
-   • PDF reports are written here too (text PDF with headings and page numbers — not a screenshot).
+   • PDF reports are written here too (text PDF with headings and page numbers, not a screenshot).
    window.FODO_EXPORT = { xlsx, pdf, csv, tsv, deliver, copyText, store, isPhone, inApp } */
 (function () {
   "use strict";
   var ROOT = (window.FODO_UTIL && window.FODO_UTIL.root) || "/";
   var enc = new TextEncoder();
 
-  /* ---------- tiny ZIP writer (stored, no compression — Excel opens it fine) ---------- */
+  /* ---------- tiny ZIP writer (stored, no compression: Excel opens it fine) ---------- */
   var CRC = (function () { var t = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
   function crc32(b) { var c = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
   function zip(files) {   // files: [{ name, data: Uint8Array }]
@@ -166,7 +166,7 @@
     var u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name; a.rel = "noopener"; a.style.display = "none";
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 60000);
   }
-  function serverDownload(blob, name) {   // a real web download (Content-Disposition: attachment) — works in every phone browser
+  function serverDownload(blob, name) {   // a real web download (Content-Disposition: attachment), works in every phone browser
     var type = blob.type.split(";")[0];
     return fetch(ROOT + "api/export", { method: "POST", headers: { "content-type": type, "x-file-name": name }, body: blob }).then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
       .then(function (j) { if (!j.ok || !j.url) throw new Error(j.reason || "upload failed"); location.href = (j.url.charAt(0) === "/" ? j.url : ROOT + j.url); return j; });
@@ -220,10 +220,10 @@
         var b = e.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a;
         if (a === "share") {
           navigator.share({ files: [file], title: name }).then(function () { note.textContent = "Done ✓"; track("cf_export", { how: "share", kind: opts.kind }); setTimeout(closeDlg, 900); resolve("share"); },
-            function (err) { if (err && err.name === "AbortError") return; note.textContent = "Sharing did not work here — use Download."; });
+            function (err) { if (err && err.name === "AbortError") return; note.textContent = "Sharing did not work here, use Download."; });
         } else if (a === "server") {
           b.disabled = true; note.textContent = "Preparing your download…";
-          serverDownload(blob, name).then(function () { note.innerHTML = "Download started ✓ — " + whereHint(); track("cf_export", { how: "server", kind: opts.kind }); b.disabled = false; resolve("server"); },
+          serverDownload(blob, name).then(function () { note.innerHTML = "Download started ✓: " + whereHint(); track("cf_export", { how: "server", kind: opts.kind }); b.disabled = false; resolve("server"); },
             function () { b.disabled = false; anchorDownload(blob, name); note.textContent = "Tried a direct download instead. If nothing appears, use “Copy for Google Sheets”."; track("cf_export", { how: "fallback", kind: opts.kind }); resolve("download"); });
         } else { anchorDownload(blob, name); note.innerHTML = "Started. " + whereHint(); track("cf_export", { how: "download", kind: opts.kind }); resolve("download"); }
       });
@@ -234,9 +234,9 @@
   function copyText(t, title) {
     var ok = function () { track("cf_export", { how: "clipboard", kind: "Sheets" }); return "copied"; };
     var manual = function () {
-      var body = openDlg(title || "Copy for Google Sheets", '<p>Your browser blocked automatic copying. The rows are selected below — press <b>Copy</b>, then paste into cell A1 of a new Google Sheet.</p><textarea class="cfx-ta" readonly rows="8"></textarea><div class="cfx-acts"><button type="button" class="btn" data-a="copy">Copy</button></div><p class="cfx-note" aria-live="polite"></p>');
+      var body = openDlg(title || "Copy for Google Sheets", '<p>Your browser blocked automatic copying. The rows are selected below, press <b>Copy</b>, then paste into cell A1 of a new Google Sheet.</p><textarea class="cfx-ta" readonly rows="8"></textarea><div class="cfx-acts"><button type="button" class="btn" data-a="copy">Copy</button></div><p class="cfx-note" aria-live="polite"></p>');
       var ta = body.querySelector("textarea"); ta.value = t; setTimeout(function () { ta.focus(); ta.select(); }, 60);
-      body.querySelector("[data-a=copy]").addEventListener("click", function () { ta.focus(); ta.select(); try { ta.setSelectionRange(0, t.length); } catch (e) {} var r = false; try { r = document.execCommand("copy"); } catch (e) {} body.querySelector(".cfx-note").textContent = r ? "Copied ✓ — paste into Google Sheets." : "Long-press the text → Select all → Copy."; });
+      body.querySelector("[data-a=copy]").addEventListener("click", function () { ta.focus(); ta.select(); try { ta.setSelectionRange(0, t.length); } catch (e) {} var r = false; try { r = document.execCommand("copy"); } catch (e) {} body.querySelector(".cfx-note").textContent = r ? "Copied ✓, paste into Google Sheets." : "Long-press the text → Select all → Copy."; });
       return "manual";
     };
     if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext !== false) return navigator.clipboard.writeText(t).then(ok, manual);

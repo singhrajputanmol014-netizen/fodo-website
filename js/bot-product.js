@@ -1,5 +1,5 @@
-/* FODO Bot — product & member layer (v20.3). Loaded LAST in the bot chain (after bot-llm.js).
-   The bot now knows everything built on the site, always with LIVE data — nothing is hard-coded here:
+/* FODO Bot, product & member layer (v20.3). Loaded LAST in the bot chain (after bot-llm.js).
+   The bot now knows everything built on the site, always with LIVE data, nothing is hard-coded here:
      /api/help/kb        help articles + live plan / pack / tool prices (the same source as the Help page)
      /api/lab/catalog    the Growth Lab tools: what each does, its one-run price, which plans already include it, its page
      /api/help/me        the person's OWN account (plan, X-Rays left, latest X-Ray with its top actions, tool runs, tickets)
@@ -41,7 +41,7 @@
   var PRICEW = /\b(price|prices|pricing|kitna|kitne|kitni|cost|costs|charges?|fees?|rate|rates|₹|rs\.?|rupees?|paisa|paise|subscription)\b/i;
   var LABW = /\b(x-?rays?|growth lab|lab|starter|agency plan|pro plan|growth plan|packs?|pro tools?|plans)\b/i;
   var ASKW = /\b(what|which|kya|kaun|kaunse|konse|batao|tell|show|list|explain|samjhao|dikhao|do you have|hai kya)\b/i;
-  // "my plan", "mera plan kya hai", "plan kaunsa hai mera", "kitne x-ray bache" — the possessive must sit next to the thing,
+  // "my plan", "mera plan kya hai", "plan kaunsa hai mera", "kitne x-ray bache", the possessive must sit next to the thing,
   // so "my d2c brand … content plan" or "improve my landing page" stay with the marketing brain
   var OWN = "(?:my|mera|meri|mere|apna|apni|apne)", THING = "(?:current |active )?(?:plan|subscription|x-?rays?|credits?|reports?|account|tickets?|payments?|pro tools?|tool runs?)";
   var MINE = new RegExp("\\b" + OWN + "\\s+" + THING + "\\b|(?:^|\\s)" + THING + "\\b[^.?!]{0,16}\\b(?:mera|meri|mere|apna|apni)\\s*(?:hai|he|h)?\\W*$", "i");   // Hindi: "plan kaunsa hai mera"
@@ -74,7 +74,7 @@
     var P = prices(), c = D.cat;
     if (!P) return T("Growth Lab ke plans aur live prices yahan hain: ", "The Growth Lab plans and live prices are here: ", h) + A("plans/", "Plans") + ".";
     var cheapest = c && c.tools ? Math.min.apply(null, c.tools.filter(function (t) { return t.price; }).map(function (t) { return t.price; })) : null;
-    return "<b>" + T("FODO Growth Lab — plans (live prices)", "FODO Growth Lab — plans (live prices)", h) + "</b><ul>" + P.plans.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" +
+    return "<b>" + T("FODO Growth Lab, plans (live prices)", "FODO Growth Lab, plans (live prices)", h) + "</b><ul>" + P.plans.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" +
       "<b>" + T("X-Ray packs (kabhi expire nahi hote)", "X-Ray packs (never expire)", h) + ":</b> " + esc(P.packs.join(" · ")) + "<br>" +
       (cheapest && isFinite(cheapest) ? T("Ek Pro tool ek baar chalane ke liye ₹" + cheapest.toLocaleString("en-IN") + " se. ", "Single Pro tool runs from ₹" + cheapest.toLocaleString("en-IN") + ". ", h) : "") +
       T("Higher plan zyada pages aur competitors padhte hain aur report ke zyada sections kholte hain. ", "Higher plans read more pages and competitors and unlock more report sections. ", h) +
@@ -85,10 +85,10 @@
     if (!t) return T("Is tool ki details aur live price iske page par hain: ", "This tool's details and live price are on its page: ", h) + A("growth-lab/" + id + "/", "open →");
     if (t.on === false) return esc(t.name) + T(" abhi available nahi hai. ", " is not available right now. ", h) + A("growth-lab/", "Growth Lab");
     var me = D.me, inc = (t.includedIn || []), mine = me && me.plan && inc.indexOf(me.plan) > -1;
-    return "<b>" + esc(t.name) + "</b> — " + esc(t.line || "") + "<br>" +
+    return "<b>" + esc(t.name) + "</b>: " + esc(t.line || "") + "<br>" +
       (t.price ? T("Ek run: <b>₹" + Number(t.price).toLocaleString("en-IN") + "</b>. ", "One run: <b>₹" + Number(t.price).toLocaleString("en-IN") + "</b>. ", h) : "") +
       (inc.length ? T(inc.join(", ") + " plan ke X-Ray mein pehle se shamil hai. ", "Already included in X-Rays on " + inc.join(", ") + ". ", h) : "") +
-      (mine ? "<b>" + T("Aapke " + esc(me.plan) + " plan mein yeh shamil hai — alag se kharidne ki zaroorat nahi.", "Your " + esc(me.plan) + " plan includes it — no need to buy it separately.", h) + "</b> " : "") +
+      (mine ? "<b>" + T("Aapke " + esc(me.plan) + " plan mein yeh shamil hai, alag se kharidne ki zaroorat nahi.", "Your " + esc(me.plan) + " plan includes it, no need to buy it separately.", h) + "</b> " : "") +
       T("Agar same website ka full X-Ray pichhle 30 din mein chala hai to tool usi se khul jaata hai. ", "If you ran a full X-Ray of the same website in the last 30 days, the tool opens straight from it. ", h) +
       A(t.where || "growth-lab/" + id + "/", T("Tool kholo →", "Open the tool →", h));
   }
@@ -97,7 +97,7 @@
       ["roi-calculator/", "ROI Calculator", T("ad spend se leads aur payback", "leads and payback from ad spend", h)], ["marketing-budget/", "Marketing Budget Planner", T("budget channels mein baanto", "split a budget across channels", h)],
       ["competitor-finder/", "Competitor Finder", T("aas-paas ke ya brand ke competitors", "nearby or brand competitors", h)], ["fodo-challenge/", "FODO Challenge", T("2 minute ka game", "a 2-minute game", h)],
       ["marketing-quiz/", "Marketing Quiz", ""], ["templates/", "Templates", ""], ["resources/", "Checklists", ""], ["teardowns/", "Teardowns", ""]];
-    return "<b>" + T("Free tools (bina paise):", "Free tools:", h) + "</b><ul>" + L.map(function (x) { return "<li>" + A(x[0], x[1]) + (x[2] ? " — " + esc(x[2]) : "") + "</li>"; }).join("") + "</ul>";
+    return "<b>" + T("Free tools (bina paise):", "Free tools:", h) + "</b><ul>" + L.map(function (x) { return "<li>" + A(x[0], x[1]) + (x[2] ? ": " + esc(x[2]) : "") + "</li>"; }).join("") + "</ul>";
   }
   function articleAns(q, h) {
     var a = search(q)[0];
@@ -117,14 +117,14 @@
     var x = me.latestXray, out = "<b>" + T("Aapka account", "Your account", h) + "</b><ul><li>Plan: <b>" + esc(me.plan) + "</b>" + (me.planUntil ? T(" (" + esc(me.planUntil) + " tak)", " (until " + esc(me.planUntil) + ")", h) : "") + "</li>" +
       "<li>" + T("X-Rays bache: ", "X-Rays left: ", h) + "<b>" + left + "</b></li>" +
       (me.toolRuns && me.toolRuns.length ? "<li>" + T("Khareede hue tool runs: ", "Bought tool runs: ", h) + esc(me.toolRuns.join(", ")) + "</li>" : "") +
-      (x ? "<li>" + T("Aakhri X-Ray: ", "Latest X-Ray: ", h) + A(String(x.link || "").replace(/^\//, ""), x.website) + (x.score ? " — " + esc(x.score) : "") + (x.date ? " (" + esc(x.date) + ")" : "") + "</li>" : "") +
+      (x ? "<li>" + T("Aakhri X-Ray: ", "Latest X-Ray: ", h) + A(String(x.link || "").replace(/^\//, ""), x.website) + (x.score ? ": " + esc(x.score) : "") + (x.date ? " (" + esc(x.date) + ")" : "") + "</li>" : "") +
       (me.openTickets && me.openTickets.length ? "<li>" + T("Khule tickets: ", "Open tickets: ", h) + esc(me.openTickets.join("; ")) + "</li>" : "") + "</ul>" + A("account/", T("Account kholo →", "Open your account →", h));
     return out;
   }
   function coachAns(h) {
     var me = D.me, x = me && me.latestXray;
     if (!me) return mineAns("", h);
-    if (!x) return T("Abhi aapka koi poora X-Ray nahi hai. Pehle apni website ka ", "You don't have a finished X-Ray yet. Run one on your website first: ", h) + A("business-x-ray/", "Business X-Ray") + T(" chalao — phir main bataunga pehle kya theek karna hai.", " — then I'll tell you what to fix first.", h);
+    if (!x) return T("Abhi aapka koi poora X-Ray nahi hai. Pehle apni website ka ", "You don't have a finished X-Ray yet. Run one on your website first: ", h) + A("business-x-ray/", "Business X-Ray") + T(" chalao, phir main bataunga pehle kya theek karna hai.", ", then I'll tell you what to fix first.", h);
     var acts = x.topActions || [];
     return "<b>" + T("Aapke X-Ray (" + esc(x.website) + ", " + esc(x.score || "") + ") ke hisaab se pehle ye karo:", "From your X-Ray of " + esc(x.website) + " (" + esc(x.score || "") + "), do these first:", h) + "</b><ol>" +
       acts.map(function (a) { return "<li><b>" + esc(a.problem) + "</b>" + (a.priority ? " <small>[" + esc(a.priority) + "]</small>" : "") + "<br>" + esc(a.fix) + "</li>"; }).join("") + "</ol>" +
@@ -138,7 +138,7 @@
     var hits = D.idx.map(function (p) { var t = (p.t + " " + (p.d || "") + " " + (p.h || []).join(" ")).toLowerCase(); return { p: p, s: w.reduce(function (s, x) { return s + (String(p.t).toLowerCase().indexOf(x) > -1 ? 3 : t.indexOf(x) > -1 ? 1 : 0); }, 0) }; })
       .filter(function (x) { return x.s >= 3; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 3);
     if (!hits.length) return null;
-    return T("Yeh pages dekho:", "These pages have it:", h) + "<ul>" + hits.map(function (x) { return "<li>" + A(x.p.u || "", x.p.t) + (x.p.d ? " — <small>" + esc(String(x.p.d).slice(0, 110)) + "</small>" : "") + "</li>"; }).join("") + "</ul>";
+    return T("Yeh pages dekho:", "These pages have it:", h) + "<ul>" + hits.map(function (x) { return "<li>" + A(x.p.u || "", x.p.t) + (x.p.d ? ": <small>" + esc(String(x.p.d).slice(0, 110)) + "</small>" : "") + "</li>"; }).join("") + "</ul>";
   }
   function productAnswer(q, it) {
     var h = HI.test(q), r = null;
@@ -152,7 +152,7 @@
     if (r) { try { B.lastKey = "product"; } catch (e) {} }
     return r;
   }
-  /* "how much do you charge?" — keep FODO's service pricing answer, and add the self-serve prices under it */
+  /* "how much do you charge?", keep FODO's service pricing answer, and add the self-serve prices under it */
   var CHARGE = /\b(how much|charge|charges|pricing|price|prices|fees?|kitna|kitne|cost)\b/i;
   function augment(q, out) {
     if (typeof out !== "string" || !CHARGE.test(q) || /Growth Lab/i.test(out) || !prices()) return out;

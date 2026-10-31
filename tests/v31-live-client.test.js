@@ -8,10 +8,10 @@ const fs = require("fs"), path = require("path");
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 const SRC = fs.readFileSync(path.join(__dirname, "../js/owner-brain-live.js"), "utf8");
 const HARNESS = `
-window.__ws = []; window.__tok = [];
+window.__ws = []; window.__tok = []; (function () { const m = {}; Object.defineProperty(window, "localStorage", { configurable: true, value: { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: (k) => { delete m[k]; } } }); })();
 window.FodoVoice = { _h: {}, start: () => Promise.resolve(true), context: () => (window.__ac || (window.__ac = new AudioContext())), pauseVad: () => {}, on: (n, f) => { (FodoVoice._h[n] = FodoVoice._h[n] || []).push(f); },
   frame: (rms) => { const f = new Float32Array(1600).fill(rms); (FodoVoice._h.frame || []).forEach((g) => g({ f, sr: 16000, rms })); } };
-window.fetch = (u) => { window.__tok.push(String(u)); const q = new URL(u, "https://x.test").searchParams; const lite = q.get("lite") === "1";
+window.fetch = (u) => { if (window.__failNext) { window.__failNext--; return Promise.reject(new Error("network")); } window.__tok.push(String(u)); const q = new URL(u, "https://x.test").searchParams; const lite = q.get("lite") === "1";
   return Promise.resolve({ json: () => Promise.resolve({ ok: true, ws: "wss://fake/" + window.__tok.length, tier: lite ? "basic" : "rich", model: "models/test", setup: { model: "models/test" } }) }); };
 class FakeWS { constructor(u) { this.u = u; this.sent = []; this.readyState = 0; window.__ws.push(this); setTimeout(() => { this.readyState = 1; this.onopen && this.onopen(); }, 5); }
   send(x) { this.sent.push(JSON.parse(x)); } close(code, r) { this.readyState = 3; this.closed = code || 1000; }
@@ -74,6 +74,23 @@ window.__ev = []; `;
   await p.evaluate(() => FodoLive.start({ mode: "chat" })); await p.waitForFunction(() => __ws.length === 5 && __ws[4].sent.length === 1);
   await p.evaluate(() => __ws[4].drop(1007, "Invalid argument: proactivity")); await p.waitForFunction(() => __ws.length === 6, null, { timeout: 3000 });
   ok(/lite=1/.test(await p.evaluate(() => __tok[5])) && !(await p.evaluate(() => __ev.some((e) => e[0] === "error"))), "setup refused → retried as a plain session automatically (no error)");
+  await p.evaluate(() => FodoLive.stop());
+
+  /* 5. v33: mute keeps the conversation open, sends no microphone, unmute resumes */
+  await p.evaluate(() => { localStorage.removeItem("ob-live-tier"); __ev.length = 0; return FodoLive.start({ mode: "chat" }); }); let n = await p.evaluate(() => __ws.length); await p.waitForFunction((n) => __ws[n - 1].sent.length === 1, n); await srv(n - 1, { setupComplete: {} });
+  await p.evaluate(() => FodoLive.mute(true)); const before = (await W(n - 1)).sent.length; await p.evaluate(() => { for (let i = 0; i < 10; i++) FodoVoice.frame(0.1); });
+  let w = await W(n - 1); ok(await p.evaluate(() => FodoLive.isActive() && FodoLive.isMuted()), "v33: mute → session stays open");
+  ok(w.sent.some((m) => m.realtimeInput && m.realtimeInput.audioStreamEnd) && w.sent.length === before && !w.closed, "v33: while muted no microphone audio is sent (audioStreamEnd once), connection not closed");
+  await p.evaluate(() => FodoLive.mute(false)); await p.evaluate(() => { for (let i = 0; i < 2; i++) FodoVoice.frame(0.1); }); w = await W(n - 1); ok(w.sent.length > before, "v33: unmute → your voice is sent again, same conversation");
+  await p.evaluate(() => FodoLive.stop());
+
+  /* 6. v33: a phone that needed the plain session goes straight to it next time (no 6–10 s wait) */
+  await p.evaluate(() => localStorage.setItem("ob-live-tier", "lite")); await p.evaluate(() => FodoLive.start({ mode: "chat" })); n = await p.evaluate(() => __tok.length);
+  ok(/lite=1/.test(await p.evaluate(() => __tok[__tok.length - 1])), "v33: remembered plain session → connects on the first try"); await p.evaluate(() => FodoLive.stop());
+
+  /* 7. v33: a network hiccup on the first connect is retried automatically (no second tap needed) */
+  await p.evaluate(() => { localStorage.removeItem("ob-live-tier"); window.__failNext = 1; __ev.length = 0; return FodoLive.start({ mode: "chat" }).then((x) => (window.__r7 = x)); });
+  await p.waitForFunction(() => window.__r7 !== undefined, null, { timeout: 4000 }); ok(await p.evaluate(() => window.__r7 === true && FodoLive.isActive() && !__ev.some((e) => e[0] === "error")), "v33: first connection fails → retried once automatically, connected");
   await p.evaluate(() => FodoLive.stop());
   ok(!errs.length, "no page errors" + (errs.length ? ": " + errs.join(" | ") : ""));
   await b.close();

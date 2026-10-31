@@ -1,4 +1,4 @@
-// v27 FODO BRAIN — Website Engineer: owner-only access, project index, find, plan, build + security review, guarded/hard paths,
+// v27 FODO BRAIN: Website Engineer: owner-only access, project index, find, plan, build + security review, guarded/hard paths,
 // PR + QA reports + automatic repair, deploy gate, screenshots, rollback, global replace, inspect, auto-deploy, no secret leaks.
 // Run: node --no-warnings tests/v27-engineer.test.mjs
 
@@ -25,7 +25,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);
@@ -34,7 +34,7 @@ import { securityReview, unifiedDiff } from "../functions/_lib/brain/engineer.js
 import { execute } from "../functions/_lib/brain/tools.js";
 const J = (o, s) => new Response(JSON.stringify(o), { status: s || 200, headers: { "content-type": "application/json" } });
 const gh = { calls: [], commits: 0, files: {
-  "index.html": "<html><head><title>FODO — Digital growth</title></head><body><h1>Grow faster with FODO</h1><a class=\"btn\" href=\"https://wa.me/917827007676\">WhatsApp FODO</a><script src=\"js/main.js\"></script></body></html>",
+  "index.html": "<html><head><title>FODO: Digital growth</title></head><body><h1>Grow faster with FODO</h1><a class=\"btn\" href=\"https://wa.me/917827007676\">WhatsApp FODO</a><script src=\"js/main.js\"></script></body></html>",
   "scripts/build_pages.py": "HERO = 'Grow faster with FODO'\nWA = 'https://wa.me/917827007676'\n",
   "css/styles.css": ":root{--acc:#7B61FF;--bg:#07070c}\n.btn{color:var(--acc)}\n", "js/main.js": "console.log('x')\n",
   "functions/_lib/brain/tools.js": "export const TOOLS = {};\n", ".github/workflows/fodo-qa.yml": "name: x\n", "services/index.html": "<h1>Services</h1><a href=\"https://wa.me/917827007676\">Chat</a>" }, old: {} };
@@ -94,10 +94,10 @@ const memberCtx = { env, request: new Request(SITE + "/"), owner: { email: "team
 r = await execute(memberCtx, "eng_plan", { request: "change the homepage" }); ok(!r.ok && r.refused, "Engineer chat tools refuse non-owners even with 'changes' + 'deploy' access");
 
 /* index + map + find */
-r = await call("owner-brain/eng/index", { sha: "abc1234", files: 9, pages: [{ path: "index.html", route: "/", title: "FODO — Digital growth" }, { path: "services/index.html", route: "/services/", title: "Services" }], apis: [{ path: "functions/api/xray/[[path]].js", route: "/api/xray/*" }], tables: [{ name: "acct_users", file: "functions/_lib/accounts.js", line: 40, columns: ["id", "email"] }], env: ["GITHUB_TOKEN", "GEMINI_API_KEY"], tokens: { "--acc": "#7B61FF" }, components: { btn: 40 }, deps: { "css/styles.css": ["/", "/services/", "/about/"], "index.html": ["/"] }, symbols: [{ name: "settleOrder", kind: "export", file: "functions/_lib/accounts.js", line: 307 }], ctas: [{ file: "index.html", line: 1, text: "WhatsApp FODO", href: "https://wa.me/917827007676" }] }, { as: "nobody", headers: { "x-cron-key": env.CRON_KEY } });
+r = await call("owner-brain/eng/index", { sha: "abc1234", files: 9, pages: [{ path: "index.html", route: "/", title: "FODO: Digital growth" }, { path: "services/index.html", route: "/services/", title: "Services" }], apis: [{ path: "functions/api/xray/[[path]].js", route: "/api/xray/*" }], tables: [{ name: "acct_users", file: "functions/_lib/accounts.js", line: 40, columns: ["id", "email"] }], env: ["GITHUB_TOKEN", "GEMINI_API_KEY"], tokens: { "--acc": "#7B61FF" }, components: { btn: 40 }, deps: { "css/styles.css": ["/", "/services/", "/about/"], "index.html": ["/"] }, symbols: [{ name: "settleOrder", kind: "export", file: "functions/_lib/accounts.js", line: 307 }], ctas: [{ file: "index.html", line: 1, text: "WhatsApp FODO", href: "https://wa.me/917827007676" }] }, { as: "nobody", headers: { "x-cron-key": env.CRON_KEY } });
 ok(r.j.ok && r.j.saved, "GitHub Actions index → saved for the commit");
 r = await B("eng/map"); const envRow = (n) => r.j.map.env.find((e) => e.name === n);
-ok(r.j.map.sha === "abc1234" && envRow("GITHUB_TOKEN").exists === true && envRow("GEMINI_API_KEY").exists === false && !r.t.includes(env.GITHUB_TOKEN), "project map: env NAMES with exists ✓/✗ — never values");
+ok(r.j.map.sha === "abc1234" && envRow("GITHUB_TOKEN").exists === true && envRow("GEMINI_API_KEY").exists === false && !r.t.includes(env.GITHUB_TOKEN), "project map: env NAMES with exists ✓/✗, never values");
 r = await B("eng/find?q=" + encodeURIComponent("where is the WhatsApp CTA"));
 ok(r.j.ok && r.j.results.some((x) => x.path === "index.html" && /CTA/.test(x.why)) && r.j.results.some((x) => x.why === "code"), "Find anything: exact files + lines (code search + CTA index)");
 r = await B("eng/find?q=settleOrder"); ok(r.j.results.some((x) => x.path === "functions/_lib/accounts.js" && x.line === 307), "…finds functions with their line");
@@ -175,9 +175,9 @@ r = await QA({ branch: b2.branch, sha: b2.head_sha, status: "passed", checks: [{
 ok(r.j.next === "auto-deployed" && env.XRAY_DB.db.prepare("SELECT status FROM brain_changes WHERE id=?").get(A2).status === "merged", "auto-deploy (when switched on): low-risk change goes live after QA passes");
 await B("settings", { autoDeploy: "off" });
 
-/* command center — real data only */
+/* command center, real data only */
 r = await B("eng/overview");
-ok(r.j.ok && r.j.github.connected && r.j.database.ok && r.j.lastDeploy && r.j.lastQa && r.j.lastQa.status === "passed" && r.j.index.pages === 2, "command center: GitHub, database, last deploy, last QA, index — all real");
+ok(r.j.ok && r.j.github.connected && r.j.database.ok && r.j.lastDeploy && r.j.lastQa && r.j.lastQa.status === "passed" && r.j.index.pages === 2, "command center: GitHub, database, last deploy, last QA, index, all real");
 ok(r.j.audit === null && !r.j.score.parts.some((p) => /Performance|SEO/.test(p.name)), "no PageSpeed run yet → no performance/SEO number (never invented)");
 ok(r.j.score.parts.some((p) => p.name === "Code health" && p.source === "Latest QA run"), "score parts name their source");
 ok(!all.some((t) => t.includes(env.GITHUB_TOKEN) || t.includes(env.CRON_KEY) || t.includes(env.RESEND_API_KEY)), "no token or key in any response");

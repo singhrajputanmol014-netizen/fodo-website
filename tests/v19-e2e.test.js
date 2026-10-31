@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* v19 background X-Ray end-to-end — real pages + real Pages Functions (local workerd, D1) + the REAL runner Worker code
+/* v19 background X-Ray end-to-end, real pages + real Pages Functions (local workerd, D1) + the REAL runner Worker code
    (runner/src/index.js) with its Queue and Browser Rendering replaced by local stand-ins (an in-memory queue, Chromium via Playwright).
    Covers: "Run in the background" → the visitor closes the tab → the runner claims the job, opens the token-protected runner page,
    the normal X-Ray engine builds and saves the report → email sent → the report opens later; browser capacity used up → the job
@@ -40,7 +40,7 @@ const getj = (u, o) => fetch(u, o).then((r) => r.json());
   const srv = http.createServer(async (req, res) => { let body = ""; req.on("data", (c) => (body += c)); req.on("end", async () => {
     const r = await W.fetch(new Request("http://runner" + req.url, { method: req.method, headers: req.headers, body: req.method === "POST" ? body : undefined }), wenv);
     res.writeHead(r.status, { "content-type": "application/json" }); res.end(await r.text()); }); }).listen(RPORT);
-  // … and its queue consumer (one message at a time, honouring retry delays — compressed: 1 s per 60 s)
+  // … and its queue consumer (one message at a time, honouring retry delays, compressed: 1 s per 60 s)
   let draining = true; (async () => { while (draining) { const m = Q.find((x) => x.due <= Date.now()); if (!m) { await sleep(300); continue; } Q.splice(Q.indexOf(m), 1);
     let act = null; await W.queue({ messages: [{ body: m.body, attempts: m.attempts, ack: () => (act = "ack"), retry: (o) => (act = o) }] }, wenv);
     log.push({ job: m.body.jobId, act }); if (act && act !== "ack") Q.push({ body: m.body, attempts: m.attempts + 1, due: Date.now() + (act.delaySeconds || 60) * 1000 / 60 }); } })();
@@ -55,7 +55,7 @@ const getj = (u, o) => fetch(u, o).then((r) => r.json());
   ok(await p.isChecked("#xr-bg") && /close this tab/.test(await p.textContent("#xr-bgwrap")), "form offers 'Run in the background' (on by default)");
   await p.fill("#xr-url", "spicehub.test"); await p.fill("#xr-city", "Dwarka, New Delhi"); await p.click("#xr-run");
   await p.waitForFunction(() => /background/.test(document.getElementById("xr-status").textContent) && /[?&]r=/.test(location.search), null, { timeout: 20000 });
-  const job1 = new URL(p.url()).searchParams.get("r"); ok(/^[a-z0-9]{20}$/.test(job1), "started in the background — the tab shows the job and says it can be closed");
+  const job1 = new URL(p.url()).searchParams.get("r"); ok(/^[a-z0-9]{20}$/.test(job1), "started in the background, the tab shows the job and says it can be closed");
   await ctx.close();   // the visitor leaves
   let st = null; for (let i = 0; i < 120; i++) { st = await getj(BASE + "/api/xray/status/" + job1); if (st.status === "COMPLETE" || st.status === "FAILED") break; await sleep(2000); }
   ok(st && st.status === "COMPLETE", "with the tab closed, the runner finished the X-Ray (" + (st && st.status) + ")");
@@ -77,7 +77,7 @@ const getj = (u, o) => fetch(u, o).then((r) => r.json());
   await p.goto(BASE + "/business-x-ray/"); await p.waitForSelector("#xr-bgwrap:not([hidden])", { timeout: 15000 });
   capacityFull = 1; await p.fill("#xr-url", "tandoortales.test"); await p.click("#xr-run");
   await p.waitForFunction(() => /Waiting for a free background browser/.test(document.getElementById("xr-status").textContent + " " + document.getElementById("xr-stages").textContent), null, { timeout: 30000 });
-  ok(true, "capacity full → the visitor sees 'Waiting for a free background browser — it starts automatically'");
+  ok(true, "capacity full → the visitor sees 'Waiting for a free background browser, it starts automatically'");
   await p.waitForSelector("#xr-report .xr-hero", { timeout: 240000 });
   const job2 = new URL(p.url()).searchParams.get("r"); for (let i = 0; i < 30 && !log.some((x) => x.job === job2 && x.act === "ack"); i++) await sleep(500); if (process.env.DBG) console.log("DBG log", JSON.stringify(log), job2);
   ok(/tandoortales/i.test(await p.textContent(".xr-hero")) && log.some((x) => x.job === job2 && x.act && x.act.delaySeconds === 900) && log.some((x) => x.job === job2 && x.act === "ack"), "…it started again by itself (retry after 15 min) and the report appeared in the open tab");

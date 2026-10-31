@@ -1,5 +1,5 @@
 /* FODO Growth Lab accounts (v13): login (Google + email one-time code), sessions, credits, plans, Cashfree payments.
-   Storage: Cloudflare D1 (binding XRAY_DB) — required; without it (or with ACCOUNTS_ENABLED != "1") the site keeps working
+   Storage: Cloudflare D1 (binding XRAY_DB), required; without it (or with ACCOUNTS_ENABLED != "1") the site keeps working
    in the old anonymous mode. Secrets stay on the server: GOOGLE_CLIENT_ID (public id), RESEND_API_KEY, MAIL_FROM,
    CASHFREE_APP_ID, CASHFREE_SECRET_KEY, CASHFREE_ENV (sandbox|production), CASHFREE_SUBSCRIPTIONS ("1" = auto-renew on). */
 import { PRODUCTS, addTool } from "./products.js";
@@ -45,7 +45,7 @@ const readyDb = new WeakSet();
 export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
   if (!readyDb.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } readyDb.add(d); }
   return d; }
-/* v15: activity log for the admin dashboard — never throws, never blocks the request */
+/* v15: activity log for the admin dashboard, never throws, never blocks the request */
 export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block", "admin_config", "action_update", "monitor_add", "monitor_check", "gsc_connect", "gsc_disconnect", "monthly_report", "why_winning", "budget_plan", "tool_use", "share_off", "share_on", "admin_qc", "admin_prompt", "upgrade_click", "report_view", "help_ticket", "admin_help"];
 export async function logEvent(env, userId, kind, detail) { try { if (!userId || !accountsOn(env)) return; await (await db(env)).prepare("INSERT INTO acct_events (user_id, kind, detail, created_at) VALUES (?1,?2,?3,?4)").bind(userId, kind, String(detail == null ? "" : detail).slice(0, 300), nowIso()).run(); } catch (e) {}
   try { if (String(env.BRAIN_ENABLED || "1") !== "0") await (await import("./brain/automations.js")).onEvent(env, kind, userId, detail); } catch (e) {} }   // v22: FODO Brain automations react in real time
@@ -119,7 +119,7 @@ const spendTier = (b, plan) => plan !== "free" ? plan : b.pack_left > 0 ? "start
 export function hasCredit(b) { if (isUnlimited(b)) return true; const plan = activePlan(b); return (plan !== "free" && b.monthly_left > 0) || b.pack_left > 0 || (plan === "free" && b.free_left > 0); }
 export async function spendCredit(env, b, jobId) {
   const d = await db(env), plan = activePlan(b);
-  if (!isOwner(b) && b.unlimited) { await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'gift',0,?2,'X-Ray (free — given by FODO)',?3)").bind(b.id, "run:" + jobId, nowIso()).run(); return { tier: spendTier(b, plan) === "free" ? "starter" : spendTier(b, plan), kind: "gift" }; }
+  if (!isOwner(b) && b.unlimited) { await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'gift',0,?2,'X-Ray (free, given by FODO)',?3)").bind(b.id, "run:" + jobId, nowIso()).run(); return { tier: spendTier(b, plan) === "free" ? "starter" : spendTier(b, plan), kind: "gift" }; }
   if (isOwner(b)) { await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'owner',0,?2,'X-Ray (owner access, free)',?3)").bind(b.id, "run:" + jobId, nowIso()).run(); return { tier: "agency", kind: "owner" }; }
   const tryCol = async (col) => { const r = await d.prepare(`UPDATE acct_users SET ${col} = ${col} - 1 WHERE id=?1 AND ${col} > 0 RETURNING ${col}`).bind(b.id).first(); return !!r; };
   let kind = null, tier = "free";
@@ -150,7 +150,7 @@ export async function refundCredit(env, run) {
 /* idempotent grants (ref is unique) */
 export async function grantPlan(env, userId, planId, ref, note) {
   const d = await db(env), p = PLANS[planId]; if (!p || planId === "free") return false;
-  const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'plan',?2,?3,?4,?5)").bind(userId, p.xrays, ref, note || p.name + " — 1 month", nowIso()).run();
+  const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'plan',?2,?3,?4,?5)").bind(userId, p.xrays, ref, note || p.name + ", 1 month", nowIso()).run();
   if (!ins.meta || ins.meta.changes === 0) return false;
   const u = await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(userId).first();
   const cur = activePlan(u), base = cur === planId && Date.parse(u.plan_until) > Date.now() ? Date.parse(u.plan_until) : Date.now();
@@ -162,7 +162,7 @@ export async function grantPlan(env, userId, planId, ref, note) {
 /* v18: one bought run of a standalone tool (idempotent by ref) */
 export async function grantTool(env, userId, toolId, ref) {
   const d = await db(env), t = PRODUCTS[toolId]; if (!t) return false;
-  const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'tool',1,?2,?3,?4)").bind(userId, ref, t.name + " — 1 run", nowIso()).run();
+  const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'tool',1,?2,?3,?4)").bind(userId, ref, t.name + ", 1 run", nowIso()).run();
   if (!ins.meta || ins.meta.changes === 0) return false;
   await addTool(env, userId, toolId, 1);
   return true;
@@ -226,7 +226,7 @@ export const waOn = (env) => !!(env.WA_NUMBER && env.WA_TOKEN && env.WA_PHONE_ID
 export const displayName = (u) => (u && (u.name || u.email || u.phone)) || "User";
 
 /* ---------------- email one-time code (Resend) ---------------- */
-/* every email FODO sends goes through here — and is logged for the admin Mail view (v20). Login codes are never stored.
+/* every email FODO sends goes through here, and is logged for the admin Mail view (v20). Login codes are never stored.
    opt = { replyTo, kind: system|ticket|compose, ticket, by, from } */
 const MAIL_DDL = "CREATE TABLE IF NOT EXISTS help_mail (id INTEGER PRIMARY KEY AUTOINCREMENT, t TEXT, dir TEXT, kind TEXT, from_addr TEXT, to_addr TEXT, subject TEXT, text TEXT, ticket_id TEXT, status TEXT, provider_id TEXT, error TEXT, by_email TEXT, msg_id TEXT)";
 const mailMade = new WeakSet();
@@ -303,7 +303,7 @@ export async function verifyWebhook(env, ts, raw, sig) {
   let diff = 0; for (let i = 0; i < b64.length; i++) diff |= b64.charCodeAt(i) ^ sig.charCodeAt(i);   // constant time
   return diff === 0 && Math.abs(Date.now() - (+ts > 1e12 ? +ts : +ts * 1000)) < 24 * 3600e3;
 }
-/* order paid? → credit it (idempotent). Always re-reads the order from Cashfree — never trusts the browser or the webhook body. */
+/* order paid? → credit it (idempotent). Always re-reads the order from Cashfree, never trusts the browser or the webhook body. */
 export async function settleOrder(env, orderId) {
   const d = await db(env), o = await d.prepare("SELECT * FROM acct_orders WHERE order_id=?1").bind(orderId).first(); if (!o) return { ok: false, reason: "unknown order" };
   if (o.status === "PAID") return { ok: true, already: true, order: o };

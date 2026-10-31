@@ -1,4 +1,4 @@
-/* FODO Website Builder — Store & Blog manager (v29). Products (photos, options/variants, stock, collections), orders
+/* FODO Website Builder: Store & Blog manager (v29). Products (photos, options/variants, stock, collections), orders
    (status flow, payment check), discount codes, store settings (shipping, tax, payment methods), the merchant's own Cashfree
    connection (the secret goes to FODO's server once, encrypted there, never shown again), and blog posts (markdown, draft /
    scheduled / published). Everything goes through /api/sites/<id>/… which only resolves YOUR websites. */
@@ -8,7 +8,7 @@ import { esc } from "/sites/lib/render.js";
 const rs = (p) => "₹" + ((+p || 0) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const rupees = (p) => (p ? String((+p || 0) / 100) : "");
 const fmt = (s) => { try { return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return s || ""; } };
-const STATUS = { pending: "Awaiting payment", paid: "Paid", cod: "Cash on delivery", whatsapp: "WhatsApp — to confirm", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled", refunded: "Refunded" };
+const STATUS = { pending: "Awaiting payment", paid: "Paid", cod: "Cash on delivery", whatsapp: "WhatsApp, to confirm", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled", refunded: "Refunded" };
 const FLOW = { pending: ["cancelled"], paid: ["shipped", "cancelled", "refunded"], cod: ["shipped", "cancelled", "paid"], whatsapp: ["cod", "paid", "cancelled"], shipped: ["delivered", "cancelled"], delivered: ["refunded"], cancelled: [], refunded: [] };
 const ACT = { shipped: "Mark shipped", delivered: "Mark delivered", cancelled: "Cancel", refunded: "Mark refunded", paid: "Mark paid", cod: "Confirm (COD)" };
 
@@ -31,7 +31,7 @@ export function openStore(X, tab) {
     const r = await X.api(X.id + "/products"); if (!r.ok) return fail(r);
     body().innerHTML = '<div class="wb-row" style="margin-top:0"><button class="wb-btn pri sm" id="np">+ Add product</button><span class="wb-muted">' + r.products.length + " product(s)</span></div>" +
       (r.products.length ? '<table class="wb-tbl"><thead><tr><th></th><th>Product</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr></thead><tbody>' + r.products.map((p) => "<tr><td>" + (p.images[0] ? '<img src="' + esc(p.images[0]) + '" alt="">' : "") + "</td><td><b>" + esc(p.title) + "</b><br><small>" + esc(p.collection || "") + (p.variants.length ? " · " + p.variants.length + " options" : "") + "</small></td><td>" + rs(p.variants.length ? Math.min.apply(null, p.variants.map((v) => v.price)) : p.price) + "</td><td>" + (p.track ? (p.variants.length ? p.variants.reduce((a, v) => a + v.stock, 0) : p.stock) : "∞") + "</td><td>" + (p.status === "active" ? "Active" : "Draft") + '</td><td><button class="wb-btn sm" data-ep="' + p.id + '">Edit</button></td></tr>').join("") + "</tbody></table>"
-        : '<p class="wb-empty">No products yet. Add your first product — then put a <b>Products</b> section on any page (or use “Add a Shop page” in Store settings).</p>');
+        : '<p class="wb-empty">No products yet. Add your first product, then put a <b>Products</b> section on any page (or use “Add a Shop page” in Store settings).</p>');
     $("#np").onclick = () => productForm(null);
     $$("[data-ep]").forEach((b) => { b.onclick = () => productForm(r.products.find((p) => p.id === b.dataset.ep)); });
   }
@@ -49,7 +49,7 @@ export function openStore(X, tab) {
         '<fieldset class="wb-list"><legend>Options <small>(sizes, colours… each can have its own price and stock)</small></legend><label class="wb-lab">Option name<input name="optionName" maxlength="30" value="' + esc(P.optionName || "Size") + '"></label>' +
         vars.map((v, i) => '<div class="wb-g4"><input data-v="' + i + '" data-k="name" placeholder="e.g. M" value="' + esc(v.name) + '"><input data-v="' + i + '" data-k="price" inputmode="decimal" placeholder="Price ₹" value="' + rupees(v.price) + '"><input data-v="' + i + '" data-k="stock" type="number" min="0" placeholder="Stock" value="' + (+v.stock || 0) + '"><button type="button" class="wb-ib sm" data-xv="' + i + '">✕</button></div>').join("") +
         '<button type="button" class="wb-btn sm" id="addv">+ Add option</button></fieldset>' +
-        '<label class="wb-lab">Status<select name="status"><option value="active">Active — visible in the store</option><option value="draft"' + (P.status === "draft" ? " selected" : "") + ">Draft — hidden</option></select></label>" +
+        '<label class="wb-lab">Status<select name="status"><option value="active">Active, visible in the store</option><option value="draft"' + (P.status === "draft" ? " selected" : "") + ">Draft, hidden</option></select></label>" +
         '<div class="wb-row"><button class="wb-btn pri">Save product</button>' + (p ? '<button type="button" class="wb-btn danger sm" id="del">Delete</button>' : "") + "</div></form>";
       const F = $("#pf"), keep = () => { const f = new FormData(F); ["title", "description", "collection", "optionName", "status"].forEach((k) => { P[k] = String(f.get(k) || ""); }); P.track = !!f.get("track"); P.stock = +f.get("stock") || 0; P.price = Math.round(parseFloat(f.get("price") || 0) * 100) || 0; P.compare = Math.round(parseFloat(f.get("compare") || 0) * 100) || 0;
         $$("[data-v]").forEach((i) => { const v = vars[+i.dataset.v]; v[i.dataset.k] = i.dataset.k === "name" ? i.value : i.dataset.k === "price" ? Math.round(parseFloat(i.value || 0) * 100) || 0 : +i.value || 0; }); };
@@ -62,7 +62,7 @@ export function openStore(X, tab) {
       if ($("#del")) $("#del").onclick = async () => { if (!confirm("Delete " + P.title + "?")) return; const r = await X.api(X.id + "/products/" + p.id, "DELETE"); if (!r.ok) return fail(r); X.toast("Product deleted."); products(); };
       F.onsubmit = async (e) => { e.preventDefault(); keep();
         const out = { title: P.title, description: P.description, collection: P.collection, optionName: P.optionName, status: P.status, track: P.track, stock: P.stock, price: P.price / 100, compare: P.compare ? P.compare / 100 : "", images: imgs, variants: vars.filter((v) => v.name.trim()).map((v) => ({ name: v.name, price: v.price / 100, stock: v.stock })) };
-        const r = await X.api(X.id + "/products" + (p ? "/" + p.id : ""), p ? "PUT" : "POST", out); if (!r.ok) return fail(r); X.toast("Saved — live on your published website right away."); products(); };
+        const r = await X.api(X.id + "/products" + (p ? "/" + p.id : ""), p ? "PUT" : "POST", out); if (!r.ok) return fail(r); X.toast("Saved, live on your published website right away."); products(); };
     };
     draw();
   }
@@ -73,7 +73,7 @@ export function openStore(X, tab) {
     body().innerHTML = (st.ok ? '<div class="wb-kpis"><div><b>' + st.orders30 + "</b>orders (30 days)</div><div><b>" + rs(st.revenue30) + "</b>order value (30 days)</div><div><b>" + st.toFulfil + "</b>to fulfil</div></div>" : "") +
       '<label class="wb-lab">Show<select id="of"><option value="">All orders</option>' + Object.keys(STATUS).map((k) => '<option value="' + k + '"' + (filter === k ? " selected" : "") + ">" + STATUS[k] + "</option>").join("") + "</select></label>" +
       (r.orders.length ? r.orders.map((o) => '<article class="wb-ord"><div class="wb-row" style="margin:0;justify-content:space-between"><b>#' + o.number + " · " + rs(o.total) + '</b><span class="wb-pill ' + o.status + '">' + esc(STATUS[o.status] || o.status) + "</span></div><small class=\"wb-muted\">" + fmt(o.created_at) + " · " + esc({ online: "Online payment", cod: "Cash on delivery", whatsapp: "WhatsApp order" }[o.method] || o.method) + (o.code ? " · code " + esc(o.code) : "") + "</small>" +
-        "<ul>" + o.items.map((i) => "<li>" + esc(i.title) + (i.variant ? " · " + esc(i.variant) : "") + " × " + i.qty + " — " + rs(i.price * i.qty) + "</li>").join("") + "</ul>" +
+        "<ul>" + o.items.map((i) => "<li>" + esc(i.title) + (i.variant ? " · " + esc(i.variant) : "") + " × " + i.qty + ": " + rs(i.price * i.qty) + "</li>").join("") + "</ul>" +
         '<p class="wb-cust"><b>' + esc(o.customer.name) + '</b> · <a href="tel:' + esc(o.customer.phone) + '">' + esc(o.customer.phone) + "</a>" + (o.customer.email ? " · " + esc(o.customer.email) : "") + "<br>" + esc(o.customer.address) + ", " + esc(o.customer.city) + " " + esc(o.customer.pin) + (o.customer.note ? "<br><i>“" + esc(o.customer.note) + "”</i>" : "") + "</p>" +
         '<div class="wb-row">' + (o.status === "pending" && o.method === "online" ? '<button class="wb-btn sm" data-ver="' + o.id + '">Check payment</button>' : "") + (FLOW[o.status] || []).map((n) => '<button class="wb-btn sm' + (n === "cancelled" ? " danger" : "") + '" data-os="' + o.id + "|" + n + '">' + ACT[n] + "</button>").join("") + "</div></article>").join("")
         : '<p class="wb-empty">No orders' + (filter ? " with this status" : " yet") + ". When customers order on your website they appear here (and you get an email).</p>");
@@ -122,11 +122,11 @@ export function openStore(X, tab) {
     const doc = X.doc(), S = (doc.settings && doc.settings.store) || {}, sh = S.shipping || {}, tx = S.tax || {}, biz = (doc.settings && doc.settings.business) || {};
     const pay = await X.api(X.id + "/payments");
     const hasShop = doc.pages.some((p) => p.sections.some((x) => x.type === "products")), hasBlog = doc.pages.some((p) => p.sections.some((x) => x.type === "blog"));
-    body().innerHTML = '<p class="wb-muted">Store settings are part of your website — they go live when you <b>Publish</b>. Products, orders and posts update instantly.</p>' +
+    body().innerHTML = '<p class="wb-muted">Store settings are part of your website, they go live when you <b>Publish</b>. Products, orders and posts update instantly.</p>' +
       '<form id="sf"><h3>Payment methods customers can choose</h3>' +
       '<label class="wb-ck"><input type="checkbox" name="cod"' + (S.cod !== false ? " checked" : "") + "> Cash on delivery</label>" +
       '<label class="wb-ck"><input type="checkbox" name="whatsapp"' + (S.whatsapp ? " checked" : "") + (biz.whatsapp ? "" : " disabled") + "> Order on WhatsApp " + (biz.whatsapp ? "(" + esc(biz.whatsapp) + ")" : "<small>(add a WhatsApp number in More → Business details)</small>") + "</label>" +
-      '<label class="wb-ck"><input type="checkbox" name="online"' + (S.online ? " checked" : "") + (pay.ok && pay.connected ? "" : " disabled") + "> Online payment — UPI, cards, netbanking (your Cashfree account) " + (pay.ok && pay.connected ? "" : "<small>(connect Cashfree below first)</small>") + "</label>" +
+      '<label class="wb-ck"><input type="checkbox" name="online"' + (S.online ? " checked" : "") + (pay.ok && pay.connected ? "" : " disabled") + "> Online payment: UPI, cards, netbanking (your Cashfree account) " + (pay.ok && pay.connected ? "" : "<small>(connect Cashfree below first)</small>") + "</label>" +
       '<h3>Shipping &amp; tax</h3><div class="wb-g3"><label class="wb-lab">Shipping charge (₹)<input name="flat" inputmode="decimal" value="' + esc(sh.flat || "") + '" placeholder="0"></label><label class="wb-lab">Free shipping above (₹)<input name="freeAbove" inputmode="decimal" value="' + esc(sh.freeAbove || "") + '" placeholder="optional"></label><label class="wb-lab">GST / tax %<input name="pct" inputmode="decimal" value="' + esc(tx.pct || "") + '" placeholder="0"></label></div>' +
       '<label class="wb-ck"><input type="checkbox" name="inclusive"' + (tx.inclusive !== false ? " checked" : "") + "> My prices already include tax</label>" +
       '<label class="wb-lab">Send new-order emails to<input name="notifyEmail" type="email" value="' + esc((doc.settings && doc.settings.notifyEmail) || "") + '"></label>' +
@@ -135,7 +135,7 @@ export function openStore(X, tab) {
       '<h3>Online payments (Cashfree)</h3><div id="pay"></div>';
     $("#sf").onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target), num = (k) => String(f.get(k) || "").replace(/[^\d.]/g, "");
       X.change(() => { const d = X.doc(); d.settings.store = { currency: "INR", cod: !!f.get("cod"), whatsapp: !!f.get("whatsapp"), online: !!f.get("online"), shipping: { flat: num("flat"), freeAbove: num("freeAbove") }, tax: { pct: num("pct"), inclusive: !!f.get("inclusive") } }; d.settings.notifyEmail = String(f.get("notifyEmail") || "").trim(); }, true);
-      X.toast("Saved — click Publish to make it live."); };
+      X.toast("Saved, click Publish to make it live."); };
     const addPage = (slug, title, sec) => { const d = X.doc(); if (d.pages.some((p) => p.slug === slug)) return X.toast("A “" + slug + "” page already exists.", true);
       const nav = d.pages[0].sections.find((x) => x.type === "navbar"), foot = d.pages[0].sections.find((x) => x.type === "footer");
       X.change(() => { X.doc().pages.push({ slug, title, seo: {}, sections: [nav && JSON.parse(JSON.stringify(nav)), sec, foot && JSON.parse(JSON.stringify(foot))].filter(Boolean) }); }); X.toast(title + " page added."); settings(); };
@@ -144,7 +144,7 @@ export function openStore(X, tab) {
     const el = $("#pay");
     if (!pay.ok) { el.textContent = pay.reason; return; }
     if (!pay.available) { el.innerHTML = '<p class="wb-muted">Online payments for stores aren\'t switched on by FODO yet. Cash on delivery and WhatsApp orders work now.</p>'; return; }
-    if (pay.connected) { el.innerHTML = '<p>🟢 Connected — ' + esc(pay.meta.mode === "production" ? "Live (real payments)" : "Test mode") + " · App ID " + esc(pay.meta.appId) + " · " + fmt(pay.updatedAt) + '</p><div class="wb-row"><button class="wb-btn sm danger" id="pdis">Disconnect</button></div><p class="wb-muted">Money goes straight to YOUR Cashfree account. FODO stores your secret key encrypted and never shows it again.</p>';
+    if (pay.connected) { el.innerHTML = '<p>🟢 Connected, ' + esc(pay.meta.mode === "production" ? "Live (real payments)" : "Test mode") + " · App ID " + esc(pay.meta.appId) + " · " + fmt(pay.updatedAt) + '</p><div class="wb-row"><button class="wb-btn sm danger" id="pdis">Disconnect</button></div><p class="wb-muted">Money goes straight to YOUR Cashfree account. FODO stores your secret key encrypted and never shows it again.</p>';
       $("#pdis").onclick = async () => { if (!confirm("Disconnect Cashfree? Online payment stops working on your store.")) return; const r = await X.api(X.id + "/payments", "DELETE"); if (!r.ok) return fail(r); if ((X.doc().settings.store || {}).online) X.change(() => { X.doc().settings.store.online = false; }, true); settings(); }; return; }
     el.innerHTML = '<ol class="wb-muted"><li>Create a free account at <a href="https://merchant.cashfree.com" target="_blank" rel="noopener">merchant.cashfree.com</a> and complete KYC.</li><li>Developers → API Keys → copy the <b>App ID</b> and <b>Secret Key</b> (Test keys first if you want to try it).</li><li>Paste them here. FODO checks them with Cashfree, then stores the secret encrypted.</li></ol>' +
       '<form id="pcf" class="wb-g3"><input name="appId" placeholder="App ID" required autocomplete="off"><input name="secret" type="password" placeholder="Secret Key" required autocomplete="off"><select name="mode"><option value="sandbox">Test mode</option><option value="production">Live (real money)</option></select><button class="wb-btn pri sm">Connect</button></form>';

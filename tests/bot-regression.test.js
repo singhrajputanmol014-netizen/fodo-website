@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* FODO Bot regression suite — runs every case against the REAL site bot in headless Chromium.
+/* FODO Bot regression suite, runs every case against the REAL site bot in headless Chromium.
  * Usage (from the fodo folder):  node tests/bot-regression.test.js [--verbose]
  * Needs: Node 18+, and Playwright with Chromium (npm i -D playwright && npx playwright install chromium).
  */

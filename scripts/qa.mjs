@@ -1,4 +1,4 @@
-// FODO Website Engineer — QA (v27). Runs in GitHub Actions (.github/workflows/fodo-engineer.yml).
+// FODO Website Engineer: QA (v27). Runs in GitHub Actions (.github/workflows/fodo-engineer.yml).
 //   MODE=pr       a FODO Brain pull request (branch brain/*): syntax of every changed file, local links/assets, generated pages agree
 //                 with scripts/build_pages.py, the fast test suites, then the Cloudflare PREVIEW in a real browser at 8 screen sizes
 //                 (overflow, JS errors, failed requests, broken images, accessibility basics), compared with production so old
@@ -8,10 +8,10 @@ import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 const E = process.env, MODE = E.MODE || "pr", SITE = (E.SITE || "https://www.fodo.co.in").replace(/\/$/, ""), KEY = E.KEY;
 const BPS = [320, 375, 390, 414, 768, 1024, 1280, 1440], SHOT_BPS = [375, 768, 1280, 1440];
-const checks = [], issues = [], shots = []; const add = (name, ok, detail, file) => { checks.push({ name, ok: !!ok, detail: String(detail || "").slice(0, 600), file: file || null }); console.log((ok ? "PASS " : "FAIL ") + name + (detail ? " — " + String(detail).slice(0, 300) : "")); };
+const checks = [], issues = [], shots = []; const add = (name, ok, detail, file) => { checks.push({ name, ok: !!ok, detail: String(detail || "").slice(0, 600), file: file || null }); console.log((ok ? "PASS " : "FAIL ") + name + (detail ? ": " + String(detail).slice(0, 300) : "")); };
 const sh = (c) => execSync(c, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64e6 });
 async function post(body) {
-  if (!KEY) { console.log("FODO_CRON_KEY not set — report not sent."); writeFileSync("qa-report.json", JSON.stringify(body, null, 1)); return; }
+  if (!KEY) { console.log("FODO_CRON_KEY not set, report not sent."); writeFileSync("qa-report.json", JSON.stringify(body, null, 1)); return; }
   const r = await fetch(SITE + "/api/owner-brain/eng/qa", { method: "POST", headers: { "content-type": "application/json", "x-cron-key": KEY }, body: JSON.stringify(body) });
   console.log("report → Brain:", r.status, (await r.text()).slice(0, 300));
 }
@@ -51,7 +51,7 @@ function staticChecks(changed) {
     const norm = (s) => s.replace(/\?v=\d+c?/g, "?v=X").replace(/__V__|\d{10}/g, "X");
     const before = {}; const list = sh("git ls-files '*.html'").split("\n").filter(Boolean); list.forEach((p) => { before[p] = norm(readFileSync(p, "utf8")); });
     try { sh("python3 scripts/build_pages.py"); const diff = list.filter((p) => existsSync(p) && norm(readFileSync(p, "utf8")) !== before[p]);
-      add("Pages match the generator", !diff.length, diff.length ? "scripts/build_pages.py would change " + diff.length + " page(s) (" + diff.slice(0, 6).join(", ") + ") — the edit must be made in the generator too" : "scripts/build_pages.py regenerates the same pages", diff.length ? "scripts/build_pages.py" : null); }
+      add("Pages match the generator", !diff.length, diff.length ? "scripts/build_pages.py would change " + diff.length + " page(s) (" + diff.slice(0, 6).join(", ") + "), the edit must be made in the generator too" : "scripts/build_pages.py regenerates the same pages", diff.length ? "scripts/build_pages.py" : null); }
     catch (e) { add("Pages match the generator", false, "scripts/build_pages.py failed: " + (e.stderr || e.message).slice(-400), "scripts/build_pages.py"); }
     try { sh("git checkout -- . && git clean -fdq -- '*.html'"); } catch (e) {}
   }

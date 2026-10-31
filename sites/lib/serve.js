@@ -1,7 +1,7 @@
-/* FODO Website Builder — serving a PUBLISHED website (v28). Used by the separate "fodo-sites" Cloudflare Pages project
-   (sites/functions — client websites never run inside FODO's own production) and by FODO's fallback address
+/* FODO Website Builder, serving a PUBLISHED website (v28). Used by the separate "fodo-sites" Cloudflare Pages project
+   (sites/functions, client websites never run inside FODO's own production) and by FODO's fallback address
    /api/sites/view/<slug>/ (served with a sandbox CSP, so a client page can never act as fodo.co.in).
-   Only the published snapshot is served — drafts never leave the builder. Password-protected pages ask for the page password. */
+   Only the published snapshot is served, drafts never leave the builder. Password-protected pages ask for the page password. */
 import { renderPage, liveScript, sitemap, esc } from "./render.js";
 import { productPage, cartPage, checkoutPage, orderPage, blogList, blogPost, storeScript, shell } from "./shop.js";
 
@@ -33,7 +33,7 @@ export async function serve(env, request, row, o) {
   if (/^blog\/?$/.test(rest)) return html(blogList(site, posts, live), 200, o.headers);
   if ((m = /^blog\/([a-z0-9-]+)\/?$/.exec(rest))) { const p = await livePost(env, row.id, m[1]); return p ? html(blogPost(site, p, live), 200, o.headers) : html("<h1>Post not found</h1>", 404); }
   const slug = rest.replace(/\/$/, "") || "home", page = (site.pages || []).find((p) => p.slug === slug && !p.hidden);
-  if (!page) return html(renderPage(site, "home", { base, origin, noindex: true }).replace("<body>", "<body><p style=\"padding:12px;text-align:center\">Page not found — here is the home page.</p>"), 404);
+  if (!page) return html(renderPage(site, "home", { base, origin, noindex: true }).replace("<body>", "<body><p style=\"padding:12px;text-align:center\">Page not found, here is the home page.</p>"), 404);
   if (page.password) {   // simple page password (hash compared on the server); not a substitute for real accounts
     const url = new URL(request.url), given = request.method === "POST" ? String((await request.formData().catch(() => new FormData())).get("pw") || "") : "";
     const ok = given && (await sha(given + "|" + row.id)) === page.password;

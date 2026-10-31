@@ -57,7 +57,7 @@ const E = {
   ok(names.indexOf("EatSure") > -1 && names.indexOf("Uber Eats") > -1 && names.indexOf("EatSure") < names.indexOf("Uber Eats"), "same-country competitor ranks above a foreign one");
   ok(names.indexOf("Dineout") > -1 && names.indexOf("Zepto") > -1, "keyword match (Dineout) and AI + Wikidata match (Zepto) included");
   const tiny = await p.$$eval(".cf-item", (li) => { const x = li.filter((l) => /TinyBite Foods/.test(l.textContent))[0]; return x ? { text: x.textContent, link: !!x.querySelector('a[href="https://g.test/zomato-competitors"]') } : null; });
-  ok(tiny && /Named in Google results/.test(tiny.text) && !/AI suggestion — verify/.test(tiny.text) && tiny.link, "a company named in Google results but not on Wikidata shows where it was named");
+  ok(tiny && /Named in Google results/.test(tiny.text) && !/AI suggestion, verify/.test(tiny.text) && tiny.link, "a company named in Google results but not on Wikidata shows where it was named");
   const sw = await p.$$eval(".cf-item", (li) => (li.filter((l) => /^1/.test(l.querySelector(".cf-n").textContent))[0] || {}).textContent || "");
   ok(/Google results \+ AI/.test(sw) && /Same industry/.test(sw), "each card says how it was found");
   ok(aiBodies.length === 1 && aiBodies[0].web === true && aiBodies[0].brand === "Zomato", "AI asked once, with Google grounding requested");

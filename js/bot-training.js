@@ -1,4 +1,4 @@
-/* FODO BOT — CONVERSATIONAL TRAINING + REASONING LAYER
+/* FODO BOT: CONVERSATIONAL TRAINING + REASONING LAYER
  * Version: 2026.10
  * Purpose: large deterministic training corpus + context engine for a static site bot.
  * This is not a neural model; it is a client-side intent, entity, dialogue and response layer.
@@ -20,11 +20,11 @@
   /* ---------- LONG-FORM TRAINING CORPUS ---------- */
   const INTENTS={
     greeting:{patterns:['hi','hello','hey','yo','namaste','good morning','good evening','good afternoon','sup','hii','hiii','helo','heyy','what’s up','whats up','ka haal','kaise ho','kya haal'],responses:[
-      'Hey! 👋 I’m FODO Bot. Tell me what you’re trying to grow — leads, sales, visibility, bookings, or your brand — and I’ll help you think it through.',
+      'Hey! 👋 I’m FODO Bot. Tell me what you’re trying to grow, leads, sales, visibility, bookings, or your brand, and I’ll help you think it through.',
       'Namaste 👋 What are we fixing today: ads, SEO, Instagram, website, leads, sales, or the whole growth system?'
     ]},
     capabilities:{patterns:['what can you do','what do you do','how can you help','help me','what can i ask','what are you capable','tum kya kar sakte','kya help karoge'],responses:[
-      'Quite a lot. 😄 I can diagnose marketing problems, explain channels, build a 30/60/90-day plan, review a funnel, suggest content, discuss budgets, compare Google vs Meta, explain SEO/AEO/GEO, and point you to the right FODO service. Give me the messy version — I’ll structure it.',
+      'Quite a lot. 😄 I can diagnose marketing problems, explain channels, build a 30/60/90-day plan, review a funnel, suggest content, discuss budgets, compare Google vs Meta, explain SEO/AEO/GEO, and point you to the right FODO service. Give me the messy version: I’ll structure it.',
       'Think of me as the front desk + junior strategist of FODO. I can answer site questions and also reason through a marketing problem with you. If I need a human decision, I’ll say so.'
     ]},
     pricing:{patterns:['price','pricing','cost','how much','kitna','kitne','rate','fees','fee','charges','charge','budget','paisa','paise','expensive','cheap','affordable','retainer'],responses:[
@@ -32,7 +32,7 @@
       'If someone gives you a serious marketing quote without asking what you sell, your average order value, geography, funnel and current numbers… be suspicious. 😄 Tell me those four things and I can explain what a sensible budget structure looks like.'
     ]},
     audit:{patterns:['schedule a call','schedule a meeting','book a meeting','book meeting','set up a call','talk to someone','speak to someone','call me','arrange a call','audit','free audit','growth audit','review my business','analyse my business','analyze my business','check my business','where am i losing','what is wrong with my marketing'],responses:[
-      'Start with a diagnosis, not random posting. FODO’s Growth Audit looks at positioning, acquisition, website/CRO, content/social, tracking and follow-up — then prioritises what to fix first. '+link(R.audit||'/contact/','Start the free growth audit →')
+      'Start with a diagnosis, not random posting. FODO’s Growth Audit looks at positioning, acquisition, website/CRO, content/social, tracking and follow-up, then prioritises what to fix first. '+link(R.audit||'/contact/','Start the free growth audit →')
     ]},
     services:{patterns:['services','service','what do you offer','what do you provide','what does fodo do','fodo services','agency services','marketing services','kaam kya karte'],responses:[
       'FODO works across paid media, SEO, local SEO, social/content, creator marketing, branding, websites/CRO, analytics and automation. The important bit: we don’t recommend every service to every business. The goal determines the stack.'
@@ -62,7 +62,7 @@
       'Use four buckets: <b>teach</b> something, <b>prove</b> something, <b>show</b> the process/personality, and <b>sell</b> a clear offer. Then turn each winning topic into multiple formats. If you tell me your niche, I can create a 30-day content system instead of 30 random posts.'
     ]},
     influencer:{patterns:['influencer','creator marketing','ugc','brand collaboration','creator collaboration','influencer marketing','micro influencer','nano influencer'],responses:[
-      'Pick creators for audience relevance, trust, geography, content quality and conversion potential — not follower count alone. A group of relevant micro-creators can be more useful than one celebrity. Track unique links/codes, enquiries, sales and content reuse rights.'
+      'Pick creators for audience relevance, trust, geography, content quality and conversion potential, not follower count alone. A group of relevant micro-creators can be more useful than one celebrity. Track unique links/codes, enquiries, sales and content reuse rights.'
     ]},
     website:{patterns:['website not converting','website conversion','website audit','landing page','homepage','website design','new website','website traffic but no sales','site not converting'],responses:[
       'A beautiful website can still be a terrible salesperson. Check five things: <b>clarity in 5 seconds, proof, offer, friction, and CTA</b>. Then check speed/mobile/technical SEO and analytics. If traffic arrives but nobody acts, fix conversion before buying more traffic.'
@@ -71,7 +71,7 @@
       'For local businesses, I’d usually prioritise Google Business Profile, reviews, location/service pages, local intent content, strong offer pages, accurate tracking and fast WhatsApp/phone follow-up. Then add paid acquisition where the economics support it.'
     ]},
     ecommerce:{patterns:['ecommerce','e commerce','shopify','online store','d2c','d2c brand','product sales','sell products online'],responses:[
-      'E-commerce growth is a loop: product/offer → creative → traffic → product page → checkout → retention. Track contribution margin, CAC, conversion rate, AOV and repeat purchase — not ROAS alone.'
+      'E-commerce growth is a loop: product/offer → creative → traffic → product page → checkout → retention. Track contribution margin, CAC, conversion rate, AOV and repeat purchase, not ROAS alone.'
     ]},
     budget_low:{patterns:['low budget','small budget','zero budget','no budget','budget nahi','paise nahi','cheap marketing','free marketing','5000 budget','10000 budget','20000 budget'],responses:[
       'Low budget means prioritisation, not magic. Start with offer clarity, Google Business Profile, reviews, conversion fixes, organic distribution, referrals and one focused paid test. Don’t spread ₹10k across six channels and call it strategy. 😄'
@@ -83,7 +83,7 @@
       'Paid campaigns can produce signals quickly, but reliable optimisation needs enough data. SEO/content usually compounds over months. A practical plan is: <b>0–30 days</b> fix foundations and test, <b>31–60</b> optimise winners, <b>61–90</b> scale and build compounding assets. Your market and baseline can change that.'
     ]},
     guarantee:{patterns:['guarantee','guaranteed results','guarantee leads','100 leads','promise results','sure results'],responses:[
-      'No honest marketer can guarantee a specific number of leads or sales before seeing the business, offer, market and economics. FODO should promise a disciplined process, clear metrics and transparent reporting — not fake certainty.'
+      'No honest marketer can guarantee a specific number of leads or sales before seeing the business, offer, market and economics. FODO should promise a disciplined process, clear metrics and transparent reporting, not fake certainty.'
     ]},
     tracking:{patterns:['tracking','analytics','ga4','conversion tracking','pixel','meta pixel','events','attribution','data tracking'],responses:[
       'If tracking is wrong, optimisation becomes guesswork. At minimum define the primary conversion, verify event firing, preserve UTM/source data, reconcile platform leads with actual CRM/sales and separate lead volume from qualified revenue.'
@@ -92,7 +92,7 @@
       'Automate repetition, not judgement. Good candidates: lead capture, routing, reminders, qualification, appointment follow-up, reporting and reactivation. Keep human review where trust, nuance or high-value decisions matter.'
     ]},
     ai_content:{patterns:['ai content','chatgpt content','ai generated content','ai writing','use ai for marketing','ai marketing'],responses:[
-      'AI can speed research, ideation, repurposing and first drafts. It should not become a factory for generic pages. Add human expertise, original evidence, customer language, editing and fact-checking — especially for important claims.'
+      'AI can speed research, ideation, repurposing and first drafts. It should not become a factory for generic pages. Add human expertise, original evidence, customer language, editing and fact-checking, especially for important claims.'
     ]},
     competitor:{patterns:['competitor','competitors','competition','competitor analysis','spy on competitors','what are competitors doing'],responses:[
       'Competitor research should reveal gaps, not encourage copying. Compare offer, positioning, proof, channels, creative themes, landing pages, reviews, pricing signals and customer experience. Then find the angle competitors are under-serving.'
@@ -101,7 +101,7 @@
       'Brand is the memory and expectation attached to your business. Start with positioning: who you serve, what problem you solve, why you’re credible and why someone should choose you. Visual identity comes after that foundation.'
     ]},
     reputation:{patterns:['reviews','bad reviews','reputation','google reviews','negative reviews','online reputation'],responses:[
-      'Don’t bury negative reviews — fix the underlying experience, respond calmly, document the resolution and consistently earn more genuine reviews. Never buy fake reviews. Reputation is an operating system, not just a marketing asset.'
+      'Don’t bury negative reviews, fix the underlying experience, respond calmly, document the resolution and consistently earn more genuine reviews. Never buy fake reviews. Reputation is an operating system, not just a marketing asset.'
     ]},
     founder:{patterns:['who is anmol','who founded fodo','founder','who runs fodo','who is behind fodo','anmol'],responses:[
       'FODO was built by Anmol Singh. The positioning is intentionally practical: combine creative thinking, marketing execution and business development instead of treating channels as separate silos.'
@@ -207,7 +207,7 @@
     }
     if(/^(no|nope|nah|nahi|not now|leave it|never mind)$/.test(n))return pick(['No worries 😄','All good.','Fair enough. 😄'])+' What would you like to work on?';
     if(/^(what about|and|then|next|so|okay then|acha|accha)\b/.test(n) && state.lastIntent){
-      return `Yep — continuing from <b>${esc(state.lastIntent.replace('_',' '))}</b>. Tell me the next detail and I’ll keep the context instead of starting from zero.`;
+      return `Yep, continuing from <b>${esc(state.lastIntent.replace('_',' '))}</b>. Tell me the next detail and I’ll keep the context instead of starting from zero.`;
     }
     return null;
   }
@@ -246,7 +246,7 @@
     const result=old(question);
     // If the original engine is clearly unsure, provide a useful next-step rather than dead-ending.
     if(typeof result==='string' && /don.?t know|not sure|m[aá]f|cannot|can't|pata nahi|couldn.?t find/i.test(result)){
-      return `I’m not fully sure about that one — and I’d rather say that than invent an answer. 😄 If this is about marketing, give me <b>what you sell + where you sell + your goal + rough budget</b> and I’ll reason from there. ${wa('Hi Anmol, I have a question the FODO Bot could not answer: '+q)}`;
+      return `I’m not fully sure about that one, and I’d rather say that than invent an answer. 😄 If this is about marketing, give me <b>what you sell + where you sell + your goal + rough budget</b> and I’ll reason from there. ${wa('Hi Anmol, I have a question the FODO Bot could not answer: '+q)}`;
     }
     return result;
   };

@@ -1,8 +1,8 @@
-/* FODO OWNER BRAIN — model router.
+/* FODO OWNER BRAIN, model router.
    kind "fast"  (classification, extraction, short JSON)  → small/cheap models first
    kind "deep"  (answers, analysis, strategy)             → strongest models first
    Order: the owner's preferred provider (Brain settings) → Workers AI → Groq → Gemini → throws (the orchestrator then answers in
-   "degraded mode" straight from the tool data — it never pretends an AI answer happened).
+   "degraded mode" straight from the tool data, it never pretends an AI answer happened).
    Every call is logged in api_usage (provider, model, purpose, latency, tokens) → Admin → Costs and the Brain's own analytics. */
 import { groqChat, GEMINI_MODELS } from "../aivis.js";
 import { logUsage } from "../usage.js";
@@ -37,11 +37,13 @@ async function gemini(env, messages, max, temp, code) {
   }
   throw last || new Error("gemini: no model");
 }
+/* v33: AI replies read like a person wrote them: no long em-dashes ("—"), which make text look machine-written */
+export function dedash(t) { return String(t == null ? "" : t).replace(/(^|\n)[ \t]*—[ \t]*/g, "$1").replace(/(\d)[ \t]*—[ \t]*(\d)/g, "$1–$2").replace(/ — (?=[a-z0-9₹(])/g, ", ").replace(/[ \t]*—[ \t]*/g, ": "); }
 export function availableProviders(env) { return { "workers-ai": !!env.AI, groq: !!env.GROQ_API_KEY, gemini: !!env.GEMINI_API_KEY }; }
 
-/* → { text, provider, model, ms, fallback, tried } — throws { detail } when every provider failed */
+/* → { text, provider, model, ms, fallback, tried }, throws { detail } when every provider failed */
 export async function brainAI(env, o) {
-  // kind "code" (v27 Website Engineer): the strongest code model first — Gemini (free key), then Groq, then Workers AI; long outputs
+  // kind "code" (v27 Website Engineer): the strongest code model first: Gemini (free key), then Groq, then Workers AI; long outputs
   const code = o.kind === "code", kind = o.kind === "fast" ? "fast" : "deep", max = o.max || (code ? 6000 : kind === "fast" ? 500 : 1100), temp = o.json ? 0.1 : o.temp != null ? o.temp : 0.35;
   const avail = availableProviders(env), base = code ? ["gemini", "groq", "workers-ai"] : ["workers-ai", "groq", "gemini"], pref = !code && o.provider && o.provider !== "auto" ? o.provider : null;
   const order = (pref ? [pref] : []).concat(base.filter((p) => p !== pref)).filter((p) => avail[p]);
@@ -52,7 +54,7 @@ export async function brainAI(env, o) {
       const r = p === "workers-ai" ? await workersAi(env, o.messages, kind, max, temp) : p === "groq" ? await groqChat(env, o.messages, max, code ? 90000 : kind === "fast" ? 20000 : 40000) : await gemini(env, o.messages, max, temp, code);
       const ms = Date.now() - t0;
       await logUsage(env, { provider: p === "groq" ? "groq" : p, endpoint: "brain", tool: ("brain:" + (o.purpose || kind) + " · " + String(r.model).split("/").pop()).slice(0, 160), status: 200, ms, units: toks(JSON.stringify(o.messages)) + toks(r.text) });
-      return { text: r.text, provider: p, model: String(r.model).replace(/^groq\//, ""), ms, fallback: tried.length > 0, tried };
+      return { text: dedash(r.text), provider: p, model: String(r.model).replace(/^groq\//, ""), ms, fallback: tried.length > 0, tried };
     } catch (e) {
       tried.push(p + ": " + String(e && (e.detail || e.message) || e).slice(0, 90));
       await logUsage(env, { provider: p, endpoint: "brain", tool: ("error · brain:" + (o.purpose || kind) + " · " + tried[tried.length - 1]).slice(0, 160), status: e.status || 0, ok: false, ms: Date.now() - t0 });

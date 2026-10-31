@@ -1,7 +1,7 @@
-/* FODO OWNER BRAIN — long-term memory, tasks and the document knowledge store.
+/* FODO OWNER BRAIN, long-term memory, tasks and the document knowledge store.
    Retrieval (v1) = keyword + metadata + recency + importance + entity matching, behind a small "vectorStore" interface so
    Cloudflare Vectorize / embeddings can be plugged in later without touching the orchestrator.
-   Temporal knowledge: a new decision/fact about the same thing SUPERSEDES the old one (status, valid_until, superseded_by) — the
+   Temporal knowledge: a new decision/fact about the same thing SUPERSEDES the old one (status, valid_until, superseded_by), the
    old one is kept for history ("what did we decide before?"), never silently deleted. Forget = real deletion (owner-confirmed). */
 import { brainDb, nowIso, rid, clip, clean, sha } from "./store.js";
 import { embed, embedBatch, unpack, cosine } from "./embed.js";
@@ -165,7 +165,7 @@ export async function storeDoc(env, o) {
   }
   return { id, title, version: prev ? prev.version + 1 : 1, chunks: parts.length, size: text.length };
 }
-/* vectorStore (v1 = keyword) — same interface a Vectorize-backed store will have */
+/* vectorStore (v1 = keyword), same interface a Vectorize-backed store will have */
 export const vectorStore = {
   async search(env, q, o) {
     o = o || {}; const d = await brainDb(env), w = words(q).slice(0, 12); if (!String(q || "").trim() && !o.docId) return [];

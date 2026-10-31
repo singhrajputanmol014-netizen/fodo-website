@@ -1,4 +1,4 @@
-/* FODO Website Builder — design system (v32). One source of truth for colours, fonts, style presets and motion levels.
+/* FODO Website Builder, design system (v32). One source of truth for colours, fonts, style presets and motion levels.
    A website's theme stores TOKENS (not random colours); every section reads them as CSS variables, so changing the primary
    colour or the heading font updates the whole website. Shared by the editor (browser) and the server (validation, AI). */
 
@@ -82,7 +82,7 @@ export function applyPalette(theme, paletteId, mode) {
   const tok = m === "dark" ? p.dark : p.light; ["primary", "secondary", "accent", "bg", "surface", "text"].forEach((k) => { t[k] = tok[k]; });
   return t;
 }
-/* apply a whole style preset (fonts, radius, buttons, shadow, spacing, motion, colours) — "switch Modern → Luxury without rebuilding" */
+/* apply a whole style preset (fonts, radius, buttons, shadow, spacing, motion, colours): "switch Modern → Luxury without rebuilding" */
 export function applyStyle(theme, styleId, keepColors) {
   const s = STYLES[styleId]; if (!s) return theme; const pr = PAIRINGS.find((x) => x.id === s.pairing) || PAIRINGS[0];
   let t = Object.assign({}, theme, { style: styleId, font: pr.body, headingFont: pr.heading, radius: s.radius, button: s.button, shadow: s.shadow, density: s.density, motion: s.motion });

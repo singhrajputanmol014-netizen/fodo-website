@@ -1,4 +1,4 @@
-/* FODO Growth Lab v17 — "My Growth Lab" sections on /account/: Growth Score history, action progress, Monitoring
+/* FODO Growth Lab v17: "My Growth Lab" sections on /account/: Growth Score history, action progress, Monitoring
    (Competitor Change Detector + your own site), Google Search Console connection and the Monthly Growth Report.
    Talks to /api/lab/* and /api/account/*; every outside string goes through esc(). Called by lab-pages.js after it draws the account. */
 (function () {
@@ -38,7 +38,7 @@
       b.innerHTML = L.length ? '<div class="xr-scroll"><table class="xr-t"><thead><tr><th>Tool</th><th>Website</th><th>Date</th><th>Status</th><th>Paid by</th><th></th></tr></thead><tbody>' + L.map(function (r) {
         return "<tr><td><b>" + esc(r.name) + "</b></td><td>" + esc(r.domain) + "</td><td>" + esc(new Date(r.created_at).toLocaleDateString("en-IN")) + "</td><td>" + esc(st[r.status] || r.status) + (r.reused ? ' <small class="muted">· reused X-Ray</small>' : "") + "</td><td>" + esc(src[r.source] || r.source) + "</td><td>" +
           (r.job_id && r.status === "done" ? '<a class="btn sm ghost" href="' + ROOT + "business-x-ray/?r=" + encodeURIComponent(r.job_id) + "&tool=" + encodeURIComponent(r.tool) + '">Open</a>' : r.status === "scan" && !r.job_id ? '<a class="btn sm ghost" href="' + ROOT + "business-x-ray/?tool=" + encodeURIComponent(r.tool) + "&run=" + encodeURIComponent(r.id) + "&u=" + encodeURIComponent(r.domain) + '">Run now</a>' : "") + "</td></tr>"; }).join("") + "</tbody></table></div>"
-        : '<p class="muted">No Pro tool runs yet. <a href="' + ROOT + 'growth-lab/#gl-pro">Browse the Pro tools</a> — each one reuses your recent X-Ray of the same website.</p>';
+        : '<p class="muted">No Pro tool runs yet. <a href="' + ROOT + 'growth-lab/#gl-pro">Browse the Pro tools</a>, each one reuses your recent X-Ray of the same website.</p>';
     }, function () { var b = $("tools-b"); if (b) b.innerHTML = '<p class="muted">Could not load your tool reports.</p>'; });
   }
 
@@ -75,7 +75,7 @@
   /* ---------- My businesses (prompt §49): one card per website ---------- */
   function bizCards() {
     var b = $("businesses-b"), by = {}, order = []; HIST.forEach(function (r) { if (!by[r.domain]) { by[r.domain] = r; order.push(r.domain); } });
-    if (!order.length) { b.innerHTML = '<p class="muted">Run your first Business X-Ray — each website you check gets its own dashboard here.</p><a class="btn" href="' + ROOT + 'business-x-ray/">Run a Business X-Ray</a>'; return; }
+    if (!order.length) { b.innerHTML = '<p class="muted">Run your first Business X-Ray, each website you check gets its own dashboard here.</p><a class="btn" href="' + ROOT + 'business-x-ray/">Run a Business X-Ray</a>'; return; }
     Promise.all([Promise.all(order.slice(0, 6).map(function (d) { return getRep(by[d].job_id); })), lab("monitor"), lab("gsc/status")]).then(function (x) {
       var reps = x[0], mon = x[1], gs = x[2];
       b.innerHTML = '<div class="grid g2 ac-biz">' + reps.map(function (R, i) { if (!R) return ""; var d = order[i], ev = (mon.events || []).filter(function (e) { return e.domain === d || (R.competitors || []).some(function (c) { return c.domain === e.domain; }); }).filter(function (e) { return e.kind !== "baseline"; }).slice(0, 3);
@@ -94,9 +94,9 @@
     var age = (Date.now() - Date.parse(R.createdAt)) / 864e5, comp = R.completeness ? R.completeness.overall : 100;
     if (!watched && (R.competitors || []).length) return ["watch " + esc(R.competitors[0].name) + " and your other competitors for price, page and content changes.", "#monitoring", "Start monitoring"];
     if (gs && gs.available && !gs.connected) return ["connect Google Search Console to add your real clicks and impressions to the next X-Ray.", "#search-console", "Connect Search Console"];
-    if (age > 28) return ["it has been " + Math.round(age) + " days — re-run the X-Ray to see what improved.", ROOT + "business-x-ray/?url=" + encodeURIComponent(R.business.domain), "Re-run X-Ray"];
+    if (age > 28) return ["it has been " + Math.round(age) + " days, re-run the X-Ray to see what improved.", ROOT + "business-x-ray/?url=" + encodeURIComponent(R.business.domain), "Re-run X-Ray"];
     if ((R.leaks || []).length >= 3) return ["fix the " + R.leaks.length + " revenue leaks on your pages first.", ROOT + "business-x-ray/?r=" + encodeURIComponent(run.job_id) + "&focus=leaks", "See revenue leaks"];
-    if (comp < 70) return ["your last X-Ray had only " + comp + "% of the planned data — run it again for a fuller picture.", ROOT + "business-x-ray/?url=" + encodeURIComponent(R.business.domain), "Run again"];
+    if (comp < 70) return ["your last X-Ray had only " + comp + "% of the planned data, run it again for a fuller picture.", ROOT + "business-x-ray/?url=" + encodeURIComponent(R.business.domain), "Run again"];
     return ["work through the 30-day plan and mark actions done.", ROOT + "business-x-ray/?r=" + encodeURIComponent(run.job_id) + "&focus=plan", "Open the plan"];
   }
   function spark(v) { if (v.length < 2) return ""; var w = 90, h = 24, mx = 100, pts = v.map(function (x, i) { return (i * w / (v.length - 1)).toFixed(1) + "," + (h - x * h / mx).toFixed(1); }).join(" "); return '<svg class="ac-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" aria-hidden="true"><polyline points="' + pts + '" fill="none" stroke="currentColor" stroke-width="2"/></svg>'; }
@@ -105,7 +105,7 @@
   function actions() {
     lab("actions/summary").then(function (j) {
       var it = j.items || [];
-      $("actions-b").innerHTML = it.length ? '<ul class="ac-prog">' + it.map(function (x) { var p = x.n ? Math.round(100 * x.done / x.n) : 0; return "<li><b>" + esc(x.domain) + '</b><i style="--v:' + p + '"></i><span>' + x.done + " done · " + x.doing + " in progress · " + (x.n - x.done - x.doing) + ' to do</span><a href="' + ROOT + "business-x-ray/?url=" + encodeURIComponent(x.domain) + '">Re-scan →</a></li>'; }).join("") + "</ul>" : '<p class="muted">Mark actions as To do / In progress / Done inside any X-Ray report — your progress shows up here.</p>';
+      $("actions-b").innerHTML = it.length ? '<ul class="ac-prog">' + it.map(function (x) { var p = x.n ? Math.round(100 * x.done / x.n) : 0; return "<li><b>" + esc(x.domain) + '</b><i style="--v:' + p + '"></i><span>' + x.done + " done · " + x.doing + " in progress · " + (x.n - x.done - x.doing) + ' to do</span><a href="' + ROOT + "business-x-ray/?url=" + encodeURIComponent(x.domain) + '">Re-scan →</a></li>'; }).join("") + "</ul>" : '<p class="muted">Mark actions as To do / In progress / Done inside any X-Ray report, your progress shows up here.</p>';
     });
   }
 
@@ -115,8 +115,8 @@
     lab("monitor").then(function (j) {
       var b = $("monitoring-b"); if (!b) return;
       if (!j.ok) { b.innerHTML = '<p class="muted">' + esc(j.reason || "Monitoring is unavailable right now.") + "</p>"; return; }
-      var full = j.used >= j.limit, keep = $("mon-url") ? $("mon-url").value : "", keepK = $("mon-kind") ? $("mon-kind").value : "", st = $("mon-st"), keepS = st ? [st.textContent, st.className] : null;   // a re-render never loses what was typed — or the last status message
-      b.innerHTML = '<p class="muted">FODO checks each website ' + (j.every === "daily" ? "every day" : "every week") + " and tells you only when something meaningful changes — prices, headline, new pages, content, downtime or a noindex tag. " + j.used + " of " + j.limit + " website" + (j.limit === 1 ? "" : "s") + " used.</p>" +
+      var full = j.used >= j.limit, keep = $("mon-url") ? $("mon-url").value : "", keepK = $("mon-kind") ? $("mon-kind").value : "", st = $("mon-st"), keepS = st ? [st.textContent, st.className] : null;   // a re-render never loses what was typed, or the last status message
+      b.innerHTML = '<p class="muted">FODO checks each website ' + (j.every === "daily" ? "every day" : "every week") + " and tells you only when something meaningful changes, prices, headline, new pages, content, downtime or a noindex tag. " + j.used + " of " + j.limit + " website" + (j.limit === 1 ? "" : "s") + " used.</p>" +
         '<form class="acct-f ac-monf" id="mon-f"><input id="mon-url" placeholder="competitor.com or your-site.com" aria-label="Website to monitor" maxlength="200"' + (full ? " disabled" : "") + '><select id="mon-kind" aria-label="Whose website"' + (full ? " disabled" : "") + '><option value="competitor">Competitor</option><option value="own">My own site</option></select><button class="btn sm" type="submit"' + (full ? " disabled" : "") + ">Start monitoring</button>" + (full ? ' <a class="btn sm ghost" href="' + ROOT + 'plans/">Monitor more</a>' : "") + '</form><p class="cf-status" id="mon-st" role="status" aria-live="polite"></p>' +
         (HIST && HIST.length && !full ? '<p><button type="button" class="xr-why" id="mon-fromx">Add the competitors from my last X-Ray</button></p>' : "") +
         (j.targets.length ? '<div class="xr-scroll"><table class="xr-t"><thead><tr><th>Website</th><th>Type</th><th>Last check</th><th>Status</th><th></th></tr></thead><tbody>' + j.targets.map(function (t) { return "<tr><td><b>" + esc(t.label || t.domain) + '</b><br><small class="muted">' + esc(t.domain) + "</small></td><td>" + (t.kind === "own" ? "Your site" : "Competitor") + "</td><td>" + esc(ago(t.last_check)) + '</td><td><span class="xr-st ' + (t.last_status === "down" ? "fail" : "pass") + '">' + (t.last_status === "down" ? "Down" : t.last_check ? "OK" : "Waiting") + '</span></td><td><button type="button" class="xr-why" data-monchk="' + esc(t.id) + '">Check now</button> <button type="button" class="xr-why" data-monrm="' + esc(t.id) + '">Remove</button></td></tr>'; }).join("") + "</tbody></table></div>" : "") +
@@ -126,7 +126,7 @@
       $("mon-f").onsubmit = function (e) { e.preventDefault(); var v = $("mon-url").value.trim(); if (!v) return; say("mon-st", "Reading " + v + "…", "busy"); lab("monitor", { url: v, kind: $("mon-kind").value }).then(function (r) { say("mon-st", r.ok ? "Monitoring started for " + r.domain + "." : r.reason, r.ok ? "ok" : "warn"); if (r.ok) monitoring(); }); };
       b.onclick = function (e) {
         var c = e.target.closest("[data-monchk]"), rm = e.target.closest("[data-monrm]");
-        if (c) { say("mon-st", "Checking…", "busy"); lab("monitor/check", { id: c.dataset.monchk }).then(function (r) { say("mon-st", r.ok ? (r.result.events.length ? r.result.events.length + " change(s) found." : "Checked — nothing meaningful changed.") : r.reason, r.ok ? "ok" : "warn"); if (r.ok) monitoring(); }); }
+        if (c) { say("mon-st", "Checking…", "busy"); lab("monitor/check", { id: c.dataset.monchk }).then(function (r) { say("mon-st", r.ok ? (r.result.events.length ? r.result.events.length + " change(s) found." : "Checked, nothing meaningful changed.") : r.reason, r.ok ? "ok" : "warn"); if (r.ok) monitoring(); }); }
         if (rm) lab("monitor/remove", { id: rm.dataset.monrm }).then(function () { monitoring(); });
         if (e.target.id === "mon-fromx") fromXray();
       };
@@ -141,14 +141,14 @@
   }
 
   /* ---------- Google Search Console ---------- */
-  var GMSG = { connected: ["Search Console connected. Your next X-Ray of a verified site shows your real clicks and impressions.", "ok"], denied: ["You cancelled the Google permission — nothing was connected.", "warn"], expired: ["That connection link expired. Please try again.", "warn"], norefresh: ["Google did not give FODO lasting access. Remove FODO under myaccount.google.com → Security → Third-party access, then connect again.", "warn"], scope: ["Please tick the Search Console permission on Google's screen.", "warn"], error: ["Google did not answer. Please try again.", "warn"], off: ["Search Console connection is not switched on yet.", "warn"], login: ["Please log in first.", "warn"] };
+  var GMSG = { connected: ["Search Console connected. Your next X-Ray of a verified site shows your real clicks and impressions.", "ok"], denied: ["You cancelled the Google permission, nothing was connected.", "warn"], expired: ["That connection link expired. Please try again.", "warn"], norefresh: ["Google did not give FODO lasting access. Remove FODO under myaccount.google.com → Security → Third-party access, then connect again.", "warn"], scope: ["Please tick the Search Console permission on Google's screen.", "warn"], error: ["Google did not answer. Please try again.", "warn"], off: ["Search Console connection is not switched on yet.", "warn"], login: ["Please log in first.", "warn"] };
   function gsc() {
     lab("gsc/status").then(function (j) {
       var b = $("search-console-b"), m = GMSG[new URLSearchParams(location.search).get("gsc")]; if (!b) return;
       if (!j.ok || !j.available) { b.innerHTML = '<p class="muted">Connecting Google Search Console is coming soon.</p>'; return; }
       b.innerHTML = (m ? '<p class="cf-status ' + m[1] + '">' + esc(m[0]) + "</p>" : "") + (j.connected
         ? '<p><span class="xr-st pass">Connected</span> since ' + esc(date(j.connectedAt)) + (j.lastUsed ? " · last used " + esc(ago(j.lastUsed)) : "") + '</p><p class="muted">Properties FODO can read (read-only):</p><ul>' + (j.sites || []).map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + '</ul><button type="button" class="btn sm ghost" id="gsc-off">Disconnect</button> <small class="muted">FODO deletes its access and asks Google to revoke it.</small>'
-        : '<p>Add your <b>real</b> Google clicks, impressions, click-through rate and positions to every X-Ray of your own website — and see the searches where a better title would win more clicks.</p><ul class="muted"><li>Read-only access (webmasters.readonly). FODO cannot change anything in your Search Console.</li><li>Only you see this data. It is never shown in shared report links.</li><li>Disconnect any time.</li></ul><a class="btn" href="' + ROOT + 'api/lab/gsc/start">Connect Google Search Console</a>');
+        : '<p>Add your <b>real</b> Google clicks, impressions, click-through rate and positions to every X-Ray of your own website, and see the searches where a better title would win more clicks.</p><ul class="muted"><li>Read-only access (webmasters.readonly). FODO cannot change anything in your Search Console.</li><li>Only you see this data. It is never shown in shared report links.</li><li>Disconnect any time.</li></ul><a class="btn" href="' + ROOT + 'api/lab/gsc/start">Connect Google Search Console</a>');
       if ($("gsc-off")) $("gsc-off").onclick = function () { lab("gsc/disconnect", {}).then(function () { try { window.history.replaceState(null, "", location.pathname + "#search-console"); } catch (x) {} gsc(); }); };
     });
   }
@@ -180,8 +180,8 @@
         '<ul class="xr-cmp">' + areas.map(function (a) { return "<li><span>" + esc(a.name) + "</span> " + (prev ? (a.before == null ? "—" : a.before) + " → " : "") + (a.now == null ? "—" : a.now) + d(a.before, a.now) + "</li>"; }).join("") + "</ul>" +
         (prev ? '<div class="grid g2"><div><h4>What improved (' + improved.length + ")</h4>" + (improved.length ? "<ul>" + improved.slice(0, 8).map(function (o) { return "<li>" + esc(o.title) + "</li>"; }).join("") + "</ul>" : '<p class="muted">None of last month\'s issues are gone yet.</p>') + "</div><div><h4>What declined / is new (" + declined.length + ")</h4>" + (declined.length ? "<ul>" + declined.slice(0, 8).map(function (o) { return "<li>" + esc(o.title) + "</li>"; }).join("") + "</ul>" : '<p class="muted">No new issues.</p>') + "</div></div>" : '<p class="muted">Run another X-Ray next month to see what changed. This page is your baseline.</p>') +
         "<h4>Competitor & site changes this month (" + ev.length + ")</h4>" + (ev.length ? "<ul>" + ev.slice(0, 10).map(function (e) { return "<li><b>" + esc(e.domain) + ":</b> " + esc(e.what) + "</li>"; }).join("") + "</ul>" : '<p class="muted">' + (mon.ok && mon.targets && mon.targets.length ? "No meaningful changes found." : "Add your competitors under Monitoring to see their changes here.") + "</p>") +
-        "<h4>Your actions</h4><p>" + R.done + " done · " + R.doing + " in progress</p><h4>What to do next</h4><ol>" + next.map(function (o) { return "<li><b>" + esc(o.title) + "</b> — " + esc(o.recommendation) + "</li>"; }).join("") + "</ol>" +
-        '<div class="btn-row"><button type="button" class="btn sm" id="mr-pdf">Download PDF</button><a class="btn sm ghost" href="' + ROOT + "business-x-ray/?url=" + encodeURIComponent(dom) + '">Run this month\'s X-Ray</a></div><p class="muted">Built only from your saved X-Rays, monitoring and action tracker — no estimates added.</p></div>';
+        "<h4>Your actions</h4><p>" + R.done + " done · " + R.doing + " in progress</p><h4>What to do next</h4><ol>" + next.map(function (o) { return "<li><b>" + esc(o.title) + "</b>: " + esc(o.recommendation) + "</li>"; }).join("") + "</ol>" +
+        '<div class="btn-row"><button type="button" class="btn sm" id="mr-pdf">Download PDF</button><a class="btn sm ghost" href="' + ROOT + "business-x-ray/?url=" + encodeURIComponent(dom) + '">Run this month\'s X-Ray</a></div><p class="muted">Built only from your saved X-Rays, monitoring and action tracker, no estimates added.</p></div>';
       $("mr-pdf").onclick = function () { if (!X) return; var B = [{ h1: "FODO Monthly Growth Report: " + dom }, { p: prev ? date(prev.createdAt) + " -> " + date(cur.createdAt) : "Baseline " + date(cur.createdAt), muted: true }, { pill: "Digital Growth Health " + (prev ? (prev.scores.overall == null ? "-" : prev.scores.overall) + " -> " : "") + (cur.scores.overall == null ? "-" : cur.scores.overall) }, { h2: "Areas" }, { li: areas.map(function (a) { return a.name + ": " + (prev ? (a.before == null ? "-" : a.before) + " -> " : "") + (a.now == null ? "-" : a.now); }) }];
         if (prev) { B.push({ h2: "What improved" }); B.push({ li: improved.length ? improved.map(function (o) { return o.title; }) : ["None yet."] }); B.push({ h2: "What declined / is new" }); B.push({ li: declined.length ? declined.map(function (o) { return o.title; }) : ["No new issues."] }); }
         B.push({ h2: "Competitor & site changes" }); B.push({ li: ev.length ? ev.slice(0, 15).map(function (e) { return e.domain + ": " + e.what; }) : ["No meaningful changes found."] }); B.push({ h2: "What to do next" }); B.push({ li: next.map(function (o) { return o.title + " - " + o.recommendation; }) });

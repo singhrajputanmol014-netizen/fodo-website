@@ -1,6 +1,6 @@
-/* FODO OWNER BRAIN — proactive layer: daily briefing, alerts (anomalies, failures, costs, support) — all from real data.
+/* FODO OWNER BRAIN, proactive layer: daily briefing, alerts (anomalies, failures, costs, support), all from real data.
    Alerts are de-duplicated by key (one per problem per day) and stay until the owner acknowledges them.
-   The daily briefing also runs from the existing daily scheduler (POST /api/monitor/tick, 06:47 IST) — no new infrastructure. */
+   The daily briefing also runs from the existing daily scheduler (POST /api/monitor/tick, 06:47 IST), no new infrastructure. */
 import { brainDb, nowIso, rid, clip, istDay, audit, getSettings } from "./store.js";
 import { execute, systemCheck, fodoToday } from "./tools.js";
 import { listTasks } from "./memory.js";
@@ -14,13 +14,13 @@ async function upsertAlert(env, a) {
   if (ex) { await d.prepare("UPDATE brain_alerts SET reason=?2, evidence=?3, updated_at=?4 WHERE id=?1").bind(ex.id, a.reason, a.evidence, now).run(); return ex.id; }
   const id = "al_" + rid(10);
   await d.prepare("INSERT INTO brain_alerts (id, akey, severity, title, reason, evidence, action, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'open',?8,?8)").bind(id, key, a.severity, clip(a.title, 160), clip(a.reason, 500), clip(a.evidence, 800), clip(a.action, 300), now).run();
-  try { await (await import("./automations.js")).onEvent(env, "alert", null, a.severity + ": " + a.title + " — " + a.reason); } catch (e) {}   // a new alert can trigger automations (e.g. email me on critical)
+  try { await (await import("./automations.js")).onEvent(env, "alert", null, a.severity + ": " + a.title + ": " + a.reason); } catch (e) {}   // a new alert can trigger automations (e.g. email me on critical)
   return id;
 }
 export async function listAlerts(env, all) { const d = await brainDb(env); return ((await d.prepare("SELECT * FROM brain_alerts WHERE (?1 = 1 OR status='open') ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END, created_at DESC LIMIT 60").bind(all ? 1 : 0).all()).results || []); }
 export async function ackAlert(env, id) { const d = await brainDb(env); await d.prepare("UPDATE brain_alerts SET status='acknowledged', updated_at=?2 WHERE id=?1").bind(id, nowIso()).run(); }
 
-/* detect problems and changes worth the owner's attention — thresholds avoid noise */
+/* detect problems and changes worth the owner's attention, thresholds avoid noise */
 export async function scan(ctx, health, today) {
   const env = ctx.env, found = [];
   const push = (a) => found.push(a);
@@ -64,7 +64,7 @@ export async function briefing(ctx, o) {
   return Object.assign(data, { text, at: textAt || nowIso() });
 }
 
-/* called by the daily scheduler (monitor tick) — runs once a day as the first owner account, with a short-lived internal session */
+/* called by the daily scheduler (monitor tick), runs once a day as the first owner account, with a short-lived internal session */
 export async function brainDaily(env, request) {
   try {
     if (String(env.BRAIN_ENABLED || "1") === "0" || !env.XRAY_DB) return { skipped: "brain off" };

@@ -1,4 +1,4 @@
-// v18 standalone PRO tools — server side: registry + admin prices, catalog, tool/start (reuse a recent X-Ray, fresh scan,
+// v18 standalone PRO tools, server side: registry + admin prices, catalog, tool/start (reuse a recent X-Ray, fresh scan,
 // plan-included, bought run, 402 buy), Cashfree checkout of one run (verified on the server), the X-Ray engine honouring a
 // paid tool run, refunds, report library, admin stats. D1 = real SQLite (node:sqlite); every outside API is mocked.
 // Run: node --no-warnings tests/v18-functions.test.mjs
@@ -50,7 +50,7 @@ ok(plansIncluding("why-winning").join() === "growth,pro,agency", "Why Are They W
 /* ---------- 2. public catalog: per-tool page + price + which plans include it ---------- */
 let r = await call(env, "lab/catalog");
 let wr = r.j.tools.filter((t) => t.id === "war-room")[0];
-ok(wr.where === "growth-lab/war-room/" && wr.price === 2999 && wr.buy && wr.includedIn.join() === "Growth,Pro,Agency" && wr.view.join() === "s8,s4", "catalog: War Room has its own page, ₹2,999 a run, included in Growth/Pro/Agency");
+ok(wr.where === "growth-lab/war-room/" && wr.price === 299 && wr.level === 3 && wr.buy && wr.includedIn.join() === "Growth,Pro,Agency" && wr.view.join() === "s8,s4", "catalog: War Room has its own page, ₹2,999 a run, included in Growth/Pro/Agency");
 ok(r.j.tools.filter((t) => t.id === "business-xray")[0].buy === undefined, "Business X-Ray itself still runs on X-Ray credits (not a one-run product)");
 
 /* ---------- 3. admin sets a tool's price; checkout charges that price ---------- */
@@ -71,7 +71,7 @@ r = await call(env, "xray/start", { url: "spicehub.test", toolRun: "tr_fake" });
 
 /* ---------- 5. buy one run (Cashfree) → verified on the server → granted once ---------- */
 r = await call(env, "checkout", { kind: "tool", item: "website-health", phone: "9810012345" });
-const oid = r.j.orderId; ok(r.j.ok && CF.orders[oid].order_amount === 799 && /\/growth-lab\/website-health\/\?order_id=fo_/.test(CF.orders[oid].order_meta.return_url) && /Website Health Audit — 1 run/.test(CF.orders[oid].order_note), "checkout: ₹799 order, returns to the tool's page");
+const oid = r.j.orderId; ok(r.j.ok && CF.orders[oid].order_amount === 799 && /\/growth-lab\/website-health\/\?order_id=fo_/.test(CF.orders[oid].order_meta.return_url) && /Website Health Audit, 1 run/.test(CF.orders[oid].order_note), "checkout: ₹799 order, returns to the tool's page");
 r = await call(env, "checkout", { kind: "tool", item: "offer-strength", phone: "9810012345" }); ok(r.status === 503, "can't buy a tool that is off sale");
 r = await call(env, "verify", { order_id: oid }); ok(!r.j.paid && credits("ravi@shop.in", "website-health") === 0, "not paid yet → nothing granted");
 CF.orders[oid].order_status = "PAID";
@@ -95,7 +95,7 @@ r = await call(env, "lab/tool/start", { tool: "conversion-xray", url: "spicehub.
 ok(r.status === 402, "a different tool still needs paying for (free account)");
 let r2 = await call(env, "checkout", { kind: "tool", item: "conversion-xray", phone: "9810012345" }); CF.orders[r2.j.orderId].order_status = "PAID"; await call(env, "verify", { order_id: r2.j.orderId });
 r = await call(env, "lab/tool/start", { tool: "conversion-xray", url: "www.spicehub.test" });
-ok(r.j.ok && r.j.reused && r.j.jobId === job1 && r.j.source === "tool" && credits("ravi@shop.in", "conversion-xray") === 0, "Conversion X-Ray reuses the X-Ray from the Website Health run — no new research");
+ok(r.j.ok && r.j.reused && r.j.jobId === job1 && r.j.source === "tool" && credits("ravi@shop.in", "conversion-xray") === 0, "Conversion X-Ray reuses the X-Ray from the Website Health run, no new research");
 r = await call(env, "lab/tool/start", { tool: "war-room", url: "spicehub.test" }); ok(r.status === 402, "War Room can't reuse a Starter-level X-Ray it isn't covered by → must be bought");
 
 /* ---------- 8. plan users: tools their plan covers are included ---------- */
@@ -107,7 +107,7 @@ r = await call(env, "xray/start", { url: "curryhouse.test", toolRun: run2 }, { a
 ok(r.j.ok && r.j.credit === "monthly" && env.XRAY_DB.db.prepare("SELECT monthly_left FROM acct_users WHERE email='growth@biz.in'").get().monthly_left === mBefore - 1, "…one monthly X-Ray spent");
 await save(env, job2, "g");
 r = await call(env, "lab/tool/start", { tool: "why-winning", url: "curryhouse.test" }, { as: "g" });
-ok(r.j.ok && r.j.reused && r.j.source === "included" && env.XRAY_DB.db.prepare("SELECT monthly_left FROM acct_users WHERE email='growth@biz.in'").get().monthly_left === mBefore - 1, "Why Are They Winning? reuses that X-Ray — nothing spent");
+ok(r.j.ok && r.j.reused && r.j.source === "included" && env.XRAY_DB.db.prepare("SELECT monthly_left FROM acct_users WHERE email='growth@biz.in'").get().monthly_left === mBefore - 1, "Why Are They Winning? reuses that X-Ray, nothing spent");
 r = await call(env, "lab/tool/runs", undefined, { as: "g" }); ok(r.j.items.length === 2 && r.j.items.every((x) => x.name), "report library lists both tool runs");
 r = await call(env, "lab/tool/runs"); ok(r.j.items.every((x) => x.domain === "spicehub.test"), "…and never another account's runs");
 

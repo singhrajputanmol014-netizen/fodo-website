@@ -1,4 +1,4 @@
-/* FODO Bot — AI layer.
+/* FODO Bot: AI layer.
  * Adds FODO_BOT.answerAsync(): asks the AI endpoint (/api/chat, Cloudflare Workers AI) and falls back to the
  * offline rules bot whenever the AI is unavailable, rate-limited, out of daily quota, or the page is opened as a local file.
  * Switches live in js/config.js:  llmMode ("llm-first" | "local-first" | "off"), llmEndpoint, llmMaxPerSession.
@@ -10,7 +10,7 @@
 
   // OFF by default: the site bot runs fully offline unless js/config.js sets llmMode ("llm-first" | "local-first")
   // AND the Cloudflare Pages Function at /api/chat is deployed with a Workers AI binding named AI.
-  // "auto" (default): use AI only when the /api/chat backend answers its health check with ai:true — so the same files
+  // "auto" (default): use AI only when the /api/chat backend answers its health check with ai:true, so the same files
   // work on a static upload (stays offline) and on a Git/Functions deploy (AI switches on by itself).
   var MODE = C.llmMode || "auto";
   var probe = null;   // null = unknown, true/false = backend healthy?
@@ -21,7 +21,7 @@
   var NOTE_AI = "Enter to send · AI-assisted replies · please don’t share passwords or card details";
   var NOTE_OFFLINE = "Enter to send · Replies are generated offline";
 
-  var hist = [];       // [{role:"user"|"assistant", content:"plain text"}] — this tab only (sessionStorage), so the chat remembers across pages
+  var hist = [];       // [{role:"user"|"assistant", content:"plain text"}], this tab only (sessionStorage), so the chat remembers across pages
   var failures = 0;    // consecutive hard failures (404, network) → circuit breaker
   var disabledUntil = 0;
   var used = 0;
@@ -33,7 +33,7 @@
   function saveHist() { try { sessionStorage.setItem(HKEY, JSON.stringify(hist)); } catch (_) { } }
   disabledUntil = parseInt(ss("fodo-llm-off") || "0", 10) || 0;
 
-  /* Visitor switch (v10): AI replies are OFF until the visitor turns them on — the offline engine answers otherwise. */
+  /* Visitor switch (v10): AI replies are OFF until the visitor turns them on, the offline engine answers otherwise. */
   /* v20.3: a paying member gets AI replies on by default (they can still switch them off), a bigger session allowance and a badge */
   var member = null; try { member = JSON.parse(ss("fodo-llm-member") || "null"); } catch (_) { member = null; }
   function paid() { return !!(member && member.paid); }
@@ -128,7 +128,7 @@
   }
   var lastLocalChips = null;
   function safeLocal(q) {
-    // Run the offline engine for its side effects (session memory) while capturing — not applying — its chips.
+    // Run the offline engine for its side effects (session memory) while capturing, not applying, its chips.
     var setChips = B.setChips, out = null; lastLocalChips = null;
     try { B.setChips = function (l) { lastLocalChips = l; }; out = B.answer(q); } catch (e) { out = null; } finally { B.setChips = setChips; }
     return typeof out === "string" ? out : null;
@@ -239,7 +239,7 @@
     var t0 = Date.now();
     if (!aiPossible()) { var h0 = B.answer(q); remember("user", q); remember("assistant", htmlToText(h0)); track("bot_answer", { source: "offline" }); return Promise.resolve(h0); }
     var local = safeLocal(q);
-    var prior = hist.slice();          // earlier turns only — the current question travels separately as `message`
+    var prior = hist.slice();          // earlier turns only, the current question travels separately as `message`
     remember("user", q);
     var useLocal = function () {
       if (local && lastLocalChips) { try { B.setChips(lastLocalChips); } catch (_) { } }

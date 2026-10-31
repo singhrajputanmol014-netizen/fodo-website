@@ -1,12 +1,12 @@
-/* FODO Business X-Ray — server core (Cloudflare Pages Functions).
+/* FODO Business X-Ray, server core (Cloudflare Pages Functions).
    Design for the free plan (≈10 ms CPU per request): the server never parses big bodies. Pages, search results and
    PageSpeed reports are passed through byte for byte; the browser (js/xray-engine.js) does the parsing and analysis.
    The server's jobs: block unsafe URLs (SSRF), keep API keys secret, rate-limit, cache, store jobs/reports, log.
 
-   Storage: D1 (binding XRAY_DB, tables made on first use) when bound — otherwise KV (CHAT_KV) with fewer writes.
-   Providers (adapters — each is optional; a missing one is reported as "not configured", never faked):
-     search      → Serper.dev (Google results, secret SERPER_API_KEY) — or Brave Search API (secret BRAVE_API_KEY)
-     seo         → DataForSEO              (secrets DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD) — volume/CPC; not tested without an account
+   Storage: D1 (binding XRAY_DB, tables made on first use) when bound, otherwise KV (CHAT_KV) with fewer writes.
+   Providers (adapters, each is optional; a missing one is reported as "not configured", never faked):
+     search      → Serper.dev (Google results, secret SERPER_API_KEY), or Brave Search API (secret BRAVE_API_KEY)
+     seo         → DataForSEO              (secrets DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD), volume/CPC; not tested without an account
      performance → Google PageSpeed Insights (optional secret PAGESPEED_API_KEY; works keyless at a low quota)
      places      → Geoapify via /api/geo   (secret GEOAPIFY_KEY)
      ai          → Workers AI              (binding AI) */
@@ -90,7 +90,7 @@ export async function retrying(fn, { tries = 3, base = 500 } = {}) {
   last.retries = n; throw last;
 }
 
-/* ---------------- cache (Cloudflare Cache API — free, no KV writes) ---------------- */
+/* ---------------- cache (Cloudflare Cache API, free, no KV writes) ---------------- */
 async function cacheKey(ns, s) { const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ns + "|" + s)); return "https://xray-cache.fodo.internal/" + ns + "/" + [...new Uint8Array(d)].slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join(""); }
 export async function cacheGet(ns, s) { try { if (typeof caches === "undefined" || !caches.default) return null; const hit = await caches.default.match(await cacheKey(ns, s)); return hit || null; } catch (e) { return null; } }
 export async function cachePut(ns, s, body, type, ttl) { try { if (typeof caches === "undefined" || !caches.default) return; await caches.default.put(await cacheKey(ns, s), new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=" + ttl } })); } catch (e) {} }
@@ -166,7 +166,7 @@ export async function rowsPut(env, id, kind, rows) {   // normalised tables (D1 
 /* ---------------- rate limits ---------------- */
 export async function hashIp(request) { const ip = request.headers.get("cf-connecting-ip") || "anon"; const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("xray|" + ip)); return [...new Uint8Array(d)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join(""); }
 export async function counter(env, key, limit, ttl) {   // true when the limit is reached
-  // D1 when bound (100k free writes a day) — keeps KV's small free write budget for the chatbot and finder caches
+  // D1 when bound (100k free writes a day), keeps KV's small free write budget for the chatbot and finder caches
   try {
     const db = await d1(env);
     if (db) {

@@ -13,7 +13,7 @@ def _wrap(inner, label):
             f'{inner}<text x="388" y="240" text-anchor="end" font-size="8" letter-spacing="1.6" fill="currentColor" opacity=".45" {F}>EXAMPLE</text></svg>')
 
 
-# 1 — D2C funnel: traffic dots fall through the funnel, one leaks out at the cart stage
+# 1: D2C funnel: traffic dots fall through the funnel, one leaks out at the cart stage
 def _d2c():
     bars = [(60, 300, "VISIT", "100"), (90, 240, "PRODUCT", "42"), (120, 180, "CART", "18"), (150, 120, "BUY", "6")]
     s = ""
@@ -31,7 +31,7 @@ def _d2c():
                f'<rect x="50" y="52" width="22" height="22" rx="6" fill="currentColor" opacity=".12"/><rect x="50" y="48" width="22" height="7" rx="3" fill="{A}" opacity=".6"/></g>')
     return _wrap(bottles + s + flow + leak + f'<text x="28" y="230" font-size="9" letter-spacing="1.4" fill="currentColor" opacity=".6" {F}>FIX THE LEAK → THEN SCALE ADS</text>', "d2c")
 
-# 2 — B2B LinkedIn: a scrolling post feed on the left, a pulse moving through the pipeline on the right
+# 2: B2B LinkedIn: a scrolling post feed on the left, a pulse moving through the pipeline on the right
 def _b2b():
     cards = ""
     for i in range(8):
@@ -51,7 +51,7 @@ def _b2b():
     bars = "".join(f'<rect class="mg-bar" style="animation-delay:{i * .18}s;transform-origin:{206 + i * 26}px 222px" x="{196 + i * 26}" y="{222 - h}" width="18" height="{h}" rx="4" fill="{A}" opacity="{.3 + i * .12}"/>' for i, h in enumerate([22, 34, 30, 48, 62, 76]))
     return _wrap(feed + pipe + bars + f'<text x="196" y="146" font-size="9" letter-spacing="1.4" fill="currentColor" opacity=".6" {F}>MEETINGS BOOKED / MONTH</text>', "b2b")
 
-# 3 — Local SEO: a street map with three branch pins pinging, and a map-pack list with a moving highlight
+# 3: Local SEO: a street map with three branch pins pinging, and a map-pack list with a moving highlight
 def _clinic():
     roads = ('<g fill="none" stroke="currentColor" stroke-linecap="round" opacity=".16"><path d="M0 70 C80 60 140 90 250 70" stroke-width="10"/><path d="M0 170 C90 160 150 190 250 175" stroke-width="7"/>'
              '<path d="M70 0 C80 80 60 150 80 250" stroke-width="7"/><path d="M175 0 C160 90 190 160 170 250" stroke-width="10"/></g>'
@@ -69,7 +69,7 @@ def _clinic():
                  f'<text x="298" y="{y + 28}" font-size="9" fill="#E8A317" {F}>★★★★★</text><rect x="298" y="{y + 33}" width="40" height="4" rx="2" fill="currentColor" opacity=".18"/>')
     return _wrap(roads + pins + card + f'<text x="12" y="240" font-size="9" letter-spacing="1.4" fill="currentColor" opacity=".6" {F}>3 BRANCHES · 3 ACCURATE LISTINGS</text>', "clinic")
 
-# 4 — Restaurant reels: a phone playing a reel (progress bar, spinning plate), hearts floating up
+# 4: Restaurant reels: a phone playing a reel (progress bar, spinning plate), hearts floating up
 def _reels():
     side = ('<g opacity=".35"><rect x="62" y="40" width="70" height="140" rx="14" fill="currentColor" opacity=".18"/><rect x="268" y="40" width="70" height="140" rx="14" fill="currentColor" opacity=".18"/></g>'
             '<g opacity=".5"><circle cx="97" cy="104" r="20" fill="currentColor" opacity=".18"/><circle cx="303" cy="104" r="20" fill="currentColor" opacity=".18"/></g>')
@@ -84,7 +84,7 @@ def _reels():
     labels = "".join(f'<text x="{x}" y="236" text-anchor="middle" font-size="9" letter-spacing="1.4" fill="currentColor" opacity="{o}" {F}>{t}</text>' for x, t, o in [(97, "HOOK · 1.5s", .6), (200, "REEL", .9), (303, "SAVE · SHARE", .6)])
     return _wrap(side + phone + hearts + labels, "reels")
 
-# 5 — Real estate: a lit skyline; enquiry dots fall, only qualified (violet) ones pass the filter
+# 5: Real estate: a lit skyline; enquiry dots fall, only qualified (violet) ones pass the filter
 def _realestate():
     sky = ""
     for i, (x, w, h) in enumerate([(14, 40, 90), (58, 30, 130), (92, 46, 70), (300, 36, 120), (340, 46, 84)]):
@@ -102,7 +102,7 @@ def _realestate():
             f'<text x="206" y="203" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="1.2" fill="currentColor" {F}>QUALIFIED</text>')
     return _wrap(sky + filt + dots + tray, "re")
 
-# 6 — Founder brand: orbiting content around one clear position, authority line drawing on the right
+# 6: Founder brand: orbiting content around one clear position, authority line drawing on the right
 def _founder():
     rings = (f'<circle cx="130" cy="122" r="96" fill="none" stroke="currentColor" opacity=".1"/><circle cx="130" cy="122" r="66" fill="none" stroke="currentColor" opacity=".16"/>'
              f'<circle cx="130" cy="122" r="36" fill="url(#mgfade-founder)" stroke="{A}" stroke-opacity=".6"/>'

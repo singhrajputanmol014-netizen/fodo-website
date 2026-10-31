@@ -1,9 +1,9 @@
-/* FODO Business X-Ray — analysis engine (runs in the browser; no network of its own: every request goes through the
+/* FODO Business X-Ray, analysis engine (runs in the browser; no network of its own: every request goes through the
    fetcher/search functions the UI passes in, which call /api/xray/*).
    Rules this file follows:
-     • data first, AI last — every score is computed from checks below; every check keeps evidence IDs
+     • data first, AI last, every score is computed from checks below; every check keeps evidence IDs
      • labels: OBSERVED (seen on a page / in an API answer), INFERRED (derived by a rule from observed data),
-       ESTIMATED (third-party estimate), UNKNOWN (could not be determined) — nothing is invented
+       ESTIMATED (third-party estimate), UNKNOWN (could not be determined), nothing is invented
      • a missing source makes its module "unavailable", never a made-up number
    window.FODO_XRAY_ENGINE = { CFG, Evidence, normUrl, regDomain, parseRobots, robotsAllowed, parsePage, crawl, discover,
      techChecks, siteChecks, buildQueries, intentOf, parseSearch, guessCountry, serpAnalysis, keywordOpps, candidates, compProfile, compareCompetitor,
@@ -152,7 +152,7 @@
       var isSearch = (f.getAttribute("role") === "search") || fields.length === 1 && /search|^q$|^s$/i.test(fields[0].name + fields[0].type);
       // v17.2: a group of radio buttons / checkboxes with one name is ONE question for the visitor, not 4 fields
       var grp = {}, asked = fields.filter(function (x) { if (x.type !== "radio" && x.type !== "checkbox") return true; var k = x.type + ":" + (x.name || x.label); if (grp[k]) return false; grp[k] = 1; return true; });
-      // v17.2: only a form that asks for contact details is a LEAD form — a quiz, calculator or filter is a tool, not friction
+      // v17.2: only a form that asks for contact details is a LEAD form, a quiz, calculator or filter is a tool, not friction
       var contact = fields.some(function (x) { return x.type === "email" || x.type === "tel" || /e-?mail|phone|mobile|whats ?app|contact|full ?name|^name$|your name|company/i.test(x.name + " " + x.label); });
       var choice = fields.filter(function (x) { return x.type === "radio" || x.type === "checkbox"; }).length;
       return { action: f.getAttribute("action") || "", method: (f.getAttribute("method") || "get").toLowerCase(), fields: fields.slice(0, 30), fieldCount: asked.length, rawFields: fields.length, required: asked.filter(function (x) { return x.required; }).length, search: isSearch, lead: !isSearch && contact, tool: !isSearch && !contact && (choice > asked.length / 2 || choice >= 6 || fields.some(function (x) { return x.type === "number" || x.type === "range"; })) };
@@ -341,7 +341,7 @@
     INDUSTRIES.forEach(function (i) { i.re.lastIndex = 0; });
     // services / products
     var GENERIC_NAV = /^(home|about( us)?|contact( us)?|blog|news|careers?|login|sign in|sign up|faq|faqs|privacy|terms|menu|search|cart|more|our work|work|portfolio|team|gallery|reviews|testimonials|resources|support|help|pricing|shop|services|products|company|insights|events|press|media)$/i;
-    // v20.2: a service name reads like a label ("Corporate Travel", "MICE & Events") — not a tagline ("Local Expertise. Seamless
+    // v20.2: a service name reads like a label ("Corporate Travel", "MICE & Events"), not a tagline ("Local Expertise. Seamless
     // On-Ground Execution.") or a link prompt ("All Solutions ->"). Nav labels first; a service page whose H1 is a tagline is named from its URL.
     var svcLike = function (x) { x = norm(x); return x.length > 2 && x.length <= 48 && x.split(/\s+/).length <= 5 && !/[.!?]\s|[.!?…]$|->|→|»|›|\.\.\./.test(x) && !/^(all|our|view|see|explore|discover|learn|read|find|get|why|how|what)\b/i.test(x) && !/\b(for every|your|we|you)\b/i.test(x) && !GENERIC_NAV.test(x) && /[a-z]/i.test(x); };
     var ACR = /^(mice|seo|ppc|smm|sem|crm|erp|hr|it|ui|ux|b2b|b2c|d2c|gst|ca|cctv|ac|ivf|mri|ct|ent|bpo|kpo|vfx|ott|nri|emi)$/i;
@@ -401,7 +401,7 @@
 
   /* ======================= limited mode: the site turns away automated readers ======================= */
   E.emptyCrawl = function (start, blocked) {
-    return { start: start, pages: [{ url: start, finalUrl: blocked.finalUrl || start, status: blocked.status || 0, error: "blocked — " + (blocked.error || "HTTP " + blocked.status), depth: 0, redirects: [] }], robots: null, robotsFound: false, robotsStatus: 0,
+    return { start: start, pages: [{ url: start, finalUrl: blocked.finalUrl || start, status: blocked.status || 0, error: "blocked: " + (blocked.error || "HTTP " + blocked.status), depth: 0, redirects: [] }], robots: null, robotsFound: false, robotsStatus: 0,
       sitemapFound: false, sitemapUrls: [], sitemapSource: "", skippedRobots: [], skippedExternal: 0, skippedNonHtml: [], errors: [{ url: start, error: blocked.error || "HTTP " + blocked.status }], limitsHit: [], durationMs: 0, linkStatus: {}, duplicates: [], inbound: {}, broken: [], blocked: blocked };
   };
   /* what Google shows about the site → a business record with the same shape as E.discover (most fields UNKNOWN) */
@@ -410,7 +410,7 @@
     var web = (res && res.web) || [], own = web.filter(function (r) { return r.domain === domain; }), first = own[0], stem = domain.split(".")[0];
     var f = function (v, label, evid, extra) { return Object.assign({ value: v, label: v == null || v === "" || (Array.isArray(v) && !v.length) ? "UNKNOWN" : label, evidence: evid || [] }, extra || {}); };
     var snip = own.map(function (r) { return r.title + ". " + r.description + " " + (r.extra || []).join(". "); }).join(" ");
-    var sid = first ? [ev.add({ type: "business", claim: "How " + (res.providerName || "search") + " shows " + domain, sourceUrl: res.searchUrl, sourceName: res.providerName || "Search", pageUrl: first.url, evidenceText: own.slice(0, 3).map(function (r) { return r.title + " — " + r.description; }).join(" | "), label: "OBSERVED" })] : [];
+    var sid = first ? [ev.add({ type: "business", claim: "How " + (res.providerName || "search") + " shows " + domain, sourceUrl: res.searchUrl, sourceName: res.providerName || "Search", pageUrl: first.url, evidenceText: own.slice(0, 3).map(function (r) { return r.title + ": " + r.description; }).join(" | "), label: "OBSERVED" })] : [];
     var tname = first ? norm(first.title.split(/\s[|–—\-:•·]\s|:\s/)[0]) : "";
     var name = input.name || (tname && tname.length <= 40 ? tname : "") || stem.charAt(0).toUpperCase() + stem.slice(1);
     var B = {};
@@ -453,7 +453,7 @@
     if (psi) {
       var pid = ev.add({ type: "performance", claim: "Google PageSpeed Insights (" + psi.strategy + ") for the homepage", sourceUrl: "https://pagespeed.web.dev/analysis?url=" + encodeURIComponent(psi.url || homeUrl), sourceName: "Google PageSpeed Insights", pageUrl: homeUrl, evidenceText: "Performance " + psi.performance + " · SEO " + psi.seo + " · Accessibility " + psi.accessibility + " · Best practices " + psi.bestPractices + (psi.labLcp ? " · LCP " + psi.labLcp : "") + (psi.field ? " · Real-user LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s (" + psi.field.lcpCat + ")" : " · no real-user (CrUX) data"), screenshotUrl: psi.screenshot ? "psi:screenshot" : "" });
       add({ id: "P_perf", name: "Mobile speed (Lighthouse)", group: "Speed", status: band(psi.performance, 90, 50), score: psi.performance, weight: 3, detail: "Performance score " + psi.performance + "/100 on mobile" + (psi.labLcp ? ", largest content shows at " + psi.labLcp : "") + ".", evidence: [pid] });
-      if (psi.field) add({ id: "P_field", name: "Real-user speed (Chrome UX Report)", group: "Speed", status: psi.field.overall === "FAST" ? "pass" : psi.field.overall === "AVERAGE" ? "warn" : "fail", score: psi.field.overall === "FAST" ? 100 : psi.field.overall === "AVERAGE" ? 60 : 25, weight: 2, detail: "Real visitors: LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s" + (psi.field.inpMs ? ", INP " + psi.field.inpMs + " ms" : "") + (psi.field.cls != null ? ", CLS " + psi.field.cls : "") + " — " + psi.field.overall + ".", evidence: [pid] });
+      if (psi.field) add({ id: "P_field", name: "Real-user speed (Chrome UX Report)", group: "Speed", status: psi.field.overall === "FAST" ? "pass" : psi.field.overall === "AVERAGE" ? "warn" : "fail", score: psi.field.overall === "FAST" ? 100 : psi.field.overall === "AVERAGE" ? 60 : 25, weight: 2, detail: "Real visitors: LCP " + (psi.field.lcpMs / 1000).toFixed(1) + " s" + (psi.field.inpMs ? ", INP " + psi.field.inpMs + " ms" : "") + (psi.field.cls != null ? ", CLS " + psi.field.cls : "") + ": " + psi.field.overall + ".", evidence: [pid] });
       if (psi.seo != null) add({ id: "P_seo", name: "Lighthouse SEO", status: band(psi.seo, 90, 70), score: psi.seo, weight: 1, detail: "Lighthouse SEO score " + psi.seo + "/100.", evidence: [pid] });
       if (psi.accessibility != null) add({ id: "P_a11y", name: "Accessibility (Lighthouse)", group: "Mobile", status: band(psi.accessibility, 90, 70), score: psi.accessibility, weight: 1, detail: "Accessibility score " + psi.accessibility + "/100" + (psi.fails.length ? "; issues include: " + psi.fails.slice(0, 3).map(function (f) { return f.title; }).join("; ") : "") + ".", evidence: [pid] });
     }
@@ -467,12 +467,12 @@
     if (!home) { add({ id: "T_home", name: "Homepage reachable", status: "fail", score: 0, weight: 5, detail: "The homepage could not be loaded.", evidence: e("Homepage could not be loaded", (crawl.errors[0] || {}).error || "no answer", crawl.start) }); return C; }
     add({ id: "T_home", name: "Homepage loads", status: home.status === 200 ? "pass" : "fail", score: home.status === 200 ? 100 : 0, weight: 3, detail: "HTTP " + home.status + (home.redirects.length ? " after " + home.redirects.length + " redirect(s)" : ""), evidence: e("Homepage HTTP status " + home.status, (home.redirects || []).map(function (r) { return r.status + " " + r.from + " → " + r.to; }).join(" | ") || "no redirects", home.finalUrl) });
     var https = /^https:/.test(home.finalUrl);
-    add({ id: "T_https", name: "Secure (HTTPS)", status: https ? "pass" : "fail", score: https ? 100 : 0, weight: 3, detail: https ? "Site loads over HTTPS." : "Site loads over plain HTTP — browsers mark it “Not secure”.", evidence: e("Final homepage URL", home.finalUrl, home.finalUrl), group: "Security & trust" });
+    add({ id: "T_https", name: "Secure (HTTPS)", status: https ? "pass" : "fail", score: https ? 100 : 0, weight: 3, detail: https ? "Site loads over HTTPS." : "Site loads over plain HTTP, browsers mark it “Not secure”.", evidence: e("Final homepage URL", home.finalUrl, home.finalUrl), group: "Security & trust" });
     var noTitle = pages.filter(function (p) { return !p.title; }), badLen = pages.filter(function (p) { return p.title && (p.title.length < 15 || p.title.length > 65); });
     var pT = pct(n - noTitle.length, n);
     add({ id: "T_title", name: "Page titles", status: noTitle.length ? band(pT, 98, 85) : badLen.length > n / 2 ? "warn" : "pass", score: Math.round(pT * 0.7 + pct(n - badLen.length, n) * 0.3), weight: 3, detail: noTitle.length + " of " + n + " pages have no title; " + badLen.length + " are shorter than 15 or longer than 65 characters.", pages: listPages(noTitle.concat(badLen)), evidence: e("Title check across " + n + " crawled pages", "Homepage title: “" + home.title + "” (" + home.title.length + " chars)") });
     var dupT = {}; pages.forEach(function (p) { if (p.title && !p.noindex && !(p.status >= 300)) (dupT[low(p.title)] = dupT[low(p.title)] || []).push(p); });
-    // v17.2: URL variants that point to one canonical page are the same page — not a duplicate-title problem
+    // v17.2: URL variants that point to one canonical page are the same page, not a duplicate-title problem
     Object.keys(dupT).forEach(function (k) { var seenC = {}; dupT[k] = dupT[k].filter(function (p) { var c = E.normUrl(p.canonical || p.finalUrl || p.url) || p.url; if (seenC[c]) return false; seenC[c] = 1; return true; }); });
     var dups = Object.keys(dupT).filter(function (k) { return dupT[k].length > 1; });
     var dupPages = [].concat.apply([], dups.map(function (k) { return dupT[k]; }));
@@ -487,7 +487,7 @@
     add({ id: "T_index", name: "Important pages indexable", status: impNo.length ? "fail" : noidx.length ? "warn" : "pass", score: impNo.length ? Math.max(0, 100 - impNo.length * 30) : 100, weight: 4, detail: impNo.length ? impNo.length + " important page(s) tell Google not to index them (noindex)." : noidx.length ? noidx.length + " minor page(s) are noindex." : "No crawled page blocks indexing.", pages: listPages(impNo.concat(noidx)), evidence: noidx.length ? e("noindex found", noidx.slice(0, 4).map(function (p) { return p.finalUrl + " (" + (p.robotsMeta || p.xRobots) + ")"; }).join(" | "), noidx[0].finalUrl) : [] });
     add({ id: "T_robots", name: "robots.txt", status: crawl.robotsFound ? "pass" : "warn", score: crawl.robotsFound ? 100 : 50, weight: 1, detail: crawl.robotsFound ? "robots.txt found" + (crawl.skippedRobots.length ? "; it blocks " + crawl.skippedRobots.length + " of the links we found." : ".") : "No robots.txt (HTTP " + crawl.robotsStatus + ").", evidence: e("robots.txt", crawl.robotsFound ? (crawl.robots.groups.length + " rule group(s), " + crawl.robots.sitemaps.length + " sitemap line(s)") : "HTTP " + crawl.robotsStatus, new URL(crawl.start).origin + "/robots.txt") });
     add({ id: "T_sitemap", name: "XML sitemap", status: crawl.sitemapFound ? "pass" : "fail", score: crawl.sitemapFound ? 100 : 0, weight: 2, detail: crawl.sitemapFound ? "Sitemap found via " + crawl.sitemapSource + " with " + crawl.sitemapUrls.length + " URL(s)." : "No XML sitemap found in robots.txt or at /sitemap.xml.", evidence: e("Sitemap", crawl.sitemapFound ? crawl.sitemapUrls.length + " URLs listed" : "not found", new URL(crawl.start).origin + "/sitemap.xml") });
-    // v20.2: a page that timed out is slow, not broken — it is reported on its own ("didn't load in time")
+    // v20.2: a page that timed out is slow, not broken, it is reported on its own ("didn't load in time")
     var slowP = crawl.pages.filter(function (p) { return !(p.status >= 400) && /timeout/i.test(p.error || ""); });
     var errP = crawl.pages.filter(function (p) { return p.status >= 400 || (p.error && !/timeout/i.test(p.error)); });
     if (slowP.length) add({ id: "T_slow", name: "Pages that load too slowly", status: slowP.length > 3 ? "fail" : "warn", score: Math.max(0, 100 - slowP.length * 15), weight: 2, detail: slowP.length + " page(s) did not load within 15 seconds, so FODO could not read them (visitors on mobile usually give up long before that).", pages: slowP.map(function (p) { return p.url; }).slice(0, 12), evidence: e("Slow pages", slowP.slice(0, 5).map(function (p) { return p.url + " → no answer in 15 s"; }).join(" | "), slowP[0].url) });
@@ -495,7 +495,7 @@
     var chains = crawl.pages.filter(function (p) { return (p.redirects || []).length > 1; });
     add({ id: "T_redirects", name: "Redirect chains", status: chains.length ? "warn" : "pass", score: Math.max(0, 100 - chains.length * 15), weight: 1, detail: chains.length ? chains.length + " URL(s) go through 2+ redirects." : "No redirect chains.", pages: listPages(chains), evidence: chains.length ? e("Redirect chain", chains[0].redirects.map(function (r) { return r.status + " " + r.from + " → " + r.to; }).join(" | "), chains[0].url) : [] });
     var sdHome = (home.schemaTypes || []).length, sdErr = pages.filter(function (p) { return p.jsonld.some(function (j) { return !j.ok; }); });
-    add({ id: "T_schema", name: "Structured data", status: sdErr.length ? "fail" : sdHome ? "pass" : "warn", score: sdErr.length ? 30 : sdHome ? 100 : 40, weight: 2, detail: sdHome ? "Homepage has structured data: " + home.schemaTypes.slice(0, 6).join(", ") + "." + (sdErr.length ? " " + sdErr.length + " page(s) have JSON-LD that does not parse." : "") : "No structured data (JSON-LD) on the homepage — search engines get less help understanding the business.", pages: listPages(sdErr), evidence: e("Structured data", sdHome ? home.schemaTypes.join(", ") : "none on homepage" + (sdErr.length ? "; parse errors on " + sdErr.length + " page(s)" : "")) });
+    add({ id: "T_schema", name: "Structured data", status: sdErr.length ? "fail" : sdHome ? "pass" : "warn", score: sdErr.length ? 30 : sdHome ? 100 : 40, weight: 2, detail: sdHome ? "Homepage has structured data: " + home.schemaTypes.slice(0, 6).join(", ") + "." + (sdErr.length ? " " + sdErr.length + " page(s) have JSON-LD that does not parse." : "") : "No structured data (JSON-LD) on the homepage, search engines get less help understanding the business.", pages: listPages(sdErr), evidence: e("Structured data", sdHome ? home.schemaTypes.join(", ") : "none on homepage" + (sdErr.length ? "; parse errors on " + sdErr.length + " page(s)" : "")) });
     var imgs = [].concat.apply([], pages.map(function (p) { return p.images; })), noAlt = imgs.filter(function (i) { return i.alt === null; });
     if (imgs.length) add({ id: "T_alt", name: "Image alt text", status: band(pct(imgs.length - noAlt.length, imgs.length), 90, 60), score: pct(imgs.length - noAlt.length, imgs.length), weight: 1, detail: noAlt.length + " of " + imgs.length + " images have no alt attribute.", evidence: e("Alt text", noAlt.slice(0, 3).map(function (i) { return clip(i.src, 80); }).join(" | ") || "all images have alt") });
     var badUrl = pages.filter(function (p) { var u; try { u = new URL(p.finalUrl); } catch (x) { return false; } return /[A-Z_]/.test(u.pathname) || u.pathname.length > 100 || [].slice.call(u.searchParams.keys()).length > 2; });
@@ -504,15 +504,15 @@
     add({ id: "T_thin", name: "Enough content per page", status: band(pct(n - thin.length, n), 85, 60), score: pct(n - thin.length, n), weight: 2, group: "Content", detail: thin.length + " of " + n + " pages have fewer than 200 words.", pages: listPages(thin), evidence: thin.length ? e("Thin pages", thin.slice(0, 4).map(function (p) { return p.finalUrl + " (" + p.wordCount + " words)"; }).join(" | ")) : [] });
     var orphan = pages.filter(function (p) { return p.depth > 0 && (crawl.inbound[E.normUrl(p.finalUrl)] || crawl.inbound[p.url] || 0) < 2; });
     if (n > 3) add({ id: "T_links", name: "Internal linking", status: band(pct(n - orphan.length, n), 80, 55), score: pct(n - orphan.length, n), weight: 1, detail: orphan.length + " page(s) are linked from fewer than 2 other crawled pages.", pages: listPages(orphan), evidence: orphan.length ? e("Weakly linked pages", listPages(orphan).slice(0, 4).join(" | ")) : [] });
-    add({ id: "T_viewport", name: "Mobile viewport", status: home.viewport ? "pass" : "fail", score: home.viewport ? 100 : 0, weight: 2, group: "Mobile", detail: home.viewport ? "Viewport meta tag present." : "No viewport meta tag — the site may not scale on phones.", evidence: e("Viewport meta", home.viewport ? "present" : "missing") });
+    add({ id: "T_viewport", name: "Mobile viewport", status: home.viewport ? "pass" : "fail", score: home.viewport ? 100 : 0, weight: 2, group: "Mobile", detail: home.viewport ? "Viewport meta tag present." : "No viewport meta tag, the site may not scale on phones.", evidence: e("Viewport meta", home.viewport ? "present" : "missing") });
     var mixed = pages.filter(function (p) { return p.mixedContent > 0; });
     if (https) add({ id: "T_mixed", name: "No insecure (http) files on https pages", status: mixed.length ? "warn" : "pass", score: mixed.length ? 50 : 100, weight: 1, group: "Security & trust", detail: mixed.length ? mixed.length + " page(s) load images/scripts over http." : "No mixed content found.", pages: listPages(mixed), evidence: mixed.length ? e("Mixed content", listPages(mixed).slice(0, 3).join(" | ")) : [] });
-    add({ id: "T_og", name: "Social sharing tags", status: home.og.title && home.og.image ? "pass" : "warn", score: (home.og.title ? 50 : 0) + (home.og.image ? 50 : 0), weight: 1, group: "Content", detail: home.og.title && home.og.image ? "Open Graph title and image set." : "Missing og:" + (!home.og.title ? "title " : "") + (!home.og.image ? "image" : "") + " — shared links look plain on WhatsApp/LinkedIn.", evidence: e("Open Graph", JSON.stringify(home.og).slice(0, 300)) });
+    add({ id: "T_og", name: "Social sharing tags", status: home.og.title && home.og.image ? "pass" : "warn", score: (home.og.title ? 50 : 0) + (home.og.image ? 50 : 0), weight: 1, group: "Content", detail: home.og.title && home.og.image ? "Open Graph title and image set." : "Missing og:" + (!home.og.title ? "title " : "") + (!home.og.image ? "image" : "") + ", shared links look plain on WhatsApp/LinkedIn.", evidence: e("Open Graph", JSON.stringify(home.og).slice(0, 300)) });
     psiChecks(psi, home.finalUrl, ev, add);
     return C;
   };
 
-  /* conversion, trust, offer — HTML evidence; visual position claims are marked INFERRED */
+  /* conversion, trust, offer: HTML evidence; visual position claims are marked INFERRED */
   E.siteChecks = function (crawl, B, ev) {
     var C = [], pages = crawl.pages.filter(function (p) { return !p.error && p.title !== undefined && !(p.status >= 400); }), home = pages.filter(function (p) { return p.depth === 0; })[0] || pages[0];
     if (!home) return C;
@@ -521,7 +521,7 @@
     var hc = home.ctas.filter(function (c) { return !c.generic; }), early = hc.filter(function (c) { return c.early; });
     add({ id: "C_cta", area: "conversion", group: "CTA clarity", name: "Clear call to action near the top of the homepage", status: early.length ? "pass" : hc.length ? "warn" : "fail", score: early.length ? 100 : hc.length ? 55 : 10, weight: 3, label: "INFERRED", detail: early.length ? "Early in the page: “" + early.slice(0, 3).map(function (c) { return c.text; }).join("”, “") + "”." : hc.length ? "Action buttons exist (“" + hc[0].text + "”) but not in the first part of the page." : "No action-led button found on the homepage.", evidence: e("Calls to action on the homepage (document order)", home.ctas.slice(0, 8).map(function (c) { return (c.early ? "[top] " : "") + c.text; }).join(" · ") || "none found", home.finalUrl, "INFERRED") });
     var gen = home.ctas.filter(function (c) { return c.generic; });
-    add({ id: "C_ctaText", area: "conversion", group: "CTA clarity", name: "Specific button wording", status: !home.ctas.length ? "na" : gen.length > hc.length ? "fail" : gen.length ? "warn" : "pass", score: home.ctas.length ? pct(hc.length, hc.length + gen.length) : null, weight: 1, detail: gen.length ? gen.length + " generic button(s) like “" + gen[0].text + "” — say what happens next (e.g. “Get a free quote”)." : "Buttons say what the visitor gets.", evidence: gen.length ? e("Generic buttons", gen.slice(0, 5).map(function (c) { return c.text; }).join(" · ")) : [] });
+    add({ id: "C_ctaText", area: "conversion", group: "CTA clarity", name: "Specific button wording", status: !home.ctas.length ? "na" : gen.length > hc.length ? "fail" : gen.length ? "warn" : "pass", score: home.ctas.length ? pct(hc.length, hc.length + gen.length) : null, weight: 1, detail: gen.length ? gen.length + " generic button(s) like “" + gen[0].text + "”, say what happens next (e.g. “Get a free quote”)." : "Buttons say what the visitor gets.", evidence: gen.length ? e("Generic buttons", gen.slice(0, 5).map(function (c) { return c.text; }).join(" · ")) : [] });
     var svc = pages.filter(function (p) { return p.type === "service" || p.type === "product"; }), svcCta = svc.filter(function (p) { return p.ctas.some(function (c) { return !c.generic && !c.nav; }) || p.forms.some(function (f) { return !f.search; }); });
     if (svc.length) add({ id: "C_nextStep", area: "conversion", group: "CTA clarity", name: "Next step on service/product pages", status: band(pct(svcCta.length, svc.length), 90, 60), score: pct(svcCta.length, svc.length), weight: 2, detail: svcCta.length + " of " + svc.length + " service/product pages have their own call to action or form.", pages: svc.filter(function (p) { return svcCta.indexOf(p) < 0; }).map(function (p) { return p.finalUrl; }).slice(0, 10), evidence: e("Service pages without an action", svc.filter(function (p) { return svcCta.indexOf(p) < 0; }).slice(0, 4).map(function (p) { return p.finalUrl; }).join(" | ") || "all have one") });
     var ct = B.contacts, ways = (ct.phones.length ? 1 : 0) + (ct.emails.length ? 1 : 0) + (ct.whatsapp.length ? 1 : 0) + (pages.some(function (p) { return p.forms.some(function (f) { return f.lead !== false && !f.search && !f.tool && f.fieldCount >= 2; }); }) ? 1 : 0);
@@ -531,11 +531,11 @@
     var lead = [].concat.apply([], pages.map(function (p) { return p.forms.filter(function (f) { return !f.search && !f.tool && (f.lead || f.lead == null) && f.fieldCount >= 2; }).map(function (f) { return { f: f, url: p.finalUrl }; }); })), maxF = lead.reduce(function (m, x) { return Math.max(m, x.f.fieldCount); }, 0);
     if (lead.length) add({ id: "C_form", area: "conversion", group: "Contact friction", name: "Short enquiry forms", status: maxF <= 6 ? "pass" : maxF <= 9 ? "warn" : "fail", score: maxF <= 6 ? 100 : maxF <= 9 ? 60 : 25, weight: 2, detail: "Longest lead form has " + maxF + " fields.", pages: lead.filter(function (x) { return x.f.fieldCount > 6; }).map(function (x) { return x.url; }).slice(0, 6), evidence: e("Form fields", lead.slice(0, 3).map(function (x) { return x.url + ": " + x.f.fieldCount + " fields (" + x.f.fields.map(function (fl) { return fl.label || fl.name || fl.type; }).slice(0, 10).join(", ") + ")"; }).join(" | "), lead[0].url) });
     var telLinks = pages.some(function (p) { return p.telLinks > 0; });
-    add({ id: "C_tap", area: "conversion", group: "Contact friction", name: "Tap-to-call or WhatsApp button", status: telLinks || ct.whatsapp.length ? "pass" : "warn", score: telLinks || ct.whatsapp.length ? 100 : 40, weight: 1, detail: telLinks || ct.whatsapp.length ? "Phone visitors can call or WhatsApp in one tap." : "No tap-to-call or WhatsApp button found — phone visitors must copy the number.", evidence: e("Tap-to-call / WhatsApp", (ct.whatsapp[0] || "") + (telLinks ? " tel: link present" : "") || "none") });
+    add({ id: "C_tap", area: "conversion", group: "Contact friction", name: "Tap-to-call or WhatsApp button", status: telLinks || ct.whatsapp.length ? "pass" : "warn", score: telLinks || ct.whatsapp.length ? 100 : 40, weight: 1, detail: telLinks || ct.whatsapp.length ? "Phone visitors can call or WhatsApp in one tap." : "No tap-to-call or WhatsApp button found, phone visitors must copy the number.", evidence: e("Tap-to-call / WhatsApp", (ct.whatsapp[0] || "") + (telLinks ? " tel: link present" : "") || "none") });
     var pr = B.pricing.value.length, prPage = pages.some(function (p) { return p.type === "pricing"; });
     add({ id: "C_pricing", area: "conversion", group: "Pricing clarity", name: "Prices or price ranges visible", status: pr ? "pass" : prPage ? "warn" : "fail", score: pr ? 100 : prPage ? 50 : 15, weight: 2, detail: pr ? "Prices shown, e.g. " + B.pricing.value.slice(0, 3).join(", ") + "." : prPage ? "A pricing page exists but no actual prices were found on it." : "No prices, ranges or “starting from” figures found anywhere.", evidence: B.pricing.evidence.length ? B.pricing.evidence : e("Pricing", "no price patterns on " + pages.length + " pages") });
     var faq = pages.filter(function (p) { return p.faq.found; });
-    add({ id: "C_faq", area: "conversion", group: "Objection handling", name: "FAQ answering objections", status: faq.length ? "pass" : "warn", score: faq.length ? 100 : 30, weight: 1, detail: faq.length ? "FAQ found on " + faq.length + " page(s)" + (faq.some(function (p) { return p.faq.schema; }) ? " (with FAQ schema)." : ".") : "No FAQ — common objections (price, time, trust) go unanswered.", evidence: faq.length ? e("FAQ", faq[0].faq.samples.slice(0, 4).join(" | ") || "FAQ section", faq[0].finalUrl) : [] });
+    add({ id: "C_faq", area: "conversion", group: "Objection handling", name: "FAQ answering objections", status: faq.length ? "pass" : "warn", score: faq.length ? 100 : 30, weight: 1, detail: faq.length ? "FAQ found on " + faq.length + " page(s)" + (faq.some(function (p) { return p.faq.schema; }) ? " (with FAQ schema)." : ".") : "No FAQ, common objections (price, time, trust) go unanswered.", evidence: faq.length ? e("FAQ", faq[0].faq.samples.slice(0, 4).join(" | ") || "FAQ section", faq[0].finalUrl) : [] });
     var urg = uniq([].concat.apply([], pages.slice(0, 10).map(function (p) { return p.urgency; })));
     add({ id: "C_incentive", area: "conversion", group: "Offer clarity", name: "Reason to act now (offer / free step)", status: urg.length ? "pass" : "warn", score: urg.length ? 100 : 40, weight: 1, detail: urg.length ? "Found: " + urg.slice(0, 4).join(", ") + "." : "No free first step, offer or reason to act now.", evidence: urg.length ? e("Incentives", urg.join(" · ")) : [] });
     var O = B.offer;
@@ -544,13 +544,13 @@
     var testi = pages.filter(function (p) { return p.testimonials.found; });
     add({ id: "R_testi", area: "trust", group: "Social proof", name: "Testimonials or reviews on the site", status: testi.length ? "pass" : "fail", score: testi.length ? 100 : 0, weight: 3, detail: testi.length ? "Found on " + testi.length + " page(s)." : "No testimonials, reviews or client stories found.", evidence: e("Testimonials", testi.length ? testi.slice(0, 3).map(function (p) { return p.finalUrl; }).join(" | ") : "none on " + pages.length + " pages", testi.length ? testi[0].finalUrl : home.finalUrl) });
     var rs = pages.some(function (p) { return p.schemaTypes.some(function (t) { return /AggregateRating|Review/.test(t); }); });
-    add({ id: "R_ratingSchema", area: "trust", group: "Social proof", name: "Review / rating markup", status: rs ? "pass" : "warn", score: rs ? 100 : 40, weight: 1, detail: rs ? "Rating/review structured data found (self-published — not verified by FODO)." : "No review or rating structured data.", evidence: e("Review schema", rs ? "AggregateRating/Review present" : "none") });
+    add({ id: "R_ratingSchema", area: "trust", group: "Social proof", name: "Review / rating markup", status: rs ? "pass" : "warn", score: rs ? 100 : 40, weight: 1, detail: rs ? "Rating/review structured data found (self-published, not verified by FODO)." : "No review or rating structured data.", evidence: e("Review schema", rs ? "AggregateRating/Review present" : "none") });
     var tm = uniq([].concat.apply([], pages.slice(0, 20).map(function (p) { return p.trust; })));
     add({ id: "R_markers", area: "trust", group: "Credibility", name: "Credibility markers (years, certifications, clients, guarantees)", status: tm.length >= 3 ? "pass" : tm.length ? "warn" : "fail", score: Math.min(100, tm.length * 30), weight: 2, detail: tm.length ? "Found: " + tm.slice(0, 5).join(", ") + "." : "No years in business, certifications, client numbers or guarantees found.", evidence: tm.length ? e("Credibility claims", tm.join(" · ")) : [] });
     var proof = pages.filter(function (p) { return p.type === "proof"; });
     add({ id: "R_cases", area: "trust", group: "Credibility", name: "Case studies / portfolio", status: proof.length ? "pass" : "warn", score: proof.length ? 100 : 35, weight: 1, detail: proof.length ? proof.length + " work/portfolio page(s)." : "No case-study or portfolio pages found.", evidence: proof.length ? e("Proof pages", proof.slice(0, 3).map(function (p) { return p.finalUrl; }).join(" | ")) : [] });
     var about = pages.some(function (p) { return p.type === "about"; });
-    add({ id: "R_about", area: "trust", group: "Credibility", name: "About page", status: about ? "pass" : "warn", score: about ? 100 : 30, weight: 1, detail: about ? "About page found." : "No about page — visitors can't see who is behind the business.", evidence: [] });
+    add({ id: "R_about", area: "trust", group: "Credibility", name: "About page", status: about ? "pass" : "warn", score: about ? 100 : 30, weight: 1, detail: about ? "About page found." : "No about page, visitors can't see who is behind the business.", evidence: [] });
     var legal = pages.some(function (p) { return p.type === "legal"; }) || home.internalLinks.some(function (l) { return /privacy|terms/.test(l.url); });
     add({ id: "R_legal", area: "trust", group: "Credibility", name: "Privacy policy / terms", status: legal ? "pass" : "warn", score: legal ? 100 : 30, weight: 1, detail: legal ? "Privacy/terms linked." : "No privacy policy or terms link found.", evidence: [] });
     add({ id: "R_address", area: "trust", group: "Credibility", name: "Physical address shown", status: ct.address ? "pass" : B.local ? "fail" : "warn", score: ct.address ? 100 : B.local ? 0 : 50, weight: B.local ? 2 : 1, detail: ct.address ? "“" + clip(ct.address, 120) + "”" : "No street address found.", evidence: ct.address ? e("Address", ct.address) : [] });
@@ -572,7 +572,7 @@
   E.buildQueries = function (B, input) {
     input = input || {};
     var name = B.name.value, city = input.city || B.city || "", ind = (B.industry && B.industry.value) || "";
-    // v17.1.1: a service name must read like a service ("SEO", "Meta Ads") — not a tagline fragment such as
+    // v17.1.1: a service name must read like a service ("SEO", "Meta Ads"), not a tagline fragment such as
     // "— everything your brand needs to compete digitally". Strip dashes/bullets, keep the part before a separator, max 6 words.
     var tidy = function (x) { x = String(x || "").replace(/^[\s\u2014\u2013\-:|•·*>.,]+/, "").split(/\s[\u2014\u2013|:]\s|\s-\s|\s(?:that|which|who|so you|to help|you can|you)\s/i)[0].replace(/[\s\u2014\u2013\-:|•·.,]+$/, "").trim();
       return x && x.split(/\s+/).length <= 6 && /[a-z]/i.test(x) ? x : ""; };
@@ -596,7 +596,7 @@
     return Q.slice(0, E.CFG.MAX_QUERIES);
   };
   E.DIRECTORIES = /(^|\.)(google\.[a-z.]+|youtube\.com|facebook\.com|instagram\.com|linkedin\.com|twitter\.com|x\.com|wikipedia\.org|justdial\.com|sulekha\.com|indiamart\.com|tradeindia\.com|yelp\.[a-z.]+|tripadvisor\.[a-z.]+|zomato\.com|swiggy\.com|magicpin\.in|practo\.com|lybrate\.com|quora\.com|reddit\.com|medium\.com|pinterest\.[a-z.]+|amazon\.[a-z.]+|flipkart\.com|myntra\.com|clutch\.co|goodfirms\.co|g2\.com|capterra\.[a-z.]+|trustpilot\.com|glassdoor\.[a-z.]+|ambitionbox\.com|naukri\.com|indeed\.com|crunchbase\.com|zaubacorp\.com|tofler\.in|mouthshut\.com|yellowpages\.[a-z.]+|bing\.com|apple\.com|play\.google\.com|booking\.com|makemytrip\.com|99acres\.com|magicbricks\.com|housing\.com|nobroker\.in|urbancompany\.com|threads\.net|tiktok\.com|economictimes\.indiatimes\.com|timesofindia\.indiatimes\.com|forbes\.com|wikihow\.com|upwork\.com|fiverr\.com|designrush\.com|sortlist\.[a-z.]+|bark\.com|nearbuy\.com|dineout\.co\.in|eazydiner\.com|tracxn\.com|owler\.com|zoominfo\.com|similarweb\.com|semrush\.com|ahrefs\.com|hubspot\.com|shiksha\.com|collegedunia\.com|grotal\.com|asklaila\.com|indiacom\.com)$/i;
-  /* search answers arrive already normalised by the server (Serper → Google results, or Brave) — add host/domain here */
+  /* search answers arrive already normalised by the server (Serper → Google results, or Brave), add host/domain here */
   E.parseSearch = function (j) {
     j = j || {};
     var host = function (u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
@@ -696,7 +696,7 @@
   E.compInsights = function (T, C) {
     var adv = [], weak = [];
     var cmp = function (cond, a, w) { if (cond === 1) adv.push(a); else if (cond === -1) weak.push(w); };
-    cmp(C.pricing && !T.pricing ? 1 : !C.pricing && T.pricing ? -1 : 0, "Shows prices (" + (C.pricingSamples[0] || "price list") + ")", "Hides prices — you show yours");
+    cmp(C.pricing && !T.pricing ? 1 : !C.pricing && T.pricing ? -1 : 0, "Shows prices (" + (C.pricingSamples[0] || "price list") + ")", "Hides prices, you show yours");
     cmp(C.testimonials && !T.testimonials ? 1 : !C.testimonials && T.testimonials ? -1 : 0, "Shows testimonials / reviews", "No testimonials on the pages read");
     cmp(C.faq && !T.faq ? 1 : !C.faq && T.faq ? -1 : 0, "Answers questions in an FAQ", "No FAQ");
     cmp(C.offerScore - T.offerScore >= 25 ? 1 : T.offerScore - C.offerScore >= 25 ? -1 : 0, "Clearer offer in the headline (" + C.offerScore + " vs your " + T.offerScore + ")", "Vaguer headline offer (" + C.offerScore + " vs your " + T.offerScore + ")");
@@ -729,9 +729,9 @@
   };
   var THEMES = [["Price & value", /\b(price|pricing|cost|expensive|cheap|affordable|budget|value|fees?|charges?|worth)\b/i], ["Speed & timing", /\b(late|delay|slow|quick|fast|on time|wait(ing)?|hours?|days?|same day)\b/i], ["Quality of work / product", /\b(quality|taste|result|results|work|product|finish|fresh|clean|broken|defect)\b/i],
     ["Staff & service", /\b(staff|service|rude|friendly|polite|support|response|reply|communication|professional)\b/i], ["Trust & honesty", /\b(trust|scam|fraud|legit|honest|hidden|fake|genuine|transparent)\b/i], ["Location & access", /\b(location|parking|near|distance|area|delivery|reach)\b/i]];
-  /* v17.2 entity resolution: a search result that names the brand is only counted when it is clearly about THIS business —
+  /* v17.2 entity resolution: a search result that names the brand is only counted when it is clearly about THIS business:
      it mentions the domain, or the brand together with the business's category / services / city. Otherwise it is set aside
-     (another company with the same name — e.g. "Fodo, the photo printing app"). */
+     (another company with the same name, e.g. "Fodo, the photo printing app"). */
   var STOPW = /^(and|the|for|with|your|our|you|best|top|from|that|this|new|more|get|free|near|all|services?|solutions?|company|agency|business|india|online|digital)$/i;
   E.entityContext = function (B, input) {
     var words = [].concat((B.industry && B.industry.value) || "", (B.services && B.services.value) || [], input && input.product || "", input && input.city || B.city || "", B.location || "")
@@ -745,7 +745,7 @@
     var nameHit = ctx.name && new RegExp("(^|[^a-z0-9])" + ctx.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z0-9]|$)").test(t);
     if (!nameHit) return { ok: true, why: "about the market, not the brand", market: true };
     var hit = ctx.words.filter(function (w) { return t.indexOf(w) > -1; });
-    return hit.length ? { ok: true, why: "names you with " + hit.slice(0, 2).join(", ") } : { ok: false, why: "names “" + ctx.name + "” but nothing about your business — probably a different company" };
+    return hit.length ? { ok: true, why: "names you with " + hit.slice(0, 2).join(", ") } : { ok: false, why: "names “" + ctx.name + "” but nothing about your business, probably a different company" };
   };
   // v20.2: employee-review sites talk about working there, not buying there
   var EMPLOYER = /(^|\.)(ambitionbox|glassdoor|indeed|naukri|foundit|comparably|kununu|jobs?\.|careers?\.)/i;
@@ -757,7 +757,7 @@
     return (ctx.domain && t.indexOf(ctx.domain) > -1) || (ctx.name && t.indexOf(ctx.name) > -1) || ctx.words.some(function (w) { return new RegExp("(^|[^a-z0-9])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "", "i").test(t); });
   };
   E.voice = function (items, ctx) {
-    // items: [{ text, url, source, evidence }]; ctx (optional): E.entityContext — keeps only snippets about this business or its market
+    // items: [{ text, url, source, evidence }]; ctx (optional): E.entityContext, keeps only snippets about this business or its market
     var groups = {}; Object.keys(VOICE).forEach(function (k) { groups[k] = {}; });
     var used = 0, total = items.length;
     items = items.filter(function (it) { return E.voiceRelevant(it, ctx); });
@@ -777,7 +777,7 @@
     out.snippets = items.length; out.matches = used; out.setAside = total - items.length;
     out.quality = items.length >= 15 ? "HIGH" : items.length >= 5 ? "MEDIUM" : items.length ? "LOW" : "UNAVAILABLE";
     var topNeed = (out.needs[0] || {}).theme, topComplaint = (out.complaints[0] || {}).theme;
-    out.marketOpportunity = topComplaint ? "Customers in this market most often complain about “" + topComplaint.toLowerCase() + "” — make it the thing you visibly do better." + (topNeed && topNeed !== topComplaint ? " They also ask about “" + topNeed.toLowerCase() + "”." : "") : topNeed ? "People searching in this market ask most about “" + topNeed.toLowerCase() + "” — answer it on your site." : "";
+    out.marketOpportunity = topComplaint ? "Customers in this market most often complain about “" + topComplaint.toLowerCase() + "”, make it the thing you visibly do better." + (topNeed && topNeed !== topComplaint ? " They also ask about “" + topNeed.toLowerCase() + "”." : "") : topNeed ? "People searching in this market ask most about “" + topNeed.toLowerCase() + "”, answer it on your site." : "";
     return out;
   };
 
@@ -807,7 +807,7 @@
   };
   E.visibility = function (answers, B, comps) {
     var names = [low(B.name.value), B.domain].filter(Boolean), dom = B.domain, rows = answers.map(function (a) {
-      var t = low(a.answer), aboutYou = names.some(function (n) { return n && low(a.q).indexOf(n) > -1; }), brand = !aboutYou && names.some(function (n) { return n && t.indexOf(n) > -1; });   // v17.1.3: a question that already names you ("FODO alternatives") can't prove AI knows you — not counted
+      var t = low(a.answer), aboutYou = names.some(function (n) { return n && low(a.q).indexOf(n) > -1; }), brand = !aboutYou && names.some(function (n) { return n && t.indexOf(n) > -1; });   // v17.1.3: a question that already names you ("FODO alternatives") can't prove AI knows you, not counted
       var cm = comps.filter(function (c) { return t.indexOf(low(c.name)) > -1 || t.indexOf(c.domain) > -1; }).map(function (c) { return c.name || c.domain; });
       var cites = (a.citations || []).map(function (c) { return { title: c.title, uri: c.uri, you: !!dom && low(c.title || "").indexOf(dom) > -1, comp: comps.some(function (x) { return low(c.title || "").indexOf(x.domain) > -1; }) }; });
       // "recommended" = named in the first third of the answer (where assistants put their picks); a rule, labelled INFERRED
@@ -818,7 +818,7 @@
     answered.forEach(function (r) { var e = engines[r.engine] = engines[r.engine] || { id: r.engine, name: r.engineName, live: r.live, asked: 0, you: 0, comp: 0, cited: 0, withCites: 0, model: r.model }; e.asked++; if (r.brand) e.you++; if (r.competitors.length) e.comp++; if (r.citations.length) { e.withCites++; if (r.citedYou) e.cited++; } if (r.live) e.live = true; });
     return { rows: rows, tested: answered.length, brandIn: answered.filter(function (r) { return r.brand; }).length, compIn: answered.filter(function (r) { return r.competitors.length; }).length, model: (answered[0] || {}).model || "", label: "Sampled AI visibility", engines: Object.keys(engines).map(function (k) { return engines[k]; }), score: E.aiScore(answered, comps) };
   };
-  /* v17 FODO AI Visibility Score (0–100) — FODO's own measure, NOT an official score from ChatGPT, Google or any AI company.
+  /* v17 FODO AI Visibility Score (0–100): FODO's own measure, NOT an official score from ChatGPT, Google or any AI company.
      mention rate 50% + recommendation rate 20% + share of names vs competitors 20% + citations of your site 10% (when an engine gives citations) */
   E.aiScore = function (answered, comps) {
     if (!answered || answered.length < 2) return null;
@@ -828,7 +828,7 @@
     var parts = [{ name: "Mentioned in answers (" + you + " of " + n + ")", score: Math.round(you / n * 100), w: 50 }, { name: "Named among the first picks (" + rec + " of " + n + ")", score: Math.round(rec / n * 100), w: 20 }, { name: "Share of names vs competitors", score: Math.round(Math.min(1, share) * 100), w: 20 }];
     if (cite != null) parts.push({ name: "Your site cited as a source (" + withC.filter(function (r) { return r.citedYou; }).length + " of " + withC.length + " cited answers)", score: Math.round(cite * 100), w: 10 });
     var W = parts.reduce(function (s, p) { return s + p.w; }, 0);
-    return { score: Math.round(parts.reduce(function (s, p) { return s + p.score * p.w; }, 0) / W), parts: parts, answers: n, label: "FODO AI Visibility Score — FODO's own measure, not an official score from ChatGPT, Google or any AI company." };
+    return { score: Math.round(parts.reduce(function (s, p) { return s + p.score * p.w; }, 0) / W), parts: parts, answers: n, label: "FODO AI Visibility Score: FODO's own measure, not an official score from ChatGPT, Google or any AI company." };
   };
   /* ======================= scores ======================= */
   var groupScore = function (cs) { var w = 0, s = 0; cs.forEach(function (c) { if (c.status !== "na" && c.score != null) { w += c.weight; s += c.score * c.weight; } }); return w ? Math.round(s / w) : null; };
@@ -854,13 +854,13 @@
       if (mods.presence && mods.presence.ratings.length) { var avg = mods.presence.ratings.reduce(function (s, r) { return s + r.value; }, 0) / mods.presence.ratings.length; mk.push({ name: "Public rating (avg " + avg.toFixed(1) + "/5 in search snippets)", score: Math.round(avg / 5 * 100) }); }
       A.market = { name: "Digital Market Presence", score: groupScore(mk.filter(function (x) { return x.score != null; }).map(function (x) { return { score: x.score, weight: 1, status: "x" }; })), components: mk.filter(function (x) { return x.score != null; }), quality: "MEDIUM", note: "From a sample of public search results." };
     } else {
-      var why = !mods.serp || !mods.serp.length ? "no search provider connected" : "only " + catOk.length + " market search(es) returned results — too few to score";
-      A.search = { name: "Search Visibility", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable — " + why + "." };
-      A.market = { name: "Digital Market Presence", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable — " + why + "." };
+      var why = !mods.serp || !mods.serp.length ? "no search provider connected" : "only " + catOk.length + " market search(es) returned results, too few to score";
+      A.search = { name: "Search Visibility", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable: " + why + "." };
+      A.market = { name: "Digital Market Presence", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable: " + why + "." };
     }
     if (mods.competitive && mods.competitive.length) {
       A.competitive = { name: "Competitive Position", score: Math.round(mods.competitive.reduce(function (s, m) { return s + m.score; }, 0) / mods.competitive.length), components: mods.competitive.map(function (m) { return { name: m.name, score: m.score }; }), quality: "MEDIUM", note: "Like-for-like comparison of public pages with " + mods.compCount + " competitor(s)." };
-    } else A.competitive = { name: "Competitive Position", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable — no competitors could be confirmed." };
+    } else A.competitive = { name: "Competitive Position", score: null, components: [], quality: "UNAVAILABLE", note: "Data unavailable, no competitors could be confirmed." };
     var W = { market: 15, website: 15, search: 20, trust: 15, conversion: 20, competitive: 15 }, sw = 0, ss = 0, n = 0;
     Object.keys(W).forEach(function (k) { if (A[k] && A[k].score != null) { sw += W[k]; ss += A[k].score * W[k]; n++; } });
     var overall = sw ? Math.round(ss / sw) : null;
@@ -870,7 +870,7 @@
     if (!comps.length) return [];
     var med = function (arr) { arr = arr.slice().sort(function (a, b) { return a - b; }); return arr[Math.floor(arr.length / 2)]; };
     var M = [["Offer clarity", function (p) { return p.offerScore; }], ["Trust signals", function (p) { return (p.testimonials ? 40 : 0) + Math.min(60, p.trust.length * 20); }], ["Pricing transparency", function (p) { return p.pricing ? 100 : 0; }], ["Objection handling (FAQ)", function (p) { return p.faq ? 100 : 0; }], ["Content (blog / resources)", function (p) { return p.blog ? 100 : 0; }], ["Search basics (title, meta, schema)", function (p) { return (p.titleOk ? 35 : 0) + (p.metaOk ? 35 : 0) + (p.schema.length ? 30 : 0); }], ["Contact ease (phone/WhatsApp)", function (p) { return (p.phone ? 50 : 0) + (p.whatsapp ? 50 : 0); }]];
-    return M.map(function (m) { var t = m[1](T), c = med(comps.map(m[1])); return { name: m[0] + " — you " + t + " vs competitor median " + c, score: Math.max(0, Math.min(100, 50 + (t - c) / 2)), you: t, median: c }; });
+    return M.map(function (m) { var t = m[1](T), c = med(comps.map(m[1])); return { name: m[0] + ", you " + t + " vs competitor median " + c, score: Math.max(0, Math.min(100, 50 + (t - c) / 2)), you: t, median: c }; });
   };
 
   /* ======================= opportunities ======================= */
@@ -888,7 +888,7 @@
     T_h1: ["Pages without exactly one H1", "Search", 2, 2, 2, "Use one clear H1 per page that names the service and outcome.", "seo"],
     T_canonical: ["Canonical tags missing or pointing elsewhere", "Search", 2, 2, 3, "Add a self-referencing canonical to every page; fix any that point to another domain.", "seo"],
     T_broken: ["Broken pages and links", "Website", 4, 2, 4, "Fix or redirect the error pages and update the links that point to them.", "web"],
-    T_slow: ["Some pages load too slowly", "Website", 4, 3, 4, "Check hosting and caching for these pages (server response, heavy scripts, uncached database pages) — they took over 15 seconds to answer.", "web"],
+    T_slow: ["Some pages load too slowly", "Website", 4, 3, 4, "Check hosting and caching for these pages (server response, heavy scripts, uncached database pages), they took over 15 seconds to answer.", "web"],
     T_redirects: ["Redirect chains slow pages down", "Website", 2, 2, 2, "Point links straight at the final URL; collapse chains to one hop.", "web"],
     T_schema: ["Structured data missing or broken", "Search", 3, 2, 3, "Add valid Organization/LocalBusiness (and FAQ/Product where relevant) JSON-LD.", "seo"],
     T_alt: ["Images without alt text", "Website", 1, 2, 1, "Describe key images in alt text (helps accessibility and image search).", "web"],
@@ -898,7 +898,7 @@
     T_viewport: ["Site may not work properly on phones", "Website", 5, 2, 5, "Add a responsive viewport meta tag and test on a phone.", "web"],
     T_mixed: ["Insecure files on secure pages", "Website", 2, 1, 2, "Load every image/script over https.", "web"],
     T_og: ["Shared links look plain", "Content", 1, 1, 1, "Add og:title, og:description and og:image so WhatsApp/LinkedIn shares show a preview.", "social"],
-    P_perf: ["Slow on mobile", "Website", 4, 3, 4, "Compress images, defer heavy scripts and use caching — start with the PageSpeed issues listed.", "web"],
+    P_perf: ["Slow on mobile", "Website", 4, 3, 4, "Compress images, defer heavy scripts and use caching, start with the PageSpeed issues listed.", "web"],
     P_field: ["Real visitors experience a slow site", "Website", 4, 3, 4, "Fix the largest-content and interaction delays reported by Chrome users.", "web"],
     P_seo: ["Lighthouse SEO issues", "Search", 2, 2, 2, "Fix the SEO items Lighthouse flags (links, crawlable text, tap targets).", "seo"],
     P_a11y: ["Accessibility issues", "Website", 2, 2, 2, "Fix contrast, labels and button names Lighthouse flags.", "web"],
@@ -918,7 +918,7 @@
     O_differentiation: ["Nothing says why you instead of others", "Positioning", 4, 2, 4, "Add one proof-backed differentiator (speed, guarantee, specialism, numbers).", "brand"],
     R_testi: ["No testimonials or reviews on the site", "Trust", 5, 2, 4, "Add 3–6 named testimonials or embed real Google reviews near the CTAs.", "cro"],
     R_ratingSchema: ["No review markup", "Trust", 1, 2, 1, "If you show genuine reviews, mark them up with Review/AggregateRating schema.", "seo"],
-    R_markers: ["Few credibility signals", "Trust", 4, 2, 3, "Show years in business, certifications, client numbers or a guarantee — only true ones.", "brand"],
+    R_markers: ["Few credibility signals", "Trust", 4, 2, 3, "Show years in business, certifications, client numbers or a guarantee, only true ones.", "brand"],
     R_cases: ["No case studies or portfolio", "Trust", 3, 3, 2, "Publish 2–3 short case studies: problem → what you did → result.", "content"],
     R_about: ["No about page", "Trust", 2, 2, 2, "Add an about page with the people, story and credentials.", "brand"],
     R_legal: ["No privacy policy / terms", "Trust", 2, 1, 2, "Add a privacy policy and terms (required if you collect leads).", "web"],
@@ -926,14 +926,14 @@
     R_https: ["Site is not secure", "Trust", 5, 1, 5, "Enable HTTPS.", "web"],
     S_absent: ["Not found for the searches buyers use", "Search", 5, 4, 4, "Create a dedicated page per key service (+ location) and earn local links/listings.", "seo"],
     S_brand: ["Your own name doesn't lead to your site in search", "Search", 4, 2, 4, "Claim/complete Google Business Profile and directory listings; add Organization schema with the same name.", "local"],
-    D_nameClash: ["Your brand name is shared with other companies", "Presence", 4, 2, 4, "Use your full name with your category and city in titles and profiles (e.g. “FODO — Digital Growth Agency, Delhi”), add Organization schema with sameAs links to your own profiles, and keep the same name, logo and description everywhere so Google and AI assistants can tell you apart.", "seo"],
+    D_nameClash: ["Your brand name is shared with other companies", "Presence", 4, 2, 4, "Use your full name with your category and city in titles and profiles (e.g. “FODO: Digital Growth Agency, Delhi”), add Organization schema with sameAs links to your own profiles, and keep the same name, logo and description everywhere so Google and AI assistants can tell you apart.", "seo"],
     D_listings: ["Missing from key listing platforms", "Presence", 3, 2, 3, "Claim and complete the main listings for your category with the same name, phone and address.", "local"],
     D_social: ["Social profiles not linked from the site", "Presence", 1, 1, 1, "Link your active social profiles in the footer.", "social"],
     K_gap: ["Competitors appear for commercial searches you don't", "Search", 4, 3, 4, "Build pages that match these searches, starting with the High-opportunity ones.", "seo"],
-    M_compGap: ["Competitors are ahead on visible basics", "Competitive", 4, 2, 3, "Close the listed gaps first — they are what buyers compare.", "competitors"],
+    M_compGap: ["Competitors are ahead on visible basics", "Competitive", 4, 2, 3, "Close the listed gaps first, they are what buyers compare.", "competitors"],
     M_sameMessage: ["You say the same thing as competitors", "Positioning", 4, 3, 3, "Rewrite the hero around a claim competitors don't make (see white space).", "brand"],
     W_blocked: ["Your website turns away automated visitors", "Website", 3, 2, 3, "Check your firewall / bot protection: Google, Bing and AI assistants (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot) must be able to read your pages, and real visitors on slow networks should never see an error page. Then run the X-Ray again for the full page checks.", "web"],
-    X_extBroken: ["Links to other websites are broken", "Website", 2, 1, 2, "Update or remove the outgoing links listed — broken links lose visitors and look neglected.", "web"],
+    X_extBroken: ["Links to other websites are broken", "Website", 2, 1, 2, "Update or remove the outgoing links listed, broken links lose visitors and look neglected.", "web"],
     G_contentGap: ["Competitors cover topics you don't", "Content", 3, 3, 3, "Add a page or section for the topics most competitors cover (only those you really offer), starting with the ones most of them share.", "seo"],
     V_complaint: ["Customers' top complaint in your market is unaddressed", "Market", 4, 2, 3, "Address the top complaint on your homepage and in your offer (with proof).", "brand"],
     L_noListing: ["Not found on Google Maps for your own name", "Presence", 4, 2, 4, "Create or claim your Google Business Profile with the same name, phone and address as your website.", "local"],
@@ -986,7 +986,7 @@
     weeks.forEach(function (w) { w.items = w.items.map(function (o) { return { opportunity: o.id, problem: o.title, action: o.recommendation, expectedImpact: o.impact >= 4 ? "High" : o.impact === 3 ? "Medium" : "Low", evidence: o.evidence, tool: o.tool }; }); });
     return weeks;
   };
-  /* ---------- v13: technology stack — read from the page code and response headers (OBSERVED; "not detected" ≠ "not used") ---------- */
+  /* ---------- v13: technology stack, read from the page code and response headers (OBSERVED; "not detected" ≠ "not used") ---------- */
   var TECH = [
     ["CMS / site builder", [["WordPress", /\/wp-content\/|\/wp-includes\/|<meta[^>]+generator[^>]+wordpress/i], ["WooCommerce", /woocommerce/i], ["Elementor", /elementor-/i], ["Divi", /et_pb_|\/Divi\//], ["Shopify", /cdn\.shopify\.com|Shopify\.theme|x-shopify/i], ["Wix", /static\.wixstatic\.com|x-wix-request-id|wix-bolt/i], ["Squarespace", /static1\.squarespace\.com|squarespace-cdn/i], ["Webflow", /data-wf-page|webflow\.js|assets\.website-files\.com/i], ["Framer", /framerusercontent\.com|data-framer-/i], ["Drupal", /Drupal\.settings|\/sites\/default\/files\//], ["Joomla", /\/media\/jui\/|<meta[^>]+generator[^>]+joomla/i], ["Magento", /Magento_|mage\/cookies/], ["Ghost", /<meta[^>]+generator[^>]+ghost/i], ["Hostinger Website Builder", /zyrosite\.com|zyro\.com/i], ["GoDaddy Website Builder", /img1\.wsimg\.com|godaddy-website-builder/i], ["Blogger", /blogger\.com\/static|\.blogspot\.com/i], ["HubSpot CMS", /hs-sites\.com|hubspot-cms/i], ["Zoho Sites", /zohosites|sites\.zoho/i]]],
     ["Framework", [["Next.js", /__NEXT_DATA__|\/_next\/static\//], ["Nuxt", /__NUXT__|\/_nuxt\//], ["Gatsby", /___gatsby/], ["Angular", /ng-version=/], ["React", /data-reactroot|react-dom(\.production)?\.min\.js/], ["Vue", /data-v-[0-9a-f]{6,}|vue(\.runtime)?(\.global)?(\.prod)?\.js/], ["Astro", /astro-island|data-astro-/], ["Tailwind CSS", /tailwind(css)?[.-]/i], ["Bootstrap", /bootstrap(\.min)?\.(css|js)/i], ["jQuery", /jquery(-\d[\d.]*)?(\.min)?\.js/i]]],
@@ -1005,7 +1005,7 @@
     return out;
   };
   E.TECH_CATS = TECH.map(function (g) { return g[0]; });
-  /* ---------- v13: content gap — topics (from competitors' titles, headings and menus) that most competitors cover and your pages never mention ---------- */
+  /* ---------- v13: content gap, topics (from competitors' titles, headings and menus) that most competitors cover and your pages never mention ---------- */
   var GENERIC = /^(home|contact|about|menu|login|log|sign|cart|privacy|policy|terms|cookie|cookies|blog|read|more|learn|click|shop|account|search|page|new|get|free|best|view|all|our|your|us|we|com|www|https|http|india|delhi|call|email|book|now|today|best|top|services|service|solutions|company|team|careers|faq|faqs|help|support|news|offers|offer|online|app|download|year|years|work|why|how|what|who|where)$/;
   E.contentGap = function (ourText, comps) {
     comps = (comps || []).filter(function (c) { return c && c.profile; }); if (comps.length < 2) return { topics: [], compared: comps.length };
@@ -1018,7 +1018,7 @@
     var keep = []; topics.forEach(function (x) { if (keep.length < 12 && !keep.some(function (k) { return k.topic.indexOf(x) > -1 || x.indexOf(k.topic) > -1; })) keep.push({ topic: x, count: seen[x].length, of: comps.length, competitors: seen[x].map(function (c) { return c.domain; }), evidence: [].concat.apply([], seen[x].map(function (c) { return (c.evidence || []).slice(0, 1); })) }); });
     return { topics: keep, compared: comps.length };
   };
-  /* ---------- v14 Growth: search share of voice — position-weighted share of the first page across your market searches (INFERRED) ---------- */
+  /* ---------- v14 Growth: search share of voice, position-weighted share of the first page across your market searches (INFERRED) ---------- */
   var POSW = function (p) { return p === 1 ? 30 : p === 2 ? 16 : p === 3 ? 11 : p <= 5 ? 6 : p <= 10 ? 3 : 0; };
   E.shareOfVoice = function (serpA, target, comps) {
     var list = (serpA || []).filter(function (s) { return s.ok && s.kind !== "brand" && s.kind !== "voice"; }); if (!list.length) return null;
@@ -1031,7 +1031,7 @@
     if (!rows.some(function (r) { return r.you; })) rows.push({ domain: target, name: "You", you: true, share: 0, appearances: 0 });
     return { searches: list.length, rows: rows.filter(function (r, i) { return i < 8 || r.you; }) };
   };
-  /* ---------- v14 Growth: keyword → page map — the page of yours that best matches each search, or "create a page" (INFERRED) ---------- */
+  /* ---------- v14 Growth: keyword → page map, the page of yours that best matches each search, or "create a page" (INFERRED) ---------- */
   E.keywordMap = function (kw, pages) {
     pages = (pages || []).filter(function (p) { return !p.error && !(p.status >= 400) && p.title !== undefined; }); if (!pages.length || !(kw || []).length) return [];
     return kw.map(function (k) {
@@ -1041,10 +1041,10 @@
         var sc = t.reduce(function (a, w) { return a + (head.indexOf(w) > -1 ? 2 : body.indexOf(w) > -1 ? 0.5 : 0); }, 0) / Math.max(1, t.length * 2); if (sc > bs) { bs = sc; best = p; } });
       var fit = bs >= 0.75 ? "Strong" : bs >= 0.4 ? "Weak" : "None";
       return { keyword: k.keyword, intent: k.intent, ourPos: k.ourPos, page: fit === "None" ? null : best.finalUrl, pageTitle: fit === "None" ? "" : best.title, fit: fit,
-        action: fit === "Strong" ? (k.ourPos ? "Keep improving this page" : "This page fits — strengthen its title, H1 and internal links") : fit === "Weak" ? "Rewrite this page's title and H1 around the search, or add a section" : "Create a dedicated page for this search" };
+        action: fit === "Strong" ? (k.ourPos ? "Keep improving this page" : "This page fits, strengthen its title, H1 and internal links") : fit === "Weak" ? "Rewrite this page's title and H1 around the search, or add a section" : "Create a dedicated page for this search" };
     });
   };
-  /* ---------- v14 Pro: tracking & ads readiness — from the tech stack of you and every competitor (OBSERVED) ---------- */
+  /* ---------- v14 Pro: tracking & ads readiness, from the tech stack of you and every competitor (OBSERVED) ---------- */
   E.trackingAudit = function (mine, compTech, html) {
     var has = function (list, re) { return (list || []).some(function (t) { return re.test(t.name); }); }, code = String(html || "");
     var C = Object.keys(compTech || {}), n = function (re) { return C.filter(function (d) { return has(compTech[d], re); }).length; };
@@ -1058,16 +1058,16 @@
       ["Cookie consent", /Cookie consent/, "Needed in many markets before ad pixels may load."],
     ].map(function (r) { return { item: r[0], you: has(mine, r[1]), competitors: n(r[1]), of: C.length, why: r[2] }; });
     // v17.2: "not in the page HTML" is not the same as "not installed". Tags can sit inside Tag Manager, load after cookie
-    // consent, or come from the site's own scripts — in those cases the honest answer is UNKNOWN, with the reason.
+    // consent, or come from the site's own scripts, in those cases the honest answer is UNKNOWN, with the reason.
     var gtm = has(mine, /Tag Manager/), ownJs = (code.match(/<script[^>]+src=["'][^"']*(analytics|track|consent|cookie|gdpr|privacy)[^"']*["']/gi) || []).map(function (t) { return (/src=["']([^"']+)/i.exec(t) || [])[1] || ""; }).filter(function (u) { return u && !/^(https?:)?\/\//i.test(u); });   // the site's own (relative) scripts only
     rows.forEach(function (r) {
       r.how = r.you ? "Found in the page code" : "Not found in the page code";
       if (r.you !== false) return;
-      if (gtm && /Analytics|Pixel|Ads tag|LinkedIn/.test(r.item)) { r.you = null; r.how = "Not in the page code, but Google Tag Manager is — it may be set up inside GTM"; }
-      else if (ownJs.length && /Analytics|Cookie consent/.test(r.item)) { r.you = null; r.how = "The site loads its own script (" + ownJs[0].split("?")[0].split("/").pop() + ") that may do this — can't tell from outside"; }
+      if (gtm && /Analytics|Pixel|Ads tag|LinkedIn/.test(r.item)) { r.you = null; r.how = "Not in the page code, but Google Tag Manager is, it may be set up inside GTM"; }
+      else if (ownJs.length && /Analytics|Cookie consent/.test(r.item)) { r.you = null; r.how = "The site loads its own script (" + ownJs[0].split("?")[0].split("/").pop() + ") that may do this, can't tell from outside"; }
     });
-    rows.push({ item: "Google Search Console verified", you: /google-site-verification/i.test(code) ? true : null, competitors: null, of: C.length, why: "Shows which searches you appear for. (Verified by DNS is invisible to us — check your account if this says unknown.)" });
-    var gaps = rows.filter(function (r) { return r.you === false && r.competitors > 0; }).map(function (r) { return r.item + " — " + r.competitors + " of " + r.of + " competitors use it"; });
+    rows.push({ item: "Google Search Console verified", you: /google-site-verification/i.test(code) ? true : null, competitors: null, of: C.length, why: "Shows which searches you appear for. (Verified by DNS is invisible to us, check your account if this says unknown.)" });
+    var gaps = rows.filter(function (r) { return r.you === false && r.competitors > 0; }).map(function (r) { return r.item + ": " + r.competitors + " of " + r.of + " competitors use it"; });
     return { rows: rows, gaps: gaps };
   };
   /* ---------- v14 Pro: ready-to-paste JSON-LD built only from details found on the site (nothing invented) ---------- */
@@ -1083,7 +1083,7 @@
     var missing = ["telephone", "email", "address", "sameAs"].filter(function (k) { return !o[k]; });
     return { code: '<script type="application/ld+json">\n' + JSON.stringify(o, null, 2) + "\n</script>\n" + '<script type="application/ld+json">\n' + JSON.stringify(site, null, 2) + "\n</script>", type: o["@type"], missing: missing, existing: B.schemaTypes || [] };
   };
-  /* ---------- v14 Pro: competitor ad libraries — public, official transparency pages (opening them shows their live ads) ---------- */
+  /* ---------- v14 Pro: competitor ad libraries, public, official transparency pages (opening them shows their live ads) ---------- */
   var CC = { India: "IN", "United States": "US", "United Kingdom": "GB", UAE: "AE", Canada: "CA", Australia: "AU", Singapore: "SG", "Saudi Arabia": "SA", Qatar: "QA", Germany: "DE", France: "FR", "New Zealand": "NZ", "South Africa": "ZA" };
   E.adLinks = function (comps, country) {
     var cc = CC[country] || "ALL";
@@ -1111,9 +1111,9 @@
     var st = function (k, extra) { var cs = checks.filter(function (c) { return (c.area === "conversion" || c.area === "trust") && G[k].indexOf(c.group) > -1; }).concat(extra || []); var s = groupScore(cs); return { key: k, score: s, checks: cs.map(function (c) { return c.id; }) }; };
     var und = st("understanding", offerScore != null ? [{ id: "offer", score: offerScore, weight: 2, status: "x" }] : []);
     return [{ name: "Understanding", note: "Does the visitor get what you do and for whom?", s: und }, { name: "Trust", note: "Proof they can believe you", s: st("trust") }, { name: "Interest", note: "Prices, answers to objections", s: st("interest") }, { name: "Action", note: "Clear next step, easy contact", s: st("action") },
-      { name: "Lead", note: "Data unavailable — needs your form/CRM data", s: { score: null, checks: [] } }, { name: "Customer", note: "Data unavailable — needs your sales data", s: { score: null, checks: [] } }].map(function (x) { return { name: x.name, note: x.note, score: x.s.score, checks: x.s.checks }; });
+      { name: "Lead", note: "Data unavailable, needs your form/CRM data", s: { score: null, checks: [] } }, { name: "Customer", note: "Data unavailable, needs your sales data", s: { score: null, checks: [] } }].map(function (x) { return { name: x.name, note: x.note, score: x.s.score, checks: x.s.checks }; });
   };
-  /* Revenue Leak Finder (prompt §31): opportunities that lose enquiries — never a rupee figure without the business's own data */
+  /* Revenue Leak Finder (prompt §31): opportunities that lose enquiries, never a rupee figure without the business's own data */
   E.leaks = function (opps) {
     return opps.filter(function (o) { return ["Conversion", "Offer", "Trust"].indexOf(o.category) > -1 || ["P_perf", "P_field", "T_viewport", "T_home", "T_broken", "T_slow"].indexOf(o.key) > -1; }).slice(0, 12)
       .map(function (o) { return { id: o.id, key: o.key, leak: o.title, evidence: o.evidence, detail: o.description, impact: o.impact >= 4 ? "High" : o.impact === 3 ? "Medium" : "Low", confidence: o.confidence >= 0.8 ? "High" : o.confidence >= 0.6 ? "Medium" : "Low", effort: o.effort <= 2 ? "Low" : o.effort === 3 ? "Medium" : "High", fix: o.recommendation, label: o.label }; });
@@ -1124,7 +1124,7 @@
     opps.forEach(function (o) { var hi = o.impact >= 4, easy = o.effort <= 2; q[hi && easy ? "quick" : hi ? "big" : easy ? "small" : "later"].push({ id: o.id, title: o.title, impact: o.impact, effort: o.effort, priority: o.priority }); });
     return q;
   };
-  /* 90-day roadmap without AI (prompt §45): month 1 foundation, month 2 acquisition, month 3 optimisation — from the real findings */
+  /* 90-day roadmap without AI (prompt §45): month 1 foundation, month 2 acquisition, month 3 optimisation, from the real findings */
   var KPI = { Website: "Mobile PageSpeed score and error pages (PageSpeed / Search Console)", Search: "Impressions and clicks for the target searches (Search Console)", Content: "Pages published and their impressions", Conversion: "Enquiries per 100 visits (your analytics)", Trust: "Number of reviews and testimonials", Offer: "Enquiry rate on the pages you changed", Positioning: "Enquiries mentioning the new message", Presence: "Listings completed and profile views", Competitive: "Gaps closed vs the competitor median (next X-Ray)", Market: "Share of top-10 results in your market searches (next X-Ray)" };
   E.plan90 = function (opps) {
     var used = {}, take = function (f, n) { var o = opps.filter(function (x) { return !used[x.id] && f(x); }).slice(0, n); o.forEach(function (x) { used[x.id] = 1; }); return o; };
@@ -1137,7 +1137,7 @@
       { month: 2, name: "Acquisition", goal: "Get found for the searches and places buyers use", items: m2.map(function (o) { return row(o, first); }) },
       { month: 3, name: "Optimisation", goal: "Sharpen offer, proof and positioning; re-run the X-Ray to measure", items: m3.map(function (o) { return row(o); }) }];
   };
-  /* Why are they winning? (prompt §34) — one competitor vs you, area by area, from both websites */
+  /* Why are they winning? (prompt §34), one competitor vs you, area by area, from both websites */
   var WW = [["Offer clarity", function (p) { return p.offerScore || 0; }, "C_cta O_audience O_outcome O_problem"], ["Trust & proof", function (p) { return (p.testimonials ? 40 : 0) + Math.min(60, (p.trust || []).length * 20); }, "R_testi R_markers R_cases"], ["Pricing shown", function (p) { return p.pricing ? 100 : 0; }, "C_pricing"],
     ["Objection handling (FAQ)", function (p) { return p.faq ? 100 : 0; }, "C_faq"], ["Content (blog / resources)", function (p) { return p.blog ? 100 : 0; }, "T_thin G_contentGap"], ["Search basics", function (p) { return (p.titleOk ? 35 : 0) + (p.metaOk ? 35 : 0) + ((p.schema || []).length ? 30 : 0); }, "T_title T_desc T_schema"], ["Contact ease", function (p) { return (p.phone ? 50 : 0) + (p.whatsapp ? 50 : 0); }, "C_contact C_tap"]];
   E.whyWinning = function (T, comp, opps, serps) {
@@ -1161,7 +1161,7 @@
       .map(function (q) { var e = EXP_CTR(q.position); return { query: q.key, impressions: q.impressions, clicks: q.clicks, ctr: q.ctr, position: q.position, expected: e, extraClicks: Math.max(0, Math.round(q.impressions * (e - q.ctr) / 100)), action: q.position <= 10 ? "Rewrite the title and description for this search (it already shows on page 1)." : "Strengthen the page for this search (content, internal links) to reach page 1." }; })
       .sort(function (a, b) { return b.extraClicks - a.extraClicks; }).slice(0, 12);
   };
-  /* ---------- v14 competitor matrix — you vs every competitor on the same visible basics (OBSERVED) ---------- */
+  /* ---------- v14 competitor matrix, you vs every competitor on the same visible basics (OBSERVED) ---------- */
   E.compMatrix = function (T, comps, extra) {
     if (!T || !(comps || []).length) return null;
     extra = extra || {};

@@ -1,4 +1,4 @@
-// v17 Growth Lab intelligence — server side: API cost log, search fallback, Google Maps places, multi-engine AI visibility,
+// v17 Growth Lab intelligence, server side: API cost log, search fallback, Google Maps places, multi-engine AI visibility,
 // admin-controlled prices (used by checkout), action tracker, Search Console OAuth + data, monitoring (diff, check, cron tick),
 // admin costs / health / config permissions, public catalog. D1 = real SQLite (node:sqlite); every outside API is mocked.
 // Run: node --no-warnings tests/v17-functions.test.mjs
@@ -36,7 +36,7 @@ const login = (env, email, plan, who) => call(env, "test-login", Object.assign({
 /* ---------- outside world ---------- */
 const hits = []; let serperDown = false;
 const page = (title, h1, extra) => `<html><head><title>${title}</title><meta name="description" content="Fresh food daily"></head><body><h1>${h1}</h1><a href="/menu">Menu</a><a href="/contact">Book a table</a>${extra || ""}<p>${"word ".repeat(300)}</p></body></html>`;
-let rivalHtml = page("Tandoor Tales — North Indian", "Best tandoori in Dwarka", "<p>Thali ₹299</p>");
+let rivalHtml = page("Tandoor Tales: North Indian", "Best tandoori in Dwarka", "<p>Thali ₹299</p>");
 globalThis.fetch = async (u, o = {}) => {
   u = String(u); hits.push(u.replace(/\?.*/, ""));
   if (/google\.serper\.dev\/search/.test(u)) { if (serperDown) return new Response('{"message":"credits exhausted"}', { status: 403 }); return new Response(JSON.stringify({ organic: [{ title: "Tandoor Tales", link: "https://tandoortales.test/", snippet: "Tandoori", position: 1 }] })); }
@@ -149,7 +149,7 @@ r = await call(env, "xray/gsc", { jobId: job }); ok(r.j.connected === false && /
 
 /* ================= 6. monitoring ================= */
 const A0 = parseSnap(rivalHtml, "https://tandoortales.test/");
-ok(A0.title === "Tandoor Tales — North Indian" && A0.prices[0] === "₹299" && A0.nav.length === 2 && A0.ctas.indexOf("Book a table") > -1, "snapshot: title, prices, links, CTAs read from the homepage");
+ok(A0.title === "Tandoor Tales: North Indian" && A0.prices[0] === "₹299" && A0.nav.length === 2 && A0.ctas.indexOf("Book a table") > -1, "snapshot: title, prices, links, CTAs read from the homepage");
 const ev1 = diff(Object.assign({ ok: true, https: true }, A0), Object.assign({ ok: true, https: true }, A0, { noindex: true }), true, "x");
 ok(ev1.length === 1 && ev1[0].kind === "noindex" && ev1[0].severity === "high", "own site turning noindex → high alert");
 ok(diff(Object.assign({ ok: true }, A0), Object.assign({ ok: true }, A0), false, "x").length === 0, "nothing changed → no event");
@@ -158,7 +158,7 @@ ok(r.j.ok && r.j.first.events[0].kind === "baseline", "monitor added → baselin
 r = await call(env, "lab/monitor", { url: "https://www.tandoortales.test/", kind: "competitor" }); ok(r.status === 409, "same site twice refused");
 r = await call(env, "lab/monitor", { url: "http://127.0.0.1/", kind: "own" }); ok(r.status === 400, "private address refused (SSRF)");
 const tid = env.XRAY_DB.db.prepare("SELECT id FROM mon_targets").get().id;
-rivalHtml = page("Tandoor Tales — Catering & Dining", "Catering for every party", "<p>Thali ₹349</p><a href='/catering'>Catering</a><button>Get a free quote</button>");
+rivalHtml = page("Tandoor Tales: Catering & Dining", "Catering for every party", "<p>Thali ₹349</p><a href='/catering'>Catering</a><button>Get a free quote</button>");
 r = await call(env, "lab/monitor/check", { id: tid });
 const kinds = r.j.result.events.map((e) => e.kind);
 ok(["title", "headline", "pricing", "new_pages", "cta", "content_up"].every((k) => kinds.indexOf(k) > -1), "competitor changed: title, headline, prices, new page, CTA, sitemap growth detected (" + kinds.join(",") + ")");

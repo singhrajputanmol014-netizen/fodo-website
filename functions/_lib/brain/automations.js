@@ -1,8 +1,8 @@
-/* FODO OWNER BRAIN — automations: WHEN (an event on the site, or a schedule) → IF (optional condition) → THEN (a safe action).
+/* FODO OWNER BRAIN, automations: WHEN (an event on the site, or a schedule) → IF (optional condition) → THEN (a safe action).
    Events arrive in real time from logEvent() (payments, sign-ups hitting the free limit, help tickets, X-Rays, monitoring…);
    schedules run from POST /api/owner-brain/tick (hourly GitHub workflow + the daily 06:47 scheduler).
    Actions are deliberately limited to safe ones: notify the owner (in-app + email), create a task, send the daily briefing by
-   email, start an X-Ray in the background. No automation can email customers, change prices or delete anything —
+   email, start an X-Ray in the background. No automation can email customers, change prices or delete anything:
    those always need the owner. Every run is audited; a run never triggers another automation (no loops). */
 import { brainDb, nowIso, rid, clip, clean, audit, istDay, getSettings } from "./store.js";
 import { createTask } from "./memory.js";
@@ -58,16 +58,16 @@ async function runAction(env, a, ev) {
   const args = JSON.parse(a.action_args || "{}"), what = ev ? (EVENTS[ev.kind] || ev.kind) + (ev.detail ? ": " + ev.detail : "") : "";
   if (a.action === "notify") return notifyOwner(env, clip(args.text || a.name, 140), what || a.name, args.email ? "email" : "info");
   if (a.action === "email_owner") return notifyOwner(env, clip(args.text || a.name, 140), what || a.name, "email");
-  if (a.action === "create_task") return createTask(env, { title: clip((args.title || a.name) + (ev && ev.detail ? " — " + ev.detail : ""), 190), priority: args.priority || "P2", project: args.project || "", source: "automation: " + a.name });
+  if (a.action === "create_task") return createTask(env, { title: clip((args.title || a.name) + (ev && ev.detail ? ": " + ev.detail : ""), 190), priority: args.priority || "P2", project: args.project || "", source: "automation: " + a.name });
   if (a.action === "briefing_email") {
     const b = await env.XRAY_DB.prepare("SELECT text, data FROM brain_briefings WHERE day=?1").bind(istDay()).first();
-    const text = b && b.text ? b.text : "Today's briefing hasn't been written yet — open FODO Brain → Overview → Write today's briefing.";
-    return notifyOwner(env, "Your FODO briefing — " + istDay(), text, "email");
+    const text = b && b.text ? b.text : "Today's briefing hasn't been written yet, open FODO Brain → Overview → Write today's briefing.";
+    return notifyOwner(env, "Your FODO briefing: " + istDay(), text, "email");
   }
   if (a.action === "start_xray") return { skipped: "background X-Rays from automations run when the runner is set up", website: args.website };
   return { skipped: "unknown action" };
 }
-/* called from logEvent() for every site event — cheap when no automation listens */
+/* called from logEvent() for every site event, cheap when no automation listens */
 export async function onEvent(env, kind, userId, detail) {
   if (String(env.BRAIN_ENABLED || "1") === "0" || !EVENTS[kind]) return;
   const d = await brainDb(env);
@@ -81,7 +81,7 @@ export async function onEvent(env, kind, userId, detail) {
     await audit(env, { owner: "automation", kind: "automation", tool: a.action, intent: a.name, status: r && r.error ? "error" : "ok", detail: kind + " · " + ev.detail });
   }
 }
-/* scheduled automations — POST /api/owner-brain/tick (cron) */
+/* scheduled automations: POST /api/owner-brain/tick (cron) */
 export async function tick(env) {
   await seed(env);
   const d = await brainDb(env), now = nowIso(), due = (await d.prepare("SELECT * FROM brain_automations WHERE enabled=1 AND trigger_type='schedule' AND next_run <= ?1").bind(now).all()).results || [], out = [];
@@ -95,6 +95,6 @@ export async function tick(env) {
   // overdue commitments / tasks → one reminder alert per day
   const od = (await d.prepare("SELECT title, assignee, due FROM brain_tasks WHERE status IN ('todo','doing') AND due IS NOT NULL AND due < ?1 ORDER BY due LIMIT 10").bind(istDay()).all()).results || [];
   if (od.length) { const key = "overdue|" + istDay(); const ex = await d.prepare("SELECT id FROM brain_alerts WHERE akey=?1").bind(key).first();
-    if (!ex) await d.prepare("INSERT INTO brain_alerts (id, akey, severity, title, reason, evidence, action, status, created_at, updated_at) VALUES (?1,?2,'important',?3,?4,'tasks','Open Tasks and update or reschedule them.','open',?5,?5)").bind("al_" + rid(10), key, od.length + " task(s) / commitment(s) overdue", od.map((t) => t.title + (t.assignee ? " (" + t.assignee + ")" : "") + " — due " + t.due).join("; "), now).run(); }
+    if (!ex) await d.prepare("INSERT INTO brain_alerts (id, akey, severity, title, reason, evidence, action, status, created_at, updated_at) VALUES (?1,?2,'important',?3,?4,'tasks','Open Tasks and update or reschedule them.','open',?5,?5)").bind("al_" + rid(10), key, od.length + " task(s) / commitment(s) overdue", od.map((t) => t.title + (t.assignee ? " (" + t.assignee + ")" : "") + ", due " + t.due).join("; "), now).run(); }
   return { ran: out, overdue: od.length };
 }

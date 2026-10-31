@@ -24,7 +24,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);
@@ -46,7 +46,7 @@ globalThis.fetch = async (u, o = {}) => { u = String(u);
   if (/oldsite\.example\.com/.test(u)) return new Response('<html><head><title>Bright Smiles Dental | Delhi</title><meta name="description" content="Gentle dental care in Delhi."><meta name="viewport" content="width=device-width"><style>body{font-family:"Lato";color:#0e7490}.b{background:#0e7490}a{color:#22c55e}</style></head><body><header><nav><a href="/">Home</a><a href="/about-us">About us</a><a href="/treatments">Treatments</a><a href="/blog">Blog</a><a href="/contact">Contact</a></nav></header><h1>Your smile, our passion</h1><p>We have been caring for families in South Delhi for many years with modern, painless dentistry and a calm clinic.</p><h2>Treatments</h2><img src="https://oldsite.example.com/hero.jpg" alt="Clinic"><p>Call +91 98100 12345 or write to hello@brightsmiles.in</p><section></section><form></form></body></html>', { status: 200, headers: { "content-type": "text/html" } });
   return new Response("x", { status: 599 }); };
 const AI = { run: async (model, x) => { const sys = x.messages[0].content, user = x.messages[x.messages.length - 1].content;
-  if (/write website copy/.test(sys)) { const j = JSON.parse(user.split("SECTIONS: ")[1]); j.pages.forEach((p) => p.sections.forEach((s) => { if (s && s.props && s.props.title) s.props.title = "Smile Dental — " + s.props.title; if (s && s.type === "testimonials") s.props.items = [{ quote: "Best clinic ever!", name: "Fake Person" }]; })); return { response: JSON.stringify(j) }; }
+  if (/write website copy/.test(sys)) { const j = JSON.parse(user.split("SECTIONS: ")[1]); j.pages.forEach((p) => p.sections.forEach((s) => { if (s && s.props && s.props.title) s.props.title = "Smile Dental: " + s.props.title; if (s && s.type === "testimonials") s.props.items = [{ quote: "Best clinic ever!", name: "Fake Person" }]; })); return { response: JSON.stringify(j) }; }
   if (/edit ONE customer website/.test(sys)) { if (/other site|admin|secret/i.test(user)) return { response: JSON.stringify({ say: "x", ops: [{ op: "update", page: "home", i: 1, props: { title: "<script>steal()</script>" } }, { op: "raw", html: "<script>" }] }) };
     return { response: JSON.stringify({ say: "Made the hero shorter and added an FAQ.", ops: [{ op: "update", page: "home", i: 1, props: { title: "Gentle dental care in Dwarka" } }, { op: "add", page: "home", at: 2, type: "faq", props: { title: "FAQ", items: [{ q: "Open on Sunday?", a: "Yes, 10–2." }] } }, { op: "theme", theme: { primary: "#0F766E" } }] }) }; }
   if (/Make it shorter/.test(sys)) return { response: "Short and sweet." };
@@ -68,7 +68,7 @@ const aid = r.j.id; r = await S(aid, undefined, "c"); const adoc = r.j.site.doc;
 ok(adoc.pages.map((p) => p.slug).join() === "home,treatments,doctors,about,book,contact,privacy" && adoc.pages.find((p) => p.slug === "book").sections.some((s) => s.type === "booking"), "dental sitemap: treatments, doctors, booking page, contact, privacy (not a generic 5-page site)");
 ok(adoc.theme.style === "luxury" && adoc.theme.headingFont === "Cormorant" && adoc.settings.whatsappFloat === true && adoc.pages.every((p) => p.seo && p.seo.title), "‘premium’ → luxury design system; WhatsApp button; every page got an SEO title from the automatic QA");
 ok(contrast("#ffffff", adoc.theme.primary) >= 4.5, "QA fixed button contrast (white on brand colour ≥ 4.5:1)");
-ok(adoc.pages[0].sections.find((s) => s.type === "testimonials").props.items[0].quote === "[Add a real customer review]", "reviews stay placeholders — never invented");
+ok(adoc.pages[0].sections.find((s) => s.type === "testimonials").props.items[0].quote === "[Add a real customer review]", "reviews stay placeholders, never invented");
 
 /* blank + template variation */
 r = await S("create", { mode: "blank", name: "Blank Co" }, "c"); r = await S(r.j.id, undefined, "c"); ok(r.j.site.doc.pages.length === 1 && r.j.site.doc.pages[0].sections.map((s) => s.type).join() === "navbar,hero,footer", "start from blank: one page, navbar + footer (+ a heading)");
@@ -121,7 +121,7 @@ r = await S("import/analyze", { url: "https://oldsite.example.com/" }, "c");
 ok(r.j.ok && r.j.analysis.title === "Bright Smiles Dental | Delhi" && r.j.analysis.navigation.length === 4 && r.j.analysis.colors.indexOf("#0e7490") > -1 && r.j.analysis.fonts.indexOf("Lato") > -1 && r.j.analysis.industry === "Dentist" && r.j.analysis.phone, "analyse a website: navigation, headings, colours, fonts, industry, contact");
 ok(r.j.plan.pages.map((p) => p.slug).join() === "home,about,services,articles,contact", "its navigation becomes an original sitemap");
 const imp = r.j; r = await S("create", { mode: "import", name: "Bright Smiles", plan: imp.plan, import: imp.analysis, rights: false, ai: false }, "c"); let idoc = (await S(r.j.id, undefined, "c")).j.site.doc;
-ok(!/Your smile, our passion/.test(JSON.stringify(idoc)), "without rights: structure only — none of their text is copied");
+ok(!/Your smile, our passion/.test(JSON.stringify(idoc)), "without rights: structure only, none of their text is copied");
 r = await S("import/analyze", { url: "http://127.0.0.1/admin" }, "c"); ok(r.status === 400, "private addresses can't be imported (SSRF-safe)");
 
 /* owner: turn a website into a template */

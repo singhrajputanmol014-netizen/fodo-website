@@ -1,10 +1,10 @@
-/* FODO Competitor Finder — Google Places part (needs the Cloudflare Secret GOOGLE_PLACES_KEY)
+/* FODO Competitor Finder: Google Places part (needs the Cloudflare Secret GOOGLE_PLACES_KEY)
  *
- *   GET /api/competitors?health=1                         → { ok, version, google, geoapify, ai, kv, osmProxy } — which sources this site has
+ *   GET /api/competitors?health=1                         → { ok, version, google, geoapify, ai, kv, osmProxy }, which sources this site has
  *   GET /api/competitors?type=cafe&lat=..&lng=..&radius=5000            → Google results for that circle (up to 60, 3 pages)
  *   GET /api/competitors?type=cafe&rect=minLat,minLng,maxLat,maxLng     → one tile of a "deep search" (the browser splits big areas into tiles)
  *
- * The free OpenStreetMap search runs in the visitor's browser (js/free-places.js) — it is not limited by this function's
+ * The free OpenStreetMap search runs in the visitor's browser (js/free-places.js), it is not limited by this function's
  * CPU budget and returns every listed business. Without a Google key this route still answers with the free search,
  * so older pages keep working.
  */
@@ -65,7 +65,7 @@ async function handle({ request, env }) {
   if (kv) {
     try {
       const rk = `cf:rl:${ip}:${hour}`, n = parseInt((await kv.get(rk)) || "0", 10);
-      if (n >= limit) return json({ ok: false, reason: "Too many searches this hour — please try again a little later." }, 429);
+      if (n >= limit) return json({ ok: false, reason: "Too many searches this hour, please try again a little later." }, 429);
       await kv.put(rk, String(n + 1), { expirationTtl: 3700 });
     } catch (e) {}
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* v17 Growth Lab intelligence end-to-end — real pages + real Pages Functions (local workerd, D1 + KV), offline stand-ins for
+/* v17 Growth Lab intelligence end-to-end, real pages + real Pages Functions (local workerd, D1 + KV), offline stand-ins for
    Serper (search + Google Maps places), PageSpeed, Groq, Gemini (Google Search grounding), Google OAuth + Search Console.
    Covers: Growth Lab home (free vs Pro, live prices), Budget Planner, Search Console connect, an X-Ray with every v17 block
    (data completeness, advantage/threat, funnel, leaks, priority matrix, local, AI score + engines, Search Console, why-winning,
@@ -78,14 +78,14 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   ok(R && R.completeness && R.completeness.overall >= 70 && R.completeness.parts.some((x) => /Search Console/.test(x.name) && x.pct === 100), "data completeness " + (R && R.completeness && R.completeness.overall) + "% with Search Console counted");
   ok(/Data completeness \d+%/.test(await p.textContent(".xr-dc")) && /Data collected/.test(await p.textContent(".xr-dc")), "hero shows data completeness + collection date");
   const big2 = await p.textContent(".xr-big2"); ok(/YOUR STRONGEST ADVANTAGE/.test(big2) && /BIGGEST COMPETITIVE THREAT/.test(big2) && /(tandoortales|curryhouse)\.test/.test(big2), "strongest advantage + biggest competitive threat cards");
-  ok((await p.$$(".xr-funnel li")).length === 6 && /Data unavailable — needs your form\/CRM data/.test(await p.textContent(".xr-funnel")), "conversion funnel: 4 scored stages + lead/customer honestly unavailable");
+  ok((await p.$$(".xr-funnel li")).length === 6 && /Data unavailable, needs your form\/CRM data/.test(await p.textContent(".xr-funnel")), "conversion funnel: 4 scored stages + lead/customer honestly unavailable");
   ok(R.leaks.length > 0 && (await p.$$("#xr-leaks ~ .xr-scroll tbody tr")).length === R.leaks.length && /never states lost revenue/.test(await p.textContent("#xr-s11")), "revenue leaks table (" + R.leaks.length + ") with potential impact, no rupee claims");
   ok((await p.$$(".xr-matrix4 .xr-q4")).length === 4, "priority matrix: 4 quadrants");
   ok(R.local && R.local.me && R.local.me.rating === 4.1 && R.local.medianRating >= 4.3 && R.local.behindOnRating && /4\.1★/.test(await p.textContent("#xr-s12")), "local visibility: your Maps listing 4.1★ vs local median " + (R.local && R.local.medianRating) + "★");
   ok(R.opportunities.some((o) => o.key === "L_weak"), "weaker-reviews opportunity created from the Maps data");
   const vis = R.visibility, engs = (vis.engines || []).map((e) => e.id).sort().join();
   ok(engs === "gemini,groq,workers-ai" && vis.score && vis.score.score >= 0 && /FODO AI Visibility Score/.test(await p.textContent("#xr-s13")) && /not an official score/.test(await p.textContent("#xr-s13")), "AI visibility: 3 engines, FODO AI Visibility Score " + (vis.score && vis.score.score) + " (labelled not official)");
-  ok(vis.rows.some((r) => r.engine === "gemini" && r.live && r.citations.some((c) => c.you)) && /Yes — Google Search/.test(await p.textContent("#xr-s13")), "Gemini answers from live Google Search and cites your site");
+  ok(vis.rows.some((r) => r.engine === "gemini" && r.live && r.citations.some((c) => c.you)) && /Yes: Google Search/.test(await p.textContent("#xr-s13")), "Gemini answers from live Google Search and cites your site");
   const gtxt = await p.textContent(".xr-gsc"); ok(/420/.test(gtxt) && /18,500/.test(gtxt) && /CTR quick wins/.test(gtxt) && /best restaurant dwarka/.test(gtxt) && /Private/.test(gtxt), "Search Console block: real clicks/impressions, CTR quick wins, marked private");
   ok((await p.$$("#xr-whysel option")).length >= 1 && /Why .* wins/.test(await p.textContent(".xr-whyp:not([hidden])")), "why are they winning: per-competitor view");
   if ((await p.$$("#xr-whysel option")).length > 1) { const v = await p.$$eval("#xr-whysel option", (o) => o[1].value); await p.selectOption("#xr-whysel", v); ok(await p.$eval('.xr-whyp[data-d="' + v + '"]', (e) => !e.hidden), "switching competitor shows its panel"); }
@@ -166,7 +166,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   await p.goto(BASE + "/admin/#prompts"); await p.waitForSelector(".ad-prompt"); ok((await p.$$(".ad-prompt")).length === 10 && /Runs \(this version\)/.test(await p.textContent("#ad-view")), "admin AI prompts: 6 prompts with version + usage");
   /* ---------- v18 standalone PRO tools ---------- */
   await p.goto(BASE + "/growth-lab/"); await p.waitForFunction(() => /included in Growth/.test((document.querySelector('[data-pid="war-room"]') || {}).textContent || ""), null, { timeout: 15000 }).catch(() => {});
-  ok(/₹2,999 a run · included in Growth, Pro, Agency X-Rays/.test(await p.textContent('[data-pid="war-room"]')) && (await p.getAttribute('.gl-card[data-tool="war-room"]', "href")) === "../growth-lab/war-room/", "Growth Lab: War Room card → its own page, ₹2,999 a run, included in Growth+ X-Rays");
+  ok(/₹299 a run · included in Growth, Pro, Agency X-Rays/.test(await p.textContent('[data-pid="war-room"]')) && (await p.getAttribute('.gl-card[data-tool="war-room"]', "href")) === "../growth-lab/war-room/", "Growth Lab: War Room card → its own page, ₹2,999 a run, included in Growth+ X-Rays");
   await p.goto(BASE + "/growth-lab/website-health/"); await p.waitForFunction(() => /Owner access/.test(document.getElementById("tl-me").textContent), null, { timeout: 15000 });
   ok(/Website Health Audit/.test(await p.textContent("h1")) && /What it analyzes/.test(await p.textContent(".tl-what")) && /₹\d/.test(await p.textContent("#tl-price")), "tool page: name, what it analyzes, data, what you receive, live price, owner access");
   await p.fill("#tl-url", "spicehub.test"); await p.click("#tl-go");
@@ -177,7 +177,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   await p.click("#xr-toolall"); ok((await p.$$eval("#xr-report section.xr-sec", (l) => l.filter((s) => !s.hidden).length)) >= 15, "'Show the full X-Ray' opens every section");
   await p.goto(BASE + "/growth-lab/war-room/"); await p.waitForFunction(() => /Owner access/.test(document.getElementById("tl-me").textContent), null, { timeout: 15000 });
   await p.fill("#tl-url", "curryhouse.test"); await p.click("#tl-go");
-  await p.waitForSelector(".xr-focus", { timeout: 20000 }); ok(/Competitor War Room<\/b> — researching curryhouse\.test/.test(await p.innerHTML(".xr-focus")), "no X-Ray of that site yet → the X-Ray engine runs a fresh scan in tool mode");
+  await p.waitForSelector(".xr-focus", { timeout: 20000 }); ok(/Competitor War Room<\/b>, researching curryhouse\.test/.test(await p.innerHTML(".xr-focus")), "no X-Ray of that site yet → the X-Ray engine runs a fresh scan in tool mode");
   await p.waitForSelector(".xr-toolbar", { timeout: 240000 });
   const tv2 = await p.evaluate(() => [].slice.call(document.querySelectorAll("#xr-report section.xr-sec")).filter((s) => !s.hidden).map((s) => s.id).join());
   ok(tv2 === "xr-s4,xr-s8,xr-s17" && /tool=war-room/.test(p.url()), "fresh scan finished → War Room view (market + competitors + evidence)");
@@ -196,7 +196,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   /* ---------- sample report + mobile ---------- */
   if (fs.existsSync(path.join(__dirname, "../data/xray-sample.json"))) {
     await p.goto(BASE + "/business-x-ray/?r=sample"); await p.waitForSelector(".xr-demo", { timeout: 15000 });
-    ok(/DEMO REPORT — SAMPLE DATA/.test(await p.textContent(".xr-demo")) && /test website/.test(await p.textContent(".xr-demo")), "sample report is clearly labelled demo data from a test website");
+    ok(/DEMO REPORT: SAMPLE DATA/.test(await p.textContent(".xr-demo")) && /test website/.test(await p.textContent(".xr-demo")), "sample report is clearly labelled demo data from a test website");
   }
   const m = await newCtx(b, true), mp = await m.newPage(); await mp.goto(BASE + "/growth-lab/"); await mp.waitForTimeout(800);
   ok(await mp.evaluate(() => document.documentElement.scrollWidth <= 391 && innerWidth === 390), "Growth Lab home fits a 390 px phone (no sideways scroll)");

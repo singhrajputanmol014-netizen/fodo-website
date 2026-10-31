@@ -1,4 +1,4 @@
-/* FODO Help Desk v20 — tickets, the support mailbox and the AI help assistant, all stored in D1 and visible in /admin/.
+/* FODO Help Desk v20, tickets, the support mailbox and the AI help assistant, all stored in D1 and visible in /admin/.
    Channels: the /help/ page (form + AI chat), email (Resend inbound webhook → the same ticket thread), admin replies.
    Email threading: every ticket email carries "[FODO #T…]" in the subject and goes out with Reply-To = SUPPORT_EMAIL,
    so a customer's reply lands back on the same ticket.
@@ -59,8 +59,8 @@ export async function thread(env, id, withNotes) {
 export async function mailTicket(env, origin, t, text, opt) {
   opt = opt || {};
   const subj = "[FODO #" + t.id + "] " + (opt.subject || t.subject), link = ticketLink(env, origin, t);
-  const html = '<div style="font:15px/1.55 -apple-system,Segoe UI,sans-serif;color:#15161a">' + esc(text).replace(/\n/g, "<br>") + '<hr style="border:0;border-top:1px solid #e3e3e3;margin:22px 0"><p style="color:#666;font-size:13px">Reply to this email, or open your ticket: <a href="' + link + '">' + link + "</a><br>FODO — Fear Of Digitally Out ?</p></div>";
-  return sendMail(env, t.email, subj, html, text + "\n\n— Reply to this email or open your ticket: " + link, { replyTo: supportAddr(env), kind: opt.kind || "ticket", ticket: t.id, by: opt.by, headers: { "X-FODO-Ticket": t.id } });
+  const html = '<div style="font:15px/1.55 -apple-system,Segoe UI,sans-serif;color:#15161a">' + esc(text).replace(/\n/g, "<br>") + '<hr style="border:0;border-top:1px solid #e3e3e3;margin:22px 0"><p style="color:#666;font-size:13px">Reply to this email, or open your ticket: <a href="' + link + '">' + link + "</a><br>FODO: Fear Of Digitally Out ?</p></div>";
+  return sendMail(env, t.email, subj, html, text + "\n\nReply to this email or open your ticket: " + link, { replyTo: supportAddr(env), kind: opt.kind || "ticket", ticket: t.id, by: opt.by, headers: { "X-FODO-Ticket": t.id } });
 }
 
 /* ---------- inbound email (Resend "email.received" webhook, Svix-signed) ---------- */
@@ -90,7 +90,7 @@ export async function inboundEmail(env, origin, mail) {
   if (t) { await addMessage(env, t, { dir: "in", source: "email", author: from, text: text || "(empty email)", mailId: mail.id }); return { ok: true, ticket: t.id, added: true }; }
   t = await createTicket(env, { userId: user && user.id, email: from, name: nameOf(mail.from), subject: subject.replace(/^(re|fwd?):\s*/i, "") || "Email to FODO", category: "Other", text: text || "(empty email)", channel: "email" });
   await d.prepare("UPDATE help_mail SET ticket_id=?2 WHERE provider_id=?1 AND dir='in'").bind(mail.id || "-", t.id).run();
-  try { await mailTicket(env, origin, t, "Hi" + (t.name ? " " + t.name : "") + ",\n\nThanks for writing to FODO. Your message is ticket " + t.id + " — a person will reply soon (usually within one working day).", { kind: "ticket", subject: t.subject }); } catch (e) {}
+  try { await mailTicket(env, origin, t, "Hi" + (t.name ? " " + t.name : "") + ",\n\nThanks for writing to FODO. Your message is ticket " + t.id + ", a person will reply soon (usually within one working day).", { kind: "ticket", subject: t.subject }); } catch (e) {}
   return { ok: true, ticket: t.id, created: true };
 }
 export async function fetchReceived(env, id) {
@@ -113,8 +113,8 @@ export async function accountFacts(env, u, b) {
     xraysLeft: isUnlimited(owner) ? "unlimited (FODO team / gifted access)" : { thisMonth: plan === "free" ? 0 : owner.monthly_left || 0, packs: owner.pack_left || 0, free: plan === "free" ? owner.free_left || 0 : 0 },
     toolRuns: tools.map((x) => (PRODUCTS[x.tool] ? PRODUCTS[x.tool].name : x.tool) + ": " + x.credits),
     payments: orders.map((o) => ({ what: itemName(o), amount: "₹" + o.amount, status: o.status === "PAID" ? "paid" : o.status === "ACTIVE" ? "not completed (no money taken, or still being confirmed)" : String(o.status || "").toLowerCase(), date: (o.paid_at || o.created_at || "").slice(0, 16).replace("T", " ") })),
-    recentXrays: runs.map((r) => ({ website: r.domain, status: r.status === "COMPLETE" ? "finished" : r.status === "refunded" ? "could not run — credit returned" : r.status, date: (r.created_at || "").slice(0, 10) })),
-    openTickets: open.map((x) => x.id + " — " + x.subject + " (" + x.status + ")"),
+    recentXrays: runs.map((r) => ({ website: r.domain, status: r.status === "COMPLETE" ? "finished" : r.status === "refunded" ? "could not run, credit returned" : r.status, date: (r.created_at || "").slice(0, 10) })),
+    openTickets: open.map((x) => x.id + ": " + x.subject + " (" + x.status + ")"),
     paid: plan !== "free",
     latestXray: await latestReport(env, owner.id, plan !== "free"),
   };
@@ -154,15 +154,15 @@ export function kbSearch(q, n) {
   return HELP_KB.map((a) => { const t = (a.q + " " + a.a + " " + a.cat).toLowerCase(); return { a, s: ex.reduce((s, x) => s + (t.indexOf(x) > -1 ? (a.q.toLowerCase().indexOf(x) > -1 ? 3 : 1) : 0), 0) }; })
     .filter((x) => x.s > 0).sort((x, y) => y.s - x.s).slice(0, n || 4).map((x) => x.a);
 }
-export const SYS = "You are the FODO Help Assistant on fodo.co.in (FODO — Fear Of Digitally Out ?, a growth and marketing agency in New Delhi; its Growth Lab sells Business X-Rays, plans, packs and Pro tools).\n" +
+export const SYS = "You are the FODO Help Assistant on fodo.co.in (FODO: Fear Of Digitally Out ?, a growth and marketing agency in New Delhi; its Growth Lab sells Business X-Rays, plans, packs and Pro tools).\n" +
   "RULES:\n- Answer ONLY from HELP ARTICLES, PRICES and ACCOUNT FACTS below. If the answer is not there, say you are not sure and offer to open a ticket so a person can check.\n" +
   "- Never invent prices, dates, payment results or policies. Quote prices exactly as given.\n- You cannot change accounts, give credits or approve refunds. For refunds, payment problems, wrong charges, bugs, or when the person asks for a human: explain briefly and say they can tap “Talk to a person” to open a ticket. Add the marker [[TICKET]] at the end of such answers.\n" +
   "- Use the ACCOUNT FACTS only for the person asking; never mention other customers.\n- Reply in the person's language (Hindi, Hinglish or English) and keep it under 120 words, friendly and clear. Plain text, no markdown tables.";
 export function buildPrompt(question, facts, history) {
   const arts = kbSearch(question + " " + (history || []).slice(-2).map((m) => m.text).join(" "), 4), P = priceFacts();
-  return productBrief() + "\n\nHELP ARTICLES:\n" + (arts.length ? arts : HELP_KB.slice(0, 4)).map((a) => "• " + a.q + " — " + a.a).join("\n") +
+  return productBrief() + "\n\nHELP ARTICLES:\n" + (arts.length ? arts : HELP_KB.slice(0, 4)).map((a) => "• " + a.q + ": " + a.a).join("\n") +
     "\n\nPRICES (live): " + P.plans.join("; ") + ". Packs: " + P.packs.join("; ") + ". Pro tools: " + P.tools.join("; ") + "." +
-    "\n\nACCOUNT FACTS: " + (facts ? JSON.stringify(facts) : "the person is not logged in — for account-specific questions ask them to log in, or open a ticket with their email.");
+    "\n\nACCOUNT FACTS: " + (facts ? JSON.stringify(facts) : "the person is not logged in, for account-specific questions ask them to log in, or open a ticket with their email.");
 }
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
 export async function aiReply(env, question, facts, history) {

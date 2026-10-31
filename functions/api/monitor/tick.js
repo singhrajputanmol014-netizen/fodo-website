@@ -1,5 +1,5 @@
-/* FODO Growth Lab v17 — the free monitoring scheduler. POST /api/monitor/tick with header x-cron-key: <CRON_KEY>.
-   Checks the website(s) whose next check is due (1 per request by default — keeps inside the free plan's CPU limit) and
+/* FODO Growth Lab v17, the free monitoring scheduler. POST /api/monitor/tick with header x-cron-key: <CRON_KEY>.
+   Checks the website(s) whose next check is due (1 per request by default, keeps inside the free plan's CPU limit) and
    answers { checked, remaining }. The GitHub Actions workflow .github/workflows/fodo-monitor.yml calls it in a loop once a day.
    Without CRON_KEY set in Cloudflare the endpoint is closed (403). */
 import { json, accountsOn, activePlan, isUnlimited, sendMail } from "../../_lib/accounts.js";

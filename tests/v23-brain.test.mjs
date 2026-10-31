@@ -1,4 +1,4 @@
-// v23 FODO BRAIN — multiple Google accounts + Analytics/YouTube/Drive/Sheets/Cashfree, Brain access for team members (full/limited),
+// v23 FODO BRAIN, multiple Google accounts + Analytics/YouTube/Drive/Sheets/Cashfree, Brain access for team members (full/limited),
 // social media (Meta/Instagram, LinkedIn, X, YouTube): connect, original-quality uploads, post everywhere, schedule, numbers;
 // page control by voice (theme, open page), wake word anywhere. Run: node --no-warnings tests/v23-brain.test.mjs
 
@@ -25,7 +25,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who, extra) => B("chat", Object.assign({ message, threadId }, extra || {}), who);

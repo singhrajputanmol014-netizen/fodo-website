@@ -1,5 +1,5 @@
 # ==================================================================================================================
-# v9 SEO layer — executed by build_pages.py (exec) right before the pages are written, so it can use every helper.
+# v9 SEO layer, executed by build_pages.py (exec) right before the pages are written, so it can use every helper.
 # Adds: location pages (Delhi HQ, India cities, international), static Insights articles, crawlable hub links,
 # central titles/descriptions, entity schema. Nothing here changes the visual design.
 # ==================================================================================================================
@@ -14,7 +14,7 @@ def _strip(h): return _r9.sub(r"\s+", " ", _h.unescape(_r9.sub(r"<[^>]+>", " ", 
 def market_page(slug):
     m = MARKETS[slug]; place = m["place"]
     trail = [("Home", "/"), ("Locations", "/locations/"), (place, f"/locations/{slug}/")]
-    svc_links = "".join(f'<li><a href="../../services/{s}/">{X(SVC_NAME[s])}</a> — {X(SENT(next(x["h"] for x in SERVICES if x["slug"] == s)))}</li>' for s in m["svcs"])
+    svc_links = "".join(f'<li><a href="../../services/{s}/">{X(SVC_NAME[s])}</a>: {X(SENT(next(x["h"] for x in SERVICES if x["slug"] == s)))}</li>' for s in m["svcs"])
     if m["kind"] == "hq":
         rel_h, rel = "Delhi NCR areas we cover", " · ".join(f'<a href="../{k}/">{X(LOCATIONS[k][0])}</a>' for k in m["related"] if k in LOCATIONS)
     else:
@@ -46,7 +46,7 @@ def _loc_links(keys, src):
     return "".join(f'<li><a href="{k}/">{X(src[k]["place"] if src is MARKETS else src[k][0])}</a></li>' for k in keys)
 _hub = list(pages["locations"])
 _extra = sec("02", "India", '<div class="panel hud reveal"><p class="muted" style="margin-top:0">Our home market. Delhi is where our headquarters is; every other city is served remote-first.</p><ul class="loc-links cols">' + _loc_links(INDIA_CITIES, MARKETS) + '</ul></div>', cls="loc-hub-india")
-_extra += sec("03", "International", '<div class="panel hud reveal"><p class="muted" style="margin-top:0">FODO has one office — our New Delhi headquarters. Everywhere else we work remotely, and we say so on every page.</p><ul class="loc-links cols">'
+_extra += sec("03", "International", '<div class="panel hud reveal"><p class="muted" style="margin-top:0">FODO has one office, our New Delhi headquarters. Everywhere else we work remotely, and we say so on every page.</p><ul class="loc-links cols">'
               + _loc_links(INTERNATIONAL, MARKETS) + '</ul></div>')
 _b = _hub[4]; _cut = _b.rfind("<section")
 _hub[4] = (_b[:_cut] + _extra + _b[_cut:]) if _cut > 0 else _b + _extra
@@ -88,7 +88,7 @@ def article_page(a):
             + f'<div class="prose art-body">{body_html}</div>'
             + f'<div class="panel hud art-author"><h2>About the author</h2><p>{X(FOUNDER)} is the founder of FODO, a digital growth agency headquartered in New Delhi. His background spans film and media production, content creation, business development and marketing. <a href="../../about/#founder">More about Anmol</a>.</p></div>'
             + f'<h2 class="art-h">Keep reading</h2><ul>' + "".join(f'<li><a href="../{x["slug"]}/">{X(x["title"])}</a></li>' for x in rel[:3]) + '</ul>'
-            + f'<h2 class="art-h">Related service</h2><p><a href="../../services/{svc}/">{X(SVC_NAME[svc])}</a> — {X(SENT(next(x["h"] for x in SERVICES if x["slug"] == svc)))}</p>'
+            + f'<h2 class="art-h">Related service</h2><p><a href="../../services/{svc}/">{X(SVC_NAME[svc])}</a>: {X(SENT(next(x["h"] for x in SERVICES if x["slug"] == svc)))}</p>'
             + f'<div class="btn-row">{CTA2}</div></article></div></section>')
     art = {"@context": "https://schema.org", "@type": "Article", "headline": a["title"][:110], "description": desc, "datePublished": a["date"], "dateModified": max(a["date"], ARTICLE_UPDATED),
            "author": {"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "url": SITE + "/about/#founder"}, "publisher": {"@id": ORG_ID, "@type": "Organization", "name": "FODO", "logo": {"@type": "ImageObject", "url": SITE + "/assets/apple-touch-icon.png"}},
@@ -123,12 +123,12 @@ _ab = list(pages["about"]); _ab[6] = _LDRE.sub("", _ab[6]) + LD(dict(person(), *
 # ---------- breadcrumbs (schema) for top-level pages that had none ----------
 for _key, _p in list(pages.items()):
     if _p[1] in ("/", "/thank-you/") or "BreadcrumbList" in _p[6]: continue
-    _name = _h.unescape(_p[2]).split(" — ")[0].split(" | ")[0].replace("FODO ", "").strip()
+    _name = _h.unescape(_p[2]).split(" — ")[0].split(": ")[0].split(" | ")[0].replace("FODO ", "").strip()
     _parts = [x for x in _p[1].strip("/").split("/") if x]
     _trail = [("Home", "/")]
     if len(_parts) > 1:
         _parent = "/" + _parts[0] + "/"; _pp = next((v for v in pages.values() if v[1] == _parent), None)
-        if _pp: _trail.append((_h.unescape(_pp[2]).split(" — ")[0].split(" | ")[0], _parent))
+        if _pp: _trail.append((_h.unescape(_pp[2]).split(" — ")[0].split(": ")[0].split(" | ")[0], _parent))
     _trail.append((_name, _p[1]))
     _p = list(_p); _p[6] = _p[6] + LD(crumbs_ld(_trail)); pages[_key] = tuple(_p)
 

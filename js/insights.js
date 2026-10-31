@@ -1,4 +1,4 @@
-/* FODO first-party analytics beacon (v16) — page views, where visitors came from, key clicks, time on page.
+/* FODO first-party analytics beacon (v16), page views, where visitors came from, key clicks, time on page.
    No cookies, nothing personal: the server counts a visitor per day from a salted hash and never stores the IP.
    Feeds the admin dashboard (/admin/ → Traffic). Server: functions/api/t.js. */
 (function () {

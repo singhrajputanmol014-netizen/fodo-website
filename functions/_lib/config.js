@@ -1,4 +1,4 @@
-/* FODO Growth Lab v17 — admin-controlled settings (prompt §9, §67): plan & pack prices, X-Rays per plan/pack, monitoring slots,
+/* FODO Growth Lab v17, admin-controlled settings (prompt §9, §67): plan & pack prices, X-Rays per plan/pack, monitoring slots,
    and tool switches (on / maintenance). Stored in D1 table lab_config; plans.js keeps the defaults.
    applyConfig() copies the saved values onto PLANS / PACKS in memory (refreshed every 60 s per server instance), so the
    checkout, the credits and the plans page all use the admin's numbers. Payments still re-check the amount with Cashfree. */
@@ -50,7 +50,7 @@ export function current() {
   return out;
 }
 const int = (v, lo, hi) => { const n = Math.round(+v); return isFinite(n) && n >= lo && n <= hi ? n : null; };
-/* validate + save (owner/admin only — checked by the admin route) → { ok, errors[] } */
+/* validate + save (owner/admin only, checked by the admin route) → { ok, errors[] } */
 export async function saveConfig(env, body, by) {
   const d = await cdb(env); if (!d) return { ok: false, errors: ["Database not connected."] };
   await applyConfig(env, true);

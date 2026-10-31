@@ -1,4 +1,4 @@
-/* FODO Competitor Finder — download hand-off for phones and in-app browsers (v11).
+/* FODO Competitor Finder, download hand-off for phones and in-app browsers (v11).
  * Many phone browsers (Instagram, Facebook, LinkedIn in-app browsers, some Android webviews) silently ignore downloads of
  * files made inside the page (blob: links). A normal web download always works. So the page uploads the finished file here
  * and then opens a one-time link to it:

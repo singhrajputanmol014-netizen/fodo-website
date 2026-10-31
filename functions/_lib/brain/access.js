@@ -1,6 +1,6 @@
-/* FODO BRAIN — who may use the Brain. The two owner logins (OWNER_EMAILS) always have everything. Owners can give anyone with a
+/* FODO BRAIN, who may use the Brain. The two owner logins (OWNER_EMAILS) always have everything. Owners can give anyone with a
    FODO login FULL or LIMITED access; only owners can add, change or remove people. Checked on the server for every request and
-   every tool call — the browser only hides what the server already refuses.
+   every tool call, the browser only hides what the server already refuses.
    FULL    = everything an owner can do with the Brain EXCEPT managing access, connecting/disconnecting accounts, Brain settings,
              the full export and the owner's PERSONAL memories.
    LIMITED = only the areas ticked below. Secrets (level 5) are never available to anyone. */
@@ -14,7 +14,7 @@ export const PERMS = {
   memory: "FODO memory & knowledge documents",
   social: "Social media (post & see numbers)",
   data: "Analytics, YouTube, Drive, Sheets, Cashfree data",
-  inbox: "Email inbox & calendar (read and send — every send is confirmed)",
+  inbox: "Email inbox & calendar (read and send, every send is confirmed)",
   changes: "Prepare website changes (pull requests + previews)",
   deploy: "Put website changes LIVE",
   admin: "Admin actions (grant plans, switch features, reply to tickets, block users)",

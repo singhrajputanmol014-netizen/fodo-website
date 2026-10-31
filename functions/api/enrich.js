@@ -1,5 +1,5 @@
-/* FODO Competitor Finder — contact details from a business's own public website.
- *   POST /api/enrich  { "urls": ["https://example.com", …] }   (max 4 per call — the browser sends batches)
+/* FODO Competitor Finder, contact details from a business's own public website.
+ *   POST /api/enrich  { "urls": ["https://example.com", …] }   (max 4 per call, the browser sends batches)
  *   → { ok, results: { "<url>": { emails, phones, whatsapp, instagram, facebook, linkedin, twitter, youtube, title, description, contactPage, error } } }
  * Reads the home page and, if linked, one contact/about page. Only public http(s) sites; private and local addresses are refused.
  * Nothing is stored. CPU is kept small (pages are cut at 250 KB) so it fits Cloudflare's free plan. */
@@ -70,7 +70,7 @@ export async function onRequestPost({ request, env }) {
   const places = (Array.isArray(body && body.places) ? body.places : []).slice(0, MAX_PLACES);
   if (!urls.length && !places.length) return json({ ok: false, reason: "Nothing to look up." }, 400);
   const kv = env.CHAT_KV, ip = request.headers.get("cf-connecting-ip") || "anon", hour = Math.floor(Date.now() / 3600000);
-  if (kv) { try { const rk = `en:rl:${ip}:${hour}`, n = parseInt((await kv.get(rk)) || "0", 10); if (n >= parseInt(env.ENRICH_PER_HOUR || "150", 10)) return json({ ok: false, reason: "Too many website look-ups this hour — try again later." }, 429); await kv.put(rk, String(n + 1), { expirationTtl: 3700 }); } catch (e) {} }
+  if (kv) { try { const rk = `en:rl:${ip}:${hour}`, n = parseInt((await kv.get(rk)) || "0", 10); if (n >= parseInt(env.ENRICH_PER_HOUR || "150", 10)) return json({ ok: false, reason: "Too many website look-ups this hour, try again later." }, 429); await kv.put(rk, String(n + 1), { expirationTtl: 3700 }); } catch (e) {} }
   const results = {};
   await Promise.all(urls.map(async (raw) => {
     const u = safeUrl(String(raw || "")); if (!u) { results[raw] = { error: "not a public website" }; return; }

@@ -1,4 +1,4 @@
-/* v17.2 — X-Ray quality fixes from the findings review: Cloudflare service links, quiz forms, duplicate-title variants,
+/* v17.2: X-Ray quality fixes from the findings review: Cloudflare service links, quiz forms, duplicate-title variants,
    Unknown tracking state, entity resolution (same-name companies), score labels. Runs the real engine in Chromium. */
 const path = require("path"), fs = require("fs");
 const { chromium } = require("playwright");

@@ -1,8 +1,8 @@
-/* FODO Bot — VOICE MODE ("Talk to FODO AI")
+/* FODO Bot: VOICE MODE ("Talk to FODO AI")
  * Adds a mic control to the existing chat. The visitor's speech becomes text, goes through the SAME chat pipeline
  * as typed messages (FODO_BOT.ask → answerAsync / offline engine), and the real reply is read aloud.
  *
- * Providers (modular — pick in js/config.js → voiceProvider):
+ * Providers (modular, pick in js/config.js → voiceProvider):
  *   "browser"          FREE. Browser SpeechRecognition (speech→text) + speechSynthesis (text→speech). Default.
  *   "openai-realtime"  PAID, optional. Speech-to-speech over WebRTC. Needs the Pages Function /api/voice-session
  *                      with OPENAI_API_KEY set as a Cloudflare secret. Falls back to "browser" if not configured.
@@ -30,7 +30,7 @@
   var voices = [];
   function loadVoices() { try { voices = TTS ? TTS.getVoices() || [] : []; } catch (_) { voices = []; } }
   if (TTS) { loadVoices(); try { TTS.addEventListener("voiceschanged", loadVoices); } catch (_) { TTS.onvoiceschanged = loadVoices; } }
-  /* Voice quality ranking — prefer neural / cloud voices, avoid old robotic system voices. */
+  /* Voice quality ranking, prefer neural / cloud voices, avoid old robotic system voices. */
   var HUMAN = /Neerja|Swara|Prabhat|Madhur|Aarav|Ananya|Kavya|Lekha|Rishi|Veena|Isha|Sangeeta|Google हिन्दी|Google Hindi/i;
   function quality(v) {
     var n = v.name || "", q = 0;
@@ -147,7 +147,7 @@
   function setState(s, text) {
     S.state = s; stateEl.setAttribute("data-s", s); labelEl.textContent = text || LABEL[s] || s;
     stopBtn.disabled = s !== "speaking"; mic.setAttribute("data-s", s);
-    mic.setAttribute("aria-label", S.active ? (s === "speaking" ? "Interrupt and speak" : "Voice mode on — press to end") : "Talk to FODO AI (voice mode)");
+    mic.setAttribute("aria-label", S.active ? (s === "speaking" ? "Interrupt and speak" : "Voice mode on, press to end") : "Talk to FODO AI (voice mode)");
     if (window.FODO_MASCOT) { try { FODO_MASCOT.set(s === "thinking" ? "think" : s === "speaking" ? "happy" : "idle"); } catch (_) {} }
   }
   function caption(who, text) { capEl.innerHTML = text ? "<b>" + esc(who) + ":</b> " + esc(text) : ""; }
@@ -176,7 +176,7 @@
     setTimeout(function () { if (!S.active) { bar.hidden = true; setState("ready"); } }, 1600);
   }
   function fail(html) { var was = S.active; end(); botNote(html); if (!was) setState("ready"); }
-  var typeInstead = ' You can keep typing your question below — the text chat works the same.';
+  var typeInstead = ' You can keep typing your question below, the text chat works the same.';
 
   /* ---------------- provider: BROWSER (free) ---------------- */
   var browserProvider = {
@@ -188,7 +188,7 @@
     mute: function (m) { if (m) { stopRec(); setState("muted"); } else listen(); },
     stopSpeaking: function () { clearInterval(S.keep); clearTimeout(S.timer); S.speakingQ = 0; if (TTS) TTS.cancel(); listen(); }
   };
-  var GREET = { en: "Hi, I'm FODO. I'm listening — what would you like help with?", hinglish: "Haan ji, main FODO. Boliye, main sun raha hoon — kis cheez mein madad chahiye?", hi: "नमस्ते, मैं FODO हूँ। बोलिए, मैं सुन रहा हूँ — किस चीज़ में मदद चाहिए?" };
+  var GREET = { en: "Hi, I'm FODO. I'm listening, what would you like help with?", hinglish: "Haan ji, main FODO. Boliye, main sun raha hoon, kis cheez mein madad chahiye?", hi: "नमस्ते, मैं FODO हूँ। बोलिए, मैं सुन रहा हूँ: किस चीज़ में मदद चाहिए?" };
   function greet() {
     var kind = LANGS[langIdx].code === "hi-IN" ? (voiceFor("hi") ? "hi" : "hinglish") : (/^hi/i.test(navigator.language || "") ? "hinglish" : "en");
     var line = GREET[kind];
@@ -222,7 +222,7 @@
       S.rec = null;
       if (e === "not-allowed" || e === "service-not-allowed") fail("Microphone access is blocked. Allow the mic for fodo.co.in in your browser's site settings (🔒 icon in the address bar), then press the mic again." + typeInstead);
       else if (e === "audio-capture") fail("No microphone was found on this device." + typeInstead);
-      else if (e === "network") fail("The browser's speech service couldn't be reached — check your internet connection." + typeInstead);
+      else if (e === "network") fail("The browser's speech service couldn't be reached, check your internet connection." + typeInstead);
       else if (e === "language-not-supported") { langIdx = 0; paintLang(); setTimeout(listen, 200); }
       else fail("Voice input stopped unexpectedly (" + esc(e || "unknown") + ")." + typeInstead);
     };
@@ -233,7 +233,7 @@
       S.rec = null;
       if (S.muted) return;
       if (++S.misses >= 3) { end("I didn't hear anything for a while, so voice mode has ended. Press the mic whenever you want to talk again."); return; }
-      setState("listening", S.misses === 2 ? "Still here — go ahead…" : "Listening…"); setTimeout(listen, 150);
+      setState("listening", S.misses === 2 ? "Still here, go ahead…" : "Listening…"); setTimeout(listen, 150);
     };
     try { r.start(); setState("listening"); }
     catch (err) { S.rec = null; setTimeout(listen, 400); }
@@ -241,7 +241,7 @@
   function ask(q) {
     setState("thinking"); caption("You", q); S.pending = true;
     clearTimeout(S.timer);
-    S.timer = setTimeout(function () { if (S.pending) { S.pending = false; setState("ready", "No reply yet — try again"); setTimeout(listen, 900); } }, 30000);
+    S.timer = setTimeout(function () { if (S.pending) { S.pending = false; setState("ready", "No reply yet, try again"); setTimeout(listen, 900); } }, 30000);
     B.ask(q);                                                                    // same pipeline as a typed message
   }
   document.addEventListener("fodo:bot-reply", function (ev) {

@@ -1,4 +1,4 @@
-/* FODO Competitor Finder v11 — /competitor-finder/
+/* FODO Competitor Finder v11: /competitor-finder/
    v11 engine: every source runs at the same time and results appear as each one answers (chips show each source):
      local  → OpenStreetMap through this site's cached proxy (/api/osm, then the public servers, then Photon)
               + Geoapify (/api/geo, when GEOAPIFY_KEY is set) + Google Maps (/api/competitors, when GOOGLE_PLACES_KEY is set)
@@ -8,7 +8,7 @@
    • Local businesses: any business type near any place on earth, radius 0.5–100 km (slider or typed).
      Every listed business is returned (no cap) from OpenStreetMap, searched straight from this browser (js/free-places.js);
      when the site has a Google Places key, Google results (up to 60, or more with "Deep Google search" tiles) are merged in.
-   • Brands & startups: competitors of any company or industry from Wikidata — optionally only those headquartered near a city.
+   • Brands & startups: competitors of any company or industry from Wikidata, optionally only those headquartered near a city.
    • Every record carries every field we can find (phones, email, website, socials, hours, address parts, tags, HQ, founders …),
      and "Find emails & socials" reads each competitor's own website (/api/enrich) to fill in contacts.
    • Every search is added to one sheet in this browser → Excel (one row per competitor, every column), CSV or Google Sheets. */
@@ -128,7 +128,7 @@
     card.hidden = !(m === "brand" && data && data.mode === "brand");
     document.querySelectorAll('.cf-sort [data-sort="rating"],.cf-sort [data-sort="reviews"]').forEach(function (b) { b.hidden = m !== "local"; });
     $("cf-results").textContent = m === "local" ? "Nearby competitors" : "Brand & startup competitors";
-    if (data && data.mode !== m) { data = null; view = []; list.innerHTML = '<li class="cf-empty">Run a search above — results appear here and are added to your sheet automatically.</li>'; $("cf-more").hidden = true; read.textContent = "Run a search to get a quick read."; clearPins(); }
+    if (data && data.mode !== m) { data = null; view = []; list.innerHTML = '<li class="cf-empty">Run a search above, results appear here and are added to your sheet automatically.</li>'; $("cf-more").hidden = true; read.textContent = "Run a search to get a quick read."; clearPins(); }
     if (focus) (m === "local" ? tIn : bIn).focus();
     try { history.replaceState(null, "", m === "brand" ? "#brands" : location.pathname + location.search); } catch (e) {}
   }
@@ -153,10 +153,10 @@
   });
   form.addEventListener("submit", function (e) { e.preventDefault(); run(); });
   function useMyLocation() {
-    if (!navigator.geolocation) { setStatus("Location is not available in this browser — type a place instead.", "warn"); return; }
+    if (!navigator.geolocation) { setStatus("Location is not available in this browser, type a place instead.", "warn"); return; }
     setStatus("Asking for your location…");
     navigator.geolocation.getCurrentPosition(function (p) { coords = { lat: p.coords.latitude, lng: p.coords.longitude }; place = null; aIn.value = "Near me"; if (!tIn.value.trim()) { setStatus("Got your location. Now type a business type."); tIn.focus(); } else run(); },
-      function () { setStatus("Location permission was declined — type a place instead.", "warn"); aIn.focus(); }, { timeout: 10000, maximumAge: 600000 });
+      function () { setStatus("Location permission was declined, type a place instead.", "warn"); aIn.focus(); }, { timeout: 10000, maximumAge: 600000 });
   }
   $("cf-near").addEventListener("click", useMyLocation);
   var freeMod = null;
@@ -210,7 +210,7 @@
   function run() {
     var type = tIn.value.trim(), area = aIn.value.trim(), rm = R1.m();
     if (!type) { setStatus("Type a business type, for example “Cafe” or “Software company”.", "warn"); tIn.focus(); return; }
-    if (!area && !coords) { setStatus("Type a place — any city, area or address — or use your location.", "warn"); aIn.focus(); return; }
+    if (!area && !coords) { setStatus("Type a place, any city, area or address, or use your location.", "warn"); aIn.focus(); return; }
     if (busy) return; busy = true; ver();
     var where = coords ? (area && area !== "Near me" ? area : "you") : area, areaQ = area === "Near me" ? "" : area;
     frame.src = mapSrc(type + " near " + (coords ? coords.lat + "," + coords.lng : area), rm > 20000 ? 10 : rm > 5000 ? 12 : 14);
@@ -245,7 +245,7 @@
         return Promise.all(jobs).then(function () {
           var res = merged();
           if (!res.length && fails.length === jobs.length) {
-            // every source failed in this browser — last try: the server route (it may reach the map servers when this browser can't)
+            // every source failed in this browser, last try: the server route (it may reach the map servers when this browser can't)
             return api({ type: type, area: areaQ, lat: c.lat, lng: c.lng, radius: rm }, 60000).then(function (j) {
               if (j && j.ok && j.results && j.results.length) { if (j.source === "google") gmark(j.results); return Object.assign(j, { mode: "local", viaServer: true, center: j.center || job.center }); }
               throw Object.assign(new Error("all"), { reason: "The free map servers did not answer right now. Please try again in a minute.", diag: fails.join(" | ") });
@@ -257,18 +257,18 @@
     }).then(function (j) { show(j); }, function (e) {
       busy = false; data = null; view = [];
       var q = type + " near " + (coords ? coords.lat + "," + coords.lng : area);
-      setStatus((e && e.reason) || "Something went wrong — please try again.", "warn"); ver(e && (e.diag || e.message));
+      setStatus((e && e.reason) || "Something went wrong, please try again.", "warn"); ver(e && (e.diag || e.message));
       list.innerHTML = '<li class="cf-empty">The Google Maps view on this page still shows businesses for your search. <a href="https://www.google.com/maps/search/' + encodeURIComponent(q) + '" target="_blank" rel="noopener noreferrer">Open the full list on Google Maps ↗</a></li>';
       setMapView("google"); track("cf_fail", { mode: "local" });
     });
   }
 
-  /* ================= brand & startup search (Wikidata — fast search API, no heavy SPARQL) =================
+  /* ================= brand & startup search (Wikidata, fast search API, no heavy SPARQL) =================
      1. find the company / industry (wbsearchentities)   2. read its industries + types (wbgetentities)
-     3. find other companies with the same industry/type (CirrusSearch haswbstatement — answers in ~1 s)
+     3. find other companies with the same industry/type (CirrusSearch haswbstatement, answers in ~1 s)
      4. read every competitor's details in batches of 50 (wbgetentities)  5. names for countries, HQs, people (labels)
      6. optional: keep only companies headquartered within the radius of the chosen city
-     7. then each website (and Google Maps, when connected) is read for contacts — see "contacts" below */
+     7. then each website (and Google Maps, when connected) is read for contacts, see "contacts" below */
   bform.addEventListener("click", function (e) { var b = e.target.closest(".chip[data-brand]"); if (!b) return; bIn.value = b.dataset.brand; brandPick = null; runBrand(); });
   bform.addEventListener("submit", function (e) { e.preventDefault(); runBrand(); });
   var WAPI = "https://www.wikidata.org/w/api.php?format=json&origin=*&";
@@ -288,7 +288,7 @@
     var k = 0, worker = function () { var c = chunks[k++]; if (!c) return Promise.resolve(); return wget("action=wbgetentities&ids=" + c.join("|") + "&props=" + (props || "labels|descriptions|claims|sitelinks/urls") + "&languages=en&sitefilter=enwiki").then(function (r) { Object.assign(out, r.entities || {}); }, function () {}).then(worker); };
     return Promise.all([worker(), worker(), worker()]).then(function () { return out; });
   }
-  // light SPARQL: only the HQ (or own) coordinates for a list of companies — used for the city/radius filter
+  // light SPARQL: only the HQ (or own) coordinates for a list of companies, used for the city/radius filter
   function hqCoords(list) {
     var out = {}, chunks = []; for (var i = 0; i < list.length; i += 250) chunks.push(list.slice(i, i + 250));
     return Promise.all(chunks.map(function (c) {
@@ -354,7 +354,7 @@
   function placeCoords() {
     var t = blIn.value.trim(); if (!t) return Promise.resolve(null);
     if (bplace && bplace.lat != null) return Promise.resolve(bplace);
-    return lib().then(function (m) { return m.freePlaces(fetchT, {}).geocode(t); }).then(function (c) { if (!c) throw Object.assign(new Error("place"), { reason: "That city or region was not found — pick one from the suggestions." }); return Object.assign({ value: t }, c); });
+    return lib().then(function (m) { return m.freePlaces(fetchT, {}).geocode(t); }).then(function (c) { if (!c) throw Object.assign(new Error("place"), { reason: "That city or region was not found, pick one from the suggestions." }); return Object.assign({ value: t }, c); });
   }
   var COMPANY_TYPES = "P31=Q4830453|P31=Q783794|P31=Q6881511|P31=Q891723|P31=Q1589009|P31=Q21980538|P31=Q18388277|P31=Q167037|P31=Q1058914|P31=Q210167|P31=Q131524";
   var STOP = /^(a|an|the|of|and|for|in|on|by|with|to|from|company|companies|business|businesses|startup|start|up|based|brand|brands|firm|private|public|limited|ltd|inc|llc|pvt|group|indian|american|british|chinese|german|french|japanese|global|online|multinational|international|leading|largest|biggest|popular|headquartered|founded|which|that|is|its|it|was|are|provider|service|services|operator|owner|subsidiary|conglomerate|listed|unicorn|website|app|platform|chain|maker|manufacturer|retailer|\d+)$/i;
@@ -390,7 +390,7 @@
     return Promise.all([worker(), worker(), worker(), worker()]).then(function () { return out; });
   }
   function runBrand() {
-    var q = bIn.value.trim(); if (!q) { setStatus("Type a brand, company or industry — for example “Zomato” or “fintech”.", "warn"); bIn.focus(); return; }
+    var q = bIn.value.trim(); if (!q) { setStatus("Type a brand, company or industry, for example “Zomato” or “fintech”.", "warn"); bIn.focus(); return; }
     if (busy) return; busy = true; ver();
     var country = cIn.value, cname = country ? cIn.options[cIn.selectedIndex].text : "", rkm = R2.km(), city = blIn.value.trim();
     setStatus("Finding competitors of " + q + "… three searches run together: Wikidata industry, Wikidata keywords and AI suggestions.", "busy");
@@ -448,7 +448,7 @@
       // AI names that are not on Wikidata: shown, clearly labelled, checked through their website
       if (!o.loc) o.loose.forEach(function (x, i) {
         if (res.some(function (p) { return nrm(p.name) === nrm(x.name); })) return;
-        res.push({ mode: "brand", id: "ai:" + nrm(x.name).replace(/ /g, "-"), name: x.name, description: x.why || "", website: x.website || "", country: x.country || "", via: x.source ? "Named in Google results — not on Wikidata" : "AI suggestion — verify", sourceUrl: x.source || "", unverified: !x.source, score: (x.source ? 1500 : 1200) - i,
+        res.push({ mode: "brand", id: "ai:" + nrm(x.name).replace(/ /g, "-"), name: x.name, description: x.why || "", website: x.website || "", country: x.country || "", via: x.source ? "Named in Google results, not on Wikidata" : "AI suggestion, verify", sourceUrl: x.source || "", unverified: !x.source, score: (x.source ? 1500 : 1200) - i,
           mapsUrl: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(x.name), lat: null, lng: null });
       });
       res.sort(function (a, b) { return b.score - a.score; });
@@ -457,7 +457,7 @@
       return { ok: true, mode: "brand", type: seedInfo.label, area: where, seed: seedInfo, loc: o.loc, results: res, rest: o.rest || [], total: Math.max((o.total || 0) - (o.dropped ? o.dropped.closed + o.dropped.group : 0), res.length), source: "wikidata", dropped: o.dropped };
     }).then(function (j) { show(j); }, function (e) {
       busy = false; data = null; view = [];
-      setStatus(e && e.reason ? e.reason : "Wikidata did not answer right now — please try again in a minute.", "warn"); ver(e && e.message);
+      setStatus(e && e.reason ? e.reason : "Wikidata did not answer right now, please try again in a minute.", "warn"); ver(e && e.message);
       list.innerHTML = '<li class="cf-empty">No results yet. Try another spelling, pick a suggestion while typing, remove the city, or search an industry such as “food delivery”.</li>';
       track("cf_fail", { mode: "brand" });
     });
@@ -566,7 +566,7 @@
       (p.industry ? '<p class="cf-meta"><span class="cf-cat">' + esc(p.industry) + "</span></p>" : "") + (p.description ? '<p class="cf-addr">' + esc(p.description) + "</p>" : "") + (p.address ? '<p class="cf-addr">📍 ' + esc(p.address) + "</p>" : "") +
       (p.rating != null && p.rating !== "" ? '<span class="cf-rate"><b>' + (+p.rating).toFixed(1) + '</b> <span aria-hidden="true">' + stars(p.rating) + '</span> <span class="muted">(' + (p.reviews || 0).toLocaleString("en-IN") + " Google reviews)</span></span>" : "") +
       (facts.length ? '<dl class="cf-facts">' + facts.map(function (f) { return "<div><dt>" + f[0] + "</dt><dd>" + esc(f[1]) + "</dd></div>"; }).join("") + "</dl>" : "") + contacts(p) +
-      '<p class="cf-flags">' + (p.unverified ? '<span class="cf-flag warn">AI suggestion — verify</span>' : p.via ? '<span class="cf-flag">' + esc(p.via) + "</span>" : "") + (!p.website ? '<span class="cf-flag warn">No website listed</span>' : "") + "</p>" +
+      '<p class="cf-flags">' + (p.unverified ? '<span class="cf-flag warn">AI suggestion, verify</span>' : p.via ? '<span class="cf-flag">' + esc(p.via) + "</span>" : "") + (!p.website ? '<span class="cf-flag warn">No website listed</span>' : "") + "</p>" +
       '<div class="cf-acts">' + link(p.website, "Website ↗", "") + (p.sourceUrl ? link(p.sourceUrl, "Where it was named") : "") + '<a class="btn sm ghost" href="' + esc(p.mapsUrl) + '" target="_blank" rel="noopener noreferrer">Google Maps</a>' + link(p.wikipedia, "Wikipedia") +
       '<a class="btn sm ghost" href="https://www.google.com/search?q=' + encodeURIComponent(p.name + " company") + '" target="_blank" rel="noopener noreferrer">Google it</a>' +
       (p.linkedin ? "" : '<a class="btn sm ghost" href="https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(p.name) + '" target="_blank" rel="noopener noreferrer">LinkedIn</a>') +
@@ -576,7 +576,7 @@
     if (!s) { card.hidden = true; return; }
     card.hidden = false;
     var ind = s.industries[0] || s.label;
-    card.innerHTML = '<span class="tag">YOUR SEARCH</span><h3>' + esc(s.label) + "</h3>" + (s.sub ? '<p class="muted">' + esc(s.sub) + "</p>" : s.missing ? '<p class="muted">Not on Wikidata yet — competitors below come from similar company descriptions' + (data && data.results.some(function (p) { return p.unverified || /AI/.test(p.via || ""); }) ? " and AI suggestions (each checked where possible)" : "") + ".</p>" : "") +
+    card.innerHTML = '<span class="tag">YOUR SEARCH</span><h3>' + esc(s.label) + "</h3>" + (s.sub ? '<p class="muted">' + esc(s.sub) + "</p>" : s.missing ? '<p class="muted">Not on Wikidata yet, competitors below come from similar company descriptions' + (data && data.results.some(function (p) { return p.unverified || /AI/.test(p.via || ""); }) ? " and AI suggestions (each checked where possible)" : "") + ".</p>" : "") +
       '<dl class="cf-facts">' + (s.industries.length ? "<div><dt>Industry</dt><dd>" + esc(s.industries.slice(0, 3).join(", ")) + "</dd></div>" : "") + (s.country ? "<div><dt>Country</dt><dd>" + esc(s.country) + "</dd></div>" : "") + (s.founded ? "<div><dt>Founded</dt><dd>" + esc(s.founded) + "</dd></div>" : "") + "</dl>" +
       '<div class="btn-row" style="margin:12px 0 0">' + (s.website ? link(s.website, "Website ↗") : "") + '<button type="button" class="btn sm" id="cf-tolocal" data-type="' + esc(ind) + '">Find local ' + esc(ind) + " businesses on a map</button></div>";
     $("cf-tolocal").addEventListener("click", function () { tIn.value = this.dataset.type; if (data && data.loc) { aIn.value = data.loc.value || blIn.value; coords = { lat: data.loc.lat, lng: data.loc.lng }; place = data.loc; R1.set(R2.km()); } setMode("local", true); });
@@ -584,22 +584,22 @@
   function insight() {
     if (!data) return;
     var r = data.results, n = r.length;
-    if (!n) { read.textContent = data.mode === "local" ? "No listed competitors here — a strong Google Business Profile could make you the first name people see." : "No competitors listed — try the industry name, a bigger radius or another country."; return; }
+    if (!n) { read.textContent = data.mode === "local" ? "No listed competitors here, a strong Google Business Profile could make you the first name people see." : "No competitors listed, try the industry name, a bigger radius or another country."; return; }
     if (data.mode === "local") {
       var rated = r.filter(function (p) { return p.rating != null; }), noWeb = r.filter(function (p) { return !p.website; }).length, withMail = r.filter(function (p) { return p.email; }).length, withPhone = r.filter(function (p) { return p.phone || p.mobile; }).length;
       var avg = rated.length ? rated.reduce(function (s, p) { return s + p.rating; }, 0) / rated.length : null;
       var top = rated.slice().sort(function (a, b) { return (b.reviews || 0) - (a.reviews || 0); })[0];
       var near = r.filter(function (p) { return p.distance != null && p.distance <= 1000; }).length;
       var dens = n / (Math.PI * Math.pow(data.radius / 1000, 2));
-      read.innerHTML = "<b>" + n.toLocaleString("en-IN") + "</b> " + esc(String(data.type).toLowerCase()) + " listings within " + km(data.radius) + " — about <b>" + (dens >= 1 ? dens.toFixed(1) : dens.toFixed(2)) + " per km²</b>." + (near ? " " + near + " are within 1 km." : "") +
+      read.innerHTML = "<b>" + n.toLocaleString("en-IN") + "</b> " + esc(String(data.type).toLowerCase()) + " listings within " + km(data.radius) + ", about <b>" + (dens >= 1 ? dens.toFixed(1) : dens.toFixed(2)) + " per km²</b>." + (near ? " " + near + " are within 1 km." : "") +
         (avg != null ? " Average Google rating: <b>" + avg.toFixed(1) + "★</b>." : "") + (top ? " Most reviewed: <b>" + esc(top.name) + "</b> (" + (top.reviews || 0).toLocaleString("en-IN") + " reviews)." : "") +
-        " Listed contacts: <b>" + withPhone + "</b> with a phone, <b>" + withMail + "</b> with an email, <b>" + (n - noWeb) + "</b> with a website" + (noWeb / n > 0.4 ? " — most have no website, so a good, fast site is an easy edge." : ".") + (n - noWeb ? " Tap <b>Find emails &amp; socials</b> to read their websites." : "");
+        " Listed contacts: <b>" + withPhone + "</b> with a phone, <b>" + withMail + "</b> with an email, <b>" + (n - noWeb) + "</b> with a website" + (noWeb / n > 0.4 ? ", most have no website, so a good, fast site is an easy edge." : ".") + (n - noWeb ? " Tap <b>Find emails &amp; socials</b> to read their websites." : "");
     } else {
       var cc = {}; r.forEach(function (p) { (p.country || "Unknown").split(", ").forEach(function (c) { cc[c] = (cc[c] || 0) + 1; }); });
       var topC = Object.keys(cc).sort(function (a, b) { return cc[b] - cc[a]; }).slice(0, 3).map(function (c) { return esc(c) + " (" + cc[c] + ")"; }).join(", ");
       var yrs = r.map(function (p) { return +p.founded; }).filter(Boolean).sort(function (a, b) { return a - b; }), med = yrs.length ? yrs[Math.floor(yrs.length / 2)] : null;
       var young = yrs.filter(function (y) { return y >= new Date().getFullYear() - 10; }).length;
-      read.innerHTML = "<b>" + n + "</b> companies compete in the same space as <b>" + esc(data.type) + "</b>. Most are in " + topC + "." + (med ? " Typical founding year: <b>" + med + "</b>" + (young ? "; " + young + " were founded in the last 10 years — the market is still moving." : ".") : "") +
+      read.innerHTML = "<b>" + n + "</b> companies compete in the same space as <b>" + esc(data.type) + "</b>. Most are in " + topC + "." + (med ? " Typical founding year: <b>" + med + "</b>" + (young ? "; " + young + " were founded in the last 10 years, the market is still moving." : ".") : "") +
         " Start with the top five: compare positioning, pricing page and the channels they lead with.";
     }
   }
@@ -679,13 +679,13 @@
     var step = function (i) {
       if (i >= jobs.length || stopped) {
         enriching = false; b.disabled = !data; $("cf-gmatch").disabled = !data;
-        st.textContent = (stopped ? stopped + " " : "Done — ") + "checked " + done + " of " + jobs.length + (found ? ", new contact details for " + found : "") + "."; refreshSheet(); paint(true); insight(); return Promise.resolve();
+        st.textContent = (stopped ? stopped + " " : "Done: ") + "checked " + done + " of " + jobs.length + (found ? ", new contact details for " + found : "") + "."; refreshSheet(); paint(true); insight(); return Promise.resolve();
       }
       var batch = jobs.slice(i, i + BATCH), body = { urls: [], places: [] };
       batch.forEach(function (j) { if (j.kind === "site") body.urls.push(href(j.p.website)); else body.places.push({ key: j.p._key || j.p.id || j.p.name, name: j.p.name, near: j.p.address || j.p.hq || j.p.country || data.area, lat: j.p.lat, lng: j.p.lng }); });
       st.textContent = (opts.google ? "Matching on Google Maps & reading websites… " : "Reading websites for emails, phones & socials… ") + done + " of " + jobs.length + (found ? " · " + found + " with new details" : "");
       return fetchT(ROOT + "api/enrich", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, 40000).then(function (r) { return r.json(); }).then(function (jr) {
-        if (!jr.ok) { stopped = (jr.reason || "The website reader is busy.") + " Stopped —"; return; }
+        if (!jr.ok) { stopped = (jr.reason || "The website reader is busy.") + " Stopped:"; return; }
         batch.forEach(function (j) { done++;
           if (j.kind === "site") { j.p._site = true; if (mergeInfo(j.p, (jr.results || {})[href(j.p.website)])) found++; }
           else { j.p._g = true; if (mergeGoogle(j.p, (jr.places || {})[j.p._key || j.p.id || j.p.name])) found++; }
@@ -731,8 +731,8 @@
     (j.mode === "local" ? LOCAL_COLS : BRAND_COLS).forEach(function (c) { if (c[1] !== "search") o[c[1]] = strip(c[1], p[c[1]] == null ? "" : p[c[1]]); });
     if (j.mode === "local") o.openTxt = gf.open != null ? "" : p.open === true ? "Yes" : p.open === false ? "No" : "";
     o.km = p.distance == null ? "" : +(p.distance / 1000).toFixed(2);
-    if (p.unverified) o.gnote = "AI suggestion — check the website before using";
-    if (cut) o.gnote = (o.gnote ? o.gnote + ". " : "") + "Google Maps details (phone, rating, hours …) are shown on the site only, as Google's terms require — open the Google Maps link";
+    if (p.unverified) o.gnote = "AI suggestion, check the website before using";
+    if (cut) o.gnote = (o.gnote ? o.gnote + ". " : "") + "Google Maps details (phone, rating, hours …) are shown on the site only, as Google's terms require, open the Google Maps link";
     o.key = j.mode === "local" ? nrm(p.name) + "|" + (p.lat != null ? (+p.lat).toFixed(4) + "," + (+p.lng).toFixed(4) : nrm(p.address)) : p.id;
     return o;
   }
@@ -744,7 +744,7 @@
     if (sheet.searches.indexOf(label) < 0) sheet.searches.push(label);
     saveSheet(); sheetUI(added);
   }
-  function refreshSheet() {   // after "Find emails & socials" — write the new fields into the sheet rows
+  function refreshSheet() {   // after "Find emails & socials", write the new fields into the sheet rows
     if (!data) return; var arr = sheet[data.mode], idx = {}; arr.forEach(function (x, i) { idx[x.key] = i; });
     data.results.forEach(function (p) { var i = idx[p._key]; if (i == null) return; var r = rowOf(data, p, arr[i].search); arr[i] = r; });
     saveSheet(); sheetUI(0);
@@ -753,13 +753,13 @@
     clearTimeout(saveT);
     saveT = setTimeout(function () {
       if (!X) { LS.set(SHEET_KEY, sheet); return; }
-      X.store.set("sheet3", sheet).then(function (ok) { if (ok) { try { localStorage.removeItem(SHEET_KEY); } catch (e) {} } else if ($("cf-sheet-n")) $("cf-sheet-n").textContent += " (could not be kept after reload — download it now)"; });
+      X.store.set("sheet3", sheet).then(function (ok) { if (ok) { try { localStorage.removeItem(SHEET_KEY); } catch (e) {} } else if ($("cf-sheet-n")) $("cf-sheet-n").textContent += " (could not be kept after reload, download it now)"; });
     }, 250);
   }
   function sheetUI(added) {
     if (!$("cf-sheet-n")) return;
     var n = sheet.local.length + sheet.brand.length;
-    $("cf-sheet-n").textContent = n ? n.toLocaleString("en-IN") + " competitors from " + sheet.searches.length + (sheet.searches.length === 1 ? " search" : " searches") + (added ? " · " + added.toLocaleString("en-IN") + " new just added" : "") + " — download them all at once." : "Empty — every search you run is added here.";
+    $("cf-sheet-n").textContent = n ? n.toLocaleString("en-IN") + " competitors from " + sheet.searches.length + (sheet.searches.length === 1 ? " search" : " searches") + (added ? " · " + added.toLocaleString("en-IN") + " new just added" : "") + ", download them all at once." : "Empty, every search you run is added here.";
     ["cf-x-xlsx", "cf-x-csv", "cf-x-copy", "cf-x-clear"].forEach(function (id) { $(id).disabled = !n; });
     $("cf-sheet").classList.toggle("has", !!n);
   }
@@ -785,7 +785,7 @@
   $("cf-x-csv").addEventListener("click", function () { var b = this; save(csvBlob(), "FODO-competitors-" + stamp() + ".csv", "CSV").then(function (h) { if (h === "download") flash(b, "Downloaded ✓"); }); });
   $("cf-x-copy").addEventListener("click", function () {
     var b = this, t = toTSV();
-    (X ? X.copyText(t) : navigator.clipboard.writeText(t).then(function () { return "copied"; })).then(function (h) { if (h === "copied") flash(b, "Copied — paste into Google Sheets ✓"); }, function () { if (U.copy) U.copy(t, b); });
+    (X ? X.copyText(t) : navigator.clipboard.writeText(t).then(function () { return "copied"; })).then(function (h) { if (h === "copied") flash(b, "Copied, paste into Google Sheets ✓"); }, function () { if (U.copy) U.copy(t, b); });
   });
   $("cf-x-clear").addEventListener("click", function () { if (!confirm("Clear all " + (sheet.local.length + sheet.brand.length) + " competitors from your sheet?")) return; sheet = { local: [], brand: [], searches: [] }; saveSheet(); sheetUI(0); });
   function flash(b, t) { var o = b.dataset.label || b.textContent; b.dataset.label = o; b.textContent = t; setTimeout(function () { b.textContent = o; }, 2200); }

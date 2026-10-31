@@ -1,4 +1,4 @@
-/* FODO BRAIN — live conversation with Gemini Live (speech in → speech out, like talking to a person).
+/* FODO BRAIN, live conversation with Gemini Live (speech in → speech out, like talking to a person).
    1. GET /api/owner-brain/live → a single-use token minted by our server (the Gemini key never reaches the page).
    2. WebSocket straight to Google: microphone → 16 kHz PCM chunks every ~100 ms; Gemini's voice ← 24 kHz PCM, played gap-free
       through the shared AudioContext (works on iPhone once the mic tap unlocked it).
@@ -22,9 +22,10 @@
   /* microphone → 16 kHz PCM16 → ~100 ms chunks */
   function onFrame(fr) {
     if (!L.active || !L.ready) return;
+    if (L.muted) { L.mic = 0; return; }   // v33: muted = the conversation stays open, we just stop sending your microphone
     var f = fr.f, ratio = fr.sr / 16000, n = Math.floor(f.length / ratio), out = new Int16Array(n);
     // while FODO talks, its own voice leaking from the speaker is held back, but your voice still gets through (so you can interrupt):
-    // the gate follows the leak level during playback instead of a fixed loud threshold (v31; was 0.055 — too deaf on phones)
+    // the gate follows the leak level during playback instead of a fixed loud threshold (v31; was 0.055, too deaf on phones)
     if (L.playing) L.pb = L.pb ? L.pb * 0.97 + fr.rms * 0.03 : fr.rms; else L.pb = 0;
     var gate = L.playing && fr.rms < Math.max(0.018, L.pb * 1.7);
     for (var i = 0; i < n; i++) { var s0 = Math.floor(i * ratio), s1 = Math.floor((i + 1) * ratio), acc = 0; for (var k = s0; k < s1; k++) acc += f[k]; var v = gate ? 0 : acc / Math.max(1, s1 - s0); out[i] = Math.max(-1, Math.min(1, v)) * 0x7fff; }
@@ -47,7 +48,7 @@
 
   function handle(m) {
     L.recv++; L.last = Object.keys(m)[0] || ""; if (m.serverContent) L.last = Object.keys(m.serverContent).join("+");
-    if (m.setupComplete) { L.ready = true; L.fails = 0; clearTimeout(L.setupTimer); emit("ready", true); emit("state", "listening"); if (L.firstText) { sendText(L.firstText); L.firstText = null; L.injected = true; emit("state", "thinking"); } return; }
+    if (m.setupComplete) { L.ready = true; L.fails = 0; try { localStorage.setItem("ob-live-tier", L.lite ? "lite:" + Date.now() : "full"); } catch (e) {} clearTimeout(L.setupTimer); emit("ready", true); emit("state", "listening"); if (L.firstText) { sendText(L.firstText); L.firstText = null; L.injected = true; emit("state", "thinking"); } return; }
     if (m.sessionResumptionUpdate && m.sessionResumptionUpdate.newHandle && m.sessionResumptionUpdate.resumable !== false) L.handle = m.sessionResumptionUpdate.newHandle;
     var sc = m.serverContent;
     if (sc) {
@@ -69,7 +70,7 @@
       Promise.resolve(L.tool ? L.tool(req) : { answer: "FODO Brain is not available." }).then(function (r) {
         L.pendingTools--; emit("brain", r);
         var resp = { result: String((r && r.answer) || "No answer.").slice(0, 3500) };
-        if (r && r.actions && r.actions.length) resp.needs_confirmation = r.actions.map(function (a) { return String(a.preview || "").split("\n")[0]; }).join("; ") + " — tell him to tap Confirm on the screen.";
+        if (r && r.actions && r.actions.length) resp.needs_confirmation = r.actions.map(function (a) { return String(a.preview || "").split("\n")[0]; }).join("; ") + ", tell him to tap Confirm on the screen.";
         send({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: resp }] } });
       }, function (e) { L.pendingTools--; send({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: { error: String(e && e.message || e) } }] } }); });
     });
@@ -81,10 +82,10 @@
   function start(opt) {
     opt = opt || {}; if (L.active) return Promise.resolve(true);
     if (!window.FodoVoice) { emit("error", "voice engine missing"); return Promise.resolve(false); }
-    L.active = true; L.ready = false; L.turnDone = true; L.sent = 0; L.recv = 0; L.mic = 0; L.last = ""; L.youText = L.fodoText = ""; L.firstText = opt.text || null; L.tool = opt.tool; L.mode = opt.mode === "wake" ? "wake" : "chat"; L.voice = opt.voice || ""; L.handle = null; L.lite = false; L.fails = 0; L.reconnects = 0; L.followUntil = 0; L.drop = false; L.turnAllowed = null; emit("state", "connecting");
+    L.active = true; L.ready = false; L.turnDone = true; L.sent = 0; L.recv = 0; L.mic = 0; L.last = ""; L.youText = L.fodoText = ""; L.firstText = opt.text || null; L.tool = opt.tool; L.mode = opt.mode === "wake" ? "wake" : "chat"; L.voice = opt.voice || ""; L.handle = null; L.lite = (function () { try { var v = String(localStorage.getItem("ob-live-tier") || ""); return /^lite/.test(v) && (v === "lite" || Date.now() - +v.slice(5) < 864e5);   /* retry the full session once a day */ } catch (e) { return false; } })(); L.fails = 0; L.muted = false; L.tries = 0; L.reconnects = 0; L.followUntil = 0; L.drop = false; L.turnAllowed = null; emit("state", "connecting");
     return FodoVoice.start().then(function (ok) {
       if (!ok) throw new Error("mic");
-      L.ac = FodoVoice.context(); L.an = L.ac.createAnalyser(); L.an.fftSize = 256; L.an.connect(L.ac.destination);
+      L.ac = FodoVoice.context(); if (L.ac.state !== "running") { try { L.ac.resume(); } catch (e) {} } L.an = L.ac.createAnalyser(); L.an.fftSize = 256; L.an.connect(L.ac.destination);
       FodoVoice.pauseVad(true);
       if (!L.frameFn) { L.frameFn = onFrame; FodoVoice.on("frame", function (fr) { if (L.frameFn) L.frameFn(fr); }); FodoVoice.on("level", function (v) { if (L.active && !L.playing) emit("level", v); }); }
       return connect();
@@ -93,6 +94,9 @@
   function tokenUrl() { var q = ["mode=" + encodeURIComponent(L.mode)]; if (L.voice) q.push("voice=" + encodeURIComponent(L.voice)); if (L.handle) q.push("handle=" + encodeURIComponent(L.handle)); if (L.lite) q.push("lite=1"); return "/api/owner-brain/live?" + q.join("&"); }
   /* a (re)connection: fresh single-use token; with a resumption handle Gemini continues the SAME conversation */
   function connect() {
+    return connectOnce().catch(function (e) { if (!L.active || (L.tries = (L.tries || 0) + 1) > 1) throw e; return new Promise(function (r) { setTimeout(r, 700); }).then(connectOnce); });
+  }
+  function connectOnce() {
     return fetch(tokenUrl(), { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.json(); }).then(function (t) {
       if (!t || !t.ok) throw new Error((t && t.reason) || "no token");
       if (!L.active) return false; L.tier = t.tier;
@@ -100,7 +104,7 @@
         var ws = new WebSocket(t.ws); L.ws = ws; L.sessionStart = Date.now(); var opened = false;
         ws.onopen = function () { opened = true; send({ setup: t.setup }); levelLoop(); clearInterval(L.diagT); L.diagT = setInterval(function () { if (!L.active) { clearInterval(L.diagT); return; } emit("diag", { ready: L.ready, sent: L.sent, recv: L.recv, mic: L.mic, last: L.last, model: t.model, playing: L.playing, tier: L.tier, mode: L.mode, resumable: !!L.handle, reconnects: L.reconnects }); }, 700); L.setupTimer = setTimeout(function () { if (L.active && !L.ready && ws === L.ws) {
           if (!L.lite && L.tier !== "basic") { L.lite = true; L.handle = null; L.ws = null; ws.onclose = null; try { ws.close(1000, "lite"); } catch (e) {} connect().catch(function (e) { stop(true); emit("error", String(e.message || e)); }); return; }
-          L.why = "Gemini didn't accept the voice session (no reply in 10 s)."; stop(true); emit("error", L.why); } }, 10000); resolve(true); };
+          L.why = "Gemini didn't accept the voice session (no reply in 8 s)."; stop(true); emit("error", L.why); } }, L.lite ? 8000 : 6000); resolve(true); };
         ws.onmessage = function (ev) { var go = function (txt) { var m; try { m = JSON.parse(txt); } catch (e) { return; } handle(m); }; if (typeof ev.data === "string") go(ev.data); else if (ev.data && ev.data.text) ev.data.text().then(go); else if (ev.data instanceof ArrayBuffer) go(new TextDecoder().decode(ev.data)); };
         ws.onerror = function () { if (!opened) reject(new Error("Couldn't connect to Gemini Live.")); };
         ws.onclose = function (ev) { if (ws !== L.ws && L.ws) return; var was = L.active, ready = L.ready; L.ws = null; clearTimeout(L.setupTimer); if (!opened) return reject(new Error("Gemini Live closed: " + (ev.reason || ev.code)));
@@ -122,6 +126,7 @@
     if (window.FodoVoice) FodoVoice.pauseVad(false);
     if (was) emit("state", "closed");
   }
+  function mute(on) { L.muted = !!on; if (L.muted) { L.chunk = []; L.chunkLen = 0; send({ realtimeInput: { audioStreamEnd: true } }); } emit("muted", L.muted); }
   function say(text) { if (L.active && L.ready) { L.injected = true; sendText(text); emit("state", "thinking"); } }
   function setMode(m) { L.mode = m === "wake" ? "wake" : "chat"; }
   /* Voice check (Settings): token → WebSocket → setup → Gemini says hello in text. No microphone needed. */
@@ -161,5 +166,5 @@
       });
     }).catch(function (e) { return { ok: false, detail: String(e.message || e) }; });
   }
-  window.FodoLive = { preview: preview, setMode: setMode, mode: function () { return L.mode; }, test: test, on: function (n, f) { (E[n] = E[n] || []).push(f); }, start: start, stop: stop, say: say, isActive: function () { return L.active; }, isSpeaking: function () { return L.playing; }, interrupt: function () { flush(); } };
+  window.FodoLive = { preview: preview, setMode: setMode, mode: function () { return L.mode; }, test: test, on: function (n, f) { (E[n] = E[n] || []).push(f); }, start: start, stop: stop, say: say, isActive: function () { return L.active; }, isSpeaking: function () { return L.playing; }, interrupt: function () { flush(); }, mute: mute, isMuted: function () { return !!L.muted; } };
 })();

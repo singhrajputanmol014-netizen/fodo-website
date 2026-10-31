@@ -1,4 +1,4 @@
-/* FODO Bot — AI endpoint (Cloudflare Pages Function, route: POST /api/chat)
+/* FODO Bot: AI endpoint (Cloudflare Pages Function, route: POST /api/chat)
  *
  * Uses Cloudflare Workers AI through the `AI` binding: no API key, no third-party signup.
  * Bind it once in the dashboard: Pages project → Settings → Bindings → Add → Workers AI → variable name `AI`.
@@ -20,6 +20,7 @@ import { accountFacts } from "../_lib/help.js";
 import { applyConfig } from "../_lib/config.js";
 import { productBrief, productDetail, memberBlock, PRODUCT_RE } from "../_lib/sitekb.js";
 import { groqChat } from "../_lib/aivis.js";
+import { dedash } from "../_lib/brain/models.js";
 
 const DEFAULT_MODELS = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // best quality, uses more of the free daily allowance
@@ -205,7 +206,7 @@ async function generate(env, messages, maxTokens) {
   for (let i = 0; i < chain.length; i++) {
     try {
       const res = await withTimeout(env.AI.run(chain[i], { messages, max_tokens: maxTokens || 480, temperature: 0.5 }), i === 0 ? 22000 : 14000);
-      const text = tidyReply(extractText(res));
+      const text = dedash(tidyReply(extractText(res)));
       if (text) return { text, model: chain[i] };
       lastErr = new Error("empty reply");
     } catch (err) {
@@ -220,7 +221,7 @@ async function generate(env, messages, maxTokens) {
 }
 async function groqOnly(env, messages, maxTokens) {
   const g = await groqChat(env, messages, maxTokens || 480, 25000);
-  const text = tidyReply(g.text); if (!text) throw new Error("empty reply");
+  const text = dedash(tidyReply(g.text)); if (!text) throw new Error("empty reply");
   return { text, model: g.model };
 }
 

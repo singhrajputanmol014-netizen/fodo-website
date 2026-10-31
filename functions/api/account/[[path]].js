@@ -2,7 +2,7 @@
  *   GET  config                 → { enabled, google, email, payments, autoRenew, plans, packs }   (no secrets)
  *   GET  me                     → { user } or { user: null }
  *   POST google {credential}    → sign in with a Google ID token
- *   POST otp/send {email}       → 6-digit code by email (10 min, 5 tries, 1/min and 5/hour per email, 30/hour per network — mobile networks share IPs)
+ *   POST otp/send {email}       → 6-digit code by email (10 min, 5 tries, 1/min and 5/hour per email, 30/hour per network, mobile networks share IPs)
  *   POST otp/verify {email, code}
  *   POST logout · POST profile {name, phone}
  *   GET  history[?client=]      → your X-Rays (Starter+) · GET ledger → credit history
@@ -53,7 +53,7 @@ export async function onRequest(ctx) {
     if (path === "history" && m === "GET") return await history(env, u, b, new URL(request.url).searchParams);
     if (path === "ledger" && m === "GET") { const r = await (await db(env)).prepare("SELECT kind, delta, note, created_at FROM acct_ledger WHERE user_id=?1 ORDER BY id DESC LIMIT 100").bind(b.id).all(); return json({ ok: true, items: r.results || [] }); }
     if (path === "checkout" && m === "POST") { const r = await checkout(request, env, u, b, body); if (r.status === 200) await logEvent(env, u.id, "checkout", (body.kind || "") + ":" + (body.item || "")); return r; }
-    // v15: the page reports feature use that happens in the browser (downloads, copies) — only known kinds, rate-limited
+    // v15: the page reports feature use that happens in the browser (downloads, copies), only known kinds, rate-limited
     if (path === "event" && m === "POST") { const k = String(body.kind || ""); if (EVENT_KINDS.indexOf(k) < 0 || /^(login|paid|admin|xray_|checkout|blocked|limit)/.test(k)) return json({ ok: false }, 400);
       if (await count(env, "ev:" + u.id + ":" + Math.floor(Date.now() / 3600e3), 300, 3700)) return json({ ok: false }, 429); await logEvent(env, u.id, k, clean(body.detail, 200)); return json({ ok: true }); }
     if (path === "verify" && m === "POST") return await verify(env, b, body);
@@ -84,7 +84,7 @@ async function signIn(env, request, u, how) {
   if (how) await logEvent(env, u.id, how, ""); const cookie = await newSession(env, request, u.id); return json({ ok: true, user: publicUser(u, await billingUser(env, u)) }, 200, { "set-cookie": cookie }); }
 /* ---------- v16.1 free mobile-number login with WhatsApp ("reverse OTP") ----------
    1) the page asks for a code  2) the visitor sends "FODO LOGIN <code>" to FODO's WhatsApp number (one tap on the phone, QR on a computer)
-   3) Meta's WhatsApp Cloud API calls our webhook with the sender's number — WhatsApp has already verified it — and the message is free
+   3) Meta's WhatsApp Cloud API calls our webhook with the sender's number: WhatsApp has already verified it, and the message is free
    4) the page (which holds a secret poll token) is logged in. Needs WA_NUMBER, WA_PHONE_ID, WA_TOKEN, WA_APP_SECRET, WA_VERIFY_TOKEN. */
 const WA_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 async function waStart(request, env) {
@@ -93,7 +93,7 @@ async function waStart(request, env) {
   const d = await db(env), code = randId(6, WA_ALPHA), poll = randId(40), now = Date.now();
   await d.prepare("INSERT INTO acct_wa (code, poll_hash, created, expires) VALUES (?1,?2,?3,?4)").bind(code, await sha256(poll), now, now + 10 * 60e3).run();
   if (Math.random() < 0.1) await d.prepare("DELETE FROM acct_wa WHERE expires < ?1").bind(now - 864e5).run();
-  const text = "FODO LOGIN " + code + " — please log me in to fodo.co.in";
+  const text = "FODO LOGIN " + code + ", please log me in to fodo.co.in";
   return json({ ok: true, code, poll, link: "https://wa.me/" + String(env.WA_NUMBER).replace(/\D/g, "") + "?text=" + encodeURIComponent(text), expires: now + 10 * 60e3 });
 }
 async function waPoll(request, env) {
@@ -130,7 +130,7 @@ async function waWebhook(request, env, m) {
     const upd = await d.prepare("UPDATE acct_wa SET phone=?2 WHERE code=?1 AND phone IS NULL AND expires > ?3").bind(mm[1].toUpperCase(), from, Date.now()).run();
     const ok = upd.meta && upd.meta.changes;
     try { await outbound(env)("https://graph.facebook.com/v21.0/" + env.WA_PHONE_ID + "/messages", { method: "POST", headers: { authorization: "Bearer " + env.WA_TOKEN, "content-type": "application/json" },
-      body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: ok ? "✅ Done — go back to fodo.co.in, you are logged in. If you did not just try to log in, ignore this message." : "This login code has expired or was already used. Start again on fodo.co.in." } }), signal: AbortSignal.timeout(8000) }); } catch (e) {}
+      body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: ok ? "✅ Done, go back to fodo.co.in, you are logged in. If you did not just try to log in, ignore this message." : "This login code has expired or was already used. Start again on fodo.co.in." } }), signal: AbortSignal.timeout(8000) }); } catch (e) {}
   }
   return json({ ok: true });
 }
@@ -189,7 +189,7 @@ async function otpSend(request, env) {
   const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
   await d.prepare("INSERT INTO acct_otps (email, code_hash, expires_at, tries, sent_at) VALUES (?1,?2,?3,0,?4) ON CONFLICT(email) DO UPDATE SET code_hash=?2, expires_at=?3, tries=0, sent_at=?4").bind(email, await otpHash(env, email, code), Date.now() + 10 * 60e3, Date.now()).run();
   await sendMail(env, email, "Your FODO login code: " + code,
-    `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111"><p>Your FODO Growth Lab login code is</p><p style="font-size:30px;font-weight:700;letter-spacing:6px">${code}</p><p>It works for 10 minutes. If you did not ask for it, ignore this email.</p><p style="color:#777">FODO — Fear Of Digitally Out ?</p></div>`,
+    `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111"><p>Your FODO Growth Lab login code is</p><p style="font-size:30px;font-weight:700;letter-spacing:6px">${code}</p><p>It works for 10 minutes. If you did not ask for it, ignore this email.</p><p style="color:#777">FODO: Fear Of Digitally Out ?</p></div>`,
     "Your FODO Growth Lab login code is " + code + ". It works for 10 minutes.");
   return json({ ok: true, sent: true });
 }
@@ -228,7 +228,7 @@ const istPlus = (days) => { const t = new Date(Date.now() + days * 864e5 + 5.5 *
 async function checkout(request, env, u, b, body) {
   if (!payOn(env)) return json({ ok: false, reason: "Payments are not switched on yet." }, 503);
   if (b.id !== u.id) return json({ ok: false, reason: "Your team owner manages payments for this plan." }, 403);
-  if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login — every feature is already free." }, 409);
+  if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login, every feature is already free." }, 409);
   const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : "plan", item = String(body.item || "");
   const thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : PLANS[item];
   if (thing && thing.hidden && env.PAY_TEST !== "1") return json({ ok: false, reason: "Unknown plan." }, 400);
@@ -242,7 +242,7 @@ async function checkout(request, env, u, b, body) {
   if (await count(env, "checkout:" + b.id, 20, 3600)) return json({ ok: false, reason: "Too many payment attempts. Try again later." }, 429);
   const d = await db(env), site = SITE(request), cust = { customer_id: b.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 50), customer_email: b.email, customer_phone: phone, customer_name: (b.name || b.email.split("@")[0]).slice(0, 100).padEnd(3, ".") };
   if (payProvider(env) === "razorpay") {   // Razorpay Standard Checkout: server creates the order, the page opens Razorpay's popup
-    const oid = "fo_" + randId(20), what = ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + " — 1 run" : thing.name + " — 1 month")).slice(0, 200);
+    const oid = "fo_" + randId(20), what = ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month")).slice(0, 200);
     const o = await rzp(env, "POST", "/orders", { amount: Math.round(thing.price * 100), currency: "INR", receipt: oid, notes: { kind, item, user: b.id.slice(0, 40) } });
     await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.id), nowIso()).run();
     return json({ ok: true, provider: "razorpay", orderId: oid, rzpOrderId: o.id, keyId: env.RAZORPAY_KEY_ID, amount: o.amount, currency: "INR", description: what, mode: rzpMode(env),
@@ -260,7 +260,7 @@ async function checkout(request, env, u, b, body) {
   }
   const oid = "fo_" + randId(20);
   const o = await cf(env, "POST", "/orders", { order_id: oid, order_amount: thing.price, order_currency: "INR", customer_details: cust,
-    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + " — 1 run" : thing.name + " — 1 month")).slice(0, 200),
+    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month")).slice(0, 200),
     order_tags: { kind, item, user: b.id.slice(0, 40) } }, oid);
   await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.cf_order_id || ""), nowIso()).run();
   return json({ ok: true, paymentSessionId: o.payment_session_id, orderId: oid, mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox" });
@@ -271,9 +271,9 @@ async function settleSub(env, sid, payment) {
   const cs = await cf(env, "GET", "/subscriptions/" + encodeURIComponent(sid)), st = cs.subscription_status || "";
   await d.prepare("UPDATE acct_subs SET status=?2, updated_at=?3 WHERE subscription_id=?1").bind(sid, st, nowIso()).run();
   if (st !== "ACTIVE") return { ok: false, status: st };
-  let granted = await grantPlan(env, s.user_id, s.plan, "sub:" + sid + ":first", PLANS[s.plan].name + " — first month (auto-renew)");
+  let granted = await grantPlan(env, s.user_id, s.plan, "sub:" + sid + ":first", PLANS[s.plan].name + ", first month (auto-renew)");
   if (payment && payment.cf_payment_id && payment.payment_status === "SUCCESS" && payment.payment_type !== "AUTH" && Math.abs(+payment.payment_amount - s.amount) < 0.01)
-    granted = (await grantPlan(env, s.user_id, s.plan, "subpay:" + payment.cf_payment_id, PLANS[s.plan].name + " — renewed")) || granted;
+    granted = (await grantPlan(env, s.user_id, s.plan, "subpay:" + payment.cf_payment_id, PLANS[s.plan].name + ", renewed")) || granted;
   return { ok: true, status: st, granted };
 }
 async function verify(env, b, body) {

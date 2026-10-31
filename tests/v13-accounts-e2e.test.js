@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* v13 Growth Lab accounts end-to-end — real pages + real Pages Functions (local workerd, D1 + KV) with accounts switched on.
+/* v13 Growth Lab accounts end-to-end, real pages + real Pages Functions (local workerd, D1 + KV) with accounts switched on.
    Email codes (Resend), payments (Cashfree orders) and Open PageRank are stand-ins on the fixture server; the Cashfree browser SDK is stubbed.
    Covers: login with an emailed code → 2 free X-Rays (free-level limits, locked sections) → 402 "pick a plan" → buy Pro on /plans/ →
    payment confirmed on /account/ → Pro X-Ray (more pages, tech stack, broken outgoing links, authority, compare with last X-Ray, exports) →
@@ -180,7 +180,7 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   /* ---------- v15 admin dashboard ---------- */
   await p.goto(BASE + "/admin/"); await p.waitForSelector(".ad-kpis", { timeout: 15000 });
   const kp = await p.$$eval(".ad-kpi", (k) => k.map((x) => x.textContent));
-  ok(kp.length === 6 && /users/.test(kp[0]) && /X-Rays run/.test(kp[2]) && /₹3,999/.test(kp[4]), "admin overview (owner): 6 KPIs incl. revenue ₹3,999 — " + kp[4].slice(0, 40));
+  ok(kp.length === 6 && /users/.test(kp[0]) && /X-Rays run/.test(kp[2]) && /₹3,999/.test(kp[4]), "admin overview (owner): 6 KPIs incl. revenue ₹3,999: " + kp[4].slice(0, 40));
   ok(await p.isVisible(".ad-chart") && (await p.$$(".ad-funnel li")).length === 5 && /Owner · full control/.test(await p.textContent(".ad-role")), "admin: 30-day chart, funnel, owner role");
   await p.click('a[data-tab="users"]'); await p.waitForSelector("#ad-ulist tr[data-u]");
   await p.fill("#ad-uq", "rohit@"); await p.waitForFunction(() => document.querySelectorAll("#ad-ulist tr[data-u]").length === 1, null, { timeout: 8000 });

@@ -1,4 +1,4 @@
-/* FODO Website Builder — store + blog (v29). Products (variants, stock, images, collections), orders (online payment with the
+/* FODO Website Builder, store + blog (v29). Products (variants, stock, images, collections), orders (online payment with the
    MERCHANT'S OWN Cashfree account, cash on delivery, WhatsApp orders), discount codes, shipping + tax rules, order emails,
    blog posts (draft / scheduled / published). Money is stored in paise (integers). Tenant rule: every merchant function gets a
    site already resolved by sites.siteFor() (owner of the site, or a FODO owner). Public checkout trusts NOTHING from the browser
@@ -60,9 +60,9 @@ const b64 = (u) => { let s = ""; u.forEach((b) => { s += String.fromCharCode(b);
 export async function savePayment(env, s, b) {
   const k = await key(env); if (!k) throw err("Online payments aren't switched on by FODO yet (SITES_SECRET_KEY).", 503);
   const appId = clip(b.appId, 120).trim(), secret = clip(b.secret, 200).trim(), mode = b.mode === "production" ? "production" : "sandbox"; if (!appId || !secret) throw err("Enter the App ID and Secret Key from your Cashfree dashboard.");
-  if (mode === "production" && /^TEST/i.test(appId)) throw err("This looks like a TEST App ID — choose Test mode or use your PROD keys.");
+  if (mode === "production" && /^TEST/i.test(appId)) throw err("This looks like a TEST App ID, choose Test mode or use your PROD keys.");
   const r = await fetch((mode === "production" ? "https://api.cashfree.com" : "https://sandbox.cashfree.com") + "/pg/orders/fodo-check-" + randId(6), { headers: { "x-client-id": appId, "x-client-secret": secret, "x-api-version": "2025-01-01" }, signal: AbortSignal.timeout(10000) }).catch(() => null);
-  if (r && r.status === 401) throw err("Cashfree rejected these keys — check the App ID and Secret Key (and Test vs Production).");
+  if (r && r.status === 401) throw err("Cashfree rejected these keys, check the App ID and Secret Key (and Test vs Production).");
   const iv = crypto.getRandomValues(new Uint8Array(12)), ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k, new TextEncoder().encode(JSON.stringify({ appId, secret }))));
   const d = await shopDb(env); await d.prepare("INSERT INTO site_secrets (site_id, provider, enc, meta, updated_at) VALUES (?1,'cashfree',?2,?3,?4) ON CONFLICT(site_id, provider) DO UPDATE SET enc=?2, meta=?3, updated_at=?4").bind(s.id, b64(iv) + "." + b64(ct), JSON.stringify({ mode, appId: appId.slice(0, 6) + "…" + appId.slice(-4) }), nowIso()).run();
   return { connected: true, mode };
@@ -84,7 +84,7 @@ export async function checkout(env, siteId, body, ip) {
   const d = await shopDb(env), s = await d.prepare("SELECT id, name, slug, status, published FROM sites WHERE id=?1 AND deleted_at IS NULL").bind(String(siteId)).first(); if (!s || s.status !== "live") throw err("This store isn't open.", 404);
   const site = J(s.published, {}), store = (site.settings && site.settings.store) || {}, biz = (site.settings && site.settings.business) || {};
   const method = ["online", "cod", "whatsapp"].indexOf(body.method) > -1 ? body.method : "cod";
-  if (method === "online" && !store.online) throw err("Online payment isn't available — choose another option."); if (method === "cod" && store.cod === false) throw err("Cash on delivery isn't available."); if (method === "whatsapp" && !(store.whatsapp && biz.whatsapp)) throw err("WhatsApp orders aren't available.");
+  if (method === "online" && !store.online) throw err("Online payment isn't available, choose another option."); if (method === "cod" && store.cod === false) throw err("Cash on delivery isn't available."); if (method === "whatsapp" && !(store.whatsapp && biz.whatsapp)) throw err("WhatsApp orders aren't available.");
   const c = body.customer || {}, cust = { name: clip(c.name, 80).trim(), phone: clip(c.phone, 20).replace(/[^\d+]/g, ""), email: clip(c.email, 120).trim(), address: clip(c.address, 300).trim(), city: clip(c.city, 80).trim(), pin: clip(c.pin, 10).replace(/\D/g, ""), note: clip(c.note, 300) };
   if (cust.name.length < 2 || cust.phone.replace(/\D/g, "").length < 10 || cust.address.length < 4 || cust.pin.length < 5) throw err("Please fill name, phone, address and PIN code.");
   if (cust.email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(cust.email)) throw err("Please check the email address.");
@@ -93,7 +93,7 @@ export async function checkout(env, siteId, body, ip) {
   for (const id of ids) { const r = await d.prepare("SELECT * FROM site_products WHERE id=?1 AND site_id=?2 AND status='active'").bind(id, s.id).first(); if (r) P[id] = rowP(r); }
   const lines = [];
   for (const it of items) {
-    const p = P[String(it.id)]; if (!p) throw err("A product in your cart is no longer available — please review your cart.", 409);
+    const p = P[String(it.id)]; if (!p) throw err("A product in your cart is no longer available, please review your cart.", 409);
     const qty = Math.max(1, Math.min(99, parseInt(it.qty, 10) || 1)), vi = parseInt(it.v, 10), v = p.variants.length ? p.variants[vi] : null; if (p.variants.length && !v) throw err("Choose an option for " + p.title + ".");
     const have = p.track ? (v ? v.stock : p.stock) : Infinity; if (qty > have) throw err((p.title + (v ? " · " + v.name : "")) + (have > 0 ? ": only " + have + " left." : " is sold out."), 409);
     lines.push({ id: p.id, title: p.title, variant: v ? v.name : "", vi: v ? vi : -1, qty, price: v ? v.price : p.price });
@@ -111,7 +111,7 @@ export async function checkout(env, siteId, body, ip) {
   const ret = /^https:\/\/[a-z0-9.-]+(:\d+)?\/[\w\-\/]*$/i.test(String(body.ret || "")) ? String(body.ret) : null;
   const out = { ok: true, order: id, number: num, token, total: q.total };
   if (method === "online") {
-    const cr = await payCreds(env, s.id); if (!cr) throw err("The store's online payment isn't connected — choose another option.");
+    const cr = await payCreds(env, s.id); if (!cr) throw err("The store's online payment isn't connected, choose another option.");
     const base = cr.mode === "production" ? "https://api.cashfree.com/pg" : "https://sandbox.cashfree.com/pg";
     const r = await fetch(base + "/orders", { method: "POST", headers: { "x-client-id": cr.appId, "x-client-secret": cr.secret, "x-api-version": "2025-01-01", "content-type": "application/json" }, signal: AbortSignal.timeout(15000),
       body: JSON.stringify({ order_id: id, order_amount: q.total / 100, order_currency: "INR", customer_details: { customer_id: "c" + (await sha256(cust.phone)).slice(0, 20), customer_phone: cust.phone.replace(/\D/g, "").slice(-10), customer_name: cust.name, customer_email: cust.email || undefined }, order_meta: ret ? { return_url: ret + "order/" + id + "/?t=" + token } : undefined, order_note: clip(s.name + " order #" + num, 200) }) });
@@ -133,7 +133,7 @@ async function notify(env, s, site, orderId) {
   const d = await shopDb(env), o = await d.prepare("SELECT * FROM site_orders WHERE id=?1").bind(orderId).first(), c = J(o.customer, {}), items = J(o.items, []), rs = (n) => "₹" + (n / 100).toLocaleString("en-IN");
   const tbl = "<table>" + items.map((l) => "<tr><td>" + esc(l.title) + (l.variant ? " · " + esc(l.variant) : "") + " × " + l.qty + "</td><td>" + rs(l.price * l.qty) + "</td></tr>").join("") + "<tr><td><b>Total</b></td><td><b>" + rs(o.total) + "</b></td></tr></table>";
   const to = (site.settings || {}).notifyEmail;
-  try { if (to) await sendMail(env, to, "New order #" + o.number + " — " + rs(o.total) + " (" + o.method + ")", "<p>New order on <b>" + esc(s.name) + "</b>.</p>" + tbl + "<p><b>" + esc(c.name) + "</b> · " + esc(c.phone) + " · " + esc(c.email) + "<br>" + esc(c.address) + ", " + esc(c.city) + " " + esc(c.pin) + "</p><p>Manage it in FODO Website Builder → Store → Orders.</p>"); } catch (e) {}
+  try { if (to) await sendMail(env, to, "New order #" + o.number + ": " + rs(o.total) + " (" + o.method + ")", "<p>New order on <b>" + esc(s.name) + "</b>.</p>" + tbl + "<p><b>" + esc(c.name) + "</b> · " + esc(c.phone) + " · " + esc(c.email) + "<br>" + esc(c.address) + ", " + esc(c.city) + " " + esc(c.pin) + "</p><p>Manage it in FODO Website Builder → Store → Orders.</p>"); } catch (e) {}
   try { if (c.email) await sendMail(env, c.email, "Your order #" + o.number + " at " + s.name, "<p>Thank you, " + esc(c.name) + "! We received your order.</p>" + tbl + "<p>Payment: " + esc({ cod: "cash on delivery", online: "paid online", whatsapp: "confirm on WhatsApp" }[o.method] || o.method) + "</p>"); } catch (e) {}
 }
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

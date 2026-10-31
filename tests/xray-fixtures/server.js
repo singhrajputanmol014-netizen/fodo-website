@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* Offline world for the Business X-Ray end-to-end tests.
    One HTTP server on PORT serves:
-     /<host>/<path>      five fictional business websites (+ their competitors) — every name here is made up for testing
-     /_serper/search     a stand-in for Serper.dev (Google results) — POST {q, gl}; checks the API key header
+     /<host>/<path>      five fictional business websites (+ their competitors), every name here is made up for testing
+     /_serper/search     a stand-in for Serper.dev (Google results): POST {q, gl}; checks the API key header
      /_psi/...           a stand-in for Google PageSpeed Insights
    The site's functions reach these through XRAY_TEST_MODE + XRAY_TEST_MAP (see functions/_lib/xray-core.js → outbound()). */
 const http = require("http");
@@ -16,17 +16,17 @@ const words = (n, seed) => { const w = (seed || "quality service team customers 
 
 /* ---------------- five businesses ---------------- */
 const SITES = {
-  /* 1. local restaurant, Delhi — good basics, prices, testimonials; a broken link, a redirect chain, an unsafe redirect, robots-blocked admin, schema phone mismatch */
+  /* 1. local restaurant, Delhi, good basics, prices, testimonials; a broken link, a redirect chain, an unsafe redirect, robots-blocked admin, schema phone mismatch */
   "spicehub.test": {
     robots: "User-agent: *\nDisallow: /admin\nSitemap: https://spicehub.test/sitemap.xml\n",
     sitemap: ["/", "/menu", "/about", "/contact", "/catering", "/admin/panel", "/private-events"],
     redirects: { "/specials": "/offers-old", "/offers-old": "/offers", "/go-internal": "http://169.254.169.254/latest/meta-data" },
     pages: {
-      "/": { title: "Spice Hub | North Indian Restaurant in Dwarka, New Delhi", desc: "Spice Hub serves slow-cooked North Indian food in Dwarka, New Delhi. Order online or book a table — family dining since 2012.", canonical: "https://spicehub.test/", og: "Spice Hub", site: "Spice Hub",
+      "/": { title: "Spice Hub | North Indian Restaurant in Dwarka, New Delhi", desc: "Spice Hub serves slow-cooked North Indian food in Dwarka, New Delhi. Order online or book a table, family dining since 2012.", canonical: "https://spicehub.test/", og: "Spice Hub", site: "Spice Hub",
         ld: [{ "@context": "https://schema.org", "@type": "Restaurant", name: "Spice Hub", telephone: "+91 11 4000 9999", address: { "@type": "PostalAddress", streetAddress: "Plot 7, Sector 12", addressLocality: "Dwarka", addressRegion: "New Delhi", postalCode: "110075" } }],
         nav: [["/", "Home"], ["/menu", "Menu"], ["/catering", "Catering"], ["/about", "About"], ["/contact", "Contact"]],
         body: `<section><h1>North Indian food for families in Dwarka, delivered hot in 30 minutes</h1><p>Slow-cooked curries, tandoor breads and biryani. Since 2012. Free delivery within 5 km.</p><a class="btn" href="/contact">Book a table</a> <a href="https://wa.me/919800000001">WhatsApp to order</a> <a href="tel:+919800000001">Call +91 98000 00001</a></section>
-        <section><h2>What our guests say</h2><blockquote>“Best butter chicken in West Delhi, delivery was on time.” — Priya</blockquote><blockquote>“Great value for money, friendly staff.” — Arjun</blockquote></section>
+        <section><h2>What our guests say</h2><blockquote>“Best butter chicken in West Delhi, delivery was on time.”: Priya</blockquote><blockquote>“Great value for money, friendly staff.”: Arjun</blockquote></section>
         <section><h2>Our kitchen</h2><p>${words(120, "fresh spices tandoor biryani curry family dining dwarka delivery")}</p><img src="/img/biryani.jpg" alt="Chicken biryani"><img src="/img/naan.jpg"><img src="/img/hall.jpg"></section>
         <a href="/old-menu">Old menu</a> <a href="/specials">Specials</a> <a href="/go-internal">Partner offer</a> <a href="/private-events">Private events</a>`,
         footer: "Spice Hub, Plot 7, Sector 12, Dwarka, New Delhi 110075 · +91 98000 00001 · hello@spicehub.test · <a href='https://instagram.com/spicehubtest'>Instagram</a> <a href='https://facebook.com/spicehubtest'>Facebook</a> <a href='/privacy'>Privacy</a>" },
@@ -40,12 +40,12 @@ const SITES = {
       "/admin/panel": { title: "Admin", body: "<h1>Admin</h1>" },
     },
   },
-  /* 2. SaaS — strong offer, pricing, FAQ schema, blog; no address, no testimonials */
+  /* 2. SaaS, strong offer, pricing, FAQ schema, blog; no address, no testimonials */
   "flowdesk.test": {
     robots: "User-agent: *\nAllow: /\nSitemap: https://flowdesk.test/sitemap.xml\n",
     sitemap: ["/", "/pricing", "/features", "/blog", "/blog/automate-invoices", "/blog/crm-tips", "/signup"],
     pages: {
-      "/": { title: "Flowdesk | Workflow Automation Software for Small Businesses", desc: "Automate invoices, follow-ups and approvals without code. Start a 14-day free trial — no card needed.", canonical: "https://flowdesk.test/", og: "Flowdesk", site: "Flowdesk",
+      "/": { title: "Flowdesk | Workflow Automation Software for Small Businesses", desc: "Automate invoices, follow-ups and approvals without code. Start a 14-day free trial, no card needed.", canonical: "https://flowdesk.test/", og: "Flowdesk", site: "Flowdesk",
         ld: [{ "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Flowdesk", applicationCategory: "BusinessApplication" }, { "@context": "https://schema.org", "@type": "Organization", name: "Flowdesk" }],
         nav: [["/features", "Features"], ["/pricing", "Pricing"], ["/blog", "Blog"], ["/signup", "Start free trial"]],
         body: `<h1>Stop wasting hours on manual follow-ups: workflow automation for small businesses</h1><p>Save 10 hours a week. Connect your CRM, email and invoices in minutes. No code. 2,000+ teams use Flowdesk.</p><a class="btn" href="/signup">Start free trial</a><h2>Integrations</h2><p>${words(250, "automation workflow integrations crm invoices approvals dashboard api software")}</p>`,
@@ -60,12 +60,12 @@ const SITES = {
       "/privacy": { title: "Privacy | Flowdesk", desc: "Privacy policy.", body: `<h1>Privacy</h1><p>${words(120)}</p>` },
     },
   },
-  /* 3. e-commerce D2C — products with schema, cart; no testimonials/FAQ/contact form; PageSpeed fails for this one */
+  /* 3. e-commerce D2C, products with schema, cart; no testimonials/FAQ/contact form; PageSpeed fails for this one */
   "aromaco.test": {
     robots: "User-agent: *\nDisallow: /cart\nDisallow: /checkout\n",
     sitemap: null,
     pages: {
-      "/": { title: "Aroma Co — Hand-Poured Soy Candles, Diffusers, Gift Sets and Home Fragrance Online Store India", desc: "Shop soy candles and gift sets. Free shipping over ₹999.", og: "Aroma Co",
+      "/": { title: "Aroma Co: Hand-Poured Soy Candles, Diffusers, Gift Sets and Home Fragrance Online Store India", desc: "Shop soy candles and gift sets. Free shipping over ₹999.", og: "Aroma Co",
         nav: [["/collections/candles", "Candles"], ["/collections/gifts", "Gift sets"], ["/about", "About"], ["/cart", "Cart"]],
         body: `<h1>Hand-poured soy candles</h1><p>Free shipping over ₹999 · Cash on delivery available</p><a class="btn" href="/collections/candles">Shop now</a><p>${words(90, "candles soy fragrance gift home")}</p><img src="/i/1.jpg"><img src="/i/2.jpg"><img src="/i/3.jpg"><img src="/i/4.jpg">`, footer: "Aroma Co · care@aromaco.test · <a href='https://instagram.com/aromacotest'>Instagram</a>" },
       "/collections/candles": { title: "Candles | Aroma Co", desc: "", body: `<h1>Candles</h1><a href="/products/lavender-candle">Lavender candle ₹599</a> <a href="/products/sandalwood-candle">Sandalwood candle ₹649</a><p>${words(60)}</p>` },
@@ -77,7 +77,7 @@ const SITES = {
       "/cart": { title: "Cart", body: "<h1>Cart</h1>" },
     },
   },
-  /* 4. marketing agency, Mumbai — generic headline, no prices, long form, case studies; not #1 for own name */
+  /* 4. marketing agency, Mumbai, generic headline, no prices, long form, case studies; not #1 for own name */
   "brightpixel.test": {
     robots: "User-agent: *\nAllow: /\n",
     sitemap: ["/", "/services", "/services/seo", "/services/social-media", "/work", "/contact", "/about"],
@@ -93,7 +93,7 @@ const SITES = {
       "/contact": { title: "Contact | BrightPixel", desc: "Contact us.", body: `<h1>Contact</h1><form>${["Name", "Email", "Phone", "Company", "Website", "Budget", "Industry", "City", "Service", "Timeline", "Message"].map((f) => `<label for="${f}">${f}</label><input id="${f}" name="${f.toLowerCase()}" required>`).join("")}<button>Submit</button></form>` },
     },
   },
-  /* 5. dental clinic, Bengaluru — plain HTTP, important page noindex, no sitemap/robots, no viewport; search provider FAILS for this business */
+  /* 5. dental clinic, Bengaluru, plain HTTP, important page noindex, no sitemap/robots, no viewport; search provider FAILS for this business */
   "smilecare.test": {
     robots: null, sitemap: null,
     pages: {
@@ -109,12 +109,12 @@ const SITES = {
 SITES["shyco.test"] = { robots: "User-agent: *\nAllow: /\n", sitemap: null, pages: { "/": { title: "ShyCo | Handmade Leather Bags", desc: "Handmade leather bags from Jaipur.", body: "<h1>Handmade leather bags that last 20 years</h1><p>" + words(150, "leather bags handmade jaipur wallet") + "</p>" } } };
 /* competitor homepages (made up) */
 const COMP = {
-  "tandoortales.test": { title: "Tandoor Tales | Restaurant in Dwarka", h1: "Dwarka's favourite tandoor kitchen — 4.6★ from 1,200 families", body: "North Indian restaurant in Dwarka, New Delhi. Butter chicken, biryani, naan. Prices from ₹199. Free delivery. Testimonials from our guests. FAQ. Since 2010.", pricing: true, testi: true },
-  "curryhouse.test": { title: "Curry House Dwarka — Order Online", h1: "Curries delivered in Dwarka", body: "Curry, biryani and thali delivery in Dwarka, New Delhi. Order online. WhatsApp us.", wa: true },
-  "autotask.test": { title: "AutoTask — Workflow Automation for Teams", h1: "Automate your workflow for small businesses in minutes", body: "Workflow automation software. Pricing from $15/month. Free trial. Testimonials: rated 4.8 by 900 customers. Blog. FAQ.", pricing: true, testi: true, blog: true },
+  "tandoortales.test": { title: "Tandoor Tales | Restaurant in Dwarka", h1: "Dwarka's favourite tandoor kitchen, 4.6★ from 1,200 families", body: "North Indian restaurant in Dwarka, New Delhi. Butter chicken, biryani, naan. Prices from ₹199. Free delivery. Testimonials from our guests. FAQ. Since 2010.", pricing: true, testi: true },
+  "curryhouse.test": { title: "Curry House Dwarka: Order Online", h1: "Curries delivered in Dwarka", body: "Curry, biryani and thali delivery in Dwarka, New Delhi. Order online. WhatsApp us.", wa: true },
+  "autotask.test": { title: "AutoTask: Workflow Automation for Teams", h1: "Automate your workflow for small businesses in minutes", body: "Workflow automation software. Pricing from $15/month. Free trial. Testimonials: rated 4.8 by 900 customers. Blog. FAQ.", pricing: true, testi: true, blog: true },
   "zapflow.test": { title: "Zapflow | No-code automation platform", h1: "No-code automation for growing companies", body: "Automation platform with 500 integrations. Start free trial. Enterprise security. Workflow software.", blog: true },
-  "glowcandles.test": { title: "Glow Candles — Soy Candles Online India", h1: "Clean-burning soy candles, gifted with love", body: "Soy candles and gift sets. Free shipping. 10,000+ happy customers. Reviews. FAQ. Prices from ₹449. Cash on delivery.", pricing: true, testi: true },
-  "growthlabs.test": { title: "GrowthLabs — Performance Marketing Agency Mumbai", h1: "More leads for D2C brands in 90 days", body: "Digital marketing agency in Mumbai: SEO, social media, performance marketing. Case studies. Packages from ₹40,000/month. Free audit. Testimonials.", pricing: true, testi: true },
+  "glowcandles.test": { title: "Glow Candles: Soy Candles Online India", h1: "Clean-burning soy candles, gifted with love", body: "Soy candles and gift sets. Free shipping. 10,000+ happy customers. Reviews. FAQ. Prices from ₹449. Cash on delivery.", pricing: true, testi: true },
+  "growthlabs.test": { title: "GrowthLabs: Performance Marketing Agency Mumbai", h1: "More leads for D2C brands in 90 days", body: "Digital marketing agency in Mumbai: SEO, social media, performance marketing. Case studies. Packages from ₹40,000/month. Free audit. Testimonials.", pricing: true, testi: true },
   "adcraft.test": { title: "AdCraft Studio | Branding & Social Media", h1: "Creative digital marketing agency", body: "Branding, social media and SEO agency in Mumbai. We are a creative digital marketing agency.", },
 };
 Object.keys(COMP).forEach((h) => { const c = COMP[h]; SITES[h] = { robots: "User-agent: *\nAllow: /\n", sitemap: null, pages: { "/": { title: c.title, desc: c.body.slice(0, 150), og: c.title.split(/ [|—-] /)[0], site: c.title.split(/ [|—-] /)[0], nav: [["/", "Home"], ["/contact", "Contact"]],
@@ -123,7 +123,7 @@ Object.keys(COMP).forEach((h) => { const c = COMP[h]; SITES[h] = { robots: "User
 
 /* ---------------- search stand-in ---------------- */
 const IND = [
-  [/blockedco|quickbite/i, { own: "blockedco.test", comps: ["tandoortales.test", "curryhouse.test"], dirs: ["zomato.com", "justdial.com"], brand: "QuickBite", ownTitle: "QuickBite — Online Food Delivery in Delhi | Order Now", ownSnippet: "Order food online from 2,000+ restaurants in Delhi and Gurugram. Fast delivery, live tracking." }],
+  [/blockedco|quickbite/i, { own: "blockedco.test", comps: ["tandoortales.test", "curryhouse.test"], dirs: ["zomato.com", "justdial.com"], brand: "QuickBite", ownTitle: "QuickBite: Online Food Delivery in Delhi | Order Now", ownSnippet: "Order food online from 2,000+ restaurants in Delhi and Gurugram. Fast delivery, live tracking." }],
   [/spice|restaurant|dwarka|curry|biryani|north indian|food|catering/i, { own: "spicehub.test", comps: ["tandoortales.test", "curryhouse.test"], dirs: ["zomato.com", "justdial.com", "tripadvisor.in"], brand: "Spice Hub", rating: [4.4, 230] }],
   [/flowdesk|workflow|automation|software|saas|invoice/i, { own: "flowdesk.test", comps: ["autotask.test", "zapflow.test"], dirs: ["g2.com", "capterra.com"], brand: "Flowdesk" }],
   [/aroma|candle|gift|fragrance|soy/i, { own: "aromaco.test", comps: ["glowcandles.test"], dirs: ["amazon.in", "flipkart.com"], brand: "Aroma Co" }],
@@ -136,12 +136,12 @@ function serper(q) {
   const brand = q.indexOf(d.brand) > -1 || q.toLowerCase().indexOf(d.own.split(".")[0]) > -1, reddit = /reddit/i.test(q), reviews = /reviews?/i.test(q);
   const org = [];
   if (reddit) org.push({ title: "Any good options? : r/delhi", link: "https://www.reddit.com/r/test/comments/abc/any_good/", snippet: "Looking for a reliable place, affordable and fast. The last one I tried was too expensive and the delivery was late by an hour. Is it worth the money?" },
-    { title: "Which one is better? — Quora", link: "https://www.quora.com/Which-is-better-test", snippet: "I need a trusted option near me. Staff were rude and there were hidden charges at one place. Great value for money at another." });
-  if (reviews) org.push({ title: "Reviews — Justdial", link: "https://www.justdial.com/test-reviews", snippet: "Rated 4.3 out of 5 by customers. Excellent food, friendly staff, but slow service on weekends and parking is difficult. Value for money.", rating: 4.3, ratingCount: 510 });
-  if (brand && !d.ownPos) org.push({ title: d.ownTitle || d.brand + " — official site", link: "https://" + d.own + "/", snippet: d.ownSnippet || d.brand + " official website.", rating: d.rating ? d.rating[0] : undefined, ratingCount: d.rating ? d.rating[1] : undefined });
+    { title: "Which one is better?: Quora", link: "https://www.quora.com/Which-is-better-test", snippet: "I need a trusted option near me. Staff were rude and there were hidden charges at one place. Great value for money at another." });
+  if (reviews) org.push({ title: "Reviews: Justdial", link: "https://www.justdial.com/test-reviews", snippet: "Rated 4.3 out of 5 by customers. Excellent food, friendly staff, but slow service on weekends and parking is difficult. Value for money.", rating: 4.3, ratingCount: 510 });
+  if (brand && !d.ownPos) org.push({ title: d.ownTitle || d.brand + ", official site", link: "https://" + d.own + "/", snippet: d.ownSnippet || d.brand + " official website.", rating: d.rating ? d.rating[0] : undefined, ratingCount: d.rating ? d.rating[1] : undefined });
   d.dirs.forEach((x) => org.push({ title: d.brand + " and others on " + x, link: "https://www." + x + "/listing/" + encodeURIComponent(q.slice(0, 20)), snippet: (brand ? d.brand + " " : "") + "listing, ratings and contact details." }));
   d.comps.forEach((c, i) => { if (!(brand && i > 0)) org.push({ title: COMP[c].title, link: "https://" + c + "/", snippet: COMP[c].body.slice(0, 140) }); });
-  if (brand && d.ownPos) org.splice(Math.min(org.length, d.ownPos - 1), 0, { title: d.brand + " — creative agency", link: "https://" + d.own + "/", snippet: d.brand });
+  if (brand && d.ownPos) org.splice(Math.min(org.length, d.ownPos - 1), 0, { title: d.brand + ", creative agency", link: "https://" + d.own + "/", snippet: d.brand });
   if (!brand && /best|price|pricing|alternatives/i.test(q) && d.own === "flowdesk.test") org.splice(1, 0, { title: "Flowdesk pricing", link: "https://flowdesk.test/pricing", snippet: "Plans from $19/month." });
   const out = { searchParameters: { q }, organic: org.slice(0, 10).map((r, i) => Object.assign({ position: i + 1 }, r)), peopleAlsoAsk: [{ question: "How much does it cost?", snippet: "Prices usually start around a few hundred rupees; it depends on the provider.", link: "https://example-faq.test/a" }], relatedSearches: [{ query: q + " near me" }] };
   if (/dwarka|delhi/i.test(q) && brand) out.places = [{ title: "Spice Hub", address: "Sector 12, Dwarka, New Delhi", rating: 4.4, ratingCount: 230, cid: "123" }];
@@ -170,7 +170,7 @@ http.createServer((req, res) => {
     if (parts[3] === "orders" && parts[4]) { const o = ORDERS[decodeURIComponent(parts[4])]; return send(res, o ? 200 : 404, "application/json", JSON.stringify(o || { message: "order not found" })); }
     return send(res, 404, "application/json", "{}");
   }
-  /* v14: stand-in for Workers AI — answers the FODO Edge prompts with JSON built from the data it was sent (plus one made-up page,
+  /* v14: stand-in for Workers AI, answers the FODO Edge prompts with JSON built from the data it was sent (plus one made-up page,
      competitor and opportunity id each, which the server must drop) */
   if (first === "_ai") return body((j) => {
     const sys = (j && j.messages && j.messages[0].content) || "", user = (j && j.messages && j.messages[1] && j.messages[1].content) || "";

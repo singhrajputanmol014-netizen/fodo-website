@@ -1,7 +1,7 @@
-/* FODO BRAIN — hearing engine (works the same on iPhone Safari, Android Chrome and desktop).
+/* FODO BRAIN, hearing engine (works the same on iPhone Safari, Android Chrome and desktop).
    The way open-source voice assistants do it: the microphone stays open, a voice-activity detector (VAD) with an adaptive noise
-   floor finds where speech starts and ends (with 350 ms of pre-roll so the first syllable isn't lost), and only that clip —
-   16 kHz mono WAV — goes to the server for Whisper large-v3-turbo. No browser speech engine is used, so Hindi, English and
+   floor finds where speech starts and ends (with 350 ms of pre-roll so the first syllable isn't lost), and only that clip:
+   16 kHz mono WAV, goes to the server for Whisper large-v3-turbo. No browser speech engine is used, so Hindi, English and
    Hinglish are heard by the same strong model everywhere.
    Events: level (0..1, for the orb) · speechstart · speechend · utterance {b64, ms} · error {message} · state {on}
    FodoVoice.start() must be called from a tap the first time (iOS / Chrome audio rules). */
@@ -51,24 +51,33 @@
     return btoa(bin);
   }
   function start() {
-    V.want = true; if (V.on) return Promise.resolve(true);
+    V.want = true; if (V.on) { if (V.ac && V.ac.state !== "running") V.ac.resume().catch(function () {}); return Promise.resolve(true); }
+    if (V.starting) return V.starting;   // v33: a second tap while the permission prompt is open used to open the mic twice (garbled audio)
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { emit("error", { message: "This browser can't use the microphone here." }); return Promise.resolve(false); }
-    V.ac = V.ac || new AC(); var resume = V.ac.state !== "running" ? V.ac.resume() : Promise.resolve();
-    return resume.then(function () {
-      if (V.ac.state !== "running") throw Object.assign(new Error("tap"), { name: "NeedsTap" });
-      return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-    }).then(function (st) {
-      if (!V.want) { st.getTracks().forEach(function (t) { t.stop(); }); return false; }   // muted while the permission prompt was open
-      V.stream = st; V.sr = V.ac.sampleRate; V.src = V.ac.createMediaStreamSource(st);
+    V.ac = V.ac || new AC(); var ac = V.ac;
+    // resume() is called inside the tap; we no longer give up when it isn't "running" yet (phones report that for a moment,
+    // which made people tap 2–3 times). The mic is opened anyway and the context is resumed again once it is.
+    try { ac.resume().catch(function () {}); } catch (e) {}
+    // started by itself on page load (no tap yet) and the browser keeps audio asleep → wait for the first tap, don't ask for the mic now
+    if (ac.state !== "running" && navigator.userActivation && !navigator.userActivation.isActive) { emit("error", { message: "tap" }); return Promise.resolve(false); }
+    if (!ac.__fodoWatch) { ac.__fodoWatch = true; ac.onstatechange = function () { if (V.on && ac.state !== "running" && ac.state !== "closed") { try { ac.resume().catch(function () {}); } catch (e) {} } }; }
+    V.starting = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }).then(function (st) {
+      if (!V.want || V.ac !== ac) { st.getTracks().forEach(function (t) { t.stop(); }); return false; }   // muted while the permission prompt was open
+      V.stream = st; V.sr = ac.sampleRate; V.src = ac.createMediaStreamSource(st);
       var size = V.sr > 32000 ? 2048 : 1024; V.frameMs = size / V.sr * 1000;
-      V.node = V.ac.createScriptProcessor(size, 1, 1); V.node.onaudioprocess = function (e) { if (V.on) process(e.inputBuffer.getChannelData(0)); var out = e.outputBuffer.getChannelData(0); for (var i = 0; i < out.length; i++) out[i] = 0; };
-      V.src.connect(V.node); V.node.connect(V.ac.destination);
-      V.on = true; V.pre = []; V.buf = []; V.speaking = false; emit("state", { on: true }); return true;
+      V.node = ac.createScriptProcessor(size, 1, 1); V.node.onaudioprocess = function (e) { if (V.on) process(e.inputBuffer.getChannelData(0)); var out = e.outputBuffer.getChannelData(0); for (var i = 0; i < out.length; i++) out[i] = 0; };
+      V.src.connect(V.node); V.node.connect(ac.destination);
+      st.getAudioTracks().forEach(function (t) { t.onended = function () { if (V.on) emit("error", { message: "nomic" }); }; });
+      V.on = true; V.pre = []; V.buf = []; V.speaking = false; emit("state", { on: true });
+      return (ac.state === "running" ? Promise.resolve() : ac.resume().catch(function () {})).then(function () { if (ac.state !== "running") { V.needTap = true; emit("error", { message: "tap" }); } return true; });
     }).catch(function (e) {
-      emit("error", { message: e && e.name === "NeedsTap" ? "tap" : e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "blocked" : e && e.name === "NotFoundError" ? "nomic" : String(e && e.message || e) }); return false;
-    });
+      emit("error", { message: e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "blocked" : e && e.name === "NotFoundError" ? "nomic" : String(e && e.message || e) }); return false;
+    }).then(function (r) { V.starting = null; return r; });
+    return V.starting;
   }
+  // the first tap anywhere wakes a context the browser kept asleep
+  if (window.addEventListener) ["pointerdown", "keydown", "touchend"].forEach(function (ev) { window.addEventListener(ev, function () { if (V.ac && V.ac.state === "suspended") { try { V.ac.resume().then(function () { if (V.needTap) { V.needTap = false; emit("state", { on: V.on }); } }).catch(function () {}); } catch (e) {} } }, true); });
   function stop(hard) {
     V.want = false; V.on = false; V.speaking = false; V.buf = []; V.pre = [];
     try { if (V.node) { V.node.disconnect(); V.node.onaudioprocess = null; } if (V.src) V.src.disconnect(); } catch (e) {}

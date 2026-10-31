@@ -1,4 +1,4 @@
-# FODO — https://www.fodo.co.in
+# FODO: https://www.fodo.co.in
 User-agent: *
 Allow: /
 Disallow: /api/

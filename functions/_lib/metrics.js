@@ -1,4 +1,4 @@
-/* Privacy-safe counters for the bot backend. Stores ONLY daily totals in the optional CHAT_KV binding —
+/* Privacy-safe counters for the bot backend. Stores ONLY daily totals in the optional CHAT_KV binding:
    never message text, IPs or transcripts. Missing KV = counters silently skipped. */
 const FIELDS = ["requests", "ok", "fallback_quota", "fallback_error", "rate_limited", "bad_request", "voice_sessions", "voice_failed", "latency_ms_total"];
 export async function bump(env, fields) {

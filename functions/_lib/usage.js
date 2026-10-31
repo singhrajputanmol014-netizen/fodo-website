@@ -1,7 +1,7 @@
-/* FODO Growth Lab v17 — API usage & cost log (prompt §57–59, §116).
+/* FODO Growth Lab v17: API usage & cost log (prompt §57–59, §116).
    Every call FODO makes to an outside data provider is written to D1 table api_usage: provider, endpoint, tool, job, user,
    status, duration, cache hit, and the cost. Cost is the provider's own figure when it returns one (DataForSEO), otherwise
-   an ESTIMATE from the list price below (USD per call) — shown as "estimated" in the admin dashboard, never to customers.
+   an ESTIMATE from the list price below (USD per call), shown as "estimated" in the admin dashboard, never to customers.
    Free providers cost 0 (PageSpeed, Search Console, Workers AI inside its free daily quota, Groq free tier, Open PageRank).
    Override any price without a code change: env COST_USD_JSON = {"serper":0.001,"serper_places":0.003}. */
 export const LIST_USD = {
@@ -33,12 +33,12 @@ export async function usageDb(env) {
   if (!ready.has(d)) ready.set(d, d.batch(DDL.map((s) => d.prepare(s))).catch((e) => { ready.delete(d); throw e; }));
   await ready.get(d); return d;
 }
-/* o = { provider, endpoint, tool, job, user, status, ok, ms, cached, cost (real USD, optional), units } — never throws */
+/* o = { provider, endpoint, tool, job, user, status, ok, ms, cached, cost (real USD, optional), units }, never throws */
 export async function logUsage(env, o) {
   try {
     const d = await usageDb(env); if (!d) return;
     const real = o.cost != null && isFinite(+o.cost), units = o.units == null ? 1 : Math.max(0, o.units | 0);
-    // a failed call is still logged; providers usually do not bill errors, so its cost is 0 — except a real figure the provider sent
+    // a failed call is still logged; providers usually do not bill errors, so its cost is 0, except a real figure the provider sent
     const cost = o.cached ? 0 : real ? +o.cost : o.ok === false ? 0 : listPrice(env, o.provider) * units;
     const t = new Date().toISOString();
     await d.prepare("INSERT INTO api_usage (t, day, provider, endpoint, tool, job_id, user_id, status, ok, ms, cached, cost_usd, cost_kind, units) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)")

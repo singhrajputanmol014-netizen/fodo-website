@@ -1,8 +1,8 @@
-/* FODO OWNER BRAIN — storage (D1), audit log, settings, secret redaction.
+/* FODO OWNER BRAIN, storage (D1), audit log, settings, secret redaction.
    Every table is additive (CREATE TABLE IF NOT EXISTS) and lives next to the existing FODO tables in XRAY_DB.
    Nothing here deletes or changes an existing FODO table. */
 export const DDL = [
-  // long-term memory: facts, decisions, preferences, goals, ideas, notes … (status: active | superseded) — temporal: valid_from / valid_until / superseded_by
+  // long-term memory: facts, decisions, preferences, goals, ideas, notes … (status: active | superseded), temporal: valid_from / valid_until / superseded_by
   "CREATE TABLE IF NOT EXISTS brain_memory (id TEXT PRIMARY KEY, scope TEXT, type TEXT, title TEXT, content TEXT, source TEXT, source_type TEXT, confidence REAL, importance INTEGER, status TEXT, superseded_by TEXT, valid_from TEXT, valid_until TEXT, project TEXT, tags TEXT, version INTEGER, created_at TEXT, updated_at TEXT, last_accessed_at TEXT, owner TEXT)",
   "CREATE INDEX IF NOT EXISTS brain_memory_s ON brain_memory (status, scope, type, created_at)",
   "CREATE TABLE IF NOT EXISTS brain_memory_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, memory_id TEXT, version INTEGER, title TEXT, content TEXT, status TEXT, changed_at TEXT, changed_by TEXT, note TEXT)",
@@ -66,7 +66,7 @@ export function redact(v, depth) {
   if (typeof v === "object") { const o = {}; Object.keys(v).forEach((k) => { o[k] = SECRET_KEYS.test(k) && !/^(monthly|pack|free)_?left$/i.test(k) ? "[redacted]" : redact(v[k], depth + 1); }); return o; }
   return v;
 }
-/* the raw values of the site's secrets — used by tests and as a last check before anything is sent to a model or the browser */
+/* the raw values of the site's secrets, used by tests and as a last check before anything is sent to a model or the browser */
 export function secretValues(env) { return Object.keys(env || {}).filter((k) => /KEY|SECRET|TOKEN|PASSWORD/i.test(k) && typeof env[k] === "string" && env[k].length >= 8).map((k) => env[k]); }
 export function scrubEnv(env, text) { let t = String(text == null ? "" : text); secretValues(env).forEach((s) => { t = t.split(s).join("[redacted]"); }); return t; }
 

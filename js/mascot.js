@@ -1,4 +1,4 @@
-/* FODO mascot — original SVG/CSS "3D" robot. States: idle · wave · think · happy · surprised. Eyes follow the pointer. */
+/* FODO mascot, original SVG/CSS "3D" robot. States: idle · wave · think · happy · surprised. Eyes follow the pointer. */
 (function(){
   const SVG=(id)=>`<svg class="mas" viewBox="0 0 200 220" aria-hidden="true">
   <defs>

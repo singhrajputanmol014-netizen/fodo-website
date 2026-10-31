@@ -1,4 +1,4 @@
-/* FODO main — shared shell (header, drawer, footer, cookie), utilities, hero signal. Each module is error-isolated. */
+/* FODO main, shared shell (header, drawer, footer, cookie), utilities, hero signal. Each module is error-isolated. */
 (function(){
   const C = window.FODO || {};
   const root = (document.querySelector('meta[name="fodo-root"]')||{}).content || "./";
@@ -10,7 +10,7 @@
     inr(n){ return new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(n); },
     safe(fn,label){ try{ fn(); }catch(e){ console.warn("[FODO module failed]",label,e); } },
     copy(text,btn){ const done=()=>{ if(btn){const o=btn.textContent;btn.textContent="COPIED ✓";setTimeout(()=>btn.textContent=o,1800);} };
-      const fail=()=>{ if(btn){const o=btn.textContent;btn.textContent="COPY FAILED — SELECT & COPY";setTimeout(()=>btn.textContent=o,2500);} window.prompt("Copy this text:",text); };
+      const fail=()=>{ if(btn){const o=btn.textContent;btn.textContent="COPY FAILED: SELECT & COPY";setTimeout(()=>btn.textContent=o,2500);} window.prompt("Copy this text:",text); };
       if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done,()=>{U.copyLegacy(text)?done():fail();}); } else { U.copyLegacy(text)?done():fail(); } },
     copyLegacy(text){ try{ const t=document.createElement("textarea");t.value=text;t.setAttribute("readonly","");t.style.position="fixed";t.style.left="-9999px";document.body.appendChild(t);t.select();const ok=document.execCommand("copy");document.body.removeChild(t);return ok; }catch(e){ return false; } },
     focusTrap(el){ const f=()=>[...el.querySelectorAll('a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter(x=>x.offsetParent!==null);
@@ -53,7 +53,7 @@
   U.safe(()=>{
     const h=document.getElementById("site-header"); if(!h)return;
     h.className="header"; h.innerHTML=`<div class="container">
-      <a class="wordmark" href="${routes.home||'./'}" aria-label="FODO — Fear Of Digitally Out ? — home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a>
+      <a class="wordmark" href="${routes.home||'./'}" aria-label="FODO: Fear Of Digitally Out ?, home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a>
       <nav class="nav" aria-label="Primary">
         <a href="${routes.work}"${cur("work")}>Work</a><a href="${routes.reviews}"${cur("reviews")}>Reviews</a><a href="${routes.services}"${cur("services")}>Services</a>
         <div class="sub"><button class="sub-btn" type="button" aria-expanded="false" aria-haspopup="true">Growth Lab <span aria-hidden="true">▾</span></button>
@@ -70,10 +70,10 @@
     // Drawer
     const d=document.createElement("div"); d.id="drawer"; d.className="drawer"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true"); d.setAttribute("aria-label","Menu");
     const grp=(t,items,cls)=>`<div class="dgrp"><span class="dlabel">${t}</span><div class="${cls||"dlist"}">${items.map(l=>`<a href="${routes[l[1]]}" class="${l[2]||""}"${cur(l[1])}>${l[0]}</a>`).join("")}</div></div>`;
-    d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}" aria-label="FODO — Fear Of Digitally Out ? — home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
+    d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}" aria-label="FODO: Fear Of Digitally Out ?, home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
       <nav aria-label="Mobile">${grp("Explore",[["Home","home"],["About","about"],["Services","services"],["Industries","industries"],["Work","work"],["Insights","insights"]])}
-      ${grp("Growth Lab",[["All Growth Lab tools","lab"],["Business X-Ray","xray","hot"],["Competitor Finder","competitors"],["Lab plans","plans"],["Growth Score","score"],["ROI Calculator","roi"],["Budget Planner","budget"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
-      ${grp("More",[["Pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Where we work","locations"],["FAQ","faq"],["Help & support","help"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
+      ${grp("Growth Lab",[["All Growth Lab tools","lab"],["Business X-Ray","xray","hot"],["Competitor Finder","competitors"],["Tool plans & prices","plans"],["Growth Score","score"],["ROI Calculator","roi"],["Budget Planner","budget"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
+      ${grp("More",[["Agency pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Where we work","locations"],["FAQ","faq"],["Help & support","help"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
       <a class="btn" href="${routes.contact}">Let's talk</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
     document.body.appendChild(d);
     const open=h.querySelector(".burger"), close=d.querySelector(".burger"); let trap, scrollPos=0;
@@ -92,7 +92,7 @@
     const S=s=>`${routes.services}${s}/`;
     f.innerHTML=`<div class="container"><div class="footer-mark" aria-hidden="true"><span class="fm-base">FOD<span class="so">O<i></i></span></span><span class="fm-glow">FOD<span class="so">O<i></i></span></span></div><div class="footer-sub">FEAR OF DIGITALLY OUT ?</div>
     <div class="footer-cols">
-      <div><h4>Company</h4><ul><li><a href="${routes.about}">About</a></li><li><a href="${routes.about}#founder">Founder</a></li><li><a href="${routes.work}">Work</a></li><li><a href="${routes.reviews}">Reviews</a></li><li><a href="${routes.insights}">Insights</a></li><li><a href="${routes.pricing}">Pricing</a></li><li><a href="${routes.founding}">Founding Programme</a></li><li><a href="${routes.contact}">Contact</a></li><li><a href="${routes.help}">Help &amp; support</a></li></ul></div>
+      <div><h4>Company</h4><ul><li><a href="${routes.about}">About</a></li><li><a href="${routes.about}#founder">Founder</a></li><li><a href="${routes.work}">Work</a></li><li><a href="${routes.reviews}">Reviews</a></li><li><a href="${routes.insights}">Insights</a></li><li><a href="${routes.pricing}">Agency pricing</a></li><li><a href="${routes.founding}">Founding Programme</a></li><li><a href="${routes.contact}">Contact</a></li><li><a href="${routes.help}">Help &amp; support</a></li></ul></div>
       <div><h4>Services</h4><ul><li><a href="${S('paid-advertising')}">Paid Media</a></li><li><a href="${S('seo')}">SEO</a></li><li><a href="${S('content-marketing')}">Content</a></li><li><a href="${S('social-media')}">Social</a></li><li><a href="${S('brand-strategy')}">Brand</a></li><li><a href="${S('marketing-automation')}">Automation</a></li></ul></div>
       <div><h4>Tools</h4><ul><li><a href="${routes.xray}">Business X-Ray</a></li><li><a href="${routes.competitors}">Competitor Finder</a></li><li><a href="${routes.score}">Growth Score</a></li><li><a href="${routes.roi}">ROI Calculator</a></li><li><a href="${routes.budget}">Marketing Budget Planner</a></li><li><a href="${routes.lab}">Growth Lab</a></li><li><a href="${routes.game}">FODO Challenge</a></li><li><a href="${routes.quiz}">Marketing Quiz</a></li><li><a href="${routes.teardowns}">Ad Teardowns</a></li><li><a href="${routes.templates}">Free Templates</a></li><li><a href="${routes.resources}">Checklists</a></li></ul></div>
       <div><h4>Where we work</h4><ul><li><a href="${routes.locations}">Worldwide · remote-first</a></li><li><a href="${routes.locations}delhi/">Delhi · HQ</a></li><li><a href="${routes.locations}#india">India</a></li><li><a href="${routes.locations}uae/">UAE &amp; the Gulf</a></li><li><a href="${routes.locations}uk/">United Kingdom</a></li><li><a href="${routes.locations}usa/">United States</a></li><li><a href="${routes.industries}">Industries</a></li></ul></div>
@@ -213,7 +213,7 @@
   scan(); new MutationObserver(()=>{ document.querySelectorAll(".detail").forEach(d=>{ if(d.dataset.folded&&d.dataset.lastHtml!==d.innerHTML.length+""){ delete d.dataset.folded; } }); scan(); document.querySelectorAll(".detail").forEach(d=>d.dataset.lastHtml=d.innerHTML.length+""); }).observe(document.body,{childList:true,subtree:true});
 }catch(e){} })();
 
-/* Theme toggle (dark / light) — persisted; first visit opens in dark */
+/* Theme toggle (dark / light), persisted; first visit opens in dark */
 (function(){ try{ const root=document.documentElement; const KEY="fodo-theme";
   const apply=t=>{ root.setAttribute("data-theme",t); document.querySelectorAll("#theme-toggle,#theme-toggle-m").forEach(b=>b.setAttribute("aria-pressed",t==="dark")); const m=document.querySelector('meta[name="theme-color"]'); if(m)m.content=t==="dark"?"#0f0f16":"#f2f1f6"; };
   const cur=()=>root.getAttribute("data-theme")||"dark";

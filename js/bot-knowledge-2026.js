@@ -1,4 +1,4 @@
-/* FODO Bot — 2026 Marketing Intelligence Addendum
+/* FODO Bot, 2026 Marketing Intelligence Addendum
  * Research-informed additions. Durable principles first; current claims are dated and should be refreshed.
  * Sources used for this addendum: Google Search Central, Meta, HubSpot 2026 research.
  */
@@ -14,7 +14,7 @@
   addFaq("Do I need special AI SEO markup?","No magic markup. Treat AI-search visibility as an extension of good search fundamentals: make pages accessible, useful, specific, trustworthy and easy to understand. Structured data can help search engines understand content when it is valid and relevant, but it is not an AI-ranking shortcut.");
   addFaq("Does AI-generated content hurt SEO?","AI assistance is not automatically the problem. The risk is inaccurate, low-value, mass-produced or search-engine-first content. Review AI output for accuracy, originality, usefulness and real expertise before publishing. Human review matters.");
   addFaq("What is AEO?","AEO usually means Answer Engine Optimisation: structuring useful content so answer systems can understand and potentially cite it. The practical foundation is still strong SEO, clear answers, original expertise, trustworthy sources and satisfying the user's intent.");
-  addFaq("What is GEO in marketing?","GEO is often used for Generative Engine Optimisation — improving the likelihood that a brand is understood and mentioned in generative/answer experiences. Treat it as a strategic layer, not a replacement for SEO. There is no guaranteed GEO ranking formula.");
+  addFaq("What is GEO in marketing?","GEO is often used for Generative Engine Optimisation, improving the likelihood that a brand is understood and mentioned in generative/answer experiences. Treat it as a strategic layer, not a replacement for SEO. There is no guaranteed GEO ranking formula.");
   addFaq("How do I get mentioned by ChatGPT or AI search?","There is no honest guaranteed submission trick. Build a clear entity footprint: authoritative website pages, original information, consistent business details, genuine reviews and useful content. For current platform-specific requirements, check the platform's latest documentation.");
 
   // ---- Social / creators / video ----
@@ -79,7 +79,7 @@
   ]);
 
   // ---- New glossary ----
-  addGloss("AIO", "AI Overviews — Google's AI-generated summary experience in Search.");
+  addGloss("AIO", "AI Overviews: Google's AI-generated summary experience in Search.");
   addGloss("AI Mode", "A more conversational Google Search experience that can answer complex questions across multiple searches and sources.");
   addGloss("First-party data", "Customer or prospect information a business collects directly with appropriate permission, such as CRM or consented email data.");
   addGloss("Message match", "The consistency between the promise in an ad or search result and the page the user lands on.");
@@ -101,11 +101,11 @@
       "Use current platform documentation for changing policies/features."
     ],
     sources:[
-      {name:"Google Search Central — Helpful, reliable, people-first content",url:"https://developers.google.com/search/docs/fundamentals/creating-helpful-content"},
-      {name:"Google Search Central — Generative AI content guidance",url:"https://developers.google.com/search/docs/fundamentals/using-gen-ai-content"},
-      {name:"HubSpot — 2026 State of Marketing",url:"https://blog.hubspot.com/marketing/hubspot-blog-marketing-industry-trends-report"},
-      {name:"HubSpot — Future of Social Media 2026",url:"https://blog.hubspot.com/marketing/social-media-future"},
-      {name:"Meta — AI and omnichannel shopping in India",url:"https://about.fb.com/news/2026/02/ai-fuels-indias-omnichannel-shopping-surge-meta-retailers-association-of-india/"}
+      {name:"Google Search Central: Helpful, reliable, people-first content",url:"https://developers.google.com/search/docs/fundamentals/creating-helpful-content"},
+      {name:"Google Search Central: Generative AI content guidance",url:"https://developers.google.com/search/docs/fundamentals/using-gen-ai-content"},
+      {name:"HubSpot, 2026 State of Marketing",url:"https://blog.hubspot.com/marketing/hubspot-blog-marketing-industry-trends-report"},
+      {name:"HubSpot: Future of Social Media 2026",url:"https://blog.hubspot.com/marketing/social-media-future"},
+      {name:"Meta: AI and omnichannel shopping in India",url:"https://about.fb.com/news/2026/02/ai-fuels-indias-omnichannel-shopping-surge-meta-retailers-association-of-india/"}
     ]
   };
 })();

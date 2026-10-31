@@ -24,7 +24,7 @@
   var _done={}; window.FODO_TOOL=function(stage,tool,detail,once){ try{ if(once){ var k=stage+"|"+tool; if(_done[k])return; _done[k]=1; }
     window.FODO_TRACK("tool_"+stage,{tool:tool});
     var A=window.FODO_ACCOUNT; if(stage==="complete"&&A&&A.current&&A.current()&&A.api) A.api("event",{kind:"tool_use",detail:tool+(detail!=null&&detail!==""?" · "+String(detail).slice(0,80):"")}).catch(function(){}); }catch(e){} };
-  /* Conversion events (delegated — works for links the scripts add later) */
+  /* Conversion events (delegated, works for links the scripts add later) */
   try{
     var T=function(n,p){ window.FODO_TRACK(n,p); }, txt=function(el){ return (el.getAttribute("aria-label")||el.textContent||"").replace(/\s+/g," ").trim().slice(0,60); };
     var where=function(el){ var s=el.closest("section[id],header,footer,[id]"); return s?(s.id||s.tagName.toLowerCase()):""; };

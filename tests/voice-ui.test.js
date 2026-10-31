@@ -1,4 +1,4 @@
-/* Voice mode UI test — real site + real bot engine; only the browser speech APIs are simulated
+/* Voice mode UI test, real site + real bot engine; only the browser speech APIs are simulated
    (headless Chromium has no speech recognition service and no TTS voices). Run: node tests/voice-ui.test.js [baseURL] */
 const { chromium } = require("playwright");
 const BASE = process.argv[2] || "http://localhost:8765";

@@ -1,7 +1,7 @@
-/* FODO Competitor Finder — OpenStreetMap (Overpass) proxy with a shared cache (v11).
+/* FODO Competitor Finder: OpenStreetMap (Overpass) proxy with a shared cache (v11).
  *   POST /api/osm   body: the Overpass QL query built by js/free-places.js   → the Overpass JSON, byte for byte
  * Why: the public Overpass servers are often busy. This route asks one server at a time (a second one only if the first is
- * slow — see hedged()), sends an identifying User-Agent as their policy asks, and caches every good answer in KV for
+ * slow, see hedged()), sends an identifying User-Agent as their policy asks, and caches every good answer in KV for
  * 24 hours, so a repeated search is instant and never touches the public servers again. The body is never parsed here
  * (CPU budget); only the last bytes are checked for an Overpass runtime error before caching. */
 import { json, UA, limited, sha, hedged } from "../_lib/finder-common.js";
@@ -9,7 +9,7 @@ import { json, UA, limited, sha, hedged } from "../_lib/finder-common.js";
 export const OVERPASS = [
   "https://overpass.private.coffee/api/interpreter",          // no rate limit (formerly overpass.kumi.systems)
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",  // VK Maps mirror, no request limit
-  "https://overpass-api.de/api/interpreter",                  // main FOSSGIS server — busiest, so last
+  "https://overpass-api.de/api/interpreter",                  // main FOSSGIS server, busiest, so last
 ];
 const MAX_Q = 6000;
 
@@ -22,7 +22,7 @@ export async function onRequestPost({ request, env }) {
   if (!validQuery(q)) return json({ ok: false, reason: "Not a finder query." }, 400);
   const kv = env.CHAT_KV, key = "osm:v1:" + (await sha(q));
   if (kv) { try { const hit = await kv.get(key, "arrayBuffer"); if (hit) return new Response(hit, { headers: { "content-type": "application/json; charset=utf-8", "x-cache": "hit", "cache-control": "no-store" } }); } catch (e) {} }
-  if (await limited(env, request, "osm", parseInt(env.OSM_PER_HOUR || "80", 10))) return json({ ok: false, reason: "Too many map searches this hour — please try again a little later." }, 429);
+  if (await limited(env, request, "osm", parseInt(env.OSM_PER_HOUR || "80", 10))) return json({ ok: false, reason: "Too many map searches this hour, please try again a little later." }, 429);
   try {
     const { r, url } = await hedged(OVERPASS, () => ({ method: "POST", body: "data=" + encodeURIComponent(q), headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": UA, accept: "application/json" } }), { stagger: 8000, timeout: 45000 });
     const buf = await r.arrayBuffer();

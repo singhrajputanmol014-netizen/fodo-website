@@ -1,4 +1,4 @@
-/* FODO Marketing Quiz — "speed run" edition.
+/* FODO Marketing Quiz: "speed run" edition.
    10 questions per run drawn from a 34-question pool (mixed categories, easy → hard), 20-second timer per question,
    points = 100 base + speed bonus (up to +50) × streak multiplier (×1 → ×2), two lifelines (50:50, Skip),
    keyboard 1–4 / A–D, instant explanations, best score + XP + badges via FODO_LAB, review, WhatsApp share.
@@ -76,7 +76,7 @@
         LAB.badge("quiz_done"); if(acc===N)LAB.badge("quiz_perfect"); if(S.fast>=5)LAB.badge("quiz_speed");
         LAB.addXP(Math.round(pts/10)+(acc===N?50:0)+(S.daily?25:0),`Quiz: ${acc}/${N} correct`); if(isBest||acc>=8) LAB.burst(); }
       const weak={}; S.qs.forEach((q,n)=>{ if(!S.ans[n]||!S.ans[n].ok) weak[q.c]=(weak[q.c]||0)+1; }); const weakCat=Object.entries(weak).sort((a,b)=>b[1]-a[1])[0];
-      const share=`I scored ${pts} points (${acc}/${N}) on the FODO marketing quiz${S.daily?` — Daily #${LAB?LAB.dayNo():""}`:""}. Rank: ${rank}. Beat me: ${location.origin+location.pathname}`;
+      const share=`I scored ${pts} points (${acc}/${N}) on the FODO marketing quiz${S.daily?`: Daily #${LAB?LAB.dayNo():""}`:""}. Rank: ${rank}. Beat me: ${location.origin+location.pathname}`;
       const svc={Ads:"paid-advertising",SEO:"seo",Brand:"brand-strategy",Conversion:"cro",Content:"content-marketing",Social:"social-media",Analytics:"analytics","Email & WhatsApp":"marketing-automation"};
       host.innerHTML=`<div class="qz-result"><p class="eyebrow">${S.daily?`Daily quiz #${LAB?LAB.dayNo():""}`:"Your result"}</p>
         <div class="qz-score"><b>${pts}</b><span>points</span></div>

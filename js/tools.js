@@ -1,4 +1,4 @@
-/* FODO tools — Growth Score (self-assessment) and ROI/Growth Calculator. All outputs are illustrative. */
+/* FODO tools: Growth Score (self-assessment) and ROI/Growth Calculator. All outputs are illustrative. */
 (function(){
   const U=window.FODO_UTIL, R=U.routes, e=U.esc, route=document.body.dataset.route;
 
@@ -16,7 +16,7 @@
     form.addEventListener("keydown",ev=>{ if(ev.key==="Enter"&&ev.target.tagName!=="TEXTAREA"){ ev.preventDefault(); if(i<steps.length-1){ if(valid())show(i+1);} } });
     form.addEventListener("submit",ev=>{ ev.preventDefault(); if(!valid())return; run(); });
     const v=n=>{ const el=form.querySelector(`[name="${n}"]:checked`)||form.querySelector(`[name="${n}"]`); return el?+el.value||0:0; };
-    function run(){ const terminal=document.getElementById("terminal"); out.hidden=false; form.hidden=true; terminal.textContent=""; const lines=["> reading self-reported inputs…","> scoring 7 categories (rules-based)…","> weighting: brand 10% · others 15% each…","> finding weakest and strongest category…","> done. SELF-ASSESSMENT — not a crawl or audit."]; let k=0; const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+    function run(){ const terminal=document.getElementById("terminal"); out.hidden=false; form.hidden=true; terminal.textContent=""; const lines=["> reading self-reported inputs…","> scoring 7 categories (rules-based)…","> weighting: brand 10% · others 15% each…","> finding weakest and strongest category…","> done. SELF-ASSESSMENT, not a crawl or audit."]; let k=0; const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
       const tick=()=>{ terminal.textContent+=lines[k]+"\n"; k++; if(k<lines.length)setTimeout(tick,reduce?0:350); else setTimeout(render,reduce?0:300); }; tick(); }
     function render(){ // category scores from answers (each input value is 0–100 directly)
       const ind=form.querySelector('[name="industry"]').value||"your industry"; const budget=v("budget"), traffic=v("traffic"), leads=v("leads"), social=v("social"), paid=v("paid"), seo=v("seo"), content=v("content"), track=v("track");
@@ -26,7 +26,7 @@
       const sorted=Object.entries(cats).sort((a,b)=>a[1]-b[1]); const weak=sorted[0][0], weak2=sorted[1][0]; const risk=cats.Analytics<40?"Analytics: decisions are being made without reliable measurement.":`${weak}: the lowest-scoring area is where growth is most likely stuck.`;
       const map={Brand:["brand-strategy","Brand Strategy"],Traffic:["seo","SEO"],Content:["content-marketing","Content Marketing"],SEO:["seo","SEO"],"Paid Media":["paid-advertising","Paid Advertising"],Conversion:["cro","Conversion Rate Optimisation"],Analytics:["analytics","Analytics & Measurement"]};
       const recs=[weak,weak2].map(k=>`<li>Strengthen <b>${k}</b> → <a href="${R.services}${map[k][0]}/">${map[k][1]}</a></li>`).join("")+(cats.Analytics<60&&weak!=="Analytics"&&weak2!=="Analytics"?`<li>Fix measurement first → <a href="${R.services}analytics/">Analytics & Measurement</a></li>`:"");
-      const WINS={Brand:["Write one line: who you're for, the outcome you give, and why you — use it on your bio, site and ads.","Pick 3 content pillars and post on them consistently for 30 days."],
+      const WINS={Brand:["Write one line: who you're for, the outcome you give, and why you, use it on your bio, site and ads.","Pick 3 content pillars and post on them consistently for 30 days."],
         Traffic:["List the 10 questions customers ask before buying; answer each on your site or socials.","Make sure your Google Business Profile is complete with photos and hours."],
         Content:["Turn your best-performing post into 3 formats (Reel, carousel, WhatsApp message).","Plan 4 weeks of content around real customer questions, not trends."],
         SEO:["Give every key page one clear topic and a title that says what and where (e.g. 'Dental clinic in Dwarka').","Fix speed on mobile: compress images and remove unused scripts."],
@@ -37,7 +37,7 @@
       let prev=null; try{ prev=JSON.parse(localStorage.getItem("fodo-score-last")||"null"); localStorage.setItem("fodo-score-last",JSON.stringify({score,at:Date.now(),cats})); }catch(_){}
       const delta=prev&&typeof prev.score==="number"?score-prev.score:null;
       if(window.FODO_LAB){ const L=window.FODO_LAB; L.record("score",score); L.badge("score_done"); setTimeout(()=>L.addXP(60,"Growth Score completed"),400); }
-      const summary=`FODO Growth Score (self-assessment): ${score}/100 — ${band}. Weakest: ${weak}, ${weak2}. Industry: ${ind}.`;
+      const summary=`FODO Growth Score (self-assessment): ${score}/100: ${band}. Weakest: ${weak}, ${weak2}. Industry: ${ind}.`;
       document.getElementById("score-panel").innerHTML=`<p class="eyebrow">Your FODO Growth Score</p>
       <div class="grid g2" style="align-items:center"><div><svg class="radial" viewBox="0 0 120 120" role="img" aria-label="Score ${score} out of 100"><circle class="track" cx="60" cy="60" r="52"/><circle class="val" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7" id="radial-val"/><text x="60" y="68" text-anchor="middle" fill="var(--text)" font-size="30" font-family="Space Grotesk,sans-serif" font-weight="700">${score}</text></svg><p class="mono signal" style="text-align:center">${band.toUpperCase()}</p></div>
       <div class="bars">${Object.entries(cats).map(([k,val])=>`<div class="bar"><span>${k}</span><i><b data-w="${val}"></b></i><span class="mono">${val}</span></div>`).join("")}</div></div>
@@ -45,9 +45,9 @@
       ${delta!=null?`<p class="gs-delta ${delta>=0?"up":"down"}">${delta>0?"▲ +"+delta:delta<0?"▼ "+delta:"No change"} since your last check (${prev.score}).</p>`:""}
       <h3 style="margin-top:24px">Your 8-week starter plan</h3><ol class="gs-plan">${plan}</ol>
       <h3 style="margin-top:24px">Where FODO can help</h3><ul>${recs}</ul>
-      <p class="notice">SELF-ASSESSMENT SCORE — NOT A REAL AUDIT OR GUARANTEE. Based only on the answers you gave; FODO has not crawled or reviewed your site.</p>
-      <div class="btn-row"><a class="btn" href="${R.audit}&score=${score}&industry=${encodeURIComponent(ind)}">Get my Free Growth Audit</a><a class="btn ghost" href="${U.wa(summary+" — I'd like to discuss this.")}" target="_blank" rel="noopener noreferrer">Discuss this on WhatsApp</a><button class="btn ghost" type="button" id="copy-sum">Copy my result</button><button class="btn ghost" type="button" id="run-again">Run again</button></div>`;
-      document.getElementById("copy-sum").addEventListener("click",ev=>U.copy(summary+" Plan: "+[weak,weak2].map(k=>k+" — "+WINS[k][0]).join(" | "),ev.currentTarget));
+      <p class="notice">SELF-ASSESSMENT SCORE: NOT A REAL AUDIT OR GUARANTEE. Based only on the answers you gave; FODO has not crawled or reviewed your site.</p>
+      <div class="btn-row"><a class="btn" href="${R.audit}&score=${score}&industry=${encodeURIComponent(ind)}">Get my Free Growth Audit</a><a class="btn ghost" href="${U.wa(summary+": I'd like to discuss this.")}" target="_blank" rel="noopener noreferrer">Discuss this on WhatsApp</a><button class="btn ghost" type="button" id="copy-sum">Copy my result</button><button class="btn ghost" type="button" id="run-again">Run again</button></div>`;
+      document.getElementById("copy-sum").addEventListener("click",ev=>U.copy(summary+" Plan: "+[weak,weak2].map(k=>k+": "+WINS[k][0]).join(" | "),ev.currentTarget));
       requestAnimationFrame(()=>{ document.getElementById("radial-val").style.strokeDashoffset=326.7*(1-score/100); document.querySelectorAll(".bar b").forEach(b=>b.style.width=b.dataset.w+"%"); });
       document.getElementById("run-again").addEventListener("click",()=>{ form.reset(); out.hidden=true; form.hidden=false; show(0); });
       document.getElementById("score-panel").querySelector(".eyebrow").focus?.(); out.scrollIntoView({block:"start",behavior:"smooth"}); }
@@ -72,7 +72,7 @@
       o.querySelector("[data-k=roas]").textContent=roas==null?"— (enter spend)":`${roas.toFixed(2)}x → ${proas.toFixed(2)}x`;
       const max=Math.max(val,pval,1); o.querySelector("[data-bar=cur]").style.height=(val/max*100)+"%"; o.querySelector("[data-bar=proj]").style.height=(pval/max*100)+"%";
       const summary=`Growth Calculator (illustrative): spend ${U.inr(spend)}, ${visitors} visitors, CR ${cr}% → ${Math.round(conv)} ${label} (${U.inr(val)}). With assumed +${lift}% lift: ${Math.round(pconv)} ${label} (${U.inr(pval)}). Industry: ${f.industry.value||"n/a"}.`;
-      document.getElementById("roi-discuss").href=R.audit+"&calc="+encodeURIComponent(summary.slice(0,400)); document.getElementById("roi-wa").href=U.wa(summary+" — can we discuss my numbers?"); }
+      document.getElementById("roi-discuss").href=R.audit+"&calc="+encodeURIComponent(summary.slice(0,400)); document.getElementById("roi-wa").href=U.wa(summary+", can we discuss my numbers?"); }
     calc();
   },"roi");
 })();

@@ -1,10 +1,10 @@
-/* FODO Competitor Finder — AI-suggested competitors for brands & startups (v11). Uses the free Workers AI binding `AI`.
+/* FODO Competitor Finder: AI-suggested competitors for brands & startups (v11). Uses the free Workers AI binding `AI`.
  *   POST /api/brand-ai  { brand, description?, industry?, country?, city? }
  *   → { ok, items: [{ name, website, country, why }] }      GET → { ok, ai }
  * The model only SUGGESTS names. The browser then checks every suggestion against Wikidata and the company's own website,
- * and labels anything it could not confirm as "AI suggestion — verify". Answers are cached in KV for 7 days.
+ * and labels anything it could not confirm as "AI suggestion, verify". Answers are cached in KV for 7 days.
  * v12: when SERPER_API_KEY is set (and the request has web:true), two Google searches ("<brand> competitors", "<brand> alternatives")
- * are given to the model as context; each name it returns says which result named it (source URL) — grounded, not remembered. */
+ * are given to the model as context; each name it returns says which result named it (source URL), grounded, not remembered. */
 import { json, limited, sha } from "../_lib/finder-common.js";
 
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
@@ -18,8 +18,8 @@ async function googleContext(env, brand, country) {
       const r = await fetch("https://google.serper.dev/search", { method: "POST", headers: { "x-api-key": env.SERPER_API_KEY, "content-type": "application/json" }, body: JSON.stringify(Object.assign({ q, num: 10, hl: "en" }, gl ? { gl } : {})), signal: AbortSignal.timeout(12000) });
       if (!r.ok) continue;
       const j = await r.json();
-      (j.organic || []).slice(0, 8).forEach((x) => { if (x && x.link) rows.push({ url: x.link, text: clean(x.title, 120) + " — " + clean(x.snippet, 260) }); });
-      (j.peopleAlsoAsk || []).slice(0, 3).forEach((x) => { if (x && x.link) rows.push({ url: x.link, text: clean(x.question, 120) + " — " + clean(x.snippet, 260) }); });
+      (j.organic || []).slice(0, 8).forEach((x) => { if (x && x.link) rows.push({ url: x.link, text: clean(x.title, 120) + ": " + clean(x.snippet, 260) }); });
+      (j.peopleAlsoAsk || []).slice(0, 3).forEach((x) => { if (x && x.link) rows.push({ url: x.link, text: clean(x.question, 120) + ": " + clean(x.snippet, 260) }); });
     } catch (e) {}
   }
   const seen = {}; return rows.filter((r) => { if (seen[r.url]) return false; seen[r.url] = 1; return true; }).slice(0, 18);   // same page from both searches counts once
@@ -58,7 +58,7 @@ export async function onRequestPost({ request, env }) {
   if (await limited(env, request, "bai", parseInt(env.BRAND_AI_PER_HOUR || "30", 10))) return json({ ok: false, reason: "Too many AI look-ups this hour." }, 429);
   const where = [city, country].filter(Boolean).join(", ");
   const ctx = web ? await googleContext(env, brand, country) : [];
-  const ctxTxt = ctx.length ? "\nGoogle search results (numbered):\n" + ctx.map((r, i) => "[" + (i + 1) + "] " + r.text).join("\n") + "\n\nUse these results first. For every company give \"src\": the number of the result that names it, or 0 if it comes only from your own knowledge. Ignore list/review websites themselves (G2, Capterra, Wikipedia, news sites) — only companies that sell the product.\n" : "";
+  const ctxTxt = ctx.length ? "\nGoogle search results (numbered):\n" + ctx.map((r, i) => "[" + (i + 1) + "] " + r.text).join("\n") + "\n\nUse these results first. For every company give \"src\": the number of the result that names it, or 0 if it comes only from your own knowledge. Ignore list/review websites themselves (G2, Capterra, Wikipedia, news sites), only companies that sell the product.\n" : "";
   const messages = [
     { role: "system", content: "You are a market analyst. You list real, currently operating companies only. If you are not sure a company exists, leave it out. Answer with JSON only." },
     { role: "user", content: `List up to 25 direct competitors of "${brand}"${description ? " (" + description + ")" : ""}${industry ? ", industry: " + industry : ""}${where ? ", competing in " + where : ""}.\n` +

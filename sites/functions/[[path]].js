@@ -1,4 +1,4 @@
-/* FODO client websites — the SEPARATE Cloudflare Pages project "fodo-sites" (root directory: sites/). Bindings: XRAY_DB (D1),
+/* FODO client websites, the SEPARATE Cloudflare Pages project "fodo-sites" (root directory: sites/). Bindings: XRAY_DB (D1),
    variable SITES_HOST (its own address, e.g. sites.fodo.co.in). Customers' custom domains are attached to THIS project, never to
    FODO's own. Address forms:
      https://sites.fodo.co.in/<slug>/<page>/   (every website)

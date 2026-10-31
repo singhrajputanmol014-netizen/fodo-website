@@ -1,12 +1,12 @@
-/* FODO Growth Lab v17 — AI Visibility engines (prompt §37–38, §69 AIProvider interface).
+/* FODO Growth Lab v17: AI Visibility engines (prompt §37–38, §69 AIProvider interface).
    Each engine answers the same buyer questions; the browser then checks whether the business and its competitors are named.
    Engines (each optional; a missing key = that engine is simply not run, never faked):
-     workers-ai → Cloudflare Workers AI (binding AI) — open Llama model, answers from what it learned in training
-     groq       → Groq free tier (secret GROQ_API_KEY; model GROQ_MODEL, else the GROQ_MODELS chain below) — open model, no live web
+     workers-ai → Cloudflare Workers AI (binding AI), open Llama model, answers from what it learned in training
+     groq       → Groq free tier (secret GROQ_API_KEY; model GROQ_MODEL, else the GROQ_MODELS chain below), open model, no live web
      gemini     → Google Gemini API (secret GEMINI_API_KEY; model GEMINI_MODEL, else the GEMINI_MODELS chain) WITH Google Search grounding:
                   answers from live Google results and lists the pages it used (citations). If grounding is refused on the
                   key's tier, it retries once without grounding and says so ("grounded": false).
-   None of these is ChatGPT, Perplexity or Google AI Overviews — the report says exactly which engine was asked. */
+   None of these is ChatGPT, Perplexity or Google AI Overviews, the report says exactly which engine was asked. */
 import { outbound } from "./xray-core.js";
 
 /* v17.1: providers retire model ids (Groq shut llama-3.3-70b-versatile on 16 Aug 2026; older Gemini ids return 404).
@@ -46,7 +46,7 @@ async function groq(env, q, sys) {
   }
   throw last || Object.assign(new Error("groq: no model"), { status: 404 });
 }
-/* v20.2: a whole conversation on Groq — the fallback when Workers AI is busy, over its daily limit or failing
+/* v20.2: a whole conversation on Groq, the fallback when Workers AI is busy, over its daily limit or failing
    (report summary, FODO Edge, the help assistant). Returns { text, model } or throws. */
 export async function groqChat(env, messages, max, wait) {
   if (!env.GROQ_API_KEY) throw new Error("no GROQ_API_KEY");

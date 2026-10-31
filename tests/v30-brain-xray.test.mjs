@@ -23,7 +23,7 @@ const call = async (path, body, o = {}) => {
   const r = await H[h]({ request: req, env, params: { path: p.split("?")[0].split("/") } }); const sc = r.headers.get("set-cookie"); if (sc && h === "account") jars[who] = sc.split(";")[0];
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} all.push(t); return { status: r.status, j, t };
 };
-const all = [];   // every response body — checked for leaked secrets at the end
+const all = [];   // every response body, checked for leaked secrets at the end
 const login = (email, plan, who) => call("test-login", Object.assign({ email }, plan ? { plan } : {}), { as: who });
 const B = (p, body, who, o) => call("owner-brain/" + p, body, Object.assign({ as: who || "own" }, o || {}));
 const ask = (message, threadId, who) => B("chat", { message, threadId }, who);
@@ -32,7 +32,7 @@ const ask = (message, threadId, who) => B("chat", { message, threadId }, who);
 const prompts = [], sent = [], gem = []; let gemDown = false; let aiDown = false, groqCalls = 0;
 const reply = (sys, user) => {
   if (/You choose which FODO Brain tools/.test(sys)) {
-    if (/email/i.test(user)) return JSON.stringify({ tools: [{ name: "send_email", args: { to: "lead@client.in", subject: "Your X-Ray", body: "Hi — your X-Ray is ready." } }] });
+    if (/email/i.test(user)) return JSON.stringify({ tools: [{ name: "send_email", args: { to: "lead@client.in", subject: "Your X-Ray", body: "Hi, your X-Ray is ready." } }] });
     if (/price/i.test(user)) return JSON.stringify({ tools: [{ name: "change_price", args: { kind: "plan", id: "starter", price: 649 } }] });
     if (/malformed/i.test(user)) return "sure! here you go {tools: [oops";
     if (/delete the user|block/i.test(user)) return JSON.stringify({ tools: [{ name: "block_user", args: { email: "ravi@shop.in", blocked: true } }] });
@@ -97,7 +97,7 @@ ok(/X-Ray shuru/.test(r.j.answer) && /2–4 minute/.test(r.j.answer), "honest Hi
 r = await B("chat", { message: "Run an X-Ray of example.com", voice: true });
 ok(/Starting the X-Ray of \*\*example\.com\*\*/.test(r.j.answer) && /out loud/.test(r.j.answer), "English + voice wording");
 r = await ask("x-ray karo localhost:8080"); ok(!(r.j.ui || []).some((u) => u.action === "xray"), "private/odd addresses never start an X-Ray");
-r = await ask("spicehub.test ka latest x-ray result batao — score, sabse weak areas aur top 3 fixes");
+r = await ask("spicehub.test ka latest x-ray result batao, score, sabse weak areas aur top 3 fixes");
 ok(r.j.tools_used.some((t) => t.tool === "latest_xray" && t.ok), "result summary reads the real saved report (latest_xray)");
 
 /* web search without Serper/Brave → Gemini Google Search grounding (free key) */

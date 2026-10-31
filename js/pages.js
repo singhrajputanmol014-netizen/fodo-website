@@ -1,20 +1,20 @@
-/* FODO pages — data-driven hubs with URL-hash detail states (services, industries, work, insights), checklists, FAQ, growth system. */
+/* FODO pages, data-driven hubs with URL-hash detail states (services, industries, work, insights), checklists, FAQ, growth system. */
 (function(){
   const U=window.FODO_UTIL, D=window.FODO_DATA, R=U.routes, e=U.esc, C=window.FODO;
   const route=document.body.dataset.route;
   const chart=(seed,label,pillar)=>{ let s=seed.length, v=[]; for(let i=0;i<12;i++){ s=(s*9301+49297)%233280; v.push(s/233280); }
     let body="",cap="";
-    if(pillar==="paid"||pillar==="web"){ // bars: spend (grey) vs results (orange) — results grow faster
-      body=v.map((x,i)=>`<rect x="${i*27+2}" y="${80-30-x*10}" width="10" height="${30+x*10}" fill="var(--bar-dim)"/><rect x="${i*27+13}" y="${80-(10+i*5+x*8)}" width="10" height="${10+i*5+x*8}" fill="var(--signal)"/>`).join(""); cap="Grey: spend · Orange: results — results should outgrow spend"; }
+    if(pillar==="paid"||pillar==="web"){ // bars: spend (grey) vs results (orange), results grow faster
+      body=v.map((x,i)=>`<rect x="${i*27+2}" y="${80-30-x*10}" width="10" height="${30+x*10}" fill="var(--bar-dim)"/><rect x="${i*27+13}" y="${80-(10+i*5+x*8)}" width="10" height="${10+i*5+x*8}" fill="var(--signal)"/>`).join(""); cap="Grey: spend · Orange: results, results should outgrow spend"; }
     else if(pillar==="seo"||pillar==="content"){ // compounding curve
-      const pts=v.map((x,i)=>`${i*30},${(78-Math.pow(i/11,1.8)*60-x*4).toFixed(1)}`).join(" "); body=`<polyline fill="none" stroke="var(--signal)" stroke-width="2" points="${pts}"/><polyline fill="none" stroke="var(--line-3)" stroke-dasharray="3 3" points="0,60 330,60"/>`; cap="Slow start, compounding later — typical organic curve"; }
+      const pts=v.map((x,i)=>`${i*30},${(78-Math.pow(i/11,1.8)*60-x*4).toFixed(1)}`).join(" "); body=`<polyline fill="none" stroke="var(--signal)" stroke-width="2" points="${pts}"/><polyline fill="none" stroke="var(--line-3)" stroke-dasharray="3 3" points="0,60 330,60"/>`; cap="Slow start, compounding later, typical organic curve"; }
     else if(pillar==="social"){ // dots: posts with occasional spikes
       body=v.map((x,i)=>`<circle cx="${i*30+5}" cy="${70-x*55}" r="${x>.75?5:2.5}" fill="${x>.75?"var(--signal)":"var(--dot-dim)"}"/>`).join("")+`<polyline fill="none" stroke="var(--line-3)" points="0,70 330,70"/>`; cap="Each dot a post; orange = content that broke out"; }
     else if(pillar==="brand"){ // before/after bars for clarity scores
-      const lab=["Clarity","Recall","Trust","Fit"]; body=lab.map((l,i)=>`<rect x="${i*80+10}" y="${80-25-v[i]*15}" width="24" height="${25+v[i]*15}" fill="var(--bar-dim)"/><rect x="${i*80+38}" y="${80-50-v[i+4]*20}" width="24" height="${50+v[i+4]*20}" fill="var(--signal)"/><text x="${i*80+36}" y="88" fill="var(--muted)" font-size="7" text-anchor="middle">${l}</text>`).join(""); cap="Grey: before positioning work · Orange: after — illustrative"; }
+      const lab=["Clarity","Recall","Trust","Fit"]; body=lab.map((l,i)=>`<rect x="${i*80+10}" y="${80-25-v[i]*15}" width="24" height="${25+v[i]*15}" fill="var(--bar-dim)"/><rect x="${i*80+38}" y="${80-50-v[i+4]*20}" width="24" height="${50+v[i+4]*20}" fill="var(--signal)"/><text x="${i*80+36}" y="88" fill="var(--muted)" font-size="7" text-anchor="middle">${l}</text>`).join(""); cap="Grey: before positioning work · Orange: after, illustrative"; }
     else { // automation/analytics: funnel steps
-      const st=[100,62,40,27,18]; body=st.map((w,i)=>`<rect x="${(330-w*3)/2}" y="${i*15+4}" width="${w*3}" height="12" fill="${i===st.length-1?"var(--signal)":"var(--bar-dim)"}"/>`).join(""); cap="Funnel stages — each step should be measured, not guessed"; }
-    return `<figure class="panel" style="margin:24px 0"><svg viewBox="0 0 330 92" role="img" aria-label="${e(label)} — illustrative chart" style="width:100%;height:auto">${body}</svg><figcaption class="mono muted" style="margin-top:8px;font-size:11px">${e(label)} · ${cap} · ILLUSTRATIVE</figcaption></figure>`; };
+      const st=[100,62,40,27,18]; body=st.map((w,i)=>`<rect x="${(330-w*3)/2}" y="${i*15+4}" width="${w*3}" height="12" fill="${i===st.length-1?"var(--signal)":"var(--bar-dim)"}"/>`).join(""); cap="Funnel stages, each step should be measured, not guessed"; }
+    return `<figure class="panel" style="margin:24px 0"><svg viewBox="0 0 330 92" role="img" aria-label="${e(label)}, illustrative chart" style="width:100%;height:auto">${body}</svg><figcaption class="mono muted" style="margin-top:8px;font-size:11px">${e(label)} · ${cap} · ILLUSTRATIVE</figcaption></figure>`; };
   const hashState=(container,render,listSel)=>{ // detail state manager
     const show=()=>{ const id=decodeURIComponent(location.hash.slice(1)); const det=container.querySelector(".detail"); const list=document.querySelector(listSel);
       if(id&&render(id,det)){ det.hidden=false; if(list)list.hidden=true; det.querySelector(".detail-back").focus({preventScroll:true}); det.scrollIntoView({block:"start"}); }
@@ -27,7 +27,7 @@
   const svcLink=s=>{ const x=D.services.find(v=>v.slug===s); return x?`<a href="${R.services}${x.slug}/">${e(x.name)}</a>`:""; };
   const svcCard=s=>`<a class="panel hud" href="${R.services}${s.slug}/" data-pillar="${s.pillar}"><span class="tag">${e(D.pillars.find(p=>p.id===s.pillar).name)}</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(s.name)}</h3><p class="muted" style="margin:0;font-size:14px">${e(s.h)}</p><span class="panel-line"></span></a>`;
 
-  /* HOME hero "disappear." — letters dissolve and re-form on their own (works on every device);
+  /* HOME hero "disappear.", letters dissolve and re-form on their own (works on every device);
      the pointer (desktop) or a finger (phone) brings the letters it touches back into focus. */
   U.safe(()=>{ const st=document.querySelector("[data-lens]"); if(!st)return;
     st.classList.add("vanish-on");
@@ -65,7 +65,7 @@
     filt.innerHTML=`<button type="button" aria-pressed="true" data-f="all">All (20)</button>`+D.pillars.map(p=>`<button type="button" aria-pressed="false" data-f="${p.id}">${e(p.name)}</button>`).join("");
     filt.addEventListener("click",ev=>{ const b=ev.target.closest("button"); if(!b)return; filt.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); grid.querySelectorAll("[data-pillar]").forEach(c=>c.style.display=(b.dataset.f==="all"||c.dataset.pillar===b.dataset.f)?"":"none"); });
     hashState(wrap,(id,det)=>{ const s=D.services.find(x=>x.slug===id); if(!s)return false;
-      document.title=`${s.name} — FODO`;
+      document.title=`${s.name}: FODO`;
       det.innerHTML=`<div class="detail-head">${back("all services")}<span class="tag">${e(D.pillars.find(p=>p.id===s.pillar).name)}</span></div>
       <p class="eyebrow">Service · ${e(s.name)}</p><h2 style="font-size:clamp(28px,4vw,48px)">${e(s.h)}</h2>
       <h3>The problem</h3><p>${e(s.problem)}</p>
@@ -87,7 +87,7 @@
     { const h=decodeURIComponent(location.hash.slice(1)); if(h&&D.industries.some(x=>x.slug===h)){ location.replace(R.industries+h+"/"); return; } }
     const grid=document.getElementById("industries-grid"), wrap=document.getElementById("industries-wrap");
     grid.innerHTML=D.industries.map(i=>`<a class="panel hud spot" href="${R.industries}${i.slug}/"><span class="tag">Industry</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(i.name)}</h3><p class="muted" style="margin:0;font-size:14px">${e(i.h)}</p><span class="panel-line"></span></a>`).join("");
-    hashState(wrap,(id,det)=>{ const i=D.industries.find(x=>x.slug===id); if(!i)return false; document.title=`${i.name} marketing — FODO`;
+    hashState(wrap,(id,det)=>{ const i=D.industries.find(x=>x.slug===id); if(!i)return false; document.title=`${i.name} marketing: FODO`;
       det.innerHTML=`<div class="detail-head">${back("all industries")}<span class="tag">${e(i.name)}</span></div><h2 style="font-size:clamp(28px,4vw,48px)">${e(i.h)}</h2>
       ${i.note?`<div class="notice">${e(i.note)}</div>`:""}
       <h3>Typical challenges</h3><ul>${i.challenges.map(x=>`<li>${e(x)}</li>`).join("")}</ul>
@@ -96,7 +96,7 @@
       <h3>Possible channels</h3><p>${i.channels.map(e).join(" · ")}</p>
       <h3>KPIs worth tracking</h3><ul>${i.kpis.map(x=>`<li>${e(x)}</li>`).join("")}</ul>
       <h3>Suggested services</h3><p>${i.services.map(svcLink).join(" · ")}</p>
-      <p class="muted" style="font-size:13px">General, reasoned guidance — not market research or a results guarantee.</p>${cta}`; return true; },"#industries-list");
+      <p class="muted" style="font-size:13px">General, reasoned guidance, not market research or a results guarantee.</p>${cta}`; return true; },"#industries-list");
   },"industries");
 
   /* WORK */
@@ -107,13 +107,13 @@
     filt.innerHTML=tags.map((t,i)=>`<button type="button" aria-pressed="${i===0}" data-f="${t}">${t}</button>`).join("");
     grid.innerHTML=D.cases.map(c=>`<a class="panel hud work-card spot has-art" href="${R.work}${c.slug}/" data-tags="${c.tags.join("|")}"><span class="wc-art">${(document.getElementById("wart-"+c.slug)||{}).innerHTML||""}</span><span class="tag warn">CONCEPT ENGAGEMENT</span>${U.ico.arrow}<h3 style="margin-top:12px">${e(c.title)}</h3><p class="muted" style="margin:0;font-size:14px">${c.tags.join(" · ")} · ${e(c.industry)}</p><span class="panel-line"></span></a>`).join("");
     filt.addEventListener("click",ev=>{ const b=ev.target.closest("button"); if(!b)return; filt.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); grid.querySelectorAll("[data-tags]").forEach(c=>c.style.display=(b.dataset.f==="ALL"||c.dataset.tags.split("|").includes(b.dataset.f))?"":"none"); });
-    hashState(wrap,(id,det)=>{ const c=D.cases.find(x=>x.slug===id); if(!c)return false; document.title=`${c.title} — FODO (concept)`;
+    hashState(wrap,(id,det)=>{ const c=D.cases.find(x=>x.slug===id); if(!c)return false; document.title=`${c.title}: FODO (concept)`;
       const sec=(t,b)=>`<h3>${t}</h3><p>${b}</p>`;
       det.innerHTML=`<div class="detail-head">${back("work")}<span class="tag warn">CONCEPT ENGAGEMENT</span></div><h2 style="font-size:clamp(26px,3.6vw,44px)">${e(c.title)}</h2>
       <div class="kpi"><div class="panel"><span class="label muted">Client</span><br><b>Concept engagement</b></div><div class="panel"><span class="label muted">Industry</span><br><b>${e(c.industry)}</b></div><div class="panel"><span class="label muted">Channels</span><br><b>${c.channels.map(e).join(", ")}</b></div></div>
       ${sec("The challenge",e(c.challenge))}${sec("The insight",e(c.insight))}${sec("The strategy",e(c.strategy))}${sec("The execution",e(c.execution))}${sec("Creative approach",e(c.creative))}
       <h3>KPIs to be measured</h3><ul>${c.kpis.map(x=>`<li>${e(x)}</li>`).join("")}</ul>
-      ${sec("The result","Measured against the KPIs above over the first 90 days. Figures are published here only after client validation — ask us for the current status of this engagement type on your audit call.")}${sec("The lesson",e(c.lesson))}
+      ${sec("The result","Measured against the KPIs above over the first 90 days. Figures are published here only after client validation, ask us for the current status of this engagement type on your audit call.")}${sec("The lesson",e(c.lesson))}
       <h3>Related services</h3><p>${D.services.filter(s=>c.tags.some(t=>({"PAID MEDIA":"paid","SEO":"seo","SOCIAL":"social","BRANDING":"brand"}[t]===s.pillar))).slice(0,4).map(s=>svcLink(s.slug)).join(" · ")||svcLink("paid-advertising")}</p>${cta}`; return true; },"#work-list");
   },"work");
 

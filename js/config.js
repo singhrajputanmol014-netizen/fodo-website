@@ -1,6 +1,6 @@
-/* FODO — single source of truth. Edit business details and feature switches here only. */
+/* FODO, single source of truth. Edit business details and feature switches here only. */
 window.FODO = {
-  brand: "FODO — Fear Of Digitally Out ?",
+  brand: "FODO: Fear Of Digitally Out ?",
   shortBrand: "FODO",
   meaning: "Fear Of Digitally Out",
   tagline: "Don't get left behind.",
@@ -26,7 +26,7 @@ window.FODO = {
   analyticsConsentRequired: true,
   ga4Id: "",               // Optional: Google Analytics 4 ID (G-XXXXXXXXXX). Loads ONLY after cookie consent.
   metaPixelId: "",         // Optional: Meta Pixel ID. Loads ONLY after cookie consent.
-  foundingSlotsTotal: 10,   // Founding Clients Programme — total partner slots
+  foundingSlotsTotal: 10,   // Founding Clients Programme, total partner slots
   foundingSlotsTaken: 0,    // UPDATE as real clients sign (shown on home page)
   foundingCohort: "Q4 2026",
   reviewsMode: "live",      // "live" = only verified, written-approved reviews (js/reviews.js, built from data/reviews.csv); "preview" = sample data behind a visible design-preview banner (internal only)

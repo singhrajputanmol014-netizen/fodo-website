@@ -1,4 +1,4 @@
-/* FODO Help Desk v20 — /help/: search the answers, chat with the FODO help assistant, open a ticket, see your tickets,
+/* FODO Help Desk v20: /help/: search the answers, chat with the FODO help assistant, open a ticket, see your tickets,
    read & reply to a ticket from its email link (?ticket=T…&k=…). Everything goes to /api/help/* and shows in /admin/. */
 (function () {
   "use strict";
@@ -8,7 +8,7 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var api = function (path, body) {
     return fetch(ROOT + "api/help/" + path, { method: body ? "POST" : "GET", credentials: "same-origin", headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, reason: "The help desk did not answer (" + r.status + ")." }; }).then(function (j) { j._status = r.status; return j; }); }, function () { return { ok: false, reason: "No connection — check your internet." }; });
+      .then(function (r) { return r.json().catch(function () { return { ok: false, reason: "The help desk did not answer (" + r.status + ")." }; }).then(function (j) { j._status = r.status; return j; }); }, function () { return { ok: false, reason: "No connection, check your internet." }; });
   };
   var say = function (id, t, k) { var el = $(id); if (el) { el.textContent = t || ""; el.className = "cf-status" + (k ? " " + k : ""); } };
   var me = null, chatId = null; try { chatId = sessionStorage.getItem("fodo-help-chat"); } catch (e) {}
@@ -46,7 +46,7 @@
       box.innerHTML = '<small class="muted">Sending…</small>';
       api("chat/escalate", { chatId: chatId, email: email, name: name }).then(function (j) {
         if (j.needEmail) return ask();
-        box.innerHTML = j.ok ? '<b>Ticket ' + esc(j.ticket) + "</b> — a person will reply by email" + (j.link ? ' · <a href="' + esc(j.link) + '">open it</a>' : "") + "." : '<small class="warn">' + esc(j.reason) + "</small>";
+        box.innerHTML = j.ok ? '<b>Ticket ' + esc(j.ticket) + "</b>, a person will reply by email" + (j.link ? ' · <a href="' + esc(j.link) + '">open it</a>' : "") + "." : '<small class="warn">' + esc(j.reason) + "</small>";
         if (j.ok) { track("help_escalate", {}); myTickets(); }
       });
     }, ask = function () {
@@ -66,7 +66,7 @@
     say("hp-tst", "Sending…", "busy");
     api("ticket", b).then(function (j) {
       if (!j.ok) return say("hp-tst", j.reason || "Could not send.", "warn");
-      say("hp-tst", "Thanks — this is ticket " + j.ticket + ". " + (j.mailed ? "We emailed you a copy." : "") + " A person will reply by email, usually within one working day.", "ok");
+      say("hp-tst", "Thanks, this is ticket " + j.ticket + ". " + (j.mailed ? "We emailed you a copy." : "") + " A person will reply by email, usually within one working day.", "ok");
       $("hp-msg").value = ""; $("hp-subj").value = ""; track("help_ticket", {}); myTickets();
     });
   });

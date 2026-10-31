@@ -1,4 +1,4 @@
-/* FODO Growth Lab accounts — login (Google or a 6-digit email code), plan & credits, Cashfree checkout.
+/* FODO Growth Lab accounts, login (Google or a 6-digit email code), plan & credits, Cashfree checkout.
    Talks only to /api/account/* (the server holds every secret; this file never sees a key).
    window.FODO_ACCOUNT = { config, me, login, logout, api, checkout, history, report, onChange, plans }
    When the server says accounts are off (ACCOUNTS_ENABLED not set), everything here stays quiet and the tools run as before. */
@@ -9,7 +9,7 @@
   var inr = function (n) { return "₹" + Number(n).toLocaleString("en-IN"); };
   var cfgP = null, meP = null, user, subs = [];
   var api = function (path, body) {
-    // v17.1.3: a request that never answers must not leave the page on "Loading…" — give up after 15 s and say so
+    // v17.1.3: a request that never answers must not leave the page on "Loading…", give up after 15 s and say so
     var ac = typeof AbortController === "function" ? new AbortController() : null, tm = ac ? setTimeout(function () { ac.abort(); }, 15000) : 0;
     return fetch(ROOT + "api/account/" + path, { method: body === undefined ? "GET" : "POST", credentials: "same-origin", headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: ac ? ac.signal : undefined })
       .then(function (r) { clearTimeout(tm); return r.json().catch(function () { return { ok: false, reason: "The account service did not answer (" + r.status + ").", _bad: true }; }).then(function (j) { j._status = r.status; return j; }); },
@@ -56,7 +56,7 @@
         if (c.google) load("https://accounts.google.com/gsi/client", function () { return window.google && google.accounts && google.accounts.id; }).then(function () {
           google.accounts.id.initialize({ client_id: c.google, callback: function (r) { msg(m, "Checking your Google account…", "busy"); api("google", { credential: r.credential }).then(done); }, ux_mode: "popup", auto_select: false });
           var g = d.querySelector("#acct-g"); if (g) google.accounts.id.renderButton(g, { theme: document.documentElement.getAttribute("data-theme") === "light" ? "outline" : "filled_black", size: "large", text: "continue_with", shape: "pill", width: Math.min(360, g.clientWidth || 320) });
-        }, function () { var g = d.querySelector("#acct-g"); if (g) g.innerHTML = '<p class="muted">Google sign-in could not load here' + (c.email ? " — use your email below." : ".") + "</p>"; });
+        }, function () { var g = d.querySelector("#acct-g"); if (g) g.innerHTML = '<p class="muted">Google sign-in could not load here' + (c.email ? ", use your email below." : ".") + "</p>"; });
         var f = d.querySelector("#acct-f");
         if (f) f.addEventListener("submit", function (e) {
           e.preventDefault(); var email = d.querySelector("#acct-email").value.trim(), cb = d.querySelector("#acct-codebox"), code = d.querySelector("#acct-code").value.trim(), go = d.querySelector("#acct-go");
@@ -74,7 +74,7 @@
       });
     }).then(function (u) { pending = null; return u; }, function (e) { pending = null; throw e; });
   }
-  /* ---------- v16: Facebook, phone OTP, Microsoft, Apple, email link — via Firebase Authentication ---------- */
+  /* ---------- v16: Facebook, phone OTP, Microsoft, Apple, email link, via Firebase Authentication ---------- */
   var FBV = "10.14.1", PROV = { facebook: ["Facebook", "#1877F2", "f"], microsoft: ["Microsoft", "#2F2F2F", "⊞"], apple: ["Apple", "#000", "A"], github: ["GitHub", "#24292F", "⌥"], x: ["X", "#000", "𝕏"] };
   function fbAuth(c) {
     return load("https://www.gstatic.com/firebasejs/" + FBV + "/firebase-app-compat.js", function () { return window.firebase && firebase.initializeApp; })
@@ -117,7 +117,7 @@
       e.preventDefault(); var em = d.querySelector("#acct-le").value.trim(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) { msg(m, "Enter a valid email address.", "warn"); return; }
       msg(m, "Sending the link…", "busy");
       fbAuth(c).then(function (a) { return a.sendSignInLinkToEmail(em, { url: location.origin + "/account/?fblink=1&next=" + encodeURIComponent(location.pathname), handleCodeInApp: true }); })
-        .then(function () { try { localStorage.setItem("fodo-fb-email", em); } catch (x) {} msg(m, "Check " + em + " — tap the link in the email to log in (it may be in spam).", "ok"); }, function (er) { msg(m, fbErr(er), "warn"); });
+        .then(function () { try { localStorage.setItem("fodo-fb-email", em); } catch (x) {} msg(m, "Check " + em + ", tap the link in the email to log in (it may be in spam).", "ok"); }, function (er) { msg(m, fbErr(er), "warn"); });
     });
   }
   /* ---------- v16.1 free mobile login: send a code to FODO on WhatsApp ---------- */
@@ -129,9 +129,9 @@
       api("wa/start", {}).then(function (j) {
         b.disabled = false; if (!j.ok) { msg(m, j.reason || "WhatsApp login is not available.", "warn"); return; }
         var box = d.querySelector("#acct-wabox"), touch = matchMedia("(pointer:coarse)").matches || innerWidth < 760; box.hidden = false; b.hidden = true;
-        box.innerHTML = (touch ? '<p>Tap the button, then press <b>Send</b> in WhatsApp. Come back here — you will be logged in automatically.</p><a class="btn acct-wago" href="' + esc(j.link) + '" target="_blank" rel="noopener">Open WhatsApp &amp; send code ' + esc(j.code) + "</a>"
-          : '<p>Scan with your phone camera and press <b>Send</b> in WhatsApp — or <a href="' + esc(j.link) + '" target="_blank" rel="noopener">open WhatsApp on this computer</a>.</p><div class="acct-qr" id="acct-qr" aria-label="QR code to send the login message"></div>') +
-          '<p class="muted acct-fine">Your code: <b>' + esc(j.code) + "</b> · valid 10 minutes · it's free — you send the message, FODO never sends you an SMS.</p>";
+        box.innerHTML = (touch ? '<p>Tap the button, then press <b>Send</b> in WhatsApp. Come back here, you will be logged in automatically.</p><a class="btn acct-wago" href="' + esc(j.link) + '" target="_blank" rel="noopener">Open WhatsApp &amp; send code ' + esc(j.code) + "</a>"
+          : '<p>Scan with your phone camera and press <b>Send</b> in WhatsApp, or <a href="' + esc(j.link) + '" target="_blank" rel="noopener">open WhatsApp on this computer</a>.</p><div class="acct-qr" id="acct-qr" aria-label="QR code to send the login message"></div>') +
+          '<p class="muted acct-fine">Your code: <b>' + esc(j.code) + "</b> · valid 10 minutes · it's free, you send the message, FODO never sends you an SMS.</p>";
         if (!touch) load("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js", function () { return typeof window.QRCode === "function"; }).then(function () { new QRCode(d.querySelector("#acct-qr"), { text: j.link, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); }, function () { d.querySelector("#acct-qr").innerHTML = '<a class="btn" href="' + esc(j.link) + '" target="_blank" rel="noopener">Open WhatsApp</a>'; });
         msg(m, "Waiting for your WhatsApp message…", "busy");
         var poll = function () { if (!document.body.contains(d) || Date.now() > j.expires) { if (document.body.contains(d)) msg(m, "The code expired. Close this box and try again.", "warn"); return; }
@@ -179,7 +179,7 @@
   }
   function checkout(kind, item, opt) {
     opt = opt || {};
-    return me().then(function (u) { return u || login("Log in to buy — your plan is linked to your account."); }).then(function (u) {
+    return me().then(function (u) { return u || login("Log in to buy, your plan is linked to your account."); }).then(function (u) {
       return askPhone(u.phone).then(function (phone) {
         return api("checkout", { kind: kind, item: item, phone: phone, autoRenew: !!opt.autoRenew }).then(function (j) {
           if (!j.ok) throw Object.assign(new Error(j.reason || "Could not start the payment."), { user: true });
@@ -209,7 +209,7 @@
         if (!c) { c = document.createElement("a"); c.className = i ? "acct-drawer" : "acct-chip"; if (i) host.appendChild(c); else host.insertBefore(c, host.querySelector("#search-open") || host.querySelector(".header-cta") || host.querySelector(".burger")); }
         c.href = ROOT + "account/";
         if (user) { var t = esc(user.planName) + " · " + user.credits.total + " X-Ray" + (user.credits.total === 1 ? "" : "s"); c.innerHTML = '<span class="acct-dot" aria-hidden="true">' + esc((user.name || user.email || user.phone || "U").charAt(0).toUpperCase()) + "</span><span>" + (i ? "My account · " + t : t) + "</span>"; c.setAttribute("aria-label", "Your account: " + user.planName + " plan, " + user.credits.total + " X-Rays left"); c.onclick = null; }
-        else { c.innerHTML = '<span class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span>' + (i ? "Log in / Sign up — 2 free X-Rays" : "Log in") + "</span>"; c.setAttribute("aria-label", "Log in"); c.onclick = function (e) { e.preventDefault(); var d = document.getElementById("drawer"); if (d && d.classList.contains("open")) { d.classList.remove("open"); document.body.classList.remove("locked"); } login().catch(function () {}); }; }
+        else { c.innerHTML = '<span class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span>' + (i ? "Log in / Sign up, 2 free X-Rays" : "Log in") + "</span>"; c.setAttribute("aria-label", "Log in"); c.onclick = function (e) { e.preventDefault(); var d = document.getElementById("drawer"); if (d && d.classList.contains("open")) { d.classList.remove("open"); document.body.classList.remove("locked"); } login().catch(function () {}); }; }
       });
     });
   }

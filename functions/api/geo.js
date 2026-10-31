@@ -1,4 +1,4 @@
-/* FODO Competitor Finder — Geoapify Places (optional extra source, v11). Needs the Cloudflare Secret GEOAPIFY_KEY
+/* FODO Competitor Finder: Geoapify Places (optional extra source, v11). Needs the Cloudflare Secret GEOAPIFY_KEY
  * (free plan: 3,000 credits a day, no card; 20 places = 1 credit; results may be stored, so they can go into the export).
  *   GET /api/geo?cat=catering.cafe&name=&lat=..&lng=..&radius=5000&offset=0   → Geoapify GeoJSON, passed through untouched
  *   GET /api/geo?health=1 → { ok, enabled }

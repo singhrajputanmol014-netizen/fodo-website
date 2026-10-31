@@ -1,4 +1,4 @@
-/* FODO Bot — MIND · Layer 6: CALCULATOR (safe maths + marketing metrics + funnel economics)
+/* FODO Bot: MIND · Layer 6: CALCULATOR (safe maths + marketing metrics + funnel economics)
  * No eval(), no Function(): a small recursive-descent parser over a whitelisted token set.
  * Exposes window.FODO_BOT_CALCULATOR = { calculate, evaluate, calculateMetric, funnel, reverseFunnel, breakEvenRoas, fmt, inr }.
  */
@@ -135,14 +135,14 @@
     // average of list
     if((m=q.match(/^(?:average|avg|mean) (?:of )?([\d.,\s and]+)$/))){ const xs=m[1].split(/[\s,]+|and/).map(Number).filter(Number.isFinite).filter((x,i,a)=>String(x)!=="NaN"); if(xs.length>=2){ const r=xs.reduce((a,b)=>a+b,0)/xs.length; return {result:r,formatted:fmt(r),html:`Average of ${xs.map(x=>fmt(x)).join(", ")} = <b>${fmt(r)}</b>`,kind:"avg"}; } }
     // compound interest (educational)
-    if((m=q.match(/compound(?:ed)? interest (?:on )?(\d[\d,]*(?:\.\d+)?(?:\s*(?:k|lakh|l|cr))?) (?:at )?(\d+(?:\.\d+)?)\s*% (?:for )?(\d+(?:\.\d+)?) years?/))){ const P=evaluate(m[1]), r=+m[2], y=+m[3]; if(typeof P==="number"){ const A=P*Math.pow(1+r/100,y); return {result:A,formatted:fmt(A),html:`${inr(P)} at ${r}% a year, compounded yearly for ${y} years ≈ <b>${inr(A)}</b> (interest ≈ ${inr(A-P)}). Illustrative only — real returns vary.`,kind:"ci"}; } }
+    if((m=q.match(/compound(?:ed)? interest (?:on )?(\d[\d,]*(?:\.\d+)?(?:\s*(?:k|lakh|l|cr))?) (?:at )?(\d+(?:\.\d+)?)\s*% (?:for )?(\d+(?:\.\d+)?) years?/))){ const P=evaluate(m[1]), r=+m[2], y=+m[3]; if(typeof P==="number"){ const A=P*Math.pow(1+r/100,y); return {result:A,formatted:fmt(A),html:`${inr(P)} at ${r}% a year, compounded yearly for ${y} years ≈ <b>${inr(A)}</b> (interest ≈ ${inr(A-P)}). Illustrative only, real returns vary.`,kind:"ci"}; } }
     // pure expression (must contain an operator or function)
     const expr=q.replace(/^(?:what is|whats)\s+/,"");
     if(!/[0-9]/.test(expr))return null;
     const hasOp=/[+\-*/^%()!x×÷]|\b(fact|plus|minus|times|into|multiplied|divided|over|power|squared|cubed|sqrt|square root|cube root|root of|by|guna|bhag)\b/.test(expr);
     if(!hasOp)return null;
     const v=evaluate(expr);
-    if(v&&v.error==="div0")return {error:"div0",html:"Division by zero isn't defined — even the best marketer can't split something into zero parts. 🙂"};
+    if(v&&v.error==="div0")return {error:"div0",html:"Division by zero isn't defined, even the best marketer can't split something into zero parts. 🙂"};
     if(typeof v!=="number")return null;
     return {result:v,formatted:fmt(v),html:`${prettyExpr(expr)} = <b>${fmt(v)}</b>`,kind:"expr"};
   }
@@ -159,17 +159,17 @@
     if(want("ctr|click.?through")&&ctx.clicks!=null&&ctx.impressions) add("CTR",pct(ctx.clicks/ctx.impressions*100),`clicks ÷ impressions × 100 = ${fmt(ctx.clicks)} ÷ ${fmt(ctx.impressions)} × 100`,"Context matters: search ads usually see higher CTR than feed ads; compare against your own past campaigns.");
     if(want("cpc|cost per click")&&S!=null&&ctx.clicks) add("CPC",inr(S/ctx.clicks),`spend ÷ clicks = ${inr(S)} ÷ ${fmt(ctx.clicks)}`,"A cheap click is only good if it turns into qualified leads.");
     if(want("cpm|cost per (thousand|mille)")&&S!=null&&ctx.impressions) add("CPM",inr(S/ctx.impressions*1000),`spend ÷ impressions × 1,000 = ${inr(S)} ÷ ${fmt(ctx.impressions)} × 1,000`,"CPM reflects auction competition and audience size, not creative quality alone.");
-    if(want("cpl|cost per lead")&&S!=null&&ctx.leads) add("CPL",inr(S/ctx.leads),`spend ÷ leads = ${inr(S)} ÷ ${fmt(ctx.leads)}`,"Judge CPL together with lead quality — qualified rate and close rate decide whether it's actually cheap.");
-    if(want("cpa|cost per (acquisition|sale|order|customer)|cac")&&S!=null&&ctx.customers) add(/cac/.test(q)?"CAC":"CPA",inr(S/ctx.customers),`spend ÷ customers = ${inr(S)} ÷ ${fmt(ctx.customers)}`,"True CAC also includes agency fees, creative and sales costs — not just ad spend.");
+    if(want("cpl|cost per lead")&&S!=null&&ctx.leads) add("CPL",inr(S/ctx.leads),`spend ÷ leads = ${inr(S)} ÷ ${fmt(ctx.leads)}`,"Judge CPL together with lead quality, qualified rate and close rate decide whether it's actually cheap.");
+    if(want("cpa|cost per (acquisition|sale|order|customer)|cac")&&S!=null&&ctx.customers) add(/cac/.test(q)?"CAC":"CPA",inr(S/ctx.customers),`spend ÷ customers = ${inr(S)} ÷ ${fmt(ctx.customers)}`,"True CAC also includes agency fees, creative and sales costs, not just ad spend.");
     if(want("roas")&&S&&ctx.revenue!=null) add("ROAS",fmt(ctx.revenue/S,2)+"x",`revenue ÷ ad spend = ${inr(ctx.revenue)} ÷ ${inr(S)}`,"ROAS ignores margin. A 3x ROAS can still lose money if your margin is 25%.");
     if(want("roi")&&S&&ctx.revenue!=null){
       if(ctx.margin!=null){ const gp=ctx.revenue*ctx.margin/100; add("ROI (on gross profit)",pct((gp-S)/S*100,1),`(revenue × margin − cost) ÷ cost = (${inr(ctx.revenue)} × ${ctx.margin}% − ${inr(S)}) ÷ ${inr(S)}`,"This version uses gross profit, which is closer to real return than revenue."); }
       else add("ROI (on revenue)",pct((ctx.revenue-S)/S*100,1),`(revenue − cost) ÷ cost × 100 = (${inr(ctx.revenue)} − ${inr(S)}) ÷ ${inr(S)} × 100`,"Assumption: this uses revenue, not profit. Share your margin % and I'll compute ROI on gross profit, which is the honest version.");
     }
-    if(want("cvr|conversion rate|conversion")&&ctx.customers!=null&&(ctx.visitors||ctx.clicks||ctx.leads)){ const base=ctx.visitors||ctx.clicks||ctx.leads, label=ctx.visitors?"visitors":ctx.clicks?"clicks":"leads"; add("Conversion rate",pct(ctx.customers/base*100),`conversions ÷ ${label} × 100 = ${fmt(ctx.customers)} ÷ ${fmt(base)} × 100`,"Always state the base (visitors, clicks or leads) — conversion rates aren't comparable otherwise."); }
+    if(want("cvr|conversion rate|conversion")&&ctx.customers!=null&&(ctx.visitors||ctx.clicks||ctx.leads)){ const base=ctx.visitors||ctx.clicks||ctx.leads, label=ctx.visitors?"visitors":ctx.clicks?"clicks":"leads"; add("Conversion rate",pct(ctx.customers/base*100),`conversions ÷ ${label} × 100 = ${fmt(ctx.customers)} ÷ ${fmt(base)} × 100`,"Always state the base (visitors, clicks or leads), conversion rates aren't comparable otherwise."); }
     else if(want("cvr|conversion rate|conversion")&&ctx.leads!=null&&(ctx.visitors||ctx.clicks)){ const base=ctx.visitors||ctx.clicks; add("Visitor→lead rate",pct(ctx.leads/base*100),`leads ÷ ${ctx.visitors?"visitors":"clicks"} × 100 = ${fmt(ctx.leads)} ÷ ${fmt(base)} × 100`,"Landing pages vary widely; your own trend matters more than an industry average."); }
     if(want("aov|average order")&&ctx.revenue!=null&&ctx.customers) add("AOV",inr(ctx.revenue/ctx.customers),`revenue ÷ orders = ${inr(ctx.revenue)} ÷ ${fmt(ctx.customers)}`,"Raising AOV (bundles, upsells) makes every acquisition channel more affordable.");
-    if(want("break.?even|breakeven")&&ctx.margin){ const be=breakEvenRoas(ctx.margin); add("Break-even ROAS",fmt(be,2)+"x",`1 ÷ contribution margin = 1 ÷ ${ctx.margin}%`,`Below ${fmt(be,2)}x you lose money on the first order (before repeat purchases). Use contribution margin — after product cost, shipping, payment fees and returns.`); }
+    if(want("break.?even|breakeven")&&ctx.margin){ const be=breakEvenRoas(ctx.margin); add("Break-even ROAS",fmt(be,2)+"x",`1 ÷ contribution margin = 1 ÷ ${ctx.margin}%`,`Below ${fmt(be,2)}x you lose money on the first order (before repeat purchases). Use contribution margin, after product cost, shipping, payment fees and returns.`); }
     if(want("ltv|clv|lifetime value")&&ctx.aov){ const freq=ctx.frequency||null; if(freq) add("LTV (revenue)",inr(ctx.aov*freq),`AOV × purchases over the relationship = ${inr(ctx.aov)} × ${freq}`,"Multiply by margin for profit-based LTV."); }
     if(want("margin|profit margin")&&ctx.revenue&&ctx.cost!=null) add("Profit margin",pct((ctx.revenue-ctx.cost)/ctx.revenue*100,1),"(revenue − cost) ÷ revenue × 100","");
     return out.length?out:null;

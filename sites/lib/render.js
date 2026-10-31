@@ -1,4 +1,4 @@
-/* FODO Website Builder — the renderer (v28). ONE module used everywhere: the builder canvas (browser), the publish check, the
+/* FODO Website Builder, the renderer (v28). ONE module used everywhere: the builder canvas (browser), the publish check, the
    live sites (sites/ Pages project) and the export ZIP. A website is data, not code: { theme, settings, pages:[{slug,title,seo,
    sections:[{type, props}]}] }. Every text is HTML-escaped, every link/image URL is checked (http(s), mailto, tel, #, relative,
    site media), there is no raw-HTML section, so a website can never inject script into the page. Custom CSS is sanitised.
@@ -62,7 +62,7 @@ function formHtml(p, c, kind, inline) {
     if (f.type === "checkbox") return f.options.length ? '<fieldset class="fset"><legend>' + esc(f.label) + "</legend>" + f.options.map((o, k) => '<label class="ck"><input type="checkbox" name="' + esc(f.name) + '" value="' + esc(o) + '" id="' + id + k + '"> ' + esc(o) + "</label>").join("") + "</fieldset>" : '<label class="ck"><input type="checkbox" id="' + id + '" name="' + esc(f.name) + '" value="yes"' + req + "> " + esc(f.label) + "</label>";
     if (f.type === "radio") return '<fieldset class="fset"><legend>' + esc(f.label) + "</legend>" + f.options.map((o, k) => '<label class="ck"><input type="radio" name="' + esc(f.name) + '" value="' + esc(o) + '" id="' + id + k + '"' + (k === 0 && f.required ? " required" : "") + "> " + esc(o) + "</label>").join("") + "</fieldset>";
     return lab + '<input id="' + id + '" name="' + esc(f.name) + '" type="' + ({ phone: "tel", email: "email", number: "number", date: "date", time: "time" }[f.type] || "text") + '"' + (f.type === "phone" ? ' autocomplete="tel"' : f.type === "email" ? ' autocomplete="email"' : f.name === "name" ? ' autocomplete="name"' : "") + req + ">"; };
-  return '<form class="' + (inline ? "form inline-form" : "card form") + '" method="post" action="' + esc(c.formAction) + '" data-fodo-form data-type="' + esc(type) + '"' + (redirect ? ' data-redirect="' + esc(c.home + "thank-you/") + '"' : "") + '><input type="text" name="_hp" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true"><input type="hidden" name="_form" value="' + esc(type) + '">' + fs.map(field).join("") + '<button class="btn" type="submit">' + esc(p.button || "Send") + '</button><p class="form-ok" role="status" hidden>' + esc((p.form && p.form.success) || "Thank you — we'll get back to you soon.") + "</p></form>";
+  return '<form class="' + (inline ? "form inline-form" : "card form") + '" method="post" action="' + esc(c.formAction) + '" data-fodo-form data-type="' + esc(type) + '"' + (redirect ? ' data-redirect="' + esc(c.home + "thank-you/") + '"' : "") + '><input type="text" name="_hp" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true"><input type="hidden" name="_form" value="' + esc(type) + '">' + fs.map(field).join("") + '<button class="btn" type="submit">' + esc(p.button || "Send") + '</button><p class="form-ok" role="status" hidden>' + esc((p.form && p.form.success) || "Thank you, we'll get back to you soon.") + "</p></form>";
 }
 /* embeds: only well-known providers, always https, turned into their official embed address */
 export function embedUrl(u) {
@@ -113,7 +113,7 @@ const R = {
     return '<section class="portfolio" id="work"><div class="wrap">' + head(p, c.edit) + (cats.length > 1 ? '<div class="pf-f" role="group" aria-label="Filter projects"><button type="button" class="on" data-pf="*">All</button>' + cats.map((k) => '<button type="button" data-pf="' + esc(k) + '">' + esc(k) + "</button>").join("") + "</div>" : "") + '<div class="grid g3">' + items.map((x) => '<article class="card pf" data-cat="' + esc(x.category || "") + '">' + img(x.image, x.title, "cimg") + (x.category ? '<p class="eyebrow">' + esc(x.category) + "</p>" : "") + "<h3>" + (safeUrl(x.link) ? '<a href="' + esc(link(safeUrl(x.link))) + '">' + esc(x.title) + "</a>" : esc(x.title)) + "</h3>" + (x.text ? "<p>" + esc(x.text) + "</p>" : "") + (x.result ? '<p class="price">' + esc(x.result) + "</p>" : "") + "</article>").join("") + "</div></div></section>"; },
   countdown: (p, c) => '<section class="countdown"><div class="wrap center">' + head(p, c.edit) + '<div class="cd" data-cd="' + esc(String(p.date || "")) + '"><div><b>--</b><span>days</span></div><div><b>--</b><span>hours</span></div><div><b>--</b><span>min</span></div><div><b>--</b><span>sec</span></div></div>' + btn(p.cta, "", true) + "</div></section>",
   map: (p, c) => p.address ? '<section class="map"><div class="wrap">' + head(p, c.edit) + '<iframe class="r" title="Map" loading="lazy" referrerpolicy="no-referrer" src="https://www.google.com/maps?q=' + encodeURIComponent(String(p.address)) + '&output=embed"></iframe></div></section>' : "",
-  /* v29 store + blog sections — filled from the website's own products/posts (o.data); placeholders in the editor */
+  /* v29 store + blog sections, filled from the website's own products/posts (o.data); placeholders in the editor */
   products: (p, c) => { const D = c.data || {}, all = (D.products || []).filter((x) => !p.collection || x.collection === p.collection).slice(0, Math.max(1, Math.min(48, +p.limit || 8)));
     const card = (x) => '<article class="card prod"><a href="' + esc(c.home + "p/" + x.slug + "/") + '" class="pimg">' + (x.image ? img(x.image, x.title, "") : '<div class="ph"></div>') + '</a><h3><a href="' + esc(c.home + "p/" + x.slug + "/") + '">' + esc(x.title) + '</a></h3><p class="pp"><b>' + esc(money(x.price, D.currency)) + "</b>" + (x.compare > x.price ? " <s>" + esc(money(x.compare, D.currency)) + "</s>" : "") + "</p>" + (x.stock === 0 ? '<p class="oos">Sold out</p>' : x.opts ? '<a class="btn sm" href="' + esc(c.home + "p/" + x.slug + "/") + '">Choose options</a>' : '<button class="btn sm" type="button" data-add="' + esc(x.id) + '">Add to cart</button>') + "</article>";
     return '<section class="shop" id="shop"><div class="wrap">' + head(p, c.edit) + '<div class="grid g4">' + (all.length ? all.map(card).join("") : [1, 2, 3, 4].map((i) => '<article class="card prod"><div class="ph"></div><h3>Product ' + i + '</h3><p class="pp"><b>₹—</b></p></article>').join("")) + "</div>" + (D.cartLink !== false ? '<p class="cartlink"><a class="btn ghost" href="' + esc(c.home + "cart/") + '">View cart</a></p>' : "") + "</div></section>"; },
@@ -177,9 +177,9 @@ export function themeCss(t) {
     motionCss(t.motion) +
     "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}.rv{opacity:1!important;transform:none!important}}";
 }
-/* v32 motion design system — 5 levels: none · subtle · modern (default) · dynamic · experimental, plus a per-section entrance
+/* v32 motion design system, 5 levels: none · subtle · modern (default) · dynamic · experimental, plus a per-section entrance
    (fade, fade-up, fade-down, slide-left/right, scale, blur) and a global hover style (lift, scale, glow). CSS does the work
-   (transform/opacity only — cheap on phones); a small observer script triggers it. Content is never hidden without JavaScript
+   (transform/opacity only, cheap on phones); a small observer script triggers it. Content is never hidden without JavaScript
    (elements are prepared for the reveal by the script itself) and visitors who ask for reduced motion get none. */
 export const MOTIONS = ["none", "subtle", "modern", "dynamic", "experimental"];
 function hoverCss(h) {
@@ -210,7 +210,7 @@ function motionCss(m0) {
       ".cta-band{background:linear-gradient(110deg,var(--p),var(--a),var(--p));background-size:200% auto;animation:gshift 8s linear infinite}.m-glow{position:absolute;pointer-events:none;width:520px;height:520px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--p) 30%,transparent),transparent);transform:translate(-50%,-50%);z-index:0;transition:opacity .4s}.hero{position:relative;overflow:hidden}.hero .wrap{position:relative;z-index:1}" : "");
 }
 /* the motion script: reveal on scroll (per-section entrance), count-up numbers, sticky-nav shadow, progress bar, marquee,
-   hero parallax, word reveal, magnetic buttons and cursor glow — each only from the level that uses it */
+   hero parallax, word reveal, magnetic buttons and cursor glow, each only from the level that uses it */
 export function motionScript(m0) {
   const m = motionLevel(m0); if (m === "none") return "";
   const L = { subtle: 0, modern: 1, dynamic: 2, experimental: 3 }[m];
@@ -244,10 +244,10 @@ export function renderPage(site, slug, o) {
   let h1 = false; const c = { data: o.data || null, virtual: !!o.virtual, name, edit: !!o.edit, home: base, nav: navOf(site, base, page.slug), legal: (site.pages || []).filter((x) => x.nav === false && !x.hidden && /^(privacy|terms|shipping|returns|refund|cookies?)/.test(x.slug)).map((x) => ({ label: x.title, href: base + x.slug + "/" })), search: !!S.search, formAction: o.formAction || "#", badge: o.badge !== false, si: 0, h1: (close) => { if (close) return c._t; c._t = h1 ? "h2" : "h1"; h1 = true; return c._t; } };
   const comps = {}; (site.components || []).forEach((k) => { if (k && k.id) comps[k.id] = k; });
   const body = (page.sections || []).map((s, i) => { const f = R[s.type]; if (!f) return ""; c.si = i; const props = s.ref && comps[s.ref] && comps[s.ref].type === s.type ? comps[s.ref].props || {} : s.props || {};
-    let html = f(props, c); if (!html) return o.edit ? '<section data-sec="' + i + '" class="ed-empty"><div class="wrap"><p class="sub">' + esc(SECTION_LABELS[s.type] || s.type) + " — add details in the panel</p></div></section>" : "";
+    let html = f(props, c); if (!html) return o.edit ? '<section data-sec="' + i + '" class="ed-empty"><div class="wrap"><p class="sub">' + esc(SECTION_LABELS[s.type] || s.type) + ", add details in the panel</p></div></section>" : "";
     html = wrapStyle(html, s.style || props._s, s.type); return o.edit ? html.replace(/^<(header|section|footer)/, '<$1 data-sec="' + i + '"') : html; }).join("\n");
   let body2 = body; if (!/<h1[\s>]/.test(body2)) { const k = body2.indexOf("<h2"); if (k > -1) { const e = body2.indexOf("</h2>", k); body2 = body2.slice(0, k) + "<h1" + body2.slice(k + 3, e) + "</h1>" + body2.slice(e + 5); } }   // every page gets exactly one H1
-  const title = seo.title || (page.slug === "home" ? name + (biz.tagline ? " — " + biz.tagline : "") : page.title + " — " + name), desc = seo.description || biz.description || "";
+  const title = seo.title || (page.slug === "home" ? name + (biz.tagline ? ": " + biz.tagline : "") : page.title + ": " + name), desc = seo.description || biz.description || "";
   const canon = o.origin ? o.origin + base + (page.slug === "home" ? "" : page.slug + "/") : "";
   const fonts = [site.theme && site.theme.font, site.theme && site.theme.headingFont].filter((f, i, a) => GF[f] && f !== "Inter" && a.indexOf(f) === i).map((f) => GF[f]);
   const schema = { "@context": "https://schema.org", "@type": biz.schemaType || "LocalBusiness", name, url: canon || undefined, telephone: biz.phone || undefined, email: biz.email || undefined, address: biz.address ? { "@type": "PostalAddress", streetAddress: biz.address, addressLocality: biz.city || undefined, addressCountry: biz.country || "IN" } : undefined };
@@ -270,7 +270,7 @@ export function liveScript(endpoint, siteId) {   // v32: respects cookie consent
     "function b(t,x){if(!ok())return;try{navigator.sendBeacon(E+'/e',new Blob([JSON.stringify({s:S,t:t,p:location.pathname,x:x||'',d:d,r:document.referrer.slice(0,200)})],{type:'text/plain'}))}catch(e){}}window.__fodoView=function(){b('view')};b('view');" +
     "document.addEventListener('click',function(e){var a=e.target.closest('[data-cta]');if(a)b('cta',a.getAttribute('data-cta'))});" +
     "document.querySelectorAll('[data-fodo-form]').forEach(function(f){f.addEventListener('submit',function(e){e.preventDefault();var o={};new FormData(f).forEach(function(v,k){v=String(v).slice(0,4000);o[k]=o[k]?o[k]+', '+v:v});o._page=location.pathname;var btn=f.querySelector('button[type=submit]');btn.disabled=true;" +
-    "fetch(E+'/f/'+S,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify(o)}).then(function(r){return r.json()}).then(function(j){if(j.ok){var rd=f.getAttribute('data-redirect');if(rd){location.href=rd;return}f.reset();f.querySelector('.form-ok').hidden=false}else alert(j.reason||'Could not send')}).catch(function(){alert('Could not send — please try again')}).finally(function(){btn.disabled=false})})})})()</script>";
+    "fetch(E+'/f/'+S,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify(o)}).then(function(r){return r.json()}).then(function(j){if(j.ok){var rd=f.getAttribute('data-redirect');if(rd){location.href=rd;return}f.reset();f.querySelector('.form-ok').hidden=false}else alert(j.reason||'Could not send')}).catch(function(){alert('Could not send, please try again')}).finally(function(){btn.disabled=false})})})})()</script>";
 }
 export function sitemap(site, origin, base, extra) { const urls = (site.pages || []).filter((p) => !p.hidden && !p.noindex && !p.password).map((p) => "<url><loc>" + esc(origin + base + (p.slug === "home" ? "" : p.slug + "/")) + "</loc></url>").concat((extra || []).map((x) => "<url><loc>" + esc(origin + base + x) + "</loc></url>")); return '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls.join("") + "</urlset>"; }
 
@@ -281,18 +281,18 @@ export function checkSite(site) {
   for (const p of site.pages || []) {
     const secs = p.sections || [], seo = p.seo || {}, html = renderPage(site, p.slug, { base: "/", badge: false });
     if (!secs.length) add("critical", p.slug, "The page is empty.");
-    if (!/<h1[\s>]/.test(html)) add("warning", p.slug, "No main heading (H1) — add a Hero section.", "Add a hero");
+    if (!/<h1[\s>]/.test(html)) add("warning", p.slug, "No main heading (H1), add a Hero section.", "Add a hero");
     if (!(seo.title || p.title)) add("warning", p.slug, "No page title.");
     if (!seo.description && !(site.settings && site.settings.business && site.settings.business.description)) add("warning", p.slug, "No meta description (Google shows it in search results).", "SEO → description");
     const ph = JSON.stringify(secs).match(PLACEHOLDER) || []; if (ph.length) add("critical", p.slug, "Placeholder text still on the page: " + [...new Set(ph)].slice(0, 3).join(", "), "Replace it with your real details (reviews must be real).");
     const noAlt = (html.match(/<img(?![^>]*alt="[^"]+")[^>]*>/g) || []).length; if (noAlt) add("warning", p.slug, noAlt + " image(s) without alt text.");
     for (const m of html.matchAll(/href="\/((?:[a-z0-9-]+\/)?)"/g)) { const s = m[1].replace(/\/$/, "") || "home"; if (!slugs.has(s) && s !== "home" && !/^(cart|checkout|blog|thank-you|search)$/.test(s)) add("critical", p.slug, "Link to a page that doesn't exist: /" + m[1]); }
-    for (const s of secs) if (s.type === "contact" && !(site.settings && site.settings.notifyEmail)) { add("warning", p.slug, "The contact form has no email to notify — submissions only appear in your dashboard.", "Settings → notification email"); break; }
+    for (const s of secs) if (s.type === "contact" && !(site.settings && site.settings.notifyEmail)) { add("warning", p.slug, "The contact form has no email to notify, submissions only appear in your dashboard.", "Settings → notification email"); break; }
   }
   const st = (site.settings && site.settings.store) || {};
   if ((site.pages || []).some((p) => (p.sections || []).some((s) => s.type === "products"))) {
-    if (st.cod === false && !st.whatsapp && !st.online) add("critical", "", "Your store has no way to order — switch on cash on delivery, WhatsApp or online payment.", "Store → Store settings");
-    if (!(site.settings && site.settings.notifyEmail)) add("warning", "", "No email for new orders — orders will only appear in Store → Orders.", "Store → Store settings");
+    if (st.cod === false && !st.whatsapp && !st.online) add("critical", "", "Your store has no way to order, switch on cash on delivery, WhatsApp or online payment.", "Store → Store settings");
+    if (!(site.settings && site.settings.notifyEmail)) add("warning", "", "No email for new orders, orders will only appear in Store → Orders.", "Store → Store settings");
   }
   return { ok: !out.some((x) => x.level === "critical"), issues: out };
 }

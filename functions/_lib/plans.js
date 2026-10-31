@@ -1,4 +1,4 @@
-/* FODO Growth Lab plans — the single source of truth for prices, limits and features (server enforces, pages display).
+/* FODO Growth Lab plans, the single source of truth for prices, limits and features (server enforces, pages display).
    Change prices here only. Amounts are INR. "needs" = a data provider that must be connected before that feature is
    shown or sold (the plans page hides features whose provider is missing, so nothing is promised that cannot be delivered). */
 export const PLANS = {
@@ -20,7 +20,7 @@ export const PACKS = {
   p5:  { id: "p5",  name: "5 X-Rays",  xrays: 5,  price: 299 },
   p20: { id: "p20", name: "20 X-Rays", xrays: 20, price: 999 },
   p60: { id: "p60", name: "60 X-Rays", xrays: 60, price: 2499 },
-  // ₹1 payment test (1 X-Ray). Hidden and NOT buyable unless the Cloudflare variable PAY_TEST = "1" — switch it off after testing.
+  // ₹1 payment test (1 X-Ray). Hidden and NOT buyable unless the Cloudflare variable PAY_TEST = "1", switch it off after testing.
   ptest: { id: "ptest", name: "Payment test (1 X-Ray)", xrays: 1, price: 1, hidden: true },
 };
 export const FEATURE_INFO = {
@@ -37,11 +37,11 @@ export const FEATURE_INFO = {
   authority: { label: "Domain authority for you and every competitor (Open PageRank, estimated)", needs: "authority" },
   shareOfVoice: { label: "Search share of voice: how much of Google's first page you own vs each competitor" },
   keywordMap: { label: "Keyword → page map: which of your pages should rank for each search, and which pages are missing" },
-  trackingAudit: { label: "Tracking & ads readiness: analytics, pixels and Search Console checked — and which pixels competitors run that you don't" },
+  trackingAudit: { label: "Tracking & ads readiness: analytics, pixels and Search Console checked, and which pixels competitors run that you don't" },
   schemaCode: { label: "Ready-to-paste schema code (JSON-LD) built from your real business details" },
   adLibrary: { label: "Competitor ads: one-click links to every competitor's live Meta and Google ads" },
   monthlyReport: { label: "Monthly growth report: what improved, what declined, competitor changes and what to do next" },
-  whyWinning: { label: "Why are they winning? — head-to-head with any competitor, and how to catch them (now / 30 / 90 days)" },
+  whyWinning: { label: "Why are they winning?, head-to-head with any competitor, and how to catch them (now / 30 / 90 days)" },
   roadmapLite: { label: "90-day growth roadmap (rules-based, from your own findings) with KPIs" },
   fixPack: { label: "FODO Edge · AI Fix Pack: rewritten titles, meta descriptions, headlines and FAQs for your pages, ready to paste", edge: true },
   battleCards: { label: "FODO Edge · Competitor battle cards: how to win against each competitor, with talk tracks for sales", edge: true },

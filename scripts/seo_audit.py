@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FODO SEO audit — reads the BUILT site (run build_pages.py first) and writes docs/SEO-AUDIT-REPORT.md.
+"""FODO SEO audit, reads the BUILT site (run build_pages.py first) and writes docs/SEO-AUDIT-REPORT.md.
 Checks only what can be verified from files: titles, descriptions, H1s, canonicals, robots meta, Open Graph/Twitter,
 JSON-LD validity and banned schema, internal links, image alt text, orphan pages, sitemap coverage and robots.txt.
 Anything that needs the live site (indexing, rankings, Core Web Vitals field data, redirects at the edge) is listed as
@@ -38,7 +38,7 @@ for u, h in sorted(pages.items()):
             o = json.loads(j); objs = o.get("@graph", [o]) if isinstance(o, dict) else o
             types += [x.get("@type", "?") for x in objs]
         except Exception as e: add("ERROR", u, f"JSON-LD does not parse: {e}")
-        if BANNED.search(j): add("ERROR", u, "schema contains rating/review/award markup — not allowed without real, verified data")
+        if BANNED.search(j): add("ERROR", u, "schema contains rating/review/award markup, not allowed without real, verified data")
     body = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", h.split('<main id="main">')[-1].split("</main>")[0], flags=re.S)
     words = len(html.unescape(re.sub(r"<[^>]+>", " ", body)).split())
     noidx = "noindex" in rob
@@ -88,10 +88,10 @@ if re.search(r"Disallow:\s*/(css|js|assets)\b", rb): add("ERROR", "/robots.txt",
 
 errs = [i for i in issues if i[0] == "ERROR"]; warns = [i for i in issues if i[0] == "WARN"]; infos = [i for i in issues if i[0] == "INFO"]
 os.makedirs(os.path.join(ROOT, "docs"), exist_ok=True)
-L = [f"# FODO — SEO audit report", "", f"Generated {datetime.date.today().isoformat()} by `scripts/seo_audit.py` from the built files. Canonical host: `{SITE}`.", "",
+L = [f"# FODO: SEO audit report", "", f"Generated {datetime.date.today().isoformat()} by `scripts/seo_audit.py` from the built files. Canonical host: `{SITE}`.", "",
      f"**{len(pages)} HTML pages · {len(locs)} sitemap URLs · {len(errs)} errors · {len(warns)} warnings · {len(infos)} notes**", "",
      "## Issues", ""]
-L += [f"- **{lv}** `{u}` — {m}" for lv, u, m in errs + warns + infos] or ["- None."]
+L += [f"- **{lv}** `{u}`: {m}" for lv, u, m in errs + warns + infos] or ["- None."]
 L += ["", "## Pages", "", "| URL | Title len | Desc len | H1 | Static words | Schema | Title |", "|---|---|---|---|---|---|---|"]
 L += [f"| `{u}` | {a} | {b} | {c} | {w} | {s} | {html.escape(t)} |" for u, a, b, c, w, s, t in rows]
 L += ["", "## NOT VERIFIED (needs the live site or account access)", "",
@@ -102,5 +102,5 @@ L += ["", "## NOT VERIFIED (needs the live site or account access)", "",
       "- Whether `_headers` rules are applied by Cloudflare Pages as expected (check response headers after deploy).", ""]
 open(os.path.join(ROOT, "docs", "SEO-AUDIT-REPORT.md"), "w").write("\n".join(L))
 print(f"SEO audit: {len(pages)} pages, {len(errs)} errors, {len(warns)} warnings, {len(infos)} notes → docs/SEO-AUDIT-REPORT.md")
-for lv, u, m in errs + warns: print(f"  {lv} {u} — {m}")
+for lv, u, m in errs + warns: print(f"  {lv} {u}: {m}")
 sys.exit(1 if errs else 0)

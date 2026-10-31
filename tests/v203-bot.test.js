@@ -1,4 +1,4 @@
-/* v20.3 — the "Ask FODO" bot knows everything built on the site, with live data, and paying members get a personal assistant.
+/* v20.3, the "Ask FODO" bot knows everything built on the site, with live data, and paying members get a personal assistant.
    Real site pages + real bot chain in Chromium; the APIs answer with the real help articles, prices and Growth Lab catalog.
    Run: node tests/v203-bot.test.js */
 const http = require("http"), fs = require("fs"), path = require("path");
@@ -36,7 +36,7 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
   let a = await ask("plans kitne ke hain?");
   ok(/Starter: ₹499\/month/.test(text(a)) && /Agency: ₹9,999\/month/.test(text(a)) && /plans\//.test(a), "Growth Lab plans with live prices + link (Hinglish question)");
   a = await ask("What is the Competitor War Room?");
-  ok(/Competitor War Room/.test(a) && /₹2,999/.test(a) && /growth-lab\/war-room\//.test(a), "a Pro tool: what it does, its one-run price, its page");
+  ok(/Competitor War Room/.test(a) && /₹299/.test(a) && /growth-lab\/war-room\//.test(a), "a Pro tool: what it does, its one-run price, its page");
   a = await ask("free tools kya hai?");
   ok(/Growth Score/.test(a) && /Competitor Finder/.test(a) && /marketing-budget\//.test(a), "free tools listed with links");
   a = await ask("refund kaise milega?");

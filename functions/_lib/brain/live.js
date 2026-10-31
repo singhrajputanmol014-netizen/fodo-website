@@ -13,6 +13,8 @@ export const liveOn = (env) => !!env.GEMINI_API_KEY;
 export const VOICES = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"];
 
 export async function pickModel(env) {
+  // GEMINI_LIVE_MODEL (Cloudflare variable) pins the model, e.g. gemini-3.1-flash-live-preview — the free-of-charge Live model
+  if (env.GEMINI_LIVE_MODEL) { const m = String(env.GEMINI_LIVE_MODEL).trim(); return m.startsWith("models/") ? m : "models/" + m; }
   const d = await brainDb(env), c = await d.prepare("SELECT v, updated_at FROM brain_settings WHERE k='liveModel'").first();
   if (c && c.v && Date.now() - Date.parse(c.updated_at) < 864e5) return c.v;
   const r = await outbound(env)(G + "/v1beta/models?pageSize=300", { headers: { "x-goog-api-key": env.GEMINI_API_KEY }, signal: AbortSignal.timeout(10000) });

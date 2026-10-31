@@ -60,6 +60,7 @@ r = await B("live", undefined, "cust"); ok(r.status === 403, "customers can't ge
 await B("members", { email: "team@acme.in", role: "limited", perms: ["social"] }); r = await B("live", undefined, "team"); ok(r.status === 403, "a member without 'chat' access can't either");
 await B("members", { email: "team@acme.in", role: "limited", perms: ["chat"] }); r = await B("live", undefined, "team"); ok(r.j.ok && /team member/.test(r.j.setup.systemInstruction.parts[0].text), "a member with chat access gets a token with a team-member persona");
 env.XRAY_DB.db.prepare("DELETE FROM brain_settings WHERE k='liveModel'").run(); modelsBad = true; r = await B("live"); ok(r.status === 503 && /key problem/.test(r.j.reason) && !r.t.includes(env.GEMINI_API_KEY), "a bad Gemini key → clear message (the page falls back to the standard voice)");
+env.GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview"; modelsBad = false; r = await B("live"); ok(r.j.ok && r.j.model === "models/gemini-3.1-flash-live-preview", "GEMINI_LIVE_MODEL pins the model (e.g. the free Live model)"); delete env.GEMINI_LIVE_MODEL;
 delete env.GEMINI_API_KEY; r = await B("status"); ok(r.j.voice.live === false, "no Gemini key → live off, standard voice used");
 
 console.log("\nv26 live: " + pass + "/" + (pass + fail) + " passed");

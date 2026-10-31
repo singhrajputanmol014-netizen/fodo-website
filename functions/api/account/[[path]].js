@@ -75,7 +75,7 @@ function config(env) {
     whatsapp: on && waOn(env),
     firebase: on && firebaseOn(env) ? { apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN || env.FIREBASE_PROJECT_ID + ".firebaseapp.com", projectId: env.FIREBASE_PROJECT_ID, providers: fbp } : null, email: on && !!env.RESEND_API_KEY, payments: on && cfOn(env),
     autoRenew: on && payProvider(env) === "cashfree" && env.CASHFREE_SUBSCRIPTIONS === "1", payments: on ? payProvider(env) : null, mode: payProvider(env) === "razorpay" ? rzpMode(env) : env.CASHFREE_ENV === "production" ? "production" : "sandbox", testMode: env.XRAY_TEST_MODE === "1" },
-    publicPlans({ seo: !!P.seo, authority: !!env.OPR_API_KEY })), 200, { "cache-control": "public, max-age=60" });
+    publicPlans({ seo: !!P.seo, authority: !!env.OPR_API_KEY, payTest: env.PAY_TEST === "1" })), 200, { "cache-control": "public, max-age=60" });
 }
 
 /* ---------------- login ---------------- */
@@ -231,6 +231,7 @@ async function checkout(request, env, u, b, body) {
   if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login — every feature is already free." }, 409);
   const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : "plan", item = String(body.item || "");
   const thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : PLANS[item];
+  if (thing && thing.hidden && env.PAY_TEST !== "1") return json({ ok: false, reason: "Unknown plan." }, 400);
   if (!thing || (kind === "plan" && item === "free")) return json({ ok: false, reason: kind === "tool" ? "Unknown tool." : "Unknown plan." }, 400);
   if (kind === "tool" && thing.on === false) return json({ ok: false, reason: thing.name + " is not available right now." }, 503);
   const cur = activePlan(b);

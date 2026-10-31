@@ -20,6 +20,8 @@ export const PACKS = {
   p5:  { id: "p5",  name: "5 X-Rays",  xrays: 5,  price: 299 },
   p20: { id: "p20", name: "20 X-Rays", xrays: 20, price: 999 },
   p60: { id: "p60", name: "60 X-Rays", xrays: 60, price: 2499 },
+  // ₹1 payment test (1 X-Ray). Hidden and NOT buyable unless the Cloudflare variable PAY_TEST = "1" — switch it off after testing.
+  ptest: { id: "ptest", name: "Payment test (1 X-Ray)", xrays: 1, price: 1, hidden: true },
 };
 export const FEATURE_INFO = {
   fullReport: { label: "Full report: every section, every opportunity, competitor details, customer quotes, keyword table, AI visibility" },
@@ -60,5 +62,5 @@ export function limitsFor(planId) {
 export function publicPlans(providers) {
   const ok = (f) => !FEATURE_INFO[f].needs || (providers && providers[FEATURE_INFO[f].needs]);
   return { plans: ORDER.map((id) => { const p = PLANS[id]; return { id, name: p.name, price: p.price, xrays: p.xrays, period: p.period, pages: p.pages, competitors: p.competitors, seats: p.seats, monitors: p.monitors,
-    features: p.features.filter(ok).map((f) => ({ id: f, label: FEATURE_INFO[f].label })), pending: p.features.filter((f) => !ok(f)).map((f) => ({ id: f, label: FEATURE_INFO[f].label })) }; }), packs: Object.values(PACKS) };
+    features: p.features.filter(ok).map((f) => ({ id: f, label: FEATURE_INFO[f].label })), pending: p.features.filter((f) => !ok(f)).map((f) => ({ id: f, label: FEATURE_INFO[f].label })) }; }), packs: Object.values(PACKS).filter((k) => !k.hidden || (providers && providers.payTest)) };
 }

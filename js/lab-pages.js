@@ -56,7 +56,7 @@
     var tries = 0;
     var once = function () {
       return A.api("verify", oid ? { order_id: oid } : { subscription_id: sid }).then(function (j) {
-        if (j.paid || j.active) { try { history.replaceState(null, "", location.pathname); sessionStorage.removeItem("fodo-pay"); } catch (e) {} return A.me(true).then(function () { msg(st2, "Payment received — your account is updated. Thank you!", "ok"); }); }
+        if (j.paid || j.active) { try { history.replaceState(null, "", location.pathname); sessionStorage.removeItem("fodo-pay"); } catch (e) {} return A.me(true).then(function (u) { if (u) draw(u); msg(st2, "Payment received — your account is updated. Thank you!", "ok"); }); }
         if (j._status === 404 || j._status === 401) { msg(st2, j.reason || "This payment is not linked to the account you are logged in with.", "warn"); return; }
         var s = j.status || "";
         if (/FAILED|CANCELLED|EXPIRED|TERMINATED/.test(s)) { msg(st2, "The payment did not go through (" + s.toLowerCase() + "). Nothing was charged for this order — you can try again from Plans.", "warn"); return; }

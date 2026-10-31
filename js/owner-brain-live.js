@@ -13,6 +13,7 @@
   function emit(n, x) { (E[n] || []).forEach(function (f) { try { f(x); } catch (e) {} }); }
   function b64(bytes) { var bin = "", CH = 0x8000; for (var i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH)); return btoa(bin); }
   function unb64(s) { var b = atob(s), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
+  function sendText(t) { send({ realtimeInput: { text: String(t) } }); }   // the current Live API way to type into a running voice session
   function send(o) { if (L.ws && L.ws.readyState === 1) L.ws.send(JSON.stringify(o)); }
 
   /* microphone → 16 kHz PCM16 → ~100 ms chunks */
@@ -38,7 +39,7 @@
   function levelLoop() { if (L.levelLoop) return; L.levelLoop = true; var data = new Uint8Array(128); (function loop() { if (!L.active) { L.levelLoop = false; return; } if (L.an) { L.an.getByteFrequencyData(data); var s = 0; for (var k = 2; k < 48; k++) s += data[k]; L.outLvl = Math.min(1, s / (46 * 140)); if (L.playing) emit("level", L.outLvl); } requestAnimationFrame(loop); })(); }
 
   function handle(m) {
-    if (m.setupComplete) { L.ready = true; emit("state", "listening"); if (L.firstText) { send({ clientContent: { turns: [{ role: "user", parts: [{ text: L.firstText }] }], turnComplete: true } }); L.firstText = null; emit("state", "thinking"); } return; }
+    if (m.setupComplete) { L.ready = true; clearTimeout(L.setupTimer); emit("ready", true); emit("state", "listening"); if (L.firstText) { sendText(L.firstText); L.firstText = null; emit("state", "thinking"); } return; }
     var sc = m.serverContent;
     if (sc) {
       if (sc.interrupted) { flush(); L.fodoText = ""; emit("state", "listening"); }
@@ -77,19 +78,39 @@
       if (!L.active) return false;
       return new Promise(function (resolve, reject) {
         var ws = new WebSocket(t.ws); L.ws = ws; L.sessionStart = Date.now(); var opened = false;
-        ws.onopen = function () { opened = true; send({ setup: t.setup }); levelLoop(); resolve(true); };
+        ws.onopen = function () { opened = true; send({ setup: t.setup }); levelLoop(); L.setupTimer = setTimeout(function () { if (L.active && !L.ready) { L.why = "Gemini didn't accept the voice session (no reply in 10 s)."; stop(true); emit("error", L.why); } }, 10000); resolve(true); };
         ws.onmessage = function (ev) { var go = function (txt) { var m; try { m = JSON.parse(txt); } catch (e) { return; } handle(m); }; if (typeof ev.data === "string") go(ev.data); else if (ev.data && ev.data.text) ev.data.text().then(go); else if (ev.data instanceof ArrayBuffer) go(new TextDecoder().decode(ev.data)); };
         ws.onerror = function () { if (!opened) reject(new Error("Couldn't connect to Gemini Live.")); };
-        ws.onclose = function (ev) { var was = L.active; L.ws = null; if (!opened) return reject(new Error("Gemini Live closed: " + (ev.reason || ev.code))); if (was) { var why = ev.reason || ("code " + ev.code); stop(true); emit("closed", why); } };
+        ws.onclose = function (ev) { var was = L.active, ready = L.ready; L.ws = null; clearTimeout(L.setupTimer); if (!opened) return reject(new Error("Gemini Live closed: " + (ev.reason || ev.code))); if (was) { var why = ev.reason || ("code " + ev.code); stop(true); if (!ready) emit("error", "Gemini rejected the session: " + why); else emit("closed", why); } };
       });
     }).catch(function (e) { stop(true); emit("error", e.message === "mic" ? "mic" : String(e.message || e)); return false; });
   }
   function stop(keepMic) {
-    var was = L.active; L.active = false; L.ready = false; flush();
+    var was = L.active; L.active = false; L.ready = false; clearTimeout(L.setupTimer); flush();
     if (L.ws) { try { L.ws.close(1000, "bye"); } catch (e) {} L.ws = null; }
     if (window.FodoVoice) FodoVoice.pauseVad(false);
     if (was) emit("state", "closed");
   }
-  function say(text) { if (L.active && L.ready) { send({ clientContent: { turns: [{ role: "user", parts: [{ text: text }] }], turnComplete: true } }); emit("state", "thinking"); } }
-  window.FodoLive = { on: function (n, f) { (E[n] = E[n] || []).push(f); }, start: start, stop: stop, say: say, isActive: function () { return L.active; }, isSpeaking: function () { return L.playing; }, interrupt: function () { flush(); } };
+  function say(text) { if (L.active && L.ready) { sendText(text); emit("state", "thinking"); } }
+  /* Voice check (Settings): token → WebSocket → setup → Gemini says hello in text. No microphone needed. */
+  function test(voice) {
+    var t0 = Date.now(), out = { ok: false, step: "token" };
+    return fetch("/api/owner-brain/live" + (voice ? "?voice=" + encodeURIComponent(voice) : ""), { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.json(); }).then(function (t) {
+      if (!t || !t.ok) { out.detail = (t && t.reason) || "no token"; return out; }
+      out.model = t.model; out.version = t.version; out.locked = t.locked; out.step = "connect";
+      return new Promise(function (res) {
+        var ws, done = false, fin = function (ok, d) { if (done) return; done = true; out.ok = ok; if (d) out.detail = d; out.ms = Date.now() - t0; try { ws.close(1000, "test"); } catch (e) {} res(out); };
+        try { ws = new WebSocket(t.ws); } catch (e) { return fin(false, String(e.message || e)); }
+        var to = setTimeout(function () { fin(false, "no answer from Gemini in 12 s (step: " + out.step + ")"); }, 12000);
+        ws.onopen = function () { out.step = "setup"; ws.send(JSON.stringify({ setup: t.setup })); };
+        ws.onmessage = function (ev) { var go = function (txt) { var m; try { m = JSON.parse(txt); } catch (e) { return; }
+          if (m.setupComplete) { out.step = "reply"; out.setup = true; ws.send(JSON.stringify({ realtimeInput: { text: "Voice check: reply with just the word OK." } })); }
+          if (m.serverContent && (m.serverContent.modelTurn || m.serverContent.outputTranscription)) { clearTimeout(to); fin(true); } };
+          if (typeof ev.data === "string") go(ev.data); else if (ev.data && ev.data.text) ev.data.text().then(go); };
+        ws.onclose = function (ev) { clearTimeout(to); fin(false, "Gemini closed the connection at step '" + out.step + "': " + (ev.reason || "code " + ev.code)); };
+        ws.onerror = function () {};
+      });
+    }).catch(function (e) { out.detail = String(e.message || e); return out; });
+  }
+  window.FodoLive = { test: test, on: function (n, f) { (E[n] = E[n] || []).push(f); }, start: start, stop: stop, say: say, isActive: function () { return L.active; }, isSpeaking: function () { return L.playing; }, interrupt: function () { flush(); } };
 })();

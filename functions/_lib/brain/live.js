@@ -43,16 +43,20 @@ export async function token(env, who, owner, voice) {
   if (!liveOn(env)) throw new Error("GEMINI_API_KEY is not set.");
   const model = await pickModel(env), sys = instructions(who, owner), v = VOICES.indexOf(voice) > -1 ? voice : "Puck";
   const now = Date.now(), base = { uses: 1, expireTime: new Date(now + 30 * 60e3).toISOString(), newSessionExpireTime: new Date(now + 2 * 60e3).toISOString() };
-  const setup = { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: v } } }, systemInstruction: { parts: [{ text: sys }] }, tools: [TOOL], inputAudioTranscription: {}, outputAudioTranscription: {} };
-  const tries = [["v1alpha", Object.assign({}, base, { liveConnectConstraints: { model, config: setup } })], ["v1alpha", Object.assign({}, base, { liveConnectConstraints: { model, config: { responseModalities: ["AUDIO"] } } })], ["v1alpha", base], ["v1beta", base]];
+  // Exactly the shape Google's own SDK (@google/genai 2.x tokens.create) sends: the locked Live setup goes in
+  // `bidiGenerateContentSetup` (model + generationConfig + systemInstruction + tools + transcription), API v1alpha.
+  const gen = { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: v } } } };
+  const full = { model, generationConfig: gen, systemInstruction: { parts: [{ text: sys }] }, tools: [TOOL], inputAudioTranscription: {}, outputAudioTranscription: {} };
+  const tries = [["v1alpha", Object.assign({}, base, { bidiGenerateContentSetup: full }), true], ["v1alpha", Object.assign({}, base, { bidiGenerateContentSetup: { model, generationConfig: { responseModalities: ["AUDIO"] } } }), false], ["v1alpha", base, false], ["v1beta", base, false]];
   let last = "";
-  for (const [ver, body] of tries) {
+  for (const [ver, body, locked] of tries) {
     const r = await outbound(env)(G + "/" + ver + "/auth_tokens", { method: "POST", headers: { "x-goog-api-key": env.GEMINI_API_KEY, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
     const j = await r.json().catch(() => ({}));
-    if (r.ok && j.name) return { token: j.name, model, voice: v, version: ver, locked: !!(body.liveConnectConstraints && body.liveConnectConstraints.config.systemInstruction),
-      ws: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage." + ver + ".GenerativeService.BidiGenerateContentConstrained?access_token=" + encodeURIComponent(j.name),
-      setup: { model, generationConfig: { responseModalities: ["AUDIO"], speechConfig: setup.speechConfig }, systemInstruction: setup.systemInstruction, tools: [TOOL], inputAudioTranscription: {}, outputAudioTranscription: {} } };
+    if (r.ok && j.name) return { token: j.name, model, voice: v, version: ver, locked,
+      ws: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage." + ver + ".GenerativeService.BidiGenerateContentConstrained?access_token=" + encodeURIComponent(j.name).replace(/%2F/g, "/"),
+      setup: full };
     last = clip((j.error && j.error.message) || String(r.status), 200);
+    if (r.status === 400 && /API key|PERMISSION|permission/i.test(last)) break;
   }
   throw new Error("Gemini didn't give a voice token: " + last);
 }

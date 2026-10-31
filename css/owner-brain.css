@@ -1,7 +1,7 @@
 /* FODO BRAIN — owner command center. Deep dark, glass panels, thin borders, FODO violet. Works on desktop (priority), tablet, phone. */
-:root{--b-bg:#07070c;--b-bg2:#0d0d16;--b-panel:rgba(255,255,255,.035);--b-panel2:rgba(255,255,255,.06);--b-line:rgba(255,255,255,.09);--b-line2:rgba(255,255,255,.16);--b-text:#ecebf5;--b-muted:#9b99b1;--b-dim:#6d6b84;--b-acc:#8b7bff;--b-acc2:#5b4bd8;--b-ok:#3ddc97;--b-warn:#ffbf47;--b-err:#ff5d73;--b-info:#5fb8ff;--b-r:16px;--b-font:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;--b-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root{--b-bg:#030306;--b-bg2:#09090f;--b-panel:rgba(255,255,255,.035);--b-panel2:rgba(255,255,255,.06);--b-line:rgba(255,255,255,.09);--b-line2:rgba(255,255,255,.16);--b-text:#ecebf5;--b-muted:#9b99b1;--b-dim:#6d6b84;--b-acc:#8b7bff;--b-acc2:#5b4bd8;--b-ok:#3ddc97;--b-warn:#ffbf47;--b-err:#ff5d73;--b-info:#5fb8ff;--b-r:16px;--b-font:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;--b-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 html,body{background:var(--b-bg);color:var(--b-text);margin:0}
-body.ob{font:15px/1.55 var(--b-font);min-height:100vh;background:radial-gradient(1200px 600px at 80% -10%,rgba(139,123,255,.13),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(95,184,255,.07),transparent 60%),var(--b-bg)}
+body.ob{font:15px/1.55 var(--b-font);min-height:100vh;background:radial-gradient(1200px 600px at 80% -10%,rgba(139,123,255,.07),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(95,184,255,.035),transparent 60%),var(--b-bg)}
 .ob *{box-sizing:border-box}.ob a{color:#b7adff}.ob button{font:inherit;color:inherit;cursor:pointer}
 .ob-gate{display:grid;place-items:center;min-height:100vh;color:var(--b-muted);text-align:center;padding:24px}.ob-gate h1{color:var(--b-text);font-size:22px;margin:0 0 6px}
 /* frame */
@@ -230,3 +230,8 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
 .ob-vo-act p{margin:0 0 10px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;color:inherit}
 .ob-vo-act .ob-row{display:flex;gap:8px;justify-content:flex-end}
 [data-theme="light"] .ob-vo-act{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.12)}
+
+/* v26.1 — darker voice screen; the orb glows on pure black */
+.ob-vo{background:#000}
+.ob-vo-bg{opacity:.45}
+.ob-vo-stage{background:radial-gradient(closest-side,rgba(255,255,255,.02),transparent 70%);border:0}

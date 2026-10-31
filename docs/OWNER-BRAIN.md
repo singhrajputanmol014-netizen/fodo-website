@@ -8,6 +8,21 @@
 
 The tool list is in [OWNER-BRAIN-TOOLS.md](OWNER-BRAIN-TOOLS.md), which is generated from the registry.
 
+## 00000. v26.1 fixes
+
+- **Live voice token format fixed.** Google's token API expects the locked Live setup under `bidiGenerateContentSetup` (checked against Google's own `@google/genai` SDK 2.32). v26 sent `liveConnectConstraints`, which Google rejected. Text typed into a live session now uses `realtimeInput.text`, the current Live API way.
+- **No silent failures.** If Gemini closes the session before `setupComplete`, or doesn't answer within 10 seconds, the voice screen shows Google's exact reason and switches to the standard voice. More than 3 drops in 5 minutes also switches to the standard voice, so it can't loop reconnecting.
+- **Settings → Voice check → "Test live voice".** Tests key → token → WebSocket → setup → reply without the mic, and shows the model, the step reached and the exact error.
+- **False "Google Search Console is failing" alert.** A source is only "down" (critical) with at least 5 calls in 24 hours, at least half of them failing, and the latest call also failing. Two failed calls out of four (for example, one customer's unverified property) is now "degraded".
+- **Orb.**
+  - Renders at the screen's real pixel density (sharp on iPhone) within a pixel budget.
+  - Runs at 60 fps.
+  - Soft round sprites plus a bloom pass.
+  - New shapes: FODO atom, FODO logo mark (ring + dot), heart, starburst, galaxy, infinity, joining sphere, torus, helix, nebula and the FODO wordmark.
+  - Emotions: FODO's own words set a mood (happy, excited, calm, curious, proud, sad) that tints the colour and picks the shapes it draws.
+  - Saying "atom banao", "logo dikhao", "heart bana" and so on draws that shape.
+- **Darker backgrounds.** The voice screen is pure black and the app background is darker.
+
 ## 0000. What v26 changes (live conversation)
 
 - **Live voice (Gemini Live, speech-to-speech).** Opening the voice screen starts a real-time conversation: Gemini hears you directly (no separate speech-to-text step), answers in a natural human voice in your language (Hindi / English / Hinglish), decides by itself when you've finished, and stops immediately if you talk over it.

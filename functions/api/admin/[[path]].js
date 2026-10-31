@@ -235,8 +235,11 @@ async function bgHealth(env) {
 }
 async function health(env) {
   const P = providers(env), U = await usageReport(env, 1), h = {}; (U.health || []).forEach((x) => { h[x.provider] = x; });
-  const row = (id, name, configured, keys, note) => { const all = keys.map((k) => h[k]).filter(Boolean), calls = all.reduce((s, x) => s + x.calls, 0), failed = all.reduce((s, x) => s + x.failed, 0), last = all.map((x) => x.last).sort().pop() || null;
-    const st = !configured ? "not connected" : !calls ? "no calls (24 h)" : failed / calls >= 0.5 ? "down" : failed / calls >= 0.1 ? "degraded" : "healthy";
+  const row = (id, name, configured, keys, note) => { const all = keys.map((k) => h[k]).filter(Boolean), calls = all.reduce((s, x) => s + x.calls, 0), failed = all.reduce((s, x) => s + x.failed, 0), last = all.map((x) => x.last).sort().pop() || null, lastOk = all.map((x) => x.lastOk).filter(Boolean).sort().pop() || null;
+    // "down" only on real evidence: enough calls, mostly failing, and the latest call failed too (a recovered source or 2 bad
+    // calls out of 4 — e.g. one customer's unverified Search Console property — is "degraded", not a critical outage)
+    const recovered = !!(lastOk && last && lastOk >= last);
+    const st = !configured ? "not connected" : !calls ? "no calls (24 h)" : failed / calls >= 0.5 && calls >= 5 && !recovered ? "down" : failed / calls >= 0.1 ? "degraded" : "healthy";
     return { id, name, configured: !!configured, status: st, calls, failed, last, note: note || "" }; };
   let dbOk = false; try { await env.XRAY_DB.prepare("SELECT 1").first(); dbOk = true; } catch (e) {}
   const eng = aiEngines(env, toolOn).map((e) => e.id);

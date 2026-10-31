@@ -69,74 +69,125 @@
     "vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;vec4 sh=-step(h,vec4(0.));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;" +
     "vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);vec4 nm=1.79284291400159-.85373472095314*vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3));p0*=nm.x;p1*=nm.y;p2*=nm.z;p3*=nm.w;" +
     "vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}";
-  var PVS = "attribute vec3 a;attribute vec3 b;attribute float s;uniform float T,L,A,M,ax,ay,az,sz,asp,rip,fq;varying float vD;varying float vN;varying float vS;" + NOISE +
+  var PVS = "attribute vec3 a;attribute vec3 b;attribute float s;uniform float T,L,A,M,ax,ay,az,sz,asp,rip,fq,H;varying float vD;varying float vN;varying float vS;" + NOISE +
     "void main(){vec3 p=mix(a,b,M);float n=sn(p*fq+vec3(0.,T*.35,T*.2));float n2=sn(p*3.7-vec3(T*.8));" +
     "float r=length(p);vec3 dir=p/max(r,.0001);float wave=sin(r*9.-T*11.+n*2.)*rip;" +
     "p+=dir*(n*A+n2*L*.16+wave)+vec3(sin(T*.7+s*30.),cos(T*.6+s*21.),sin(T*.5+s*17.))*.012;p*=1.+L*.12+sin(T*1.5)*.015;" +
     "float cy=cos(ay),sy=sin(ay),cx=cos(ax),sx=sin(ax),cz=cos(az),sz2=sin(az);p=vec3(cy*p.x+sy*p.z,p.y,-sy*p.x+cy*p.z);p=vec3(p.x,cx*p.y-sx*p.z,sx*p.y+cx*p.z);p=vec3(cz*p.x-sz2*p.y,sz2*p.x+cz*p.y,p.z);" +
     "float z=p.z+3.;vec2 q=vec2(p.x/asp,p.y)*(2.25/z)*.62;gl_Position=vec4(q,0.,1.);" +
-    "gl_PointSize=sz*(2.4/z)*(.55+s*.9)*(1.+L*.6+max(n,0.)*.5);vD=clamp(1.35-(z-2.)*.55,.15,1.);vN=n;vS=s;}";
-  var PFS = "precision mediump float;uniform vec3 c1,c2;uniform float br,L;varying float vD;varying float vN;varying float vS;" +
-    "void main(){vec2 d=gl_PointCoord-.5;float r=dot(d,d);if(r>.25)discard;float e=smoothstep(.25,0.,r);vec3 col=mix(c2,c1,clamp(vN*.8+.5,0.,1.));" +
-    "col=mix(col,vec3(1.),step(.93,vS)*.6);gl_FragColor=vec4(col*e*vD*br*(vS>.93?1.6:1.),e*vD*br);}";
+    "gl_PointSize=sz*(2.4/z)*(.55+s*.9)*(1.+L*.6+max(n,0.)*.5)*mix(1.,3.6,H);vD=clamp(1.35-(z-2.)*.55,.15,1.);vN=n;vS=s;}";
+  /* soft, round, anti-aliased sprites (a bright core + gaussian falloff) and a second faint, large "bloom" pass (H=1) */
+  var PFS = "precision mediump float;uniform vec3 c1,c2;uniform float br,HF;varying float vD;varying float vN;varying float vS;" +
+    "void main(){vec2 d=gl_PointCoord-.5;float r=dot(d,d);if(r>.25)discard;" +
+    "float e=HF>.5?exp(-r*9.)*(1.-r*4.)*.13:exp(-r*22.)+smoothstep(.035,0.,r)*.55;vec3 col=mix(c2,c1,clamp(vN*.8+.5,0.,1.));" +
+    "float hot=step(.95,vS);col=mix(col,vec3(1.),hot*.55);e*=vD*br*(1.+hot*.7);gl_FragColor=vec4(col*e,e);}";
+  /* emotions: a colour tint + the shapes FODO tends to "draw" when it feels that way */
+  var EMO = {
+    happy: { c: [1.0, 0.55, 0.75], shapes: ["heart", "burst", "logo", "atom"] },
+    excited: { c: [1.0, 0.45, 0.95], shapes: ["burst", "galaxy", "atom", "infinity"] },
+    calm: { c: [0.45, 0.70, 1.0], shapes: ["sphere", "torus", "nebula", "galaxy"] },
+    curious: { c: [0.35, 0.95, 0.85], shapes: ["helix", "atom", "infinity", "torus"] },
+    proud: { c: [0.48, 0.38, 1.0], shapes: ["logo", "atom", "word", "logo"] },
+    sad: { c: [0.35, 0.45, 0.95], shapes: ["nebula", "sphere"] },
+  };
+  function freshCanvas(cv) { try { var n = cv.cloneNode(false); cv.parentNode.replaceChild(n, cv); return n; } catch (e) { return cv; } }
   function mountParticles(cv, opt) {
-    opt = opt || {}; var gl = null; try { gl = cv.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false }); } catch (e) {}
+    opt = opt || {}; var gl = null; try { gl = cv.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: true }); } catch (e) {}
     if (!gl) return mountCircuit(cv, opt);
-    var mobile = /Android|iPhone|iPad/i.test(navigator.userAgent), N = opt.small ? 900 : mobile ? 4200 : 8000;
+    var mobile = /Android|iPhone|iPad/i.test(navigator.userAgent), N = opt.small ? 650 : mobile ? 5200 : 9000;
     function sh(t, src) { var o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; }
-    var pr; try { pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, PVS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, PFS)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw 0; } catch (e) { return mountCircuit(cv, opt); }
+    var pr; try { pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, PVS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, PFS)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr)); } catch (e) { if (window.console) console.warn("FODO orb: WebGL shader failed, using 2-D", e && e.message); return mountCircuit(freshCanvas(cv), opt); }
     gl.useProgram(pr);
     function rnd(i) { var x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
     function shape(fn) { var a = new Float32Array(N * 3); for (var i = 0; i < N; i++) { var p = fn(i); a[i * 3] = p[0]; a[i * 3 + 1] = p[1]; a[i * 3 + 2] = p[2]; } return a; }
-    var GA = Math.PI * (3 - Math.sqrt(5));
-    var sphere = shape(function (i) { var y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), t = GA * i, k = 1 + (rnd(i) - .5) * .05; return [Math.cos(t) * r * k, y * k, Math.sin(t) * r * k]; });
-    var torus = shape(function (i) { var u = rnd(i) * 6.2832, v = rnd(i + 7) * 6.2832; return [(1.05 + .3 * Math.cos(v)) * Math.cos(u), .3 * Math.sin(v), (1.05 + .3 * Math.cos(v)) * Math.sin(u)]; });
-    var helix = shape(function (i) { var sd = i % 2 ? Math.PI : 0, t = (i / N) * Math.PI * 7 - Math.PI * 3.5, r = .62 + (rnd(i) - .5) * .12; return [Math.cos(t + sd) * r, t / 4.6, Math.sin(t + sd) * r]; });
-    var nebula = shape(function (i) { var r = Math.pow(rnd(i + 3), .6) * 1.15, th = rnd(i + 5) * 6.2832, ph = Math.acos(2 * rnd(i + 11) - 1); return [r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph) * .7, r * Math.sin(ph) * Math.sin(th)]; });
-    var word = (function () { try { var c = document.createElement("canvas"), W = 300, H = 100; c.width = W; c.height = H; var x = c.getContext("2d"); x.font = "800 86px Inter, Arial, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("FODO", W / 2, H / 2 + 4); var d = x.getImageData(0, 0, W, H).data, pts = []; for (var yy = 0; yy < H; yy += 2) for (var xx = 0; xx < W; xx += 2) if (d[(yy * W + xx) * 4 + 3] > 128) pts.push([(xx / W - .5) * 2.9, -(yy / H - .5) * .97, 0]); if (!pts.length) return null; return shape(function (i) { var p = pts[Math.floor(i * pts.length / N) % pts.length]; return [p[0], p[1], (rnd(i + 9) - .5) * .1]; }); } catch (e) { return null; } })();
-    var SH = { sphere: sphere, torus: torus, helix: helix, nebula: nebula }; if (word && !opt.small) SH.word = word;
+    function jit(i, k) { return (rnd(i * 1.37 + k) - .5); }
+    var GA = Math.PI * (3 - Math.sqrt(5)), TAU = Math.PI * 2;
+    var sphere = shape(function (i) { var y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), t = GA * i, k = 1 + jit(i, 1) * .05; return [Math.cos(t) * r * k, y * k, Math.sin(t) * r * k]; });
+    var torus = shape(function (i) { var u = rnd(i) * TAU, v = rnd(i + 7) * TAU; return [(1.05 + .3 * Math.cos(v)) * Math.cos(u), .3 * Math.sin(v), (1.05 + .3 * Math.cos(v)) * Math.sin(u)]; });
+    var helix = shape(function (i) { var sd = i % 2 ? Math.PI : 0, t = (i / N) * Math.PI * 7 - Math.PI * 3.5, r = .62 + jit(i, 2) * .12; return [Math.cos(t + sd) * r, t / 4.6, Math.sin(t + sd) * r]; });
+    var nebula = shape(function (i) { var r = Math.pow(rnd(i + 3), .6) * 1.15, th = rnd(i + 5) * TAU, ph = Math.acos(2 * rnd(i + 11) - 1); return [r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph) * .7, r * Math.sin(ph) * Math.sin(th)]; });
+    /* the FODO atom: a glowing nucleus, three tilted electron orbits and bright electrons riding them */
+    var atom = shape(function (i) { var f = rnd(i + 21);
+      if (f < .2) { var r = Math.pow(rnd(i + 3), .45) * .26, th = rnd(i + 5) * TAU, ph = Math.acos(2 * rnd(i + 11) - 1); return [r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph), r * Math.sin(ph) * Math.sin(th)]; }
+      var k = i % 3, ang = k * Math.PI / 3, t = rnd(i + 13) * TAU, e = f > .9 ? .06 : .025;
+      if (f > .9) t = (k * 2.1 + 1) + jit(i, 4) * .22;   // electrons: a dense bright clump on each orbit
+      var x = Math.cos(t) * 1.12 + jit(i, 6) * e, y = Math.sin(t) * .4 + jit(i, 7) * e, z = jit(i, 8) * e;
+      return [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang), z]; });
+    /* the FODO logo mark: the bold ring and the dot (as in the favicon) */
+    var logo = shape(function (i) { var f = rnd(i + 31);
+      if (f < .2) { var a2 = rnd(i + 2) * TAU, rr = Math.sqrt(rnd(i + 4)) * .33; return [.95 + Math.cos(a2) * rr, .95 + Math.sin(a2) * rr, jit(i, 9) * .08]; }
+      var t = rnd(i + 3) * TAU, w = jit(i, 5) * .26; return [-.3 + Math.cos(t) * (.74 + w), -.22 + Math.sin(t) * (.84 + w), jit(i, 10) * .14]; });
+    var heart = shape(function (i) { for (var k = 0; k < 60; k++) { var x = (rnd(i * 7.1 + k * 13.3) - .5) * 2.6, y = (rnd(i * 3.3 + k * 5.7) - .5) * 2.6, q = x * x + y * y - 1; if (q * q * q - x * x * y * y * y <= 0) { var edge = q * q * q - x * x * y * y * y > -.02; return [x * .82, (y + .1) * .82, jit(i, 3) * (edge ? .06 : .22)]; } } return [0, 0, 0]; });
+    var burst = shape(function (i) { var ray = i % 24, a2 = ray * TAU / 24 + jit(i, 2) * .05, el = Math.acos(2 * rnd(ray + 50) - 1) - Math.PI / 2, l = Math.pow(rnd(i + 9), .7) * (.75 + rnd(ray + 70) * .55); return [Math.cos(el) * Math.cos(a2) * l, Math.sin(el) * l * .9, Math.cos(el) * Math.sin(a2) * l]; });
+    var infinity = shape(function (i) { var t = rnd(i + 3) * TAU, d = 1 + Math.sin(t) * Math.sin(t), w = jit(i, 4) * .1; return [1.2 * Math.cos(t) / d + w, .9 * Math.sin(t) * Math.cos(t) / d + jit(i, 5) * .1, jit(i, 6) * .12]; });
+    var galaxy = shape(function (i) { var arm = i % 2, r = Math.pow(rnd(i + 3), .8) * 1.2, a2 = arm * Math.PI + r * 3.4 + jit(i, 4) * (.35 + .25 * (1 - r)); return [Math.cos(a2) * r, jit(i, 5) * .14 * (1.2 - r), Math.sin(a2) * r]; });
+    var word = (function () { try { var c = document.createElement("canvas"), W = 300, H = 100; c.width = W; c.height = H; var x = c.getContext("2d"); x.font = "800 86px Inter, Arial, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("FODO", W / 2, H / 2 + 4); var d = x.getImageData(0, 0, W, H).data, pts = []; for (var yy = 0; yy < H; yy += 2) for (var xx = 0; xx < W; xx += 2) if (d[(yy * W + xx) * 4 + 3] > 128) pts.push([(xx / W - .5) * 2.9, -(yy / H - .5) * .97, 0]); if (!pts.length) return null; return shape(function (i) { var p = pts[Math.floor(i * pts.length / N) % pts.length]; return [p[0] + jit(i, 1) * .015, p[1] + jit(i, 2) * .015, jit(i, 9) * .1]; }); } catch (e) { return null; } })();
+    var SH = { sphere: sphere, torus: torus, helix: helix, nebula: nebula, atom: atom, logo: logo, heart: heart, burst: burst, infinity: infinity, galaxy: galaxy }; if (word && !opt.small) SH.word = word;
+    var FLAT = { word: 1, logo: 1, heart: 1, infinity: 1, atom: 1 };   // shapes that come into full focus (atom keeps its 3-D tilt)   // shapes meant to be seen face-on
     var B = {}; Object.keys(SH).forEach(function (k) { var b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, SH[k], gl.STATIC_DRAW); B[k] = b; });
     var seeds = new Float32Array(N); for (var i = 0; i < N; i++) seeds[i] = rnd(i * 3.7 + 1); var sb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW);
     var LA = gl.getAttribLocation(pr, "a"), LB = gl.getAttribLocation(pr, "b"), LS = gl.getAttribLocation(pr, "s");
     gl.enableVertexAttribArray(LA); gl.enableVertexAttribArray(LB); gl.enableVertexAttribArray(LS);
     gl.bindBuffer(gl.ARRAY_BUFFER, B.sphere); gl.vertexAttribPointer(LA, 3, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.vertexAttribPointer(LS, 1, gl.FLOAT, false, 0, 0);
-    var U = {}; ["T", "L", "A", "M", "ax", "ay", "az", "sz", "asp", "rip", "fq", "c1", "c2", "br"].forEach(function (k) { U[k] = gl.getUniformLocation(pr, k); });
+    var U = {}; ["T", "L", "A", "M", "ax", "ay", "az", "sz", "asp", "rip", "fq", "c1", "c2", "br", "H", "HF"].forEach(function (k) { U[k] = gl.getUniformLocation(pr, k); });
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
     var stN = "idle", st = PST.idle, c1 = st.c1.slice(), c2 = st.c2.slice(), amp = st.amp, spin = st.spin, lvl = 0, lvlT = 0, prevL = 0, T = Math.random() * 100;
-    var yaw = Math.random() * 6.28, tilt = 0.3, roll = 0, goal = { tilt: 0.3, roll: 0, fq: 1.4, spinMul: 1 }, fq = 1.4, morph = 0, morphGoal = 0, target = "torus", nextMood = performance.now() + 3500, raf = 0, dead = false, last = performance.now();
-    function bindB(k) { target = k; gl.bindBuffer(gl.ARRAY_BUFFER, B[k]); gl.vertexAttribPointer(LB, 3, gl.FLOAT, false, 0, 0); } bindB("torus");
-    function mood(now, burst) {
+    var emo = null, emoUntil = 0, emoK = 0;
+    var yaw = Math.random() * 6.28, tilt = 0.3, roll = 0, goal = { tilt: 0.3, roll: 0, fq: 1.4, spinMul: 1 }, fq = 1.4, morph = 0, morphGoal = 0, target = "torus", want = null, nextMood = performance.now() + 3000, raf = 0, dead = false, last = performance.now();
+    function bindB(k) { target = k; gl.bindBuffer(gl.ARRAY_BUFFER, B[k]); gl.vertexAttribPointer(LB, 3, gl.FLOAT, false, 0, 0); }
+    bindB("torus");
+    function goTo(k, amt) { if (!SH[k]) k = "nebula"; if (k === "sphere") { morphGoal = 0; return; } if (target === k) { morphGoal = amt; return; } want = { k: k, amt: amt }; morphGoal = 0; }   // dissolve back to the sphere, then flow into the next shape
+    function pick(L) { L = L.filter(function (k) { return SH[k]; }); return L[Math.random() * L.length | 0]; }
+    function mood(now, burstHit) {
       goal.tilt = (Math.random() - .5) * 1.4; goal.roll = (Math.random() - .5) * .7; goal.fq = 0.9 + Math.random() * 1.6; goal.spinMul = (Math.random() < .2 ? -1 : 1) * (.6 + Math.random() * 1.1);
-      if (stN === "thinking") { if (morph < .05) bindB("helix"); morphGoal = .55 + Math.random() * .3; }
-      else if (stN === "idle" && Math.random() < .45) { if (morph < .05) bindB(["torus", "nebula", "helix"].concat(SH.word ? ["word", "word"] : [])[Math.random() * (SH.word ? 5 : 3) | 0]); morphGoal = target === "word" ? .92 : .35 + Math.random() * .4; }
-      else if (burst && stN === "speaking" && Math.random() < .3) { if (morph < .05) bindB("nebula"); morphGoal = .25 + Math.random() * .25; }
+      var e = emo && now < emoUntil ? EMO[emo] : null;
+      if (e && Math.random() < .8) { var k = pick(e.shapes); goTo(k, FLAT[k] ? .94 : .6 + Math.random() * .3); }
+      else if (stN === "thinking") goTo(pick(["helix", "atom", "infinity"]), .6 + Math.random() * .3);
+      else if (stN === "idle" && Math.random() < .6) { var k2 = pick(["atom", "logo", "atom", "torus", "nebula", "helix", "galaxy", "word", "infinity", "burst"]); goTo(k2, FLAT[k2] ? .94 : .45 + Math.random() * .4); }
+      else if (burstHit && stN === "speaking" && Math.random() < .35) goTo(pick(["nebula", "burst", "atom"]), .3 + Math.random() * .3);
+      else if (stN === "listening" && Math.random() < .3) goTo(pick(["atom", "torus"]), .35 + Math.random() * .25);
       else morphGoal = 0;
-      nextMood = now + (burst ? 1500 : 3000) + Math.random() * (stN === "idle" ? 7000 : 4000);
+      nextMood = now + (burstHit ? 1600 : 3200) + Math.random() * (stN === "idle" ? 6000 : 4000);
     }
     function frame(now) {
       if (dead) return; raf = requestAnimationFrame(frame);
       if (document.hidden || !cv.offsetParent) { last = now; return; }
-      var dt = Math.min(.05, (now - last) / 1000); if ((opt.small || mobile) && dt < .028) return; last = now; T += dt;
-      var dpr = Math.min(window.devicePixelRatio || 1, opt.small ? 2 : mobile ? 1.5 : 1.75), W = Math.round((cv.clientWidth || 100) * dpr), H = Math.round((cv.clientHeight || 100) * dpr);
-      if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; } gl.viewport(0, 0, W, H);
+      var dt = Math.min(.05, (now - last) / 1000); if (opt.small && dt < .028) return; last = now; T += dt;
+      // render at the screen's real pixel density (sharp on iPhone), within a pixel budget so phones stay smooth
+      var cw = cv.clientWidth || 100, ch = cv.clientHeight || 100, dpr = Math.min(window.devicePixelRatio || 1, opt.small ? 3 : mobile ? 2.6 : 2);
+      dpr = Math.min(dpr, Math.sqrt((opt.small ? 4e4 : mobile ? 1.1e6 : 1.6e6) / (cw * ch)));
+      var W = Math.round(cw * dpr), Hh = Math.round(ch * dpr);
+      if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; } gl.viewport(0, 0, W, Hh);
       lvl += (lvlT - lvl) * (lvlT > lvl ? .5 : .1);
-      var f = .05; for (var q = 0; q < 3; q++) { c1[q] += (st.c1[q] - c1[q]) * f; c2[q] += (st.c2[q] - c2[q]) * f; } amp += (st.amp - amp) * f;
-      var burst = lvl - prevL > .2; prevL = lvl; if (now > nextMood || (burst && !opt.small && Math.random() < .5)) mood(now, burst);
-      if (stN !== "idle" && target === "word") morphGoal = 0;
-      morph += (morphGoal - morph) * dt * (target === "word" ? 1.1 : .7); if (morph < .02 && morphGoal === 0 && target === "word") morph = 0;
+      var e = emo && now < emoUntil ? EMO[emo] : null; emoK += ((e ? .5 : 0) - emoK) * dt * 1.5;
+      var f = .05; for (var q = 0; q < 3; q++) { var tc = e ? st.c1[q] * (1 - emoK) + e.c[q] * emoK : st.c1[q]; c1[q] += (tc - c1[q]) * f; c2[q] += (st.c2[q] - c2[q]) * f; } amp += (st.amp - amp) * f;
+      var burstHit = lvl - prevL > .2; prevL = lvl; if (now > nextMood || (burstHit && !opt.small && Math.random() < .5)) mood(now, burstHit);
+      if (want && morph < .04) { bindB(want.k); morphGoal = want.amt; want = null; }
+      var flat = FLAT[target] ? 1 : 0;
+      morph += (morphGoal - morph) * dt * (flat ? 1.1 : .75);
       tilt += (goal.tilt - tilt) * dt * .5; roll += (goal.roll - roll) * dt * .4; fq += (goal.fq - fq) * dt * .4;
-      var sp = st.spin * goal.spinMul * (1 + lvl * 1.8) * (target === "word" && morph > .5 ? .15 : 1); spin += (sp - spin) * dt * 1.5; yaw += spin * dt;
+      var faceK = flat && target !== "atom" ? Math.min(1, morph * 1.4) : 0;
+      var shp = target === "atom" || target === "galaxy" ? Math.min(1, morph * 1.3) : 0; if (shp) tilt += ((target === "atom" ? .45 : .7) - tilt) * dt * 1.2 * shp;
+      var sp = st.spin * goal.spinMul * (1 + lvl * 1.8) * (1 - faceK * .9) * (1 - shp * .4); spin += (sp - spin) * dt * 1.5; yaw += spin * dt;
+      if (faceK > .3) { var tgt = Math.round(yaw / TAU) * TAU + Math.sin(T * .5) * .3; yaw += (tgt - yaw) * dt * 2.2 * faceK; }   // turn to face you
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.uniform1f(U.T, T); gl.uniform1f(U.L, lvl); gl.uniform1f(U.A, amp * (1 + lvl * 1.5)); gl.uniform1f(U.M, morph);
-      var wordK = target === "word" ? Math.min(1, morph * 1.4) : 0; gl.uniform1f(U.ax, (tilt + Math.sin(T * .31) * .08) * (1 - wordK)); gl.uniform1f(U.ay, target === "word" && morph > .5 ? Math.sin(T * .4) * .35 * (1 - morph) : yaw); gl.uniform1f(U.az, roll * (1 - wordK));
-      gl.uniform1f(U.sz, (opt.small ? 1.9 : mobile ? 2.1 : 2.3) * dpr * st.size); gl.uniform1f(U.asp, W / H); gl.uniform1f(U.rip, stN === "speaking" || stN === "hearing" ? lvl * .09 : 0); gl.uniform1f(U.fq, fq);
-      gl.uniform3fv(U.c1, c1); gl.uniform3fv(U.c2, c2); gl.uniform1f(U.br, (opt.small ? .5 : mobile ? .36 : .3) * (1 + lvl * .6) * (document.documentElement.getAttribute("data-theme") === "light" ? 1.25 : 1));
-      gl.drawArrays(gl.POINTS, 0, N);
+      gl.uniform1f(U.T, T); gl.uniform1f(U.L, lvl); gl.uniform1f(U.A, amp * (1 + lvl * 1.5) * (1 - faceK * .55) * (1 - Math.min(morph, 1) * .55)); gl.uniform1f(U.M, morph);
+      gl.uniform1f(U.ax, (tilt + Math.sin(T * .31) * .08) * (1 - faceK)); gl.uniform1f(U.ay, yaw); gl.uniform1f(U.az, roll * (1 - faceK));
+      gl.uniform1f(U.asp, W / Hh); gl.uniform1f(U.rip, stN === "speaking" || stN === "hearing" ? lvl * .09 : 0); gl.uniform1f(U.fq, fq);
+      gl.uniform3fv(U.c1, c1); gl.uniform3fv(U.c2, c2);
+      var light = document.documentElement.getAttribute("data-theme") === "light" ? 1.25 : 1, base = (opt.small ? .55 : mobile ? .4 : .34) * (1 + lvl * .6) * light, psz = (opt.small ? 2.2 : mobile ? 2.0 : 2.2) * dpr * st.size;
+      if (!opt.small) { gl.uniform1f(U.H, 1); gl.uniform1f(U.HF, 1); gl.uniform1f(U.sz, psz); gl.uniform1f(U.br, base * 1.4); gl.drawArrays(gl.POINTS, 0, N); }   // bloom
+      gl.uniform1f(U.H, 0); gl.uniform1f(U.HF, 0); gl.uniform1f(U.sz, psz); gl.uniform1f(U.br, base); gl.drawArrays(gl.POINTS, 0, N);
     }
     raf = requestAnimationFrame(frame);
-    cv.addEventListener("webglcontextlost", function (e) { e.preventDefault(); dead = true; });
-    return { state: function (s) { if (PST[s] && s !== stN) { stN = s; st = PST[s]; nextMood = performance.now() + (s === "thinking" ? 200 : 1500); if (target === "word") morphGoal = 0; } }, level: function (v) { lvlT = Math.max(0, Math.min(1, +v || 0)); }, destroy: function () { dead = true; cancelAnimationFrame(raf); try { var x = gl.getExtension("WEBGL_lose_context"); if (x) x.loseContext(); } catch (e) {} }, particles: true };
+    cv.addEventListener("webglcontextlost", function (ev) { ev.preventDefault(); dead = true; });
+    return { state: function (s) { if (PST[s] && s !== stN) { stN = s; st = PST[s]; nextMood = performance.now() + (s === "thinking" ? 200 : 1500); if (FLAT[target] && s !== "idle" && !(emo && performance.now() < emoUntil)) morphGoal = 0; } },
+      level: function (v) { lvlT = Math.max(0, Math.min(1, +v || 0)); },
+      emotion: function (name) { if (!EMO[name]) return; var fresh = emo !== name || performance.now() > emoUntil; emo = name; emoUntil = performance.now() + 9000; if (fresh) nextMood = performance.now() + 150; },
+      shape: function (k) { if (SH[k]) { goTo(k, FLAT[k] ? .94 : .85); nextMood = performance.now() + 10000; } },
+      info: function () { return { shape: target, morph: +morph.toFixed(2), goal: morphGoal, emotion: emo, t: +T.toFixed(1) }; },
+      destroy: function () { dead = true; cancelAnimationFrame(raf); try { var x = gl.getExtension("WEBGL_lose_context"); if (x) x.loseContext(); } catch (e) {} }, particles: true };
   }
   /* ---------- v25: the FODO neural circuit sphere (default) ----------
      Glowing traces grow across three shells of a 3-D sphere like circuitry being drawn live, branch, fade and are replaced by new

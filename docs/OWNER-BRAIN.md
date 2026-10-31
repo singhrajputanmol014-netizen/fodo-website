@@ -8,6 +8,18 @@
 
 The tool list is in [OWNER-BRAIN-TOOLS.md](OWNER-BRAIN-TOOLS.md), which is generated from the registry.
 
+## 0000. What v26 changes (live conversation)
+
+- **Live voice (Gemini Live, speech-to-speech).** Opening the voice screen starts a real-time conversation: Gemini hears you directly (no separate speech-to-text step), answers in a natural human voice in your language (Hindi / English / Hinglish), decides by itself when you've finished, and stops immediately if you talk over it.
+- **How it stays safe.** `GET /api/owner-brain/live` (owners + members with `chat` access, 60/hour) mints a **single-use token** with the server's `GEMINI_API_KEY`: 1 use, session must start within 2 minutes, valid for 30 minutes. The key itself never reaches the browser. The browser connects straight to Google (`wss://generativelanguage.googleapis.com`, allowed in the CSP).
+- **It still does the work through the Brain.** Gemini has exactly one tool, `fodo_brain`. Any FODO question or action is passed to the normal `/api/owner-brain/chat`, with all of the Brain's permissions, tools, confirmations and audit. Actions that need confirmation show **Confirm / Cancel** cards on the voice screen. Gemini is told never to invent numbers.
+- **Model.** Chosen automatically from Google's model list: any model that supports `bidiGenerateContent`, with native-audio models preferred. The choice is cached for 24 hours, so a renamed model doesn't break anything.
+- **Fallback.** If there's no key, the key is bad, or the connection fails, the v24 engine (Whisper + Aura) takes over automatically. Settings → *Voice conversation* = `classic` forces it. Settings → *Live voice* chooses the voice (Puck, Kore, Charon, Aoede…).
+- **Mute.** Mute now stops live, closes the microphone stream **and** the AudioContext, so the browser's mic indicator turns off. A late-arriving mic permission is rejected rather than reopening the mic.
+- **Animation.** New default orb: a WebGL particle sphere in the style of the website's 3D background. It morphs between sphere, torus, helix, nebula and the FODO wordmark on random "moods" and ripples with the voice level. Colours by state: idle violet, listening teal, thinking amber, speaking gold.
+- **Cost.** About $0.005 per minute of audio in and $0.018 per minute out, so roughly ₹2 per minute of conversation. Google's free tier covers testing.
+- **Tests.** `tests/v26-live.test.mjs` (18 checks).
+
 ## 000. What v24 changes (voice rebuilt)
 
 | Part | Before | Now |

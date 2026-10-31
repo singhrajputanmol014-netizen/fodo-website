@@ -223,3 +223,10 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
 .ob-vo-stage canvas{filter:drop-shadow(0 0 30px rgba(255,170,80,.0))}
 .ob-vo[data-state="speaking"] .ob-vo-bg{background:radial-gradient(40% 35% at 50% 42%,rgba(255,160,70,.20),transparent 70%),radial-gradient(30% 30% at 30% 30%,rgba(255,200,120,.10),transparent 70%)}
 .ob-vo[data-state="speaking"] .ob-micbtn.on{background:linear-gradient(140deg,#ffb35c,#e0702a)}
+/* v26 — confirmations shown inside the live voice screen */
+.ob-vo-acts{display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin:10px auto 0;max-height:34vh;overflow:auto}
+.ob-vo-acts:empty{display:none}
+.ob-vo-act{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px 14px;text-align:left;backdrop-filter:blur(8px)}
+.ob-vo-act p{margin:0 0 10px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;color:inherit}
+.ob-vo-act .ob-row{display:flex;gap:8px;justify-content:flex-end}
+[data-theme="light"] .ob-vo-act{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.12)}

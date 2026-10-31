@@ -27,10 +27,11 @@ import * as AC from "../../_lib/brain/access.js";
 import * as SO from "../../_lib/brain/social.js";
 import * as MD from "../../_lib/brain/media.js";
 import * as VO from "../../_lib/brain/voice.js";
+import * as LV from "../../_lib/brain/live.js";
 import { mayOpenThread } from "../../_lib/brain/orchestrator.js";
 const SITE = (env) => env.SITE_ORIGIN || "https://www.fodo.co.in";
 /* which permission each page endpoint needs ("owner" = the two owner logins only) */
-const NEED = { GET: { status: null, briefing: "business", diagnostics: "business", memory: "memory", tasks: "tasks", projects: "tasks", docs: "memory", threads: null, thread: null, tools: null, alerts: "business", activity: "owner", analytics: "business", changes: "changes", automations: "automations", connectors: "owner", connect: "owner", settings: null, export: "owner", social: "social", members: "owner", ga: "owner" },
+const NEED = { GET: { status: null, briefing: "business", diagnostics: "business", memory: "memory", tasks: "tasks", projects: "tasks", docs: "memory", threads: null, thread: null, tools: null, alerts: "business", activity: "owner", analytics: "business", changes: "changes", automations: "automations", connectors: "owner", connect: "owner", settings: null, export: "owner", social: "social", members: "owner", ga: "owner", live: "chat" },
   POST: { chat: "chat", ingest: "memory", confirm: null, memory: "memory", tasks: "tasks", feedback: null, tts: null, stt: null, automations: "automations", changes: "changes", connectors: "owner", settings: "owner", alerts: "business", social: "social", members: "owner" },
   PUT: { social: "social" }, PATCH: { memory: "memory", tasks: "tasks" }, DELETE: { memory: "memory", tasks: "tasks", automations: "automations", docs: "memory", thread: null, social: "owner", members: "owner" } };
 const sameKey = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
@@ -77,7 +78,7 @@ export async function onRequest(ctx) {
         const d = await brainDb(env), mem = await d.prepare("SELECT count(*) n FROM brain_memory WHERE status='active'").first(), al = await d.prepare("SELECT count(*) n FROM brain_alerts WHERE status='open'").first(), tk = await d.prepare("SELECT count(*) n FROM brain_tasks WHERE status IN ('todo','doing')").first();
         let db = "healthy"; try { await env.XRAY_DB.prepare("SELECT 1").first(); } catch (e) { db = "failed"; }
         const av = availableProviders(env);
-        return json({ ok: true, brain: "online", owner: { name: u.name || "", email: u.email }, database: db, memory: { active: mem.n }, ai: { providers: av, status: av["workers-ai"] || av.groq || av.gemini ? "online" : "offline (degraded mode)" }, runner: bgOn(env) ? "configured" : "not set up", tools: Object.keys(TOOLS).filter((k) => TOOLS[k].level < 5).length, connectors: { github: GH.ghOn(env), google: (await step("google status", GO.status(env), 6000).catch(() => ({}))).connected || false }, voice: { tts: !!env.AI, stt: !!env.AI }, active_alerts: al.n, open_tasks: tk.n, settings: { provider: settings.provider, memory: settings.memory, voice: settings.voice, wakeWord: settings.wakeWord, theme: settings.theme }, me: { email: W.email, name: W.name, role: W.role, owner: W.owner, perms: W.perms } });
+        return json({ ok: true, brain: "online", owner: { name: u.name || "", email: u.email }, database: db, memory: { active: mem.n }, ai: { providers: av, status: av["workers-ai"] || av.groq || av.gemini ? "online" : "offline (degraded mode)" }, runner: bgOn(env) ? "configured" : "not set up", tools: Object.keys(TOOLS).filter((k) => TOOLS[k].level < 5).length, connectors: { github: GH.ghOn(env), google: (await step("google status", GO.status(env), 6000).catch(() => ({}))).connected || false }, voice: { tts: !!env.AI, stt: !!env.AI, live: LV.liveOn(env) }, active_alerts: al.n, open_tasks: tk.n, settings: { provider: settings.provider, memory: settings.memory, voice: settings.voice, wakeWord: settings.wakeWord, theme: settings.theme, voiceEngine: settings.voiceEngine, liveVoice: settings.liveVoice }, me: { email: W.email, name: W.name, role: W.role, owner: W.owner, perms: W.perms } });
       }
       if (p0 === "briefing") return json(Object.assign({ ok: true }, await briefing(ctxT, { force: q.get("force") === "1", ai: q.get("ai") !== "0" })));
       if (p0 === "diagnostics") { const r = await systemCheck(ctxT, true); await audit(env, { owner: u.email, kind: "diagnostics", status: r.overall }); return json(Object.assign({ ok: true, auth: { status: "PASS", evidence: "owner session verified on the server" } }, r)); }
@@ -116,6 +117,10 @@ export async function onRequest(ctx) {
       if (p0 === "social" && !path[1]) return json({ ok: true, accounts: await SO.accounts(env), available: SO.available(env), platforms: SO.PLATFORMS, posts: await SO.listPosts(env, 30), store: MD.storeKind(env), canManage: W.owner });
       if (p0 === "social" && path[1] === "stats") return json({ ok: true, items: await SO.stats(env, q.get("platform") || "") });
       if (p0 === "members") return json({ ok: true, items: await AC.members(env), perms: AC.PERMS, ownerOnly: AC.OWNER_ONLY });
+      if (p0 === "live") {   // a single-use Gemini Live token for this browser (the API key stays on the server)
+        if (await count(env, "brain:live:" + u.id + ":" + Math.floor(Date.now() / 3600e3), 60, 3700)) return json({ ok: false, reason: "Too many voice sessions this hour." }, 429);
+        try { const t = await LV.token(env, W, u, q.get("voice") || settings.liveVoice); await audit(env, { owner: u.email, kind: "voice", tool: "live", status: "token", detail: t.model }); return json(Object.assign({ ok: true }, t)); }
+        catch (e) { return json({ ok: false, reason: e.message }, 503); } }
       if (p0 === "ga" && path[1] === "properties") { try { return json({ ok: true, items: await GO.gaProperties(env) }); } catch (e) { return json({ ok: true, items: [], reason: e.message }); } }
       if (p0 === "connect" && path[1] === "google" && path[2] === "callback") {
         const back = (h) => Response.redirect(new URL(request.url).origin + "/owner-brain/#connectors" + h, 302);
@@ -123,7 +128,7 @@ export async function onRequest(ctx) {
         try { const r = await GO.finishConnect(env, origin, u.id, q.get("code"), q.get("state")); await audit(env, { owner: u.email, kind: "connector", tool: "google", status: "connected", detail: r.account }); return back("?google=ok&account=" + encodeURIComponent(r.account)); }
         catch (e) { await audit(env, { owner: u.email, kind: "connector", tool: "google", status: "error", detail: e.message }); return back("?google=" + encodeURIComponent(String(e.message).slice(0, 120))); }
       }
-      if (p0 === "settings") return json({ ok: true, settings: { provider: settings.provider, memory: settings.memory, briefing: settings.briefing, alerts: settings.alerts, retentionDays: settings.retentionDays, toolsOff: settings.toolsOff, voice: settings.voice, notifyEmail: settings.notifyEmail, wakeWord: settings.wakeWord, theme: settings.theme, gaProperty: settings.gaProperty }, providers: availableProviders(env), owner: W.owner });
+      if (p0 === "settings") return json({ ok: true, settings: { provider: settings.provider, memory: settings.memory, briefing: settings.briefing, alerts: settings.alerts, retentionDays: settings.retentionDays, toolsOff: settings.toolsOff, voice: settings.voice, notifyEmail: settings.notifyEmail, wakeWord: settings.wakeWord, theme: settings.theme, gaProperty: settings.gaProperty, liveVoice: settings.liveVoice, voiceEngine: settings.voiceEngine }, live: LV.liveOn(env), providers: availableProviders(env), owner: W.owner });
       if (p0 === "export") {
         const d = await brainDb(env), all = async (s) => ((await d.prepare(s).all()).results || []);
         await audit(env, { owner: u.email, kind: "export", status: "ok" });

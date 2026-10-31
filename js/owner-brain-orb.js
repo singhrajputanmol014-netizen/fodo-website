@@ -50,6 +50,94 @@
     " if(uLight>.5){outc*=1.05;}",
     " gl_FragColor=vec4(outc*al,al);}",
   ].join("\n");
+  /* ---------- v26: the FODO particle sphere (default) — the website's 3-D sphere, alive ----------
+     Thousands of glowing particles on a sphere (the same look as fodo.co.in's background) that breathe, ripple with sound and
+     drift through noise. Its "mood" wanders on its own: now and then it flows into a ring, a double helix, a nebula — or spells
+     FODO — and back. Listening: teal and alert. You speaking: waves run through it. Thinking: it twists into a helix and spins.
+     FODO speaking: warm gold pulses with every syllable. Everything is computed live; nothing loops. */
+  var PST = {
+    idle: { c1: [0.62, 0.55, 1.0], c2: [0.35, 0.65, 1.0], amp: 0.07, spin: 0.10, size: 1.0 },
+    listening: { c1: [0.25, 0.95, 0.88], c2: [0.45, 0.6, 1.0], amp: 0.10, spin: 0.16, size: 1.05 },
+    hearing: { c1: [0.4, 1.0, 0.95], c2: [0.65, 0.55, 1.0], amp: 0.16, spin: 0.24, size: 1.15 },
+    thinking: { c1: [1.0, 0.72, 0.30], c2: [0.70, 0.50, 1.0], amp: 0.12, spin: 0.9, size: 1.0 },
+    speaking: { c1: [1.0, 0.66, 0.28], c2: [1.0, 0.85, 0.55], amp: 0.12, spin: 0.22, size: 1.15 },
+  };
+  var NOISE = "vec3 m289(vec3 x){return x-floor(x*(1./289.))*289.;}vec4 m289(vec4 x){return x-floor(x*(1./289.))*289.;}vec4 pm(vec4 x){return m289(((x*34.)+1.)*x);}" +
+    "float sn(vec3 v){const vec2 C=vec2(1./6.,1./3.);const vec4 D=vec4(0.,.5,1.,2.);vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.-g;vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);" +
+    "vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;i=m289(i);vec4 p=pm(pm(pm(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));" +
+    "float n_=.142857142857;vec3 ns=n_*D.wyz-D.xzx;vec4 j=p-49.*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.*x_);vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.-abs(x)-abs(y);" +
+    "vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;vec4 sh=-step(h,vec4(0.));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;" +
+    "vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);vec4 nm=1.79284291400159-.85373472095314*vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3));p0*=nm.x;p1*=nm.y;p2*=nm.z;p3*=nm.w;" +
+    "vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}";
+  var PVS = "attribute vec3 a;attribute vec3 b;attribute float s;uniform float T,L,A,M,ax,ay,az,sz,asp,rip,fq;varying float vD;varying float vN;varying float vS;" + NOISE +
+    "void main(){vec3 p=mix(a,b,M);float n=sn(p*fq+vec3(0.,T*.35,T*.2));float n2=sn(p*3.7-vec3(T*.8));" +
+    "float r=length(p);vec3 dir=p/max(r,.0001);float wave=sin(r*9.-T*11.+n*2.)*rip;" +
+    "p+=dir*(n*A+n2*L*.16+wave)+vec3(sin(T*.7+s*30.),cos(T*.6+s*21.),sin(T*.5+s*17.))*.012;p*=1.+L*.12+sin(T*1.5)*.015;" +
+    "float cy=cos(ay),sy=sin(ay),cx=cos(ax),sx=sin(ax),cz=cos(az),sz2=sin(az);p=vec3(cy*p.x+sy*p.z,p.y,-sy*p.x+cy*p.z);p=vec3(p.x,cx*p.y-sx*p.z,sx*p.y+cx*p.z);p=vec3(cz*p.x-sz2*p.y,sz2*p.x+cz*p.y,p.z);" +
+    "float z=p.z+3.;vec2 q=vec2(p.x/asp,p.y)*(2.25/z)*.62;gl_Position=vec4(q,0.,1.);" +
+    "gl_PointSize=sz*(2.4/z)*(.55+s*.9)*(1.+L*.6+max(n,0.)*.5);vD=clamp(1.35-(z-2.)*.55,.15,1.);vN=n;vS=s;}";
+  var PFS = "precision mediump float;uniform vec3 c1,c2;uniform float br,L;varying float vD;varying float vN;varying float vS;" +
+    "void main(){vec2 d=gl_PointCoord-.5;float r=dot(d,d);if(r>.25)discard;float e=smoothstep(.25,0.,r);vec3 col=mix(c2,c1,clamp(vN*.8+.5,0.,1.));" +
+    "col=mix(col,vec3(1.),step(.93,vS)*.6);gl_FragColor=vec4(col*e*vD*br*(vS>.93?1.6:1.),e*vD*br);}";
+  function mountParticles(cv, opt) {
+    opt = opt || {}; var gl = null; try { gl = cv.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false }); } catch (e) {}
+    if (!gl) return mountCircuit(cv, opt);
+    var mobile = /Android|iPhone|iPad/i.test(navigator.userAgent), N = opt.small ? 900 : mobile ? 4200 : 8000;
+    function sh(t, src) { var o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; }
+    var pr; try { pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, PVS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, PFS)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw 0; } catch (e) { return mountCircuit(cv, opt); }
+    gl.useProgram(pr);
+    function rnd(i) { var x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+    function shape(fn) { var a = new Float32Array(N * 3); for (var i = 0; i < N; i++) { var p = fn(i); a[i * 3] = p[0]; a[i * 3 + 1] = p[1]; a[i * 3 + 2] = p[2]; } return a; }
+    var GA = Math.PI * (3 - Math.sqrt(5));
+    var sphere = shape(function (i) { var y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), t = GA * i, k = 1 + (rnd(i) - .5) * .05; return [Math.cos(t) * r * k, y * k, Math.sin(t) * r * k]; });
+    var torus = shape(function (i) { var u = rnd(i) * 6.2832, v = rnd(i + 7) * 6.2832; return [(1.05 + .3 * Math.cos(v)) * Math.cos(u), .3 * Math.sin(v), (1.05 + .3 * Math.cos(v)) * Math.sin(u)]; });
+    var helix = shape(function (i) { var sd = i % 2 ? Math.PI : 0, t = (i / N) * Math.PI * 7 - Math.PI * 3.5, r = .62 + (rnd(i) - .5) * .12; return [Math.cos(t + sd) * r, t / 4.6, Math.sin(t + sd) * r]; });
+    var nebula = shape(function (i) { var r = Math.pow(rnd(i + 3), .6) * 1.15, th = rnd(i + 5) * 6.2832, ph = Math.acos(2 * rnd(i + 11) - 1); return [r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph) * .7, r * Math.sin(ph) * Math.sin(th)]; });
+    var word = (function () { try { var c = document.createElement("canvas"), W = 300, H = 100; c.width = W; c.height = H; var x = c.getContext("2d"); x.font = "800 86px Inter, Arial, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("FODO", W / 2, H / 2 + 4); var d = x.getImageData(0, 0, W, H).data, pts = []; for (var yy = 0; yy < H; yy += 2) for (var xx = 0; xx < W; xx += 2) if (d[(yy * W + xx) * 4 + 3] > 128) pts.push([(xx / W - .5) * 2.9, -(yy / H - .5) * .97, 0]); if (!pts.length) return null; return shape(function (i) { var p = pts[Math.floor(i * pts.length / N) % pts.length]; return [p[0], p[1], (rnd(i + 9) - .5) * .1]; }); } catch (e) { return null; } })();
+    var SH = { sphere: sphere, torus: torus, helix: helix, nebula: nebula }; if (word && !opt.small) SH.word = word;
+    var B = {}; Object.keys(SH).forEach(function (k) { var b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, SH[k], gl.STATIC_DRAW); B[k] = b; });
+    var seeds = new Float32Array(N); for (var i = 0; i < N; i++) seeds[i] = rnd(i * 3.7 + 1); var sb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW);
+    var LA = gl.getAttribLocation(pr, "a"), LB = gl.getAttribLocation(pr, "b"), LS = gl.getAttribLocation(pr, "s");
+    gl.enableVertexAttribArray(LA); gl.enableVertexAttribArray(LB); gl.enableVertexAttribArray(LS);
+    gl.bindBuffer(gl.ARRAY_BUFFER, B.sphere); gl.vertexAttribPointer(LA, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.vertexAttribPointer(LS, 1, gl.FLOAT, false, 0, 0);
+    var U = {}; ["T", "L", "A", "M", "ax", "ay", "az", "sz", "asp", "rip", "fq", "c1", "c2", "br"].forEach(function (k) { U[k] = gl.getUniformLocation(pr, k); });
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    var stN = "idle", st = PST.idle, c1 = st.c1.slice(), c2 = st.c2.slice(), amp = st.amp, spin = st.spin, lvl = 0, lvlT = 0, prevL = 0, T = Math.random() * 100;
+    var yaw = Math.random() * 6.28, tilt = 0.3, roll = 0, goal = { tilt: 0.3, roll: 0, fq: 1.4, spinMul: 1 }, fq = 1.4, morph = 0, morphGoal = 0, target = "torus", nextMood = performance.now() + 3500, raf = 0, dead = false, last = performance.now();
+    function bindB(k) { target = k; gl.bindBuffer(gl.ARRAY_BUFFER, B[k]); gl.vertexAttribPointer(LB, 3, gl.FLOAT, false, 0, 0); } bindB("torus");
+    function mood(now, burst) {
+      goal.tilt = (Math.random() - .5) * 1.4; goal.roll = (Math.random() - .5) * .7; goal.fq = 0.9 + Math.random() * 1.6; goal.spinMul = (Math.random() < .2 ? -1 : 1) * (.6 + Math.random() * 1.1);
+      if (stN === "thinking") { if (morph < .05) bindB("helix"); morphGoal = .55 + Math.random() * .3; }
+      else if (stN === "idle" && Math.random() < .45) { if (morph < .05) bindB(["torus", "nebula", "helix"].concat(SH.word ? ["word", "word"] : [])[Math.random() * (SH.word ? 5 : 3) | 0]); morphGoal = target === "word" ? .92 : .35 + Math.random() * .4; }
+      else if (burst && stN === "speaking" && Math.random() < .3) { if (morph < .05) bindB("nebula"); morphGoal = .25 + Math.random() * .25; }
+      else morphGoal = 0;
+      nextMood = now + (burst ? 1500 : 3000) + Math.random() * (stN === "idle" ? 7000 : 4000);
+    }
+    function frame(now) {
+      if (dead) return; raf = requestAnimationFrame(frame);
+      if (document.hidden || !cv.offsetParent) { last = now; return; }
+      var dt = Math.min(.05, (now - last) / 1000); if ((opt.small || mobile) && dt < .028) return; last = now; T += dt;
+      var dpr = Math.min(window.devicePixelRatio || 1, opt.small ? 2 : mobile ? 1.5 : 1.75), W = Math.round((cv.clientWidth || 100) * dpr), H = Math.round((cv.clientHeight || 100) * dpr);
+      if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; } gl.viewport(0, 0, W, H);
+      lvl += (lvlT - lvl) * (lvlT > lvl ? .5 : .1);
+      var f = .05; for (var q = 0; q < 3; q++) { c1[q] += (st.c1[q] - c1[q]) * f; c2[q] += (st.c2[q] - c2[q]) * f; } amp += (st.amp - amp) * f;
+      var burst = lvl - prevL > .2; prevL = lvl; if (now > nextMood || (burst && !opt.small && Math.random() < .5)) mood(now, burst);
+      if (stN !== "idle" && target === "word") morphGoal = 0;
+      morph += (morphGoal - morph) * dt * (target === "word" ? 1.1 : .7); if (morph < .02 && morphGoal === 0 && target === "word") morph = 0;
+      tilt += (goal.tilt - tilt) * dt * .5; roll += (goal.roll - roll) * dt * .4; fq += (goal.fq - fq) * dt * .4;
+      var sp = st.spin * goal.spinMul * (1 + lvl * 1.8) * (target === "word" && morph > .5 ? .15 : 1); spin += (sp - spin) * dt * 1.5; yaw += spin * dt;
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform1f(U.T, T); gl.uniform1f(U.L, lvl); gl.uniform1f(U.A, amp * (1 + lvl * 1.5)); gl.uniform1f(U.M, morph);
+      var wordK = target === "word" ? Math.min(1, morph * 1.4) : 0; gl.uniform1f(U.ax, (tilt + Math.sin(T * .31) * .08) * (1 - wordK)); gl.uniform1f(U.ay, target === "word" && morph > .5 ? Math.sin(T * .4) * .35 * (1 - morph) : yaw); gl.uniform1f(U.az, roll * (1 - wordK));
+      gl.uniform1f(U.sz, (opt.small ? 1.9 : mobile ? 2.1 : 2.3) * dpr * st.size); gl.uniform1f(U.asp, W / H); gl.uniform1f(U.rip, stN === "speaking" || stN === "hearing" ? lvl * .09 : 0); gl.uniform1f(U.fq, fq);
+      gl.uniform3fv(U.c1, c1); gl.uniform3fv(U.c2, c2); gl.uniform1f(U.br, (opt.small ? .5 : mobile ? .36 : .3) * (1 + lvl * .6) * (document.documentElement.getAttribute("data-theme") === "light" ? 1.25 : 1));
+      gl.drawArrays(gl.POINTS, 0, N);
+    }
+    raf = requestAnimationFrame(frame);
+    cv.addEventListener("webglcontextlost", function (e) { e.preventDefault(); dead = true; });
+    return { state: function (s) { if (PST[s] && s !== stN) { stN = s; st = PST[s]; nextMood = performance.now() + (s === "thinking" ? 200 : 1500); if (target === "word") morphGoal = 0; } }, level: function (v) { lvlT = Math.max(0, Math.min(1, +v || 0)); }, destroy: function () { dead = true; cancelAnimationFrame(raf); try { var x = gl.getExtension("WEBGL_lose_context"); if (x) x.loseContext(); } catch (e) {} }, particles: true };
+  }
   /* ---------- v25: the FODO neural circuit sphere (default) ----------
      Glowing traces grow across three shells of a 3-D sphere like circuitry being drawn live, branch, fade and are replaced by new
      ones; broken ring arcs orbit it on drifting axes. Nothing is pre-recorded: every trace is generated on the fly, and the
@@ -236,5 +324,5 @@
     } catch (e) { return null; }
   }
   function unlock() { try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; var ac = (window.FodoVoice && FodoVoice.context()) || meter.ac || (meter.ac = new AC()); if (ac.state !== "running") ac.resume(); } catch (e) {} }
-  window.FodoOrb = { mount: function (cv, opt) { return (opt && opt.style === "plasma") ? mountGL(cv, opt) : mountCircuit(cv, opt); }, meter: meter, unlock: unlock };
+  window.FodoOrb = { mount: function (cv, opt) { opt = opt || {}; return opt.style === "plasma" ? mountGL(cv, opt) : opt.style === "circuit" ? mountCircuit(cv, opt) : mountParticles(cv, opt); }, meter: meter, unlock: unlock };
 })();

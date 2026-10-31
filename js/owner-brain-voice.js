@@ -16,6 +16,8 @@
   function process(f) {
     var r = rms(f), startT = V.guard ? Math.max(V.noise * CFG.guardK, CFG.guardMin) : Math.max(V.noise * CFG.k, CFG.floor), endT = Math.max(V.noise * 1.8, CFG.floor * 0.7);
     V.level += ((Math.min(1, r * 9)) - V.level) * 0.35; emit("level", V.level);
+    if (E.frame) emit("frame", { f: f, sr: V.sr, rms: r });   // live streaming (Gemini Live) taps the raw microphone here
+    if (V.paused) return;
     var copy = new Float32Array(f);
     if (!V.speaking) {
       V.pre.push(copy); var keep = Math.ceil(CFG.preRollMs / V.frameMs); while (V.pre.length > keep) V.pre.shift();
@@ -49,7 +51,7 @@
     return btoa(bin);
   }
   function start() {
-    if (V.on) return Promise.resolve(true);
+    V.want = true; if (V.on) return Promise.resolve(true);
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { emit("error", { message: "This browser can't use the microphone here." }); return Promise.resolve(false); }
     V.ac = V.ac || new AC(); var resume = V.ac.state !== "running" ? V.ac.resume() : Promise.resolve();
@@ -57,6 +59,7 @@
       if (V.ac.state !== "running") throw Object.assign(new Error("tap"), { name: "NeedsTap" });
       return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     }).then(function (st) {
+      if (!V.want) { st.getTracks().forEach(function (t) { t.stop(); }); return false; }   // muted while the permission prompt was open
       V.stream = st; V.sr = V.ac.sampleRate; V.src = V.ac.createMediaStreamSource(st);
       var size = V.sr > 32000 ? 2048 : 1024; V.frameMs = size / V.sr * 1000;
       V.node = V.ac.createScriptProcessor(size, 1, 1); V.node.onaudioprocess = function (e) { if (V.on) process(e.inputBuffer.getChannelData(0)); var out = e.outputBuffer.getChannelData(0); for (var i = 0; i < out.length; i++) out[i] = 0; };
@@ -66,15 +69,16 @@
       emit("error", { message: e && e.name === "NeedsTap" ? "tap" : e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "blocked" : e && e.name === "NotFoundError" ? "nomic" : String(e && e.message || e) }); return false;
     });
   }
-  function stop() {
-    V.on = false; V.speaking = false; V.buf = []; V.pre = [];
+  function stop(hard) {
+    V.want = false; V.on = false; V.speaking = false; V.buf = []; V.pre = [];
     try { if (V.node) { V.node.disconnect(); V.node.onaudioprocess = null; } if (V.src) V.src.disconnect(); } catch (e) {}
     if (V.stream) V.stream.getTracks().forEach(function (t) { t.stop(); }); V.stream = V.node = V.src = null; emit("level", 0); emit("state", { on: false });
+    if (hard && V.ac) { try { V.ac.close(); } catch (e) {} V.ac = null; }   // mute: release the audio session completely (the phone's mic indicator goes off)
   }
   window.FodoVoice = {
     on: function (n, f) { (E[n] = E[n] || []).push(f); }, start: start, stop: stop, isOn: function () { return V.on; },
     guard: function (g) { V.guard = !!g; },   // while the Brain speaks: only loud, sustained speech counts (lets you interrupt, ignores its own echo)
     unlock: function () { try { var AC = window.AudioContext || window.webkitAudioContext; V.ac = V.ac || new AC(); if (V.ac.state !== "running") V.ac.resume(); } catch (e) {} },
-    context: function () { return V.ac; }, cfg: CFG, _wav: wav,
+    context: function () { return V.ac; }, pauseVad: function (p) { V.paused = !!p; if (p) { V.speaking = false; V.buf = []; } }, cfg: CFG, _wav: wav,
   };
 })();

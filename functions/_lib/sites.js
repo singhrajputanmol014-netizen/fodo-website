@@ -3,6 +3,7 @@
    website with siteFor(): the site's owner_user_id must be that user, or the user is a FODO owner (global access, audited).
    A site id from the browser is only a lookup key; a stranger's id answers "not found" (no hint that it exists).
    The client AI only ever sees ONE website's document and can only return edits to it. */
+import { PW_RE } from "../../sites/lib/protect.js";
 import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail } from "./accounts.js";
 import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS } from "../../sites/lib/render.js";
 import { TEMPLATES, templateById, searchTemplates, why, clientAllowed, SOURCES, FODO_LICENSE } from "../../sites/lib/templates.js";
@@ -78,7 +79,7 @@ export function validateDoc(doc, lim) {
   if (!pages.length) throw err("A website needs at least one page.");
   if (pages.length > (lim ? lim.pages : 100)) throw err("Your plan allows " + lim.pages + " pages.");
   const out = { theme: {}, settings: cleanVal(doc.settings || {}, 0) || {}, pages: [] }, t = doc.theme || {};
-  ["mode", "primary", "secondary", "accent", "bg", "surface", "text", "font", "headingFont", "radius", "motion", "palette", "pairing", "style", "button", "shadow", "density", "container", "hover"].forEach((k) => { if (t[k] != null) out.theme[k] = clip(t[k], 40); });
+  ["mode", "primary", "secondary", "accent", "bg", "surface", "text", "font", "headingFont", "radius", "motion", "palette", "pairing", "style", "button", "shadow", "density", "container", "hover", "muted", "border"].forEach((k) => { if (t[k] != null) out.theme[k] = clip(t[k], 40); }); ["bpTablet", "bpMobile"].forEach((k) => { const n = parseInt(t[k], 10); if (n >= 360 && n <= 1400) out.theme[k] = n; });
   const T0 = out.theme, ok = (k, list) => { if (T0[k] != null && list.indexOf(String(T0[k])) < 0) delete T0[k]; };
   if (T0.motion === "lively") T0.motion = "dynamic"; ok("motion", MOTION_LEVELS); ok("mode", ["light", "dark", "auto"]); ok("button", BUTTONS); ok("shadow", SHADOWS); ok("density", DENSITY); ok("container", CONTAINERS); ok("hover", HOVERS); ok("style", Object.keys(STYLES));
   ["primary", "secondary", "accent", "bg", "surface", "text"].forEach((k) => { if (T0[k] != null && !/^#[0-9a-f]{3,8}$/i.test(T0[k])) delete T0[k]; });
@@ -94,7 +95,7 @@ export function validateDoc(doc, lim) {
   for (const p of pages) {
     const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); if (/^(p|cart|checkout|order|blog|thank-you|search)$/.test(slug)) throw err("“" + slug + "” is reserved (store, blog, search, thank-you), use another page address."); seen.add(slug);
     const secs = (Array.isArray(p.sections) ? p.sections : []).slice(0, 40).filter((s) => s && SECTION_TYPES.indexOf(s.type) > -1).map((s) => Object.assign({ type: s.type, props: cleanVal(s.props || {}, 0) || {} }, s.style && typeof s.style === "object" ? { style: cleanVal(s.style, 0) } : {}, s.ref && comps.some((k) => k.id === s.ref) ? { ref: s.ref } : {}));
-    out.pages.push({ slug, title: clip(p.title || slug, 80), navLabel: p.navLabel ? clip(p.navLabel, 40) : undefined, nav: p.nav === false ? false : undefined, hidden: !!p.hidden || undefined, noindex: !!p.noindex || undefined, password: p.password && /^[0-9a-f]{64}$/.test(p.password) ? p.password : undefined, seo: cleanVal(p.seo || {}, 0) || {}, sections: secs });
+    out.pages.push({ slug, title: clip(p.title || slug, 80), navLabel: p.navLabel ? clip(p.navLabel, 40) : undefined, nav: p.nav === false ? false : undefined, hidden: !!p.hidden || undefined, noindex: !!p.noindex || undefined, password: p.password && PW_RE.test(p.password) ? p.password : undefined, seo: cleanVal(p.seo || {}, 0) || {}, sections: secs });
   }
   const size = JSON.stringify(out).length; if (size > 600000) throw err("The website is too large (" + Math.round(size / 1000) + " KB).");
   return out;
@@ -181,12 +182,13 @@ async function aiLog(env, siteId, by, kind, prompt, result) { const d = await sd
 /* ---------- save (autosave with conflict detection) ---------- */
 /* a website's limits follow its OWNER's plan (a member editing it doesn't shrink or grow them) */
 export async function siteLimits(env, u, s) { if (!s || s.owner_user_id === u.id) return limitsFor(u); const d = await sdb(env), o = await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(s.owner_user_id).first().catch(() => null); const a = limitsFor(u), b = o ? limitsFor(o) : a; return a.pages >= b.pages ? a : b; }
-export async function saveDoc(env, u, s, doc, baseRev, note) {
+export async function saveDoc(env, u, s, doc, baseRev, note, opt) {
   const d = await sdb(env), clean = validateDoc(doc, await siteLimits(env, u, s));
-  if (+baseRev !== s.rev) { const cur = await d.prepare("SELECT doc, rev FROM sites WHERE id=?1").bind(s.id).first(); return { conflict: true, rev: cur.rev, doc: JSON.parse(cur.doc) }; }
+  if (+baseRev !== s.rev) { const cur = await d.prepare("SELECT doc, rev, updated_at FROM sites WHERE id=?1").bind(s.id).first(); return { conflict: true, rev: cur.rev, doc: JSON.parse(cur.doc), updatedAt: cur.updated_at }; }
+  if (opt && opt.keepServer) { const cur = await d.prepare("SELECT doc, rev FROM sites WHERE id=?1").bind(s.id).first(); if (cur) await version(env, s.id, cur.rev, JSON.parse(cur.doc), "Other version (replaced after an editing conflict)", u.id); }   // v34: "Keep mine" never loses the other version
   const rev = s.rev + 1, now = nowIso(), name = clip((clean.settings.business || {}).name || s.name, 80);
   const r = await d.prepare("UPDATE sites SET doc=?2, rev=?3, name=?4, updated_at=?5 WHERE id=?1 AND rev=?6").bind(s.id, JSON.stringify(clean), rev, name, now, s.rev).run();
-  if (!r.meta || !r.meta.changes) { const cur = await d.prepare("SELECT doc, rev FROM sites WHERE id=?1").bind(s.id).first(); return { conflict: true, rev: cur.rev, doc: JSON.parse(cur.doc) }; }
+  if (!r.meta || !r.meta.changes) { const cur = await d.prepare("SELECT doc, rev, updated_at FROM sites WHERE id=?1").bind(s.id).first(); return { conflict: true, rev: cur.rev, doc: JSON.parse(cur.doc), updatedAt: cur.updated_at }; }
   const last = await d.prepare("SELECT created_at FROM site_versions WHERE site_id=?1 ORDER BY created_at DESC LIMIT 1").bind(s.id).first();
   if (note || !last || Date.now() - Date.parse(last.created_at) > 20 * 60e3) await version(env, s.id, rev, clean, note || "Autosave", u.id);
   return { ok: true, rev, savedAt: now };

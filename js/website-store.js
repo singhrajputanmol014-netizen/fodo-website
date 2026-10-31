@@ -8,9 +8,10 @@ import { esc } from "/sites/lib/render.js";
 const rs = (p) => "₹" + ((+p || 0) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const rupees = (p) => (p ? String((+p || 0) / 100) : "");
 const fmt = (s) => { try { return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return s || ""; } };
-const STATUS = { pending: "Awaiting payment", paid: "Paid", cod: "Cash on delivery", whatsapp: "WhatsApp, to confirm", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled", refunded: "Refunded" };
-const FLOW = { pending: ["cancelled"], paid: ["shipped", "cancelled", "refunded"], cod: ["shipped", "cancelled", "paid"], whatsapp: ["cod", "paid", "cancelled"], shipped: ["delivered", "cancelled"], delivered: ["refunded"], cancelled: [], refunded: [] };
-const ACT = { shipped: "Mark shipped", delivered: "Mark delivered", cancelled: "Cancel", refunded: "Mark refunded", paid: "Mark paid", cod: "Confirm (COD)" };
+const STATUS = { pending: "Awaiting payment", paid: "Paid", cod: "Cash on delivery", whatsapp: "WhatsApp, to confirm", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled", refund_processing: "Refund processing", refund_failed: "Refund failed", refunded: "Refunded" };
+/* v34: same lifecycle as the server (functions/_lib/shop.js). A paid online order is refunded, not "cancelled". */
+const FLOW = { pending: ["cancelled"], paid: ["shipped", "refund"], cod: ["shipped", "cancelled", "paid"], whatsapp: ["cod", "paid", "cancelled"], shipped: ["delivered", "cancelled"], delivered: ["refund"], refund_failed: ["refund"], refund_processing: ["refund-check"], cancelled: [], refunded: [] };
+const ACT = { shipped: "Mark shipped", delivered: "Mark delivered", cancelled: "Cancel", refund: "Refund…", "refund-check": "Check refund status", paid: "Mark paid", cod: "Confirm (COD)" };
 
 /* X = { id, api, toast, upload, doc(), change(fn, noPaint), refresh() } */
 export function openStore(X, tab) {
@@ -73,12 +74,18 @@ export function openStore(X, tab) {
     body().innerHTML = (st.ok ? '<div class="wb-kpis"><div><b>' + st.orders30 + "</b>orders (30 days)</div><div><b>" + rs(st.revenue30) + "</b>order value (30 days)</div><div><b>" + st.toFulfil + "</b>to fulfil</div></div>" : "") +
       '<label class="wb-lab">Show<select id="of"><option value="">All orders</option>' + Object.keys(STATUS).map((k) => '<option value="' + k + '"' + (filter === k ? " selected" : "") + ">" + STATUS[k] + "</option>").join("") + "</select></label>" +
       (r.orders.length ? r.orders.map((o) => '<article class="wb-ord"><div class="wb-row" style="margin:0;justify-content:space-between"><b>#' + o.number + " · " + rs(o.total) + '</b><span class="wb-pill ' + o.status + '">' + esc(STATUS[o.status] || o.status) + "</span></div><small class=\"wb-muted\">" + fmt(o.created_at) + " · " + esc({ online: "Online payment", cod: "Cash on delivery", whatsapp: "WhatsApp order" }[o.method] || o.method) + (o.code ? " · code " + esc(o.code) : "") + "</small>" +
+        (o.refund ? '<p class="wb-muted"><small>Refund ' + rs(o.refund.amount) + " · " + esc(o.refund.manual ? "paid back by you" : o.refund.status) + (o.refund.reason ? " · “" + esc(o.refund.reason) + "”" : "") + (o.refund.failure ? " · " + esc(o.refund.failure) : "") + "</small></p>" : "") + (o.note && /PAID, but/.test(o.note) ? '<p class="wb-warn">' + esc(o.note) + "</p>" : "") +
         "<ul>" + o.items.map((i) => "<li>" + esc(i.title) + (i.variant ? " · " + esc(i.variant) : "") + " × " + i.qty + ": " + rs(i.price * i.qty) + "</li>").join("") + "</ul>" +
         '<p class="wb-cust"><b>' + esc(o.customer.name) + '</b> · <a href="tel:' + esc(o.customer.phone) + '">' + esc(o.customer.phone) + "</a>" + (o.customer.email ? " · " + esc(o.customer.email) : "") + "<br>" + esc(o.customer.address) + ", " + esc(o.customer.city) + " " + esc(o.customer.pin) + (o.customer.note ? "<br><i>“" + esc(o.customer.note) + "”</i>" : "") + "</p>" +
-        '<div class="wb-row">' + (o.status === "pending" && o.method === "online" ? '<button class="wb-btn sm" data-ver="' + o.id + '">Check payment</button>' : "") + (FLOW[o.status] || []).map((n) => '<button class="wb-btn sm' + (n === "cancelled" ? " danger" : "") + '" data-os="' + o.id + "|" + n + '">' + ACT[n] + "</button>").join("") + "</div></article>").join("")
+        '<div class="wb-row">' + (o.status === "pending" && o.method === "online" ? '<button class="wb-btn sm" data-ver="' + o.id + '">Check payment</button>' : "") + (FLOW[o.status] || []).map((n) => '<button class="wb-btn sm' + (n === "cancelled" ? " danger" : "") + '" data-os="' + o.id + "|" + n + '" data-om="' + esc(o.method) + '" data-ot="' + o.total + '">' + ACT[n] + "</button>").join("") + "</div></article>").join("")
         : '<p class="wb-empty">No orders' + (filter ? " with this status" : " yet") + ". When customers order on your website they appear here (and you get an email).</p>");
     $("#of").onchange = function () { orders(this.value); };
-    $$("[data-os]").forEach((b) => { b.onclick = async () => { const [id, s] = b.dataset.os.split("|"); if (s === "cancelled" && !confirm("Cancel this order?")) return; const x = await X.api(X.id + "/orders/" + id, "POST", { status: s }); if (!x.ok) return fail(x); orders(filter); }; });
+    $$("[data-os]").forEach((b) => { b.onclick = async () => { const [id, s] = b.dataset.os.split("|"), body = { status: s };
+      if (s === "cancelled" && !confirm("Cancel this order? Its stock and discount code go back.")) return;
+      if (s === "refund") { if (b.dataset.om === "online") { if (!confirm("Refund " + rs(+b.dataset.ot) + " to the customer through Cashfree? The money goes back to their card / UPI.")) return; body.reason = prompt("Reason (optional, the customer may see it)", "") || "Refund"; }
+        else { if (!confirm("This order wasn't paid online, so FODO can't send the money. Have you already paid the customer back yourself (cash / UPI)?")) return; body.manual = true; } }
+      b.disabled = true; const x = await X.api(X.id + "/orders/" + id, "POST", body); b.disabled = false; if (!x.ok) return fail(x);
+      if (s === "refund" || s === "refund-check") X.toast(x.status === "refunded" ? "Refunded ✓" : x.status === "refund_failed" ? "The refund failed: see the order." : "Refund sent to Cashfree. It shows as Refunded once Cashfree confirms (usually minutes, sometimes a few days)."); orders(filter); }; });
     $$("[data-ver]").forEach((b) => { b.onclick = async () => { b.disabled = true; const x = await X.api(X.id + "/orders/" + b.dataset.ver, "POST", { status: "verify" }); if (!x.ok) return fail(x); X.toast(x.status === "paid" ? "Payment confirmed by Cashfree ✓" : "Not paid yet (Cashfree says the payment isn't complete)."); orders(filter); }; });
   }
 

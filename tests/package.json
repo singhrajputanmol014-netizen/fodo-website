@@ -1,0 +1,12 @@
+{
+  "name": "fodo-tests",
+  "private": true,
+  "description": "Test + audit tooling for fodo.co.in. Kept out of the site root so Cloudflare Pages deploys never install it.",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "leaflet": "^1.9.4",
+    "playwright": "1.63.0",
+    "wrangler": "^3.114.17",
+    "xlsx": "^0.18.5"
+  }
+}

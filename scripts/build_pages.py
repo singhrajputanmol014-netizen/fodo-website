@@ -25,7 +25,7 @@ def shell(route, path, title, desc, body, depth, extra_head="", scripts=()):
 STATIC_FOOTER = ('<nav class="container" aria-label="Site" style="padding:24px 0"><p><b>FODO: Fear Of Digitally Out ?</b> · Based in New Delhi. Built for ambitious brands worldwide.</p><ul>'
   + "".join(f'<li><a href="__R__{u}">{t}</a></li>' for u, t in [("", "Home"), ("services/", "Services"), ("industries/", "Industries"), ("work/", "Work"), ("insights/", "Insights"), ("about/", "About"),
      ("pricing/", "Agency pricing"), ("faq/", "FAQ"), ("reviews/", "Reviews"), ("contact/", "Contact"), ("help/", "Help & support"), ("locations/", "Where we work"), ("locations/delhi/", "Delhi"), ("locations/uae/", "UAE"), ("locations/uk/", "UK"), ("locations/usa/", "USA"),
-     ("growth-lab/", "Growth Lab"), ("business-x-ray/", "Business X-Ray"), ("plans/", "Growth Lab Plans"), ("marketing-budget/", "Marketing Budget Planner"), ("competitor-finder/", "Competitor Finder"), ("growth-score/", "Growth Score"), ("roi-calculator/", "ROI Calculator"), ("marketing-quiz/", "Marketing Quiz"), ("fodo-challenge/", "FODO Challenge"),
+     ("growth-lab/", "Growth Lab"), ("website-builder/", "Website Builder"), ("business-x-ray/", "Business X-Ray"), ("plans/", "Growth Lab Plans"), ("marketing-budget/", "Marketing Budget Planner"), ("competitor-finder/", "Competitor Finder"), ("growth-score/", "Growth Score"), ("roi-calculator/", "ROI Calculator"), ("marketing-quiz/", "Marketing Quiz"), ("fodo-challenge/", "FODO Challenge"),
      ("teardowns/", "Ad Teardowns"), ("templates/", "Templates"), ("resources/", "Checklists"), ("founding-programme/", "Founding Programme"), ("legal/", "Privacy &amp; Terms")])
   # v17.2: real tel: / WhatsApp / mailto links in the HTML itself (the JS footer replaces this, but crawlers and no-JS visitors see these)
   + '</ul><p><a href="mailto:anmol@fodo.co.in">anmol@fodo.co.in</a> · <a href="tel:+917827007676">Call +91 7827007676</a> · <a href="https://wa.me/917827007676" rel="noopener">WhatsApp FODO</a> · 65 M Block, New Roshanpura, Najafgarh, New Delhi 110043, India</p></nav>')
@@ -318,7 +318,7 @@ pages["thanks"] = ("thanks","/thank-you/","Thank You: FODO","Next steps after yo
  """<section class="hero hero-art has-art"><div class="container"><div class="ha-text"><p class="eyebrow">Next steps</p><h1 id="ty-h">Thanks.</h1><p class="lead" id="ty-lead"></p>
 <div class="btn-row"><a class="btn ci" data-wa href="#">WhatsApp FODO</a><a class="btn ghost" data-route="home" href="#">Home</a><a class="btn ghost" data-route="services" href="#">Services</a><a class="btn ghost" data-route="lab" href="#">Growth Lab</a><a class="btn ghost" data-route="game" href="#">FODO Challenge</a></div></div>"""+ASIDE("What happens next", [("Anmol reads your details", ""), ("You get a reply on WhatsApp or email", ""), ("We agree a time for the audit or call", "")], seq=True)+"""</div></section>
 <script>document.addEventListener("fodo:ready",function(){var s=new URLSearchParams(location.search).get("state"),h=document.getElementById("ty-h"),l=document.getElementById("ty-lead");
-if(s==="sent"){h.textContent="Request received.";l.textContent="Your details reached FODO. Anmol will reply by email or WhatsApp, usually within one working day.";}
+if(s==="sent"){h.textContent="Request received.";l.textContent="Your details reached FODO. Anmol will reply by email or WhatsApp, usually within one working day. Want a faster reply? Send the same details on WhatsApp too.";try{var m=sessionStorage.getItem("fodo-last-lead"),w=document.querySelector("[data-wa]");if(m&&w&&window.FODO){w.href="https://wa.me/"+FODO.whatsappNumber+"?text="+encodeURIComponent(m);w.target="_blank";w.rel="noopener noreferrer";w.textContent="Also send on WhatsApp";}}catch(e){}}
 else{h.textContent="Almost there.";l.textContent="WhatsApp should have opened with your details pre-filled. Please press Send there, opening WhatsApp alone does not deliver the message or confirm a booking. If it did not open, message us using the button below.";}});</script>""",1,'<meta name="robots" content="noindex,follow">',())
 
 
@@ -697,8 +697,10 @@ for _t in PRODUCTS:
     _id, _faq = _t["id"], _tool_faq(_t)
     _title = _t["name"] + ": FODO Growth Lab"
     if len(_title) > 62: _title = _t["name"] + " | FODO"
-    _desc = (_t["line"].replace("&amp;", "&"))
-    _desc = _desc if len(_desc) <= 150 else _desc[:147].rsplit(" ", 1)[0] + "…"
+    _desc = (_t["line"].replace("&amp;", "&")).rstrip(".") + "."
+    if len(_desc) < 110: _desc += " Evidence-backed findings and clear fixes, from " + _inr(_t["price"]) + " a run."   # v34: 110–160 useful characters, no stuffing
+    if len(_desc) < 110: _desc += " Free with your 2 X-Rays."
+    _desc = _desc if len(_desc) <= 158 else _desc[:155].rsplit(" ", 1)[0] + "…"
     pages["tool-" + _id] = ("tool", "/growth-lab/" + _id + "/", T(_title), D_(_desc),
      hero("Growth Lab · " + CAT_NAME.get(_t["cat"], "Pro") + " · PRO", X(_t["name"]), X(_t["line"]),
           f'<a class="btn" href="#tl-run">Run {X(_t["name"])}</a><a class="btn ghost" href="../../business-x-ray/?r=sample&amp;tool={_id}">See a sample (demo data)</a>',
@@ -790,10 +792,23 @@ WB_IMPORTMAP = json.dumps({"imports": dict(("/" + f, "/" + f + "?v=" + _V) for f
     ["js/website-builder.js", "js/website-store.js"] + ["js/" + x for x in os.listdir(os.path.join(ROOT, "js")) if x.startswith("wb-") and x.endswith(".js") and x != "wb-guard.js"]
     + ["sites/lib/" + x for x in os.listdir(os.path.join(ROOT, "sites", "lib")) if x.endswith(".js")]))})
 os.makedirs(os.path.join(ROOT, "website-builder"), exist_ok=True)
+from seo_config import OG_IMAGE
+_WB_D = "Build a professional, mobile-ready business website in minutes. AI writes it, you change anything by clicking, connect your domain and publish."
+_WB_FAQ = [("Do I need to know coding?", "No. Describe your business or answer a few questions, FODO builds the pages, and you change text, photos, colours and layout by clicking."),
+  ("Does it work on phones?", "Yes. Every website is responsive, and you can adjust tablet and mobile separately without changing the desktop design."),
+  ("Can I use my own domain?", "Yes. Connect a domain you own from the website settings; SSL is set up automatically."),
+  ("Can I sell products or take bookings?", "Yes. Add a store with online payment, cash on delivery or WhatsApp orders, plus booking and contact forms that save every lead.")]
+_WB_LD = LD(crumbs_ld([("Home", "/"), ("Website Builder", "/website-builder/")]), faq_ld(_WB_FAQ), {"@type": "SoftwareApplication", "name": "FODO Website Builder", "applicationCategory": "BusinessApplication", "operatingSystem": "Web", "url": SITE + "/website-builder/", "provider": {"@id": SITE + "/#organization"}})
+_WB_SEO = ('<main class="wb-seo"><p class="wb-pad">Loading FODO Website Builder…</p><h1>FODO Website Builder: build a business website without knowing how to build websites</h1><p>' + _WB_D + '</p>'
+  '<h2>What you can do</h2><ul><li>Describe your business and get a complete website: pages, copy, design and SEO</li><li>Choose from industry templates for clinics, restaurants, agencies, shops and more</li><li>Edit visually: text, photos, colours, fonts, sections, desktop, tablet and mobile</li><li>Store, blog, booking and contact forms with every lead saved</li><li>Quality checks before publishing: SEO, mobile, accessibility, links and speed</li><li>Your own domain with SSL, version history and one-click restore</li></ul>'
+  '<h2>Who it is for</h2><p>Doctors, dentists, restaurants, salons, gyms, consultants, agencies, real estate, coaches, creators and online shops.</p>'
+  '<h2>Questions</h2>' + "".join(f"<h3>{q}</h3><p>{a}</p>" for q, a in _WB_FAQ) + '<p><a href="/website-builder/#new=1">Start building your website</a> · <a href="/">FODO home</a></p></main>')
 open(os.path.join(ROOT, "website-builder", "index.html"), "w").write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>FODO Website Builder, build your business website with AI</title><meta name="description" content="Build a professional, mobile-ready website for your business in minutes. AI writes it, you edit anything by clicking, connect your own domain and publish. Export any time."><link rel="canonical" href="https://www.fodo.co.in/website-builder/"><meta name="theme-color" content="#07070c">
-<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}"></head>
-<body class="wb-body"><div id="wb"><p class="wb-pad">Loading FODO Website Builder…</p></div><noscript><p style="padding:24px">The builder needs JavaScript.</p></noscript>
+<title>FODO Website Builder: Build Your Business Website with AI</title><meta name="description" content="{_WB_D}"><link rel="canonical" href="{SITE}/website-builder/">
+<meta property="og:title" content="FODO Website Builder: Build Your Business Website with AI"><meta property="og:description" content="{_WB_D}"><meta property="og:type" content="website"><meta property="og:site_name" content="FODO"><meta property="og:url" content="{SITE}/website-builder/"><meta property="og:image" content="{OG_IMAGE}"><meta property="og:locale" content="en_IN">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="FODO Website Builder: Build Your Business Website with AI"><meta name="twitter:description" content="{_WB_D}"><meta name="twitter:image" content="{OG_IMAGE}">
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}">{_WB_LD}</head>
+<body class="wb-body"><div id="wb">{_WB_SEO}</div><noscript><p style="padding:24px">The builder needs JavaScript.</p></noscript>
 <script type="importmap">{WB_IMPORTMAP}</script>
 <script src="/js/wb-guard.js?v={_V}"></script><script src="/js/account.js?v={_V}" defer></script><script type="module" src="/js/website-builder.js?v={_V}"></script></body></html>""")
 # 404
@@ -809,6 +824,7 @@ for _p in pages.values():
     if _p[1] in ("/thank-you/", "/account/"): continue
     _hsh = _hl.sha1("\x00".join(str(x) for x in _p[2:7]).encode()).hexdigest()[:16]
     _old = _LM.get(_p[1]); _seen[_p[1]] = [_hsh, _old[1] if _old and _old[0] == _hsh else _today]
+_seen.setdefault("/website-builder/", ["wb", _today])   # v34: the builder's public landing page is in the sitemap (the app itself loads after)
 json.dump(_seen, open(_LMF, "w"), indent=0, sort_keys=True)
 def _prio(u): return "1.0" if u == "/" else "0.9" if u in ("/services/", "/contact/") else "0.8" if u.startswith("/services/") else "0.7" if u.startswith(("/locations/", "/industries/", "/insights/")) else "0.6"
 open(os.path.join(ROOT,"sitemap.xml"),"w").write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "".join(f"  <url><loc>{SITE}{u}</loc><lastmod>{v[1]}</lastmod><priority>{_prio(u)}</priority></url>\n" for u, v in sorted(_seen.items(), key=lambda kv: (kv[0] != "/", kv[0]))) + "</urlset>\n")

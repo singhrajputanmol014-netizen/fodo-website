@@ -1,0 +1,22 @@
+{
+  "name": "fodo-website",
+  "private": true,
+  "description": "fodo.co.in on Cloudflare Pages + Functions + D1 + KV. No build step: the repo root is the site. Tooling lives in tests/package.json.",
+  "scripts": {
+    "setup": "npm --prefix tests install && npx --prefix tests playwright install chromium",
+    "build:pages": "python3 scripts/build_pages.py",
+    "test": "node tests/run.mjs all",
+    "test:unit": "node tests/run.mjs unit",
+    "test:integration": "node tests/run.mjs integration",
+    "test:e2e": "node tests/run.mjs e2e",
+    "test:security": "node tests/run.mjs security",
+    "test:builder": "node tests/run.mjs builder",
+    "test:store": "node tests/run.mjs store",
+    "test:brain": "node tests/run.mjs brain",
+    "test:xray": "node tests/run.mjs xray",
+    "audit": "node tests/run.mjs audit",
+    "audit:seo": "node tests/run.mjs audit-seo",
+    "audit:security": "node tests/run.mjs audit-security",
+    "audit:performance": "node tests/run.mjs audit-performance"
+  }
+}

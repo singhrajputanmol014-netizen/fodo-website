@@ -132,12 +132,12 @@ r = await pub("shop/" + id + "/checkout", { method: "online", customer: cust, co
 const on = r.j, sent = cf.filter((x) => x.m === "POST").pop();
 ok(on.ok && on.payment.session === "session_TEST_123" && on.payment.mode === "sandbox" && on.total === 159900 - 15990 + 6000, "online order: Cashfree session created for the server-computed total (₹1,599 − 10% + ₹60)");
 ok(sent.id === "TESTAPP123456" && /sandbox\.cashfree\.com/.test(sent.u) && sent.body.order_amount === on.total / 100 && sent.body.order_meta.return_url === "https://sites.fodo.co.in/kavya-clothing/order/" + on.order + "/?t=" + on.token, "…with the merchant's own keys and a return URL to the store's order page");
-r = await S(id + "/products"); ok(r.j.products.find((p) => p.id === kurta).variants[1].stock === 1, "stock is NOT taken before payment");
+r = await S(id + "/products"); ok(r.j.products.find((p) => p.id === kurta).variants[1].stock === 0, "v34: stock is reserved atomically at checkout (released if payment never completes)");
 r = await pub("shop/" + id + "/order/" + on.order + "?t=wrong"); ok(r.status === 404, "order page needs the secret token");
 r = await pub("shop/" + id + "/order/" + on.order + "?t=" + on.token); ok(r.j.ok && r.j.order.status === "pending" && !("customer" in r.j.order), "unpaid order stays pending (Cashfree checked, not the redirect); no customer data on the public page");
 cfPaid[on.order] = on.total / 100;
 r = await pub("shop/" + id + "/order/" + on.order + "?t=" + on.token); ok(r.j.order.status === "paid", "after Cashfree says PAID → order paid");
-r = await S(id + "/products"); ok(r.j.products.find((p) => p.id === kurta).variants[1].stock === 0, "…and only then the stock is taken");
+r = await S(id + "/products"); ok(r.j.products.find((p) => p.id === kurta).variants[1].stock === 0, "…paying does not take the stock a second time");
 r = await pub("shop/" + id + "/order/" + on.order + "?t=" + on.token); r = await S(id + "/products"); ok(r.j.products.find((p) => p.id === kurta).variants[1].stock === 0 && mails.filter((m) => /New order #1002/.test(m.subject)).length === 1, "re-checking never double-counts stock or emails");
 r = await pub("shop/" + id + "/checkout", { method: "online", customer: cust, code: "DIWALI10", items: [{ id: dup, qty: 1 }, { id: dup, qty: 1 }] }); ok(r.status === 400 && /discount code/.test(r.j.reason), "a 1-use code can't be reused");
 r = await site("https://sites.fodo.co.in/kavya-clothing/order/" + on.order + "/"); ok(r.status === 200 && /noindex/.test(r.t) && r.t.indexOf(JSON.stringify(on.order)) > -1, "order page on the store website");

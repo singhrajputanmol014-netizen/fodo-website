@@ -3,7 +3,7 @@
   var C=window.FODO||{}, loaded=false;
   function consented(){ try{ var s=JSON.parse(localStorage.getItem("fodo-consent")||"null"); return !!(s&&s.analytics); }catch(e){ return false; } }
   function load(){
-    if(loaded||!consented())return; loaded=true;
+    if(loaded||!consented()||!(C.ga4Id||C.metaPixelId))return; loaded=true;   // v34: IDs may arrive a moment later from /api/site-config
     if(C.ga4Id){
       var s=document.createElement("script"); s.async=true; s.src="https://www.googletagmanager.com/gtag/js?id="+encodeURIComponent(C.ga4Id); document.head.appendChild(s);
       window.dataLayer=window.dataLayer||[]; window.gtag=function(){dataLayer.push(arguments);}; gtag("js",new Date()); gtag("config",C.ga4Id,{anonymize_ip:true});
@@ -16,6 +16,7 @@
   /* One event function for the whole site. Sends to exactly one destination (gtag → Cloudflare Zaraz → GTM dataLayer),
      so an event is never counted twice, and only when an analytics tool is actually present. Never sends form values,
      names, emails or phone numbers. */
+  document.addEventListener("fodo-config",function(){ load(); });
   window.FODO_TRACK=function(name,params){ try{ params=params||{}; params.page_path=params.page_path||location.pathname;
     if(window.gtag)gtag("event",name,params); else if(window.zaraz&&typeof zaraz.track==="function")zaraz.track(name,params); else if(window.dataLayer&&window.google_tag_manager)dataLayer.push(Object.assign({event:name},params));
     if(window.fbq&&name==="generate_lead")fbq("track","Lead"); }catch(e){} };

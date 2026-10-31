@@ -4,6 +4,7 @@
    Only the published snapshot is served, drafts never leave the builder. Password-protected pages ask for the page password. */
 import { renderPage, liveScript, sitemap, esc } from "./render.js";
 import { productPage, cartPage, checkoutPage, orderPage, blogList, blogPost, storeScript, shell } from "./shop.js";
+import { gate } from "./protect.js";
 
 export async function findSite(env, by) {
   const d = env.XRAY_DB; if (!d) return null;
@@ -27,20 +28,21 @@ export async function serve(env, request, row, o) {
   if ((m = /^p\/([a-z0-9-]+)\/?$/.exec(rest))) { const p = prods.find((x) => x.slug === m[1]); return p ? html(productPage(site, p, live), 200, o.headers) : html(renderPage(site, "home", Object.assign({}, live, { noindex: true })), 404, o.headers); }
   if (/^cart\/?$/.test(rest)) return html(cartPage(site, prods, live), 200, Object.assign({ "cache-control": "no-store" }, o.headers || {}));
   if (/^checkout\/?$/.test(rest)) return html(checkoutPage(site, prods, live), 200, Object.assign({ "cache-control": "no-store" }, o.headers || {}));
-  if ((m = /^order\/(or_[a-z0-9]{14})\/?$/.exec(rest))) return html(orderPage(site, { site: row.id, order: m[1] }, Object.assign({}, live, { api: api0 })), 200, Object.assign({ "cache-control": "no-store" }, o.headers || {}));
+  if ((m = /^order\/(or_[a-z0-9]{14})\/?$/.exec(rest))) return html(orderPage(site, { site: row.id, order: m[1] }, Object.assign({}, live, { api: api0, noindex: true })), 200, Object.assign({ "cache-control": "no-store", "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow" }, o.headers || {}));
   if (/^thank-you\/?$/.test(rest)) { const ty = (site.settings && site.settings.thankYou) || {}; return html(shell(site, ty.title || "Thank you", '<section><div class="wrap narrow center"><h1>' + esc(ty.title || "Thank you!") + '</h1><p class="lead">' + esc(ty.text || "We received your message and will get back to you soon.") + '</p><p><a class="btn" href="' + esc(base) + '">Back to the home page</a></p></div></section>', Object.assign({}, live, { noindex: true })), 200, o.headers); }
   if (/^search\/?$/.test(rest)) { const idx = searchIndex(site, base, posts, prods); return html(shell(site, "Search", '<section><div class="wrap narrow"><h1>Search</h1><input class="srch-box" id="srch" type="search" placeholder="Search pages, articles and products…" aria-label="Search" autofocus><div class="srch-r" id="srch-r"></div></div></section>', Object.assign({}, live, { noindex: true, bodyExtra: (live.bodyExtra || "") + '<script type="application/json" id="srch-i">' + JSON.stringify(idx).replace(/</g, "\\u003c") + '</script><script>(function(){var I=JSON.parse(document.getElementById("srch-i").textContent),q=document.getElementById("srch"),r=document.getElementById("srch-r");function e(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c]})}function go(){var w=q.value.toLowerCase().split(/\\s+/).filter(Boolean);if(!w.length){r.innerHTML="";return}var L=I.filter(function(x){var h=(x.t+" "+x.x).toLowerCase();return w.every(function(k){return h.indexOf(k)>-1})}).slice(0,20);r.innerHTML=L.length?L.map(function(x){return "<a href=\\""+e(x.u)+"\\"><b>"+e(x.t)+"</b><small>"+e(x.k)+" · "+e(x.x.slice(0,140))+"</small></a>"}).join(""):"<p class=sub>Nothing found.</p>"}q.oninput=go;var p=new URLSearchParams(location.search).get("q");if(p){q.value=p;go()}})()</script>' })), 200, o.headers); }
   if (/^blog\/?$/.test(rest)) return html(blogList(site, posts, live), 200, o.headers);
   if ((m = /^blog\/([a-z0-9-]+)\/?$/.exec(rest))) { const p = await livePost(env, row.id, m[1]); return p ? html(blogPost(site, p, live), 200, o.headers) : html("<h1>Post not found</h1>", 404); }
   const slug = rest.replace(/\/$/, "") || "home", page = (site.pages || []).find((p) => p.slug === slug && !p.hidden);
   if (!page) return html(renderPage(site, "home", { base, origin, noindex: true }).replace("<body>", "<body><p style=\"padding:12px;text-align:center\">Page not found, here is the home page.</p>"), 404);
-  if (page.password) {   // simple page password (hash compared on the server); not a substitute for real accounts
-    const url = new URL(request.url), given = request.method === "POST" ? String((await request.formData().catch(() => new FormData())).get("pw") || "") : "";
-    const ok = given && (await sha(given + "|" + row.id)) === page.password;
-    if (!ok) return html("<!doctype html><meta name=robots content=noindex><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Protected page</title><form method=post style=\"font:16px system-ui;max-width:360px;margin:80px auto;display:grid;gap:10px\"><h1 style=\"font-size:22px\">This page is protected</h1><label for=pw>Password</label><input id=pw name=pw type=password required style=\"padding:10px\"><button style=\"padding:10px\">Open</button>" + (given ? "<p style=color:#c00>Wrong password.</p>" : "") + "</form>", given ? 403 : 401, { "cache-control": "no-store" });
+  if (page.password) {   // v34: PBKDF2 hash, attempt limit, signed 12-hour cookie (sites/lib/protect.js)
+    const path = base + (slug === "home" ? "" : slug + "/"), g = await gate(env, request, row.id, slug, page.password, path);
+    if (g.ok && g.redirect) return new Response(null, { status: 303, headers: { location: path, "set-cookie": g.setCookie, "cache-control": "no-store" } });
+    if (!g.ok) { const h = { "cache-control": "no-store", "x-robots-tag": "noindex" }; if (g.setCookie) h["set-cookie"] = g.setCookie;
+      return html("<!doctype html><meta name=robots content=noindex><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Protected page</title><form method=post action=\"" + esc(path) + "\" style=\"font:16px system-ui;max-width:360px;margin:80px auto;padding:0 16px;display:grid;gap:10px\"><h1 style=\"font-size:22px\">This page is protected</h1>" + (g.msg ? "<p role=alert style=\"color:" + (g.status === 200 ? "#0a7" : "#c00") + "\">" + esc(g.msg) + "</p>" : "") + (g.status === 429 ? "" : "<label for=pw>Password</label><input id=pw name=pw type=password required autocomplete=current-password style=\"padding:10px;font:inherit\"><button style=\"padding:10px;font:inherit\">Open</button>") + "</form>", g.status === 200 ? 200 : g.status, h); }
   }
   const out = renderPage(site, slug, live);
-  return html(out, 200, Object.assign(page.password ? { "cache-control": "no-store" } : {}, o.headers || {}));
+  return html(page.password ? out.replace("</body>", '<p style="text-align:center;font:13px system-ui;padding:12px"><a href="?logout=1">Log out of this page</a></p></body>') : out, 200, Object.assign(page.password ? { "cache-control": "no-store", "x-robots-tag": "noindex" } : {}, o.headers || {}));
 }
 export const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(s))))].map((b) => b.toString(16).padStart(2, "0")).join("");
 export { esc };

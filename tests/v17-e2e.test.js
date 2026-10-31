@@ -145,6 +145,15 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   ok(true, "admin changed Starter to ₹599 → /plans/ shows ₹599");
   await p.goto(BASE + "/admin/#settings"); await p.waitForSelector("#ad-cfr"); await p.click("#ad-cfr"); await p.click(".ad-dlg [data-ok]"); await p.waitForTimeout(600);
   ok((await p.evaluate(() => fetch("/api/lab/catalog").then((r) => r.json()))).starter.price === 499, "reset to defaults");
+  // v34: enquiries from the contact form + website settings, end to end in the browser
+  await p.goto(BASE + "/contact/?mode=call"); await p.waitForSelector("#discovery form");
+  await p.evaluate(async () => { await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "call", name: "Asha Rao", email: "asha@cafe.in", business: "Asha Cafe", date: "2026-11-05", time: "11:00", page: "/contact/?mode=call", source: "instagram" }) }); });
+  await p.goto(BASE + "/admin/#enquiries"); await p.waitForSelector(".ad-lead[data-id]", { timeout: 15000 }); ok(/Asha Cafe/.test(await p.textContent("#ad-view")) && /instagram/.test(await p.textContent("#ad-view")), "v34: admin Enquiries lists the contact-form request with its source");
+  await p.selectOption(".ad-lead .eq-st", "contacted"); await p.waitForSelector(".ad-toast"); await shot(p, "admin-enquiries");
+  await p.goto(BASE + "/admin/#sitesettings"); await p.waitForSelector("#ss-f"); await p.fill('#ss-f input[name="bookingUrl"]', "https://cal.com/fodo/30min"); await p.fill('#ss-f input[name="foundingSlotsTaken"]', "4"); await p.click('#ss-f button[type="submit"]');
+  await p.waitForFunction(() => /Saved/.test(document.getElementById("ss-s").textContent), null, { timeout: 10000 }); ok(true, "v34: Website settings saved from admin"); await shot(p, "admin-sitesettings");
+  await p.goto(BASE + "/contact/?mode=call"); await p.waitForSelector("#bk-l", { timeout: 10000 }); ok(/cal\.com/.test(await p.getAttribute("#bk-l a", "href")), "v34: the booking link appears on the call form without a deploy");
+  await p.goto(BASE + "/"); await p.waitForFunction(() => { const o = document.getElementById("slots-open"); return o && o.style.visibility !== "hidden" && o.textContent === "6"; }, null, { timeout: 10000 }).then(() => ok(true, "v34: founding counter comes from the server (10 − 4 = 6)"), () => ok(false, "v34: founding counter comes from the server"));
   await p.goto(BASE + "/admin/#monitoring"); await p.waitForSelector(".ad-kpi"); ok(/tandoortales\.test/.test(await p.textContent("#ad-view")), "admin Monitoring lists customers' monitored sites");
 
   /* ---------- v17.1 admin: ☰ menu, Growth Lab, Businesses, Findings, Quality → report detail, AI prompts ---------- */
@@ -152,7 +161,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   ok(/Next best actions/.test(await p.textContent(".ad-nba")), "overview: next best actions panel");
   await p.click("#ad-menu"); await p.waitForSelector(".ad-menu-box");
   const groups = await p.$$eval(".ad-menu-box .ad-gl", (e) => e.map((x) => x.textContent)), mlinks = await p.$$eval(".ad-menu-box a[data-tab]", (e) => e.length);
-  ok(groups.join(",") === "Growth Lab,Support,Customers,Website,Money & setup,Quick links" && mlinks === 19, "☰ menu beside dark mode opens every section, grouped (" + mlinks + " sections) + quick links");
+  ok(groups.join(",") === "Growth Lab,Support,Customers,Website,Money & setup,Quick links" && mlinks === 21, "☰ menu beside dark mode opens every section, grouped (" + mlinks + " sections) + quick links");
   await shot(p, "admin-menu");
   await p.click('.ad-menu-box a[data-tab="lab"]'); await p.waitForFunction(() => /Every Growth Lab tool/.test(document.getElementById("ad-view").textContent), null, { timeout: 20000 });
   const lt = await p.textContent("#ad-view"); ok(/Every Growth Lab tool/.test(lt) && /Visitor → customer funnel/.test(lt) && /Marketing Budget Planner/.test(lt) && /Growth Score/.test(lt), "admin Growth Lab: every tool + full funnel");
@@ -189,7 +198,7 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   ok(/Competitor War Room/.test(await p.textContent("#ad-view")), "admin Growth Lab: standalone tool runs table");
   const ma = await newCtx(b, true), map = await ma.newPage(); await ma.addCookies(await ctx.cookies()); await map.goto(BASE + "/admin/#overview"); await map.waitForSelector(".ad-more", { timeout: 15000 });
   const bottom = await map.$$eval(".ad-nav > a.ad-mob, .ad-nav > .ad-more", (e) => e.filter((x) => getComputedStyle(x).display !== "none").length);
-  ok(bottom === 5 && await map.evaluate(() => document.documentElement.scrollWidth <= 391 && innerWidth === 390), "admin on a phone: 4 tabs + More in the bottom bar, no sideways scroll");
+  if (bottom !== 5) console.log("BOTTOM", bottom, await map.evaluate(() => document.documentElement.scrollWidth)); ok(bottom === 5 && await map.evaluate(() => document.documentElement.scrollWidth <= 391 && innerWidth === 390), "admin on a phone: 4 tabs + More in the bottom bar, no sideways scroll");
   await map.click(".ad-more"); await map.waitForSelector(".ad-menu-box"); ok(await map.isVisible('.ad-menu-box a[data-tab="prompts"]'), "phone: More opens the full menu");
   await shot(map, "admin-mobile-menu"); await ma.close();
 

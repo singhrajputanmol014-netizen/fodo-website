@@ -4,7 +4,7 @@
 (function () {
   "use strict";
   var A = window.FODO_ACCOUNT, root = document.getElementById("adm"); if (!A || !root) return;
-  var esc = A.esc, inr = function (n) { return "₹" + Math.round(+n || 0).toLocaleString("en-IN"); }, $ = function (s, el) { return (el || document).querySelector(s); };
+  var esc = A.esc, inr = function (n) { return "₹" + Math.round(+n || 0).toLocaleString("en-IN"); }, $ = function (s, el) { return (el || document).querySelector(s); }, $$ = function (s, el) { return [].slice.call((el || document).querySelectorAll(s)); };
   var ME = null, OV = null;
   var api = function (p, body) { return fetch("/api/admin/" + p, { method: body === undefined ? "GET" : "POST", credentials: "same-origin", headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return { ok: false, reason: "Bad answer (" + r.status + ")" }; }).then(function (j) { j._status = r.status; return j; }); }, function () { return { ok: false, reason: "No connection." }; }); };
   var date = function (s, t) { if (!s) return "—"; var d = new Date(s); return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + (t ? " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : ""); };
@@ -34,10 +34,12 @@
   var TABS = [["overview", "Overview", "M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"], ["traffic", "Traffic", "M3 3v18h18M7 15l4-4 3 3 6-6"], ["users", "Users", "M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm0 2c-2.7 0-6 1.3-6 4v2h8v-2c0-1 .4-2 1.1-2.8A9 9 0 0 0 8 13zm8 0c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"],
     ["xrays", "X-Rays", "M11 2a9 9 0 1 0 5.6 16l4.7 4.7 1.4-1.4-4.7-4.7A9 9 0 0 0 11 2zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"], ["leads", "Leads", "M12 2l2.9 6.9L22 9.3l-5.5 4.7L18.2 21 12 17.3 5.8 21l1.7-7L2 9.3l7.1-.4z"],
     ["payments", "Payments", "M2 6h20v12H2zm2 2v2h16V8zm0 6v2h6v-2z"], ["activity", "Activity", "M3 12h4l3-8 4 16 3-8h4"], ["lab", "Growth Lab", "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"], ["businesses", "Businesses", "M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1"], ["findings", "Findings", "M4 6h16M4 12h10M4 18h7M18 15l3 3-3 3"], ["quality", "Quality", "M9 12l2 2 4-4M12 3l8 4v5c0 5-3.4 8.6-8 9-4.6-.4-8-4-8-9V7z"], ["prompts", "AI prompts", "M4 5h16v11H8l-4 4zM8 9h8M8 12h5"], ["costs", "Costs & profit", "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"], ["monitoring", "Monitoring", "M2 12h4l2-6 4 12 2-6h8"], ["settings", "Prices & tools", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.5-3a8.5 8.5 0 0 0-.1-1.3l2-1.6-2-3.4-2.4 1a8.6 8.6 0 0 0-2.2-1.3L15.5 2h-4l-.4 2.5a8.6 8.6 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.6a8.5 8.5 0 0 0 0 2.6l-2 1.6 2 3.4 2.4-1a8.6 8.6 0 0 0 2.2 1.3l.4 2.5h4l.4-2.5a8.6 8.6 0 0 0 2.2-1.3l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.3z"], ["team", "Team", "M12 1l9 4v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V5z"]];
+  // v34 enquiries + website settings
+  TABS.push(["enquiries", "Enquiries", "M4 4h16v12H5.2L4 17.2zM8 8h8M8 11h5"], ["sitesettings", "Website settings", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7.5-2.2-1.9-1.1-1.6 1.6L14 8.5 13 6.5h-2l-1 2-2 .9-1.6-1.6-1.9 1.1.5 2.2L3 12l2.1.7-.5 2.2 1.9 1.1 1.6-1.6 2 .9 1 2h2l1-2 2-.9 1.6 1.6 1.9-1.1-.5-2.2z"]);
   // v20 help desk
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["users", "leads", "payments", "activity"]], ["Website", ["traffic"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -98,7 +100,7 @@
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -424,6 +426,43 @@
     $("#ad-rq").oninput = function () { clearTimeout(t); t = setTimeout(load, 250); };
     $("#ad-rcsv").onclick = function () { csv([["Website", "Email", "Level", "Credit", "Score", "Status", "When", "Report"]].concat(items.map(function (r) { return [r.domain, r.email, r.tier, r.credit, r.score, r.status, r.created_at, r.status === "COMPLETE" ? location.origin + "/business-x-ray/?r=" + r.job_id : ""]; })), "fodo-xrays"); };
     load();
+  }
+  /* v34: enquiries from the contact / audit / call forms (saved in D1; email + WhatsApp still work) */
+  function enquiriesView() {
+    var st = (location.hash.split("?status=")[1] || "");
+    api("enquiries" + (st ? "?status=" + encodeURIComponent(st) : "")).then(function (j) {
+      if (!j.ok) return fail(j);
+      var opts = function (v) { return j.statuses.map(function (x) { return '<option value="' + x + '"' + (x === v ? " selected" : "") + ">" + x + "</option>"; }).join(""); };
+      $("#ad-view").innerHTML = head("Enquiries", "Every contact, audit and call request from fodo.co.in, with the page and campaign it came from.", '<div class="btn-row"><select id="eq-f" class="ad-in" aria-label="Filter"><option value="">All</option>' + opts(st) + '</select><button class="btn sm ghost" id="eq-csv" type="button">Export CSV</button></div>') +
+        (j.items.length ? '<div class="ad-leads">' + j.items.map(function (l) { var D = l.data || {}, ph = String(l.phone || "").replace(/\D/g, "");
+          return '<div class="panel ad-card ad-lead" data-id="' + esc(l.id) + '"><div class="ad-who"><span class="ad-av">' + esc((l.name || "?").charAt(0).toUpperCase()) + '</span><div><b>' + esc(l.name) + (l.business ? " · " + esc(l.business) : "") + "</b><small>" + esc(l.mode) + " · " + esc(ago(l.created_at)) + "</small></div></div>" +
+            '<p class="muted">' + esc([l.email, l.phone].filter(Boolean).join(" · ")) + "</p>" + (D.goal || D.budget || D.website || D.date ? '<p class="muted">' + esc([D.website, D.goal, D.budget, D.date ? "call " + D.date + " " + (D.time || "") : ""].filter(Boolean).join(" · ")) + "</p>" : "") +
+            '<p class="muted"><small>Page ' + esc(l.page || "?") + (l.source ? " · from " + esc(l.source) : "") + (l.campaign ? " · campaign " + esc(l.campaign) : "") + "</small></p>" +
+            '<div class="btn-row"><select class="ad-in eq-st" aria-label="Status"' + (j.canEdit ? "" : " disabled") + ">" + opts(l.status) + "</select>" + (l.email ? '<a class="btn sm" href="mailto:' + esc(l.email) + '">Email</a>' : "") + (ph.length >= 10 ? '<a class="btn sm ghost" target="_blank" rel="noopener noreferrer" href="https://wa.me/' + (ph.length === 10 ? "91" + ph : ph) + '">WhatsApp</a>' : "") + "</div>" +
+            '<textarea class="ad-in eq-n" rows="2" placeholder="Notes (only the FODO team sees these)"' + (j.canEdit ? "" : " disabled") + ">" + esc(l.notes || "") + "</textarea></div>"; }).join("") + "</div>"
+          : '<div class="panel ad-card"><p>No enquiries yet' + (st ? " with status “" + esc(st) + "”" : "") + '. They appear here as soon as someone sends the contact, audit or call form.</p><a class="btn sm" href="/contact/" target="_blank">Open the contact form</a></div>');
+      $("#eq-f").onchange = function () { location.hash = "enquiries" + (this.value ? "?status=" + this.value : ""); };
+      $("#eq-csv").onclick = function () { csv([["Date", "Type", "Name", "Business", "Email", "Phone", "Status", "Page", "Source", "Campaign", "Notes"]].concat(j.items.map(function (l) { return [l.created_at, l.mode, l.name, l.business, l.email, l.phone, l.status, l.page, l.source, l.campaign, l.notes]; })), "fodo-enquiries.csv"); };
+      $$(".ad-lead[data-id]").forEach(function (c) { var id = c.dataset.id, save = function (b) { api("enquiries/" + encodeURIComponent(id), b).then(function (r) { toast(r.ok ? "Saved" : (r.reason || "Not saved"), !r.ok); }); };
+        var sel = c.querySelector(".eq-st"), n = c.querySelector(".eq-n"); if (sel) sel.onchange = function () { save({ status: sel.value }); }; if (n) n.onchange = function () { save({ notes: n.value }); }; });
+    });
+  }
+  /* v34: settings the team changes without a deploy */
+  function siteSettingsView() {
+    api("site-settings").then(function (j) {
+      if (!j.ok) return fail(j); var c = j.config, dis = j.canEdit ? "" : " disabled";
+      var F = function (k, label, ph, help, type) { return '<label class="ad-lab">' + label + '<input class="ad-in" name="' + k + '" type="' + (type || "text") + '" value="' + esc(c[k] == null ? "" : c[k]) + '" placeholder="' + esc(ph || "") + '"' + dis + ">" + (help ? '<small class="muted">' + help + "</small>" : "") + "</label>"; };
+      $("#ad-view").innerHTML = head("Website settings", "Booking, analytics, review link and the Founding Programme counter for fodo.co.in. Changes go live within a minute, no deploy needed.") +
+        '<form id="ss-f" class="panel ad-card ad-form"><h2>Booking</h2>' + F("bookingUrl", "Booking link", "https://cal.com/fodo/30min", "Calendly, Cal.com or Google appointment page. Empty = visitors request a time with the call form.") + F("bookingProvider", "Provider name", "Cal.com") + F("meetingType", "Meeting type", "30-minute growth call") +
+        "<h2>Analytics</h2>" + F("ga4Id", "Google Analytics 4 ID", "G-XXXXXXXXXX", "Loads only after a visitor accepts analytics cookies.") + F("metaPixelId", "Meta Pixel ID", "123456789012345", "Same consent rule as GA4.") +
+        '<p class="muted"><small>Google Search Console: verify fodo.co.in with a DNS TXT record (Cloudflare → DNS). It needs no code on the site.</small></p>' +
+        "<h2>Reviews</h2>" + F("reviewUrl", "Google review link", "https://g.page/r/…/review", "Shown where FODO asks happy clients for a review.") +
+        "<h2>Founding Programme</h2>" + F("foundingSlotsTotal", "Total slots", "10", "", "number") + F("foundingSlotsTaken", "Slots taken", "0", "Update as real clients sign; the home page shows the live number.", "number") + F("foundingCohort", "Cohort", "Q4 2026") +
+        "<h2>Enquiries</h2>" + F("leadEmail", "Send new enquiries to", "anmol@fodo.co.in", "Leave empty to use the owner email.", "email") +
+        (j.canEdit ? '<div class="btn-row"><button class="btn" type="submit">Save settings</button></div>' : '<p class="muted">View-only access.</p>') + '<p class="cf-status" id="ss-s" role="status"></p></form>';
+      if (j.canEdit) $("#ss-f").onsubmit = function (ev) { ev.preventDefault(); var b = {}; [].forEach.call(this.querySelectorAll("input[name]"), function (i) { b[i.name] = i.value.trim(); });
+        api("site-settings", b).then(function (r) { $("#ss-s").textContent = r.ok ? "Saved ✓ Live within a minute." : (r.errors || [r.reason]).join(" "); $("#ss-s").className = "cf-status " + (r.ok ? "ok" : "warn"); }); };
+    });
   }
   function leadsView() {
     api("leads").then(function (j) {

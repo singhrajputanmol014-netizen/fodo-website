@@ -35,12 +35,34 @@ const head = (p, edit, tag) => (p.title ? "<" + (tag || "h2") + F("title", edit)
 const list = (a, n) => (Array.isArray(a) ? a.slice(0, n || 24) : []);
 /* v32 per-section style: background, spacing, alignment, width, entrance animation, hide on mobile/desktop, anchor id */
 export const SEC_BG = ["default", "alt", "dark", "primary", "gradient", "image"], SEC_PAD = ["default", "none", "s", "l", "xl"];
+/* v34 responsive overrides. Desktop is the base (st.*); st.tablet overrides it below the tablet breakpoint, st.mobile below the
+   mobile breakpoint (and wins over tablet there). Only whitelisted values become classes (t-* / m-*); the CSS is in respCss(). */
+export const RESP = { pad: SEC_PAD.slice(1), align: ["left", "center"], width: ["narrow", "wide", "full"], fs: [70, 80, 90, 100, 110, 120], cols: [1, 2, 3, 4], gap: ["s", "l"] };
+function respClasses(st, cls) {
+  [["tablet", "t"], ["mobile", "m"]].forEach(([k, b]) => { const o = st[k]; if (!o || typeof o !== "object") return;
+    if (RESP.pad.indexOf(o.pad) > -1) cls.push(b + "-pad-" + o.pad); if (RESP.align.indexOf(o.align) > -1) cls.push(b + "-al-" + o.align);
+    if (RESP.width.indexOf(o.width) > -1) cls.push(b + "-w-" + o.width); if (RESP.fs.indexOf(+o.fs) > -1 && +o.fs !== 100) cls.push(b + "-fs-" + o.fs);
+    if (RESP.cols.indexOf(+o.cols) > -1) cls.push(b + "-cols-" + o.cols); if (RESP.gap.indexOf(o.gap) > -1) cls.push(b + "-gap-" + o.gap);
+    if (o.hide === true) cls.push(b + "-hide"); else if (o.hide === false) cls.push(b + "-show"); if (o.stack) cls.push(b + "-stack"); });
+}
+function respCss(b, max, H) {   // H = base sizes at this breakpoint: [h1, h2, h3, body] in rem
+  const pad = { none: "0", s: "clamp(24px,5vw,40px) 0", l: "clamp(64px,12vw,120px) 0", xl: "clamp(88px,15vw,160px) 0" }, g = "." + b;
+  return "@media(max-width:" + max + "px){" + RESP.pad.map((x) => g + "-pad-" + x + "{padding:" + pad[x] + "!important}").join("") +
+    g + "-al-center,." + b + "-al-center .wrap{text-align:center}" + g + "-al-center .btns{justify-content:center}" + g + "-al-left,." + b + "-al-left .wrap{text-align:left}" + g + "-al-left .btns{justify-content:flex-start}" +
+    g + "-w-narrow .wrap{width:min(780px,100% - 32px)}" + g + "-w-wide .wrap{width:min(1440px,100% - 32px)}" + g + "-w-full .wrap{width:calc(100% - 24px)}" +
+    RESP.fs.map((n) => g + "-fs-" + n + " h1{font-size:" + (H[0] * n / 100).toFixed(2) + "rem!important}" + g + "-fs-" + n + " h2{font-size:" + (H[1] * n / 100).toFixed(2) + "rem!important}" + g + "-fs-" + n + " h3{font-size:" + (H[2] * n / 100).toFixed(2) + "rem!important}" + g + "-fs-" + n + " p," + g + "-fs-" + n + " li{font-size:" + (H[3] * n / 100).toFixed(2) + "rem!important}").join("") +
+    RESP.cols.map((n) => g + "-cols-" + n + " .grid," + g + "-cols-" + n + " .two," + g + "-cols-" + n + " .hero-in{grid-template-columns:repeat(" + n + ",minmax(0,1fr))!important}").join("") +
+    g + "-gap-s .grid{gap:12px!important}" + g + "-gap-l .grid{gap:36px!important}" + g + "-hide{display:none!important}" + g + "-show{display:block!important}" +
+    g + "-stack .btns{flex-direction:column;align-items:stretch}" + g + "-stack .btns .btn{width:100%;justify-content:center}" + "}";
+}
+export const BREAKPOINTS = (t) => ({ tablet: Math.max(600, Math.min(1400, parseInt(t && t.bpTablet, 10) || 1024)), mobile: Math.max(360, Math.min(900, parseInt(t && t.bpMobile, 10) || 767)) });
 function wrapStyle(html, st, type) {
   if (!st || typeof st !== "object") return html; const cls = [];
   if (SEC_BG.indexOf(st.bg) > 0 && type !== "navbar" && type !== "footer") cls.push("s-bg-" + st.bg);
   if (SEC_PAD.indexOf(st.pad) > 0) cls.push("s-pad-" + st.pad);
   if (st.align === "center") cls.push("s-al-center"); if (["narrow", "wide", "full"].indexOf(st.width) > -1) cls.push("s-w-" + st.width);
   if (st.hideM) cls.push("hide-m"); if (st.hideD) cls.push("hide-d"); if (st.mfit) cls.push("s-mfit");
+  respClasses(st, cls);
   const attrs = (["fade", "fade-up", "fade-down", "slide-left", "slide-right", "scale", "blur", "none"].indexOf(st.anim) > -1 ? ' data-anim="' + st.anim + '"' : "") + (/^[a-z][a-z0-9-]{1,30}$/.test(String(st.id || "")) ? ' id="' + st.id + '"' : "") + (st.bg === "image" && safeUrl(st.img) ? ' style="--s-img:url(\'' + esc(safeUrl(st.img)) + '\')"' : "");
   return html.replace(/^<(header|section|footer)([^>]*)>/, (m, tag, rest) => { let r = rest; if (/ id=/.test(attrs)) r = r.replace(/ id="[^"]*"/, "");
     if (cls.length) r = / class="/.test(r) ? r.replace(/ class="([^"]*)"/, (x, c0) => ' class="' + (c0 + " " + cls.join(" ")).trim() + '"') : r + ' class="' + cls.join(" ") + '"';
@@ -130,7 +152,8 @@ export function themeCss(t) {
   const btnr = { pill: "999px", square: "0px" }[t.button] || "calc(var(--r)*3)", sh = { none: "none", strong: "0 24px 60px -24px rgba(0,0,0,.45)", glow: "0 0 0 1px color-mix(in srgb,var(--p) 30%,transparent),0 18px 50px -18px color-mix(in srgb,var(--p) 70%,transparent)", glass: "0 10px 40px -12px rgba(0,0,0,.35)" }[t.shadow] || "0 10px 30px -18px rgba(0,0,0,.25)";
   const vars = (P0, A0, bg0, tx0, S0, surf0, dk) => "--p:" + P0 + ";--a:" + A0 + ";--s2:" + S0 + ";--bg:" + bg0 + ";--tx:" + tx0 + ";--mut:color-mix(in srgb," + tx0 + " 62%," + bg0 + ");--line:color-mix(in srgb," + tx0 + " 12%," + bg0 + ");--card:" + (surf0 || "color-mix(in srgb," + tx0 + " " + (dk ? 6 : 3) + "%," + bg0 + ")") + ";";
   const pal = t.mode === "auto" && paletteById(t.palette), auto = pal ? "@media(prefers-color-scheme:dark){:root{" + vars(pal.dark.primary, pal.dark.accent, pal.dark.bg, pal.dark.text, pal.dark.secondary, pal.dark.surface, true) + "}}" : "";
-  return ":root{" + vars(P, A, bg, tx, S2, surf, dark) + "--ok:#16a34a;--warn:#d97706;--err:#dc2626;--r:" + rad + "px;--btnr:" + btnr + ";--shadow:" + sh + ";--pad:" + pad + ";--wrap:" + wrapW + ";--f:" + font + ";--hf:" + hfont + "}" + auto +
+  const tok = (color(t.muted, "") ? "--mut:" + color(t.muted, "") + ";" : "") + (color(t.border, "") ? "--line:" + color(t.border, "") + ";" : "");   // v34 design tokens: optional muted / border overrides
+  return ":root{" + vars(P, A, bg, tx, S2, surf, dark) + tok + "--ok:#16a34a;--warn:#d97706;--err:#dc2626;--r:" + rad + "px;--btnr:" + btnr + ";--shadow:" + sh + ";--pad:" + pad + ";--wrap:" + wrapW + ";--f:" + font + ";--hf:" + hfont + "}" + auto +
     "*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 var(--f);-webkit-font-smoothing:antialiased;overflow-wrap:anywhere}img{max-width:100%;height:auto;display:block}a{color:var(--p)}" +
     "h1,h2,h3{font-family:var(--hf);line-height:1.12;margin:0 0 .5em;letter-spacing:-.02em}h1{font-size:clamp(2.1rem,6.5vw,4rem)}h2{font-size:clamp(1.6rem,4.2vw,2.6rem)}h3{font-size:1.15rem}" +
     ".wrap{width:min(var(--wrap),100% - 32px);margin:0 auto}.narrow{width:min(780px,100% - 32px)}section{padding:var(--pad) 0}.sub,.lead,.txt{color:var(--mut);font-size:1.08rem;max-width:62ch}.lead{font-size:clamp(1.05rem,2.2vw,1.3rem)}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:.78rem;font-weight:700;color:var(--p);margin:0 0 12px}" +
@@ -175,6 +198,7 @@ export function themeCss(t) {
     (t.shadow === "glass" ? ".card,.nav{background:color-mix(in srgb,var(--card) 62%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}.card{border-color:color-mix(in srgb,var(--tx) 14%,transparent)}" : "") +
     hoverCss(t.hover) +
     motionCss(t.motion) +
+    respCss("t", BREAKPOINTS(t).tablet, [3, 2.2, 1.35, 1.05]) + respCss("m", BREAKPOINTS(t).mobile, [2.2, 1.7, 1.2, 1]) +
     "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}.rv{opacity:1!important;transform:none!important}}";
 }
 /* v32 motion design system, 5 levels: none · subtle · modern (default) · dynamic · experimental, plus a per-section entrance

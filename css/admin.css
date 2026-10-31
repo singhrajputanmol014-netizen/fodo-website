@@ -157,3 +157,7 @@ body.ad-menu-on{overflow:hidden}
 @media (max-width:1000px){.ad-tgrid{grid-template-columns:1fr}}
 .ad-card h3{margin:18px 0 6px;font-size:16px}.ad-ta,.ad-card textarea,.ad-dlg textarea{font:inherit;line-height:1.5}
 .ad-brain{display:inline-grid;place-items:center;text-decoration:none;color:#b7adff;font-size:16px}@media (max-width:560px){.ad-brain{display:none}}
+/* v34 enquiries + website settings */
+.ad-form{display:grid;gap:12px;max-width:720px}.ad-form h2{margin:12px 0 0;font-size:18px}
+.ad-lab{display:grid;gap:5px;font-weight:600;font-size:14px}.ad-lab small{font-weight:400}
+.ad-lead textarea.ad-in{width:100%;margin-top:8px;resize:vertical}

@@ -13,6 +13,7 @@ import { json, accountsOn, sessionUser, isOwner, sameOrigin, count, sha256 } fro
 import * as W from "../../_lib/sites.js";
 import * as SH from "../../_lib/shop.js";
 import { findSite, serve, sha } from "../../../sites/lib/serve.js";
+import { hashPw } from "../../../sites/lib/protect.js";
 import { audit } from "../../_lib/brain/store.js";
 
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type" };
@@ -50,6 +51,8 @@ export async function onRequest(ctx) {
         let b = {}; try { b = JSON.parse((await request.text()).slice(0, 30000)); } catch (e) {}
         try { return json(await SH.checkout(env, path[1], b, ip), 200, CORS); } catch (e) { return json({ ok: false, reason: e.status ? e.message : "Checkout failed, please try again." }, e.status || 500, CORS); }
       }
+      if (path[2] === "webhook" && m === "POST") { try { return json(await SH.storeWebhook(env, path[1], request)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400); } }
+      if (path[2] === "order" && path[3] && m === "GET" && await count(env, "shop-or:" + ip, 120, 3600)) return json({ ok: false, reason: "Too many requests, please try later." }, 429, Object.assign({ "cache-control": "no-store" }, CORS));
       if (path[2] === "order" && path[3] && m === "GET") { const o = await SH.orderFor(env, path[1], path[3], new URL(request.url).searchParams.get("t")); return json(o ? { ok: true, order: { number: o.number, status: o.status, items: o.items.map((i) => ({ title: i.title, variant: i.variant, qty: i.qty, price: i.price })), subtotal: o.subtotal, discount: o.discount, shipping: o.shipping, tax: o.tax, total: o.total, method: o.method, createdAt: o.created_at } } : { ok: false, reason: "Order not found." }, o ? 200 : 404, Object.assign({ "cache-control": "no-store" }, { "access-control-allow-origin": "*" })); }
       return json({ ok: false, reason: "Not found." }, 404, CORS);
     }
@@ -69,7 +72,7 @@ export async function onRequest(ctx) {
     if (s.asOwner) await audit(env, { owner: u.email, kind: "sites", tool: m + " " + (p1 || "site"), status: "owner access", detail: s.id + " (" + s.name + ")" });
     if (!p1) {
       if (m === "GET") return json({ ok: true, role: s.role, site: { id: s.id, name: s.name, slug: s.slug, status: s.status, rev: s.rev, doc: JSON.parse(s.doc), publishedAt: s.published_at, template: s.template_id, urls: W.urlsFor(env, s), asOwner: s.asOwner, role: s.role, review: s.review || "draft", industry: s.industry }, limits: await W.siteLimits(env, u, s) });
-      if (m === "PUT") { W.need(s, "edit"); const r = await W.saveDoc(env, u, s, body.doc, body.baseRev, body.note); return json(Object.assign({ ok: !r.conflict }, r), r.conflict ? 409 : 200); }
+      if (m === "PUT") { W.need(s, "edit"); const r = await W.saveDoc(env, u, s, body.doc, body.baseRev, body.note, { keepServer: body.keepServer === true }); return json(Object.assign({ ok: !r.conflict }, r), r.conflict ? 409 : 200); }
       if (m === "DELETE") { W.need(s, "delete"); await (await W.sdb(env)).prepare("UPDATE sites SET deleted_at=?2, status='draft' WHERE id=?1").bind(s.id, new Date().toISOString()).run(); return json({ ok: true, deleted: true }); }
     }
     const ai = async () => { if (await count(env, "sites-ai:" + u.id, W.limitsFor(u).ai, 86400)) throw Object.assign(new Error("Daily AI limit reached for your plan."), { status: 429 }); };
@@ -93,7 +96,7 @@ export async function onRequest(ctx) {
       if (m === "GET") return json({ ok: true, items: await W.listMedia(env, s) });
       if (m === "POST") { const buf = await request.arrayBuffer(); return json(Object.assign({ ok: true }, await W.putMedia(env, u, s, buf, ctype.split(";")[0], q.get("name") || ""))); }
     }
-    if (p1 === "password" && m === "POST") { const pw = String(body.password || ""); return json({ ok: true, hash: pw ? await sha(pw + "|" + s.id) : null }); }   // the editor stores the hash on the page
+    if (p1 === "password" && m === "POST") { const pw = String(body.password || ""); if (pw && pw.length < 6) return json({ ok: false, reason: "Use at least 6 characters." }, 400); return json({ ok: true, hash: pw ? await hashPw(pw.slice(0, 200)) : null }); }   // v34: PBKDF2; the editor stores the hash on the page
     /* ---- v29 store + blog (every query is scoped to s.id, which siteFor() already checked belongs to you) ---- */
     if (p1 === "products") {
       if (m === "GET" && !path[2]) return json({ ok: true, products: await SH.products(env, s.id) });
@@ -105,7 +108,7 @@ export async function onRequest(ctx) {
       if (m === "GET" && !path[2]) return json({ ok: true, orders: await SH.orders(env, s, { status: q.get("status") || "" }) });
       if (m === "POST" && path[2]) {
         if (body.status === "verify") { const o = await (await SH.shopDb(env)).prepare("SELECT token FROM site_orders WHERE id=?1 AND site_id=?2").bind(path[2], s.id).first(); if (!o) return json({ ok: false, reason: "Order not found." }, 404); const r = await SH.orderFor(env, s.id, path[2], o.token); return json({ ok: true, status: r.status }); }
-        return json(Object.assign({ ok: true }, await SH.setOrderStatus(env, s, path[2], String(body.status || ""))));
+        return json(Object.assign({ ok: true }, await SH.setOrderStatus(env, s, path[2], String(body.status || ""), { amount: body.amount, reason: body.reason, manual: body.manual === true })));
       }
     }
     if (p1 === "discounts") {

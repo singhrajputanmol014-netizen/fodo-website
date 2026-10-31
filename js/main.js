@@ -26,7 +26,7 @@
   const routes = {
     home:P(""), about:P("about/"), services:P("services/"), industries:P("industries/"), work:P("work/"), insights:P("insights/"), resources:P("resources/"),
     lab:P("growth-lab/"), budget:P("marketing-budget/"), score:P("growth-score/"), roi:P("roi-calculator/"), game:P("fodo-challenge/"), quiz:P("marketing-quiz/"),
-    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), help:P("help/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), competitors:P("competitor-finder/"), xray:P("business-x-ray/"), plans:P("plans/"), account:P("account/"), legal:P("legal/"), thanks:P("thank-you/")
+    contact:P("contact/"), reviews:P("reviews/"), audit:P("contact/?mode=audit"), call:P("contact/?mode=call"), faq:P("faq/"), help:P("help/"), pricing:P("pricing/"), locations:P("locations/"), teardowns:P("teardowns/"), founding:P("founding-programme/"), templates:P("templates/"), competitors:P("competitor-finder/"), xray:P("business-x-ray/"), plans:P("plans/"), builder:P("website-builder/"), account:P("account/"), legal:P("legal/"), thanks:P("thank-you/")
   };
   U.routes = routes;
   const here = (document.body.dataset.route==="service"?"services":document.body.dataset.route) || "";
@@ -72,7 +72,7 @@
     const grp=(t,items,cls)=>`<div class="dgrp"><span class="dlabel">${t}</span><div class="${cls||"dlist"}">${items.map(l=>`<a href="${routes[l[1]]}" class="${l[2]||""}"${cur(l[1])}>${l[0]}</a>`).join("")}</div></div>`;
     d.innerHTML=`<div class="drawer-top"><a class="wordmark" href="${routes.home||'./'}" aria-label="FODO: Fear Of Digitally Out ?, home"><b class="so-mark">FOD<span class="so">O<i></i></span></b><small>FEAR OF DIGITALLY OUT ?</small></a><button class="burger" type="button" aria-label="Close menu">${ico.close}</button></div>
       <nav aria-label="Mobile">${grp("Explore",[["Home","home"],["About","about"],["Services","services"],["Industries","industries"],["Work","work"],["Insights","insights"]])}
-      ${grp("Growth Lab",[["All Growth Lab tools","lab"],["Business X-Ray","xray","hot"],["Competitor Finder","competitors"],["Tool plans & prices","plans"],["Growth Score","score"],["ROI Calculator","roi"],["Budget Planner","budget"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
+      ${grp("Growth Lab",[["All Growth Lab tools","lab"],["Business X-Ray","xray","hot"],["Competitor Finder","competitors"],["Tool plans & prices","plans"],["Website Builder","builder"],["Growth Score","score"],["ROI Calculator","roi"],["Budget Planner","budget"],["Play the Game","game"],["Marketing Quiz","quiz"]],"dgrid")}
       ${grp("More",[["Agency pricing","pricing"],["Teardowns","teardowns"],["Templates","templates"],["Checklists","resources"],["Where we work","locations"],["FAQ","faq"],["Help & support","help"],["Founding Programme","founding"],["Contact","contact"]],"dgrid")}</nav>
       <a class="btn" href="${routes.contact}">Let's talk</a><div class="dcontact"><a href="${U.wa()}" target="_blank" rel="noopener noreferrer">WhatsApp</a> · <a href="mailto:${C.email}">Email</a> · <a href="tel:${C.phone}">Call</a></div>`;
     document.body.appendChild(d);
@@ -191,7 +191,15 @@
   document.dispatchEvent(new CustomEvent("fodo:ready"));
 })();
 (function(){ try{ document.querySelectorAll("main h2, .hero h1").forEach(h=>{ if(h.querySelector("span"))return; const t=h.lastChild; if(t&&t.nodeType===3&&/[.?!]\s*$/.test(t.textContent)){ const s=t.textContent.replace(/\s+$/,""); t.textContent=s.slice(0,-1); const sp=document.createElement("span"); const ch=s.slice(-1); sp.className="dot"+(ch==="?"||ch==="!"?" q":""); sp.style.color="var(--signal)"; sp.textContent=ch; h.appendChild(sp);} }); }catch(e){} })();
-(function(){ try{ const C=window.FODO; const o=document.getElementById("slots-open"); if(!o)return; const open=Math.max(0,(C.foundingSlotsTotal||10)-(C.foundingSlotsTaken||0)); o.textContent=open; const bar=document.getElementById("slots-bar"); if(bar)setTimeout(()=>bar.style.width=((C.foundingSlotsTaken||0)/(C.foundingSlotsTotal||10)*100)+"%",300); }catch(e){} })();
+/* v34: founding counter, booking link and analytics IDs come from Admin → Website settings (/api/site-config); config.js keeps the
+   fallback values. The counter is hidden until the live numbers arrive, so nobody sees a stale "slots open". */
+(function(){ const C=window.FODO, o=document.getElementById("slots-open");
+  const paint=()=>{ try{ if(!o)return; const open=Math.max(0,(C.foundingSlotsTotal||10)-(C.foundingSlotsTaken||0)); o.textContent=open; o.style.visibility=""; document.querySelectorAll('[data-text="foundingCohort"]').forEach(x=>{ if(C.foundingCohort)x.textContent=C.foundingCohort; }); const bar=document.getElementById("slots-bar"); if(bar)setTimeout(()=>bar.style.width=((C.foundingSlotsTaken||0)/(C.foundingSlotsTotal||10)*100)+"%",300); }catch(e){} };
+  if(o)o.style.visibility="hidden";
+  const t=setTimeout(paint,2500);
+  fetch("/api/site-config",{credentials:"omit"}).then(r=>r.ok?r.json():null).then(j=>{ if(j&&j.ok&&j.config){ ["bookingUrl","bookingProvider","meetingType","ga4Id","metaPixelId","reviewUrl","foundingSlotsTotal","foundingSlotsTaken","foundingCohort"].forEach(k=>{ if(j.config[k]!==undefined&&j.config[k]!=="")C[k]=j.config[k]; }); }
+    clearTimeout(t); paint(); try{ document.dispatchEvent(new CustomEvent("fodo-config")); }catch(e){} }).catch(()=>{ clearTimeout(t); paint(); });
+})();
 
 /* Explain modal: any .explain[data-title][data-body] opens a full-explanation dialog */
 (function(){ try{ const U=window.FODO_UTIL; const m=document.createElement("div"); m.id="explain-modal"; m.className="modal"; m.setAttribute("role","dialog"); m.setAttribute("aria-modal","true"); m.setAttribute("aria-labelledby","ex-title");

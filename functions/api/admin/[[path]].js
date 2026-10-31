@@ -14,6 +14,7 @@
  *        GET prompts · POST prompts {key, text, note} | {key, reset} | {key, activate: id}  (owners only) · GET insights (next best actions)
  */
 import { helpGet, helpPost } from "../../_lib/help-admin.js";
+import { getSiteCfg, saveSiteCfg, SITE_DEFAULTS, listLeads, updateLead, LEAD_STATUS } from "../../_lib/sitecfg.js";
 import { bgOn, bdb } from "../../_lib/bg.js";
 import { PRODUCTS } from "../../_lib/products.js";
 import { json, accountsOn, db, sessionUser, sameOrigin, isOwner, logEvent, cleanEmail, nowIso, activePlan, extraFeatures, randId } from "../../_lib/accounts.js";
@@ -58,6 +59,8 @@ export async function onRequest(ctx) {
       if (p0 === "costs") return json(Object.assign({ role }, await costs(env, d, Math.round(+q.get("days") || 30))));
       if (p0 === "health") return json(Object.assign({ ok: true, role }, await health(env)));
       if (p0 === "config") return json({ ok: true, role, canEdit, config: cfgCurrent(), defaults: cfgDefaults() });
+      if (p0 === "site-settings") return json({ ok: true, role, canEdit, config: await getSiteCfg(env, true), defaults: SITE_DEFAULTS });   // v34
+      if (p0 === "enquiries") return json({ ok: true, role, canEdit, statuses: LEAD_STATUS, items: await listLeads(env, { status: q.get("status") || "" }) });
       if (p0 === "monitoring") return json(Object.assign({ ok: true, role }, await monitoringAll(d)));
       if (p0 === "lab") return json(Object.assign({ ok: true, role }, await labStats(env, d, Math.round(+q.get("days") || 30))));
       if (p0 === "businesses") return json({ ok: true, role, items: await businesses(d, clean(q.get("q"), 80)) });
@@ -71,6 +74,8 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "site-settings" && m === "POST") { const b = await request.json().catch(() => ({})); const r = await saveSiteCfg(env, b, u.email); if (r.ok) await logEvent(env, u.id, "site_settings", Object.keys(b).join(",")).catch(() => {}); return json(r, r.ok ? 200 : 400); }
+    if (p0 === "enquiries" && path[1] && m === "POST") { const b = await request.json().catch(() => ({})); try { return json(await updateLead(env, path[1], b)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400); } }
     const body = await request.json().catch(() => ({}));
     if (p0 === "help" || p0 === "mail") { const hr = await helpPost(env, path, body, u, new URL(request.url).origin); if (hr) return hr; }   // v20 help desk
     if (p0 === "report" && path[1] && path[2] === "qc") {

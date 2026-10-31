@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "inspect | index"
+        description: "inspect | index | operate"
         default: "inspect"
       url:
         description: "page to inspect"
@@ -22,6 +22,9 @@ on:
       change:
         description: "Brain change id"
         default: ""
+      steps:
+        description: "Web Operator steps (JSON, from FODO Brain)"
+        default: "[]"
 permissions:
   contents: read
   checks: read
@@ -75,7 +78,7 @@ jobs:
           PAGES_PROJECT: ${{ vars.FODO_PAGES_PROJECT || 'fodo-website' }}
         run: node scripts/qa.mjs
   inspect:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'inspect'
+    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'inspect' || inputs.mode == 'operate')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -87,7 +90,9 @@ jobs:
         run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
       - name: Inspect the page
         env:
-          MODE: inspect
+          MODE: ${{ inputs.mode }}
+          STEPS: ${{ inputs.steps }}
+          ALLOW_HOST: "1"
           KEY: ${{ secrets.FODO_CRON_KEY }}
           SITE: https://www.fodo.co.in
           URL: ${{ inputs.url }}

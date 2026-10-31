@@ -29,6 +29,7 @@ import * as MD from "../../_lib/brain/media.js";
 import * as VO from "../../_lib/brain/voice.js";
 import * as LV from "../../_lib/brain/live.js";
 import * as EN from "../../_lib/brain/engineer.js";
+import * as WS from "../../_lib/sites.js";
 import { mayOpenThread } from "../../_lib/brain/orchestrator.js";
 const SITE = (env) => env.SITE_ORIGIN || "https://www.fodo.co.in";
 /* which permission each page endpoint needs ("owner" = the two owner logins only) */
@@ -116,6 +117,8 @@ export async function onRequest(ctx) {
         if (p1 === "overview") return json(Object.assign({ ok: true }, await EN.overview(ctxT)));
         if (p1 === "map") { const mp = await EN.getMap(env); return json({ ok: true, map: mp ? Object.assign({}, mp, { env: EN.envPresence(env, mp.env || []) }) : null }); }
         if (p1 === "find") return json(Object.assign({ ok: true }, await EN.find(env, q.get("q") || "")));
+        if (p1 === "sites") return json({ ok: true, sites: await WS.listSites(env, u, true) });
+        if (p1 === "site-check") { const r = await execute(ctxT, "eng_site_check", { site: q.get("site") || "" }, { intent: "engineer page" }); return json(r.ok ? Object.assign({ ok: true }, r.result) : { ok: false, reason: r.error }, r.ok ? 200 : 400); }
         if (p1 === "change" && path[2]) { const c = await EN.changeDetail(env, path[2]); return c ? json({ ok: true, change: c }) : json({ ok: false, reason: "Not found." }, 404); }
         if (p1 === "shot" && path[2]) { const b = await EN.shot(env, path[2]); return b ? new Response(b, { headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=86400", "x-content-type-options": "nosniff" } }) : json({ ok: false }, 404); }
         return json({ ok: false, reason: "Not found." }, 404);
@@ -193,6 +196,7 @@ export async function onRequest(ctx) {
           if (p1 === "build" && path[2]) return json(Object.assign({ ok: true }, await EN.build(ctxT, path[2], { phrase: body.phrase, feedback: body.feedback })));
           if (p1 === "replace") return json(Object.assign({ ok: true }, await EN.replaceAll(ctxT, body.find, body.replace, { phrase: body.phrase })));
           if (p1 === "inspect") return json(Object.assign({ ok: true }, await EN.inspect(ctxT, body.path)));
+          if (p1 === "operate") return json(Object.assign({ ok: true }, await EN.operate(ctxT, body.url, body.goal)));
           if (p1 === "audit") return json({ ok: true, audit: await EN.runAudit(env, body.url) });
           if (p1 === "reindex") { await GH.dispatch(env, "fodo-engineer.yml", { mode: "index", url: "", change: "" }); return json({ ok: true, note: "Indexing on GitHub Actions (~1 min)." }); }
           if (p1 === "repair" && path[2]) { const c = await (await brainDb(env)).prepare("SELECT * FROM brain_changes WHERE id=?1").bind(path[2]).first(); if (!c || c.status !== "pr_open") return json({ ok: false, reason: "No open preview for that change." }, 400); if ((c.attempts || 0) >= EN.MAX_REPAIRS + 3) return json({ ok: false, reason: "Too many repair attempts — change the request instead." }, 400); return json(Object.assign({ ok: true }, await EN.repair(env, c))); }

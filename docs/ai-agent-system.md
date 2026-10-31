@@ -1,0 +1,29 @@
+# AI agent system (v28)
+
+- **One orchestrator, specialised prompts.** There is no single giant prompt. The prompts are:
+  - analyst
+  - design
+  - frontend
+  - backend
+  - database
+  - api
+  - seo
+  - performance
+  - security
+  - qa
+  - brain
+  - web-operator
+  - site-generate / site-edit / site-rewrite (builder)
+- **Structured JSON in and out.** Each result is validated before anything happens.
+- **Model routing** (`functions/_lib/brain/models.js`):
+  - `code` (Engineer, builder generation): Gemini first, then Groq, then Workers AI.
+  - `deep` and `fast` for the rest.
+  - Every call is logged with its cost (`api_usage`).
+- **Never trusted.** File contents, web pages and customer text are data, not instructions.
+- **Never invented.** The builder AI cannot write reviews, numbers or people. Placeholders block publishing.
+- **Tool discovery.** The Brain picks tools from the registered list (`TOOLS`, with descriptions, risk levels and permissions). There is no raw SQL, shell or arbitrary fetch.
+- **Autonomy settings** (Engineer → Setup):
+  - auto-deploy of low-risk changes: off by default
+  - autonomous testing: always on
+  - autonomous bug fix: QA repair, up to 3
+  - database changes: always code + owner approval

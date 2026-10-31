@@ -18,6 +18,7 @@ import { PRODUCTS } from "../products.js";
 import { ghOn, searchCode, readFile, proposeChange, openPr, mergePr, closePr, listChanges, PROTECTED } from "./github.js";
 import * as G from "./google.js";
 import * as EN from "./engineer.js";
+import * as WS from "../sites.js";
 import * as AU from "./automations.js";
 import * as SO from "./social.js";
 import { permFor, can } from "./access.js";
@@ -294,6 +295,15 @@ export const TOOLS = {
   eng_inspect: { cat: "Code", level: 1, desc: "Visually inspect a live FODO page at 8 screen sizes (screenshots, console errors, broken images, horizontal overflow, accessibility basics) — runs on GitHub Actions, results in Engineer.", args: { path: S("string", "page path like / or /services/", true) }, run: async (c, a) => EN.inspect(c, a.path) },
   eng_health: { cat: "Code", level: 0, desc: "FODO command center: website/API/database/data-source health, last deployment, last change, QA, health score (only from real checks).", args: {}, run: async (c) => { const o = await EN.overview(c); return { github: o.github, database: o.database, lastDeploy: o.lastDeploy, lastChange: o.lastChange, lastQa: o.lastQa, score: o.score, sources: o.sources, audit: o.audit, index: o.index && { at: o.index.at, pages: o.index.pages, apis: o.index.apis, tables: o.index.tables } }; } },
   eng_audit: { cat: "Code", level: 1, desc: "Run Google PageSpeed (Lighthouse, mobile) on a FODO page now: performance, SEO, accessibility, best practices, Core Web Vitals and the biggest fixes.", args: { url: S("string", "full URL, default homepage") }, run: async (c, a) => EN.runAudit(c.env, a.url && /^https:\/\/(www\.)?fodo\.co\.in\//.test(a.url) ? a.url : null) },
+  /* ---- v28 Web Operator + FODO Website Builder (owner: every website, audited) ---- */
+  eng_operate: { cat: "Code", level: 1, desc: "Web Operator: actually use a FODO website in a real browser — 'test whether a new user can generate a Business X-Ray', 'fill the contact form on the ABC Dental site and check it works'. Runs open/click/type/expect steps on GitHub Actions; reports expected vs actual with screenshots.", args: { url: S("string", "start URL (FODO or a FODO-built website)", true), goal: S("string", "what to do and what should happen", true) }, run: async (c, a) => EN.operate(c, a.url, a.goal) },
+  eng_sites: { cat: "Code", level: 0, desc: "All FODO Website Builder websites (every client): name, owner, status, domain; search by name/email/domain.", args: { q: S("string", "") }, run: async (c, a) => { const L = await WS.listSites(c.env, c.owner, true), q = String(a.q || "").toLowerCase(); return L.filter((s) => !q || (s.name + " " + s.slug + " " + (s.owner_email || "") + " " + (s.domain || "")).toLowerCase().indexOf(q) > -1).slice(0, 40); } },
+  eng_site_check: { cat: "Code", level: 0, desc: "Is a client website working? Live HTTP check, publish-quality checks (SEO, headings, placeholders, links), domain/DNS/SSL status.", args: { site: S("string", "website id, name or domain", true) }, run: async (c, a) => { const s = await findSiteFor(c, a.site); return Object.assign({ site: s.name, id: s.id, status: s.status }, await WS.health(c.env, s)); } },
+  eng_site_edit: { cat: "Code", level: 1, desc: "Change a FODO-built client website with AI ('make the ABC Dental homepage more premium', 'add a booking form'). Saves a new DRAFT version (the live site changes only when published).", args: { site: S("string", "website id, name or domain", true), instruction: S("string", "", true) },
+    run: async (c, a) => { const s = await findSiteFor(c, a.site), r = await WS.aiEdit(c.env, c.owner, s, a.instruction, null), sv = await WS.saveDoc(c.env, c.owner, s, r.doc, s.rev, "Owner Brain: " + String(a.instruction).slice(0, 80)); return { site: s.name, did: r.say, changes: r.applied, saved: !sv.conflict, rev: sv.rev, editor: "/website-builder/#site=" + s.id, next: "Review it in the builder, then publish (eng_site_publish)." }; } },
+  eng_site_publish: { cat: "Code", level: 2, desc: "Publish a client website (after its quality checks pass).", args: { site: S("string", "website id, name or domain", true), title: S("string", "") },
+    preview: (a) => "PUBLISH the website “" + (a.title || a.site) + "” — visitors will see the current version.", resolve: async (c, a) => { const s = await findSiteFor(c, a.site); return { site: s.id, title: s.name }; },
+    run: async (c, a) => { const s = await findSiteFor(c, a.site); return WS.publish(c.env, c.owner, s); } },
   eng_rollback: { cat: "Code", level: 4, desc: "Roll back a deployed change (by change id, or 'last' for the last deployment): restores every file it touched through a new pull request and deploys it.", args: { change: S("string", "change id or 'last'", true), title: S("string", "") },
     preview: (a) => "ROLL BACK “" + (a.title || a.change) + "” on the LIVE site: a new pull request restores the previous version of every file it changed, and is merged into main.",
     resolve: async (c, a) => { if (/^(last|latest|previous)$/i.test(a.change)) { const x = await EN.lastDeployed(c.env); if (!x) throw new Error("No deployed Brain change to roll back."); return { change: x.id, title: x.title }; } return {}; },
@@ -424,4 +434,10 @@ export async function confirmAction(ctx, actionId, token, decision) {
   const r = await execute(ctx, a.tool, args, { confirmed: true, intent: "confirmed action" });
   await d.prepare("UPDATE brain_actions SET status=?2, result=?3, done_at=?4 WHERE id=?1").bind(a.id, r.ok ? "done" : "failed", JSON.stringify(r.ok ? r.result : { error: r.error }), nowIso()).run();
   return r.ok ? { ok: true, tool: a.tool, result: r.result } : { ok: false, status: 502, tool: a.tool, error: r.error };
+}
+
+async function findSiteFor(c, q) {
+  q = String(q || "").trim(); if (/^ws_[a-z0-9]{12}$/.test(q)) return WS.siteFor(c.env, c.owner, q);
+  const L = await WS.listSites(c.env, c.owner, true), x = q.toLowerCase(), hit = L.find((s) => s.slug === x || (s.domain || "") === x.replace(/^https?:\/\//, "").replace(/\/.*$/, "")) || L.find((s) => (s.name + " " + (s.owner_email || "")).toLowerCase().indexOf(x) > -1);
+  if (!hit) throw new Error("No FODO-built website matches “" + q + "”."); return WS.siteFor(c.env, c.owner, hit.id);
 }

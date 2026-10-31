@@ -117,9 +117,42 @@ async function visual(base, routes, prod) {
   }
 }
 
+/* ---------- Web Operator: run the Brain's browser steps and compare EXPECTED with ACTUAL ---------- */
+async function operateRun(startUrl, steps) {
+  const { chromium } = await import("playwright"); const b = await chromium.launch(), ctx = await b.newContext({ viewport: { width: 1280, height: 860 } }), p = await ctx.newPage();
+  const errs = [], apis = []; p.on("pageerror", (e) => errs.push(String(e.message || e).slice(0, 200))); p.on("console", (m) => { if (m.type() === "error") errs.push(m.text().slice(0, 200)); });
+  p.on("response", (r) => { const u = r.url(); if (/\/api\//.test(u) && r.status() >= 400) apis.push(r.status() + " " + u.replace(/^https?:\/\/[^/]+/, "")); });
+  const loc = (t) => { t = String(t || ""); if (/^css=/.test(t)) return p.locator(t.slice(4)).first(); return p.getByRole("button", { name: t }).or(p.getByRole("link", { name: t })).or(p.getByLabel(t)).or(p.getByPlaceholder(t)).or(p.getByText(t, { exact: false })).first(); };
+  let n = 0;
+  for (const st of steps.slice(0, 20)) {
+    n++; const name = "Step " + n + ": " + (st.say || st.do + " " + (st.target || st.value || "")), before = errs.length, beforeApi = apis.length; let ok = true, detail = "";
+    try {
+      if (st.do === "goto") { const u = new URL(st.value || st.target, startUrl); if (u.origin !== new URL(startUrl).origin && !/fodo\.co\.in$|pages\.dev$/.test(u.hostname)) throw new Error("left the allowed site"); const r = await p.goto(u.href, { waitUntil: "networkidle", timeout: 45000 }); detail = "HTTP " + (r ? r.status() : "?"); ok = !r || r.status() < 400; }
+      else if (st.do === "click") { await loc(st.target).click({ timeout: 12000 }); await p.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {}); detail = "clicked “" + st.target + "”"; }
+      else if (st.do === "fill") { await loc(st.target).fill(st.value, { timeout: 12000 }); detail = "typed into “" + st.target + "”"; }
+      else if (st.do === "select") { await loc(st.target).selectOption({ label: st.value }, { timeout: 12000 }).catch(() => loc(st.target).selectOption(st.value)); detail = "chose " + st.value; }
+      else if (st.do === "press") { await p.keyboard.press(st.value || "Enter"); detail = "pressed " + (st.value || "Enter"); }
+      else if (st.do === "wait") { const ms = Math.min(60000, +st.value || 0); if (ms) await p.waitForTimeout(ms); else await loc(st.target).waitFor({ timeout: 60000 }); detail = ms ? "waited " + ms + " ms" : "“" + st.target + "” appeared"; }
+      else if (st.do === "expect") { const want = st.value || st.target; await p.waitForFunction((w) => document.body.innerText.toLowerCase().indexOf(w.toLowerCase()) > -1, want, { timeout: 30000 }).then(() => { detail = "EXPECTED “" + want + "” · ACTUAL: found on the page"; }, async () => { ok = false; detail = "EXPECTED “" + want + "” · ACTUAL: not on the page. The page says: “" + (await p.evaluate(() => document.body.innerText.replace(/\s+/g, " ").slice(0, 220))) + "…”"; }); }
+      else if (st.do === "shot") detail = "screenshot";
+    } catch (e) { ok = false; detail = String(e.message || e).split("\n")[0].slice(0, 300); }
+    const newErr = errs.slice(before), newApi = apis.slice(beforeApi);
+    if (newApi.length) { ok = false; detail += " · API failed: " + newApi.slice(0, 3).join(", "); }
+    if (newErr.length) detail += " · JS errors: " + newErr.slice(0, 2).join(" | ");
+    add(name, ok, detail);
+    if (shots.length < 12 && (st.do !== "fill" || n === steps.length)) shots.push({ bp: 1280, kind: "after", route: "step " + n, b64: (await p.screenshot({ type: "jpeg", quality: 50 })).toString("base64") });
+    if (!ok && st.do !== "expect") break;   // later steps depend on this one
+  }
+  await b.close();
+}
 /* ---------- main ---------- */
 try {
-  if (MODE === "inspect") {
+  if (MODE === "operate") {
+    const u = new URL(E.URL || SITE + "/"); if (!/(^|\.)fodo\.co\.in$|pages\.dev$/.test(u.hostname) && !E.ALLOW_HOST && !(E.QA_LOCAL && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) throw new Error("Not an allowed website.");
+    let steps = []; try { steps = JSON.parse(E.STEPS || "[]"); } catch (e) {}
+    await operateRun(u.href, steps);
+    await post({ change: E.CHANGE, status: checks.every((c) => c.ok) ? "passed" : "failed", url: u.href, checks, issues, shots, run });
+  } else   if (MODE === "inspect") {
     const u = new URL(E.URL || SITE + "/"); if (!/(^|\.)fodo\.co\.in$|pages\.dev$/.test(u.hostname) && !(E.QA_LOCAL && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) throw new Error("Only FODO pages can be inspected.");
     await visual(u.origin, [u.pathname + u.search], null);
     await post({ change: E.CHANGE, status: checks.every((c) => c.ok) ? "passed" : "failed", url: u.href, checks, issues, shots, run });

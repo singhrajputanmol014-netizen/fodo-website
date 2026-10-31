@@ -6,7 +6,7 @@
   var B = window.__OB; if (!B) return;
   var api = B.api, esc = B.esc, V = B.V, VIEWS = B.VIEWS, badge = B.badge, fmtDate = B.fmtDate, md = B.md;
   var TAB = "center", POLL = null, OV = null, PHRASE = "CONFIRM PRODUCTION CHANGE";
-  var TABS = [["center", "Command center"], ["work", "Workspace"], ["changes", "Changes"], ["map", "Project map"], ["find", "Find"], ["setup", "Setup"]];
+  var TABS = [["center", "Command center"], ["work", "Workspace"], ["sites", "Websites"], ["changes", "Changes"], ["map", "Project map"], ["find", "Find"], ["setup", "Setup"]];
   var KLASS = { normal: "", guarded: '<span class="eg-k g">core</span>', hard: '<span class="eg-k h">protected</span>' };
   function stat(s) { return { planned: "plan ready", proposed: "diff ready", pr_open: "preview open", merged: "live", discarded: "discarded", rolled_back: "rolled back", inspecting: "inspecting…", inspected: "inspected" }[s] || s; }
   function qaBadge(q) { return q ? '<span class="eg-qa ' + esc(q) + '">QA ' + esc({ waiting: "running…", passed: "passed", failed: "failed", error: "error", skipped: "skipped" }[q] || q) + "</span>" : ""; }
@@ -24,7 +24,7 @@
     V().innerHTML = '<div class="eg"><div class="eg-top"><div><h2 class="ob-h">Website Engineer</h2><p class="ob-sub">Talk → plan → preview → tested at 8 screen sizes → you approve → live. Works on FODO\'s real code on GitHub; production only changes when you confirm.</p></div><span class="eg-env">● PRODUCTION · www.fodo.co.in</span></div>' +
       '<nav class="eg-tabs" role="tablist">' + TABS.map(function (x) { return '<button role="tab" data-t="' + x[0] + '" aria-selected="' + (x[0] === TAB) + '">' + x[1] + "</button>"; }).join("") + '</nav><div id="eg-body"><p class="ob-empty">Loading…</p></div></div>';
     V().querySelectorAll("[data-t]").forEach(function (b) { b.onclick = function () { TAB = b.dataset.t; VIEWS.engineer(); }; });
-    ({ center: center, work: work, changes: changes, map: mapView, find: findView, setup: setup })[TAB]();
+    ({ center: center, work: work, sites: sitesView, changes: changes, map: mapView, find: findView, setup: setup })[TAB]();
   };
   function body() { return document.getElementById("eg-body"); }
   function load() { return api("eng/overview").then(function (j) { OV = j; return j; }); }
@@ -59,12 +59,17 @@
   function work() {
     body().innerHTML = '<form class="ob-card eg-ask" id="eg-f"><label for="eg-req"><b>What do you want to change?</b></label><textarea id="eg-req" rows="3" placeholder="Make the homepage hero more premium and conversion focused · Add an AI Marketing service page · Add a revenue section to admin · Fix the mobile menu"></textarea>' +
       '<div class="eg-chips">' + ["Make the homepage more premium", "Create a landing page for dentists in Delhi", "Add a new service: AI Marketing", "Improve homepage conversion", "Optimize FODO SEO", "Fix mobile layout issues on the services page"].map(function (x) { return '<button type="button" class="eg-chip">' + esc(x) + "</button>"; }).join("") + "</div>" +
-      '<div class="ob-row"><button class="ob-btn pri" type="submit">Make a plan</button><button class="ob-btn" type="button" id="eg-insp">Inspect a page</button><button class="ob-btn" type="button" id="eg-rep">Change text everywhere</button></div></form><div id="eg-out"></div>';
+      '<div class="ob-row"><button class="ob-btn pri" type="submit">Make a plan</button><button class="ob-btn" type="button" id="eg-insp">Inspect a page</button><button class="ob-btn" type="button" id="eg-opr">Operate a website</button><button class="ob-btn" type="button" id="eg-rep">Change text everywhere</button></div></form><div id="eg-out"></div>';
     var out = document.getElementById("eg-out");
     body().querySelectorAll(".eg-chip").forEach(function (c) { c.onclick = function () { document.getElementById("eg-req").value = c.textContent; }; });
     document.getElementById("eg-f").onsubmit = function (e) { e.preventDefault(); var v = document.getElementById("eg-req").value.trim(); if (!v) return; out.innerHTML = '<div class="ob-card"><p class="ob-empty">Reading FODO\'s code and making a plan… (20–60 s)</p></div>';
       api("eng/plan", "POST", { request: v }).then(function (p) { if (!p.ok) return err(out, p); planCard(out, p); }); };
     document.getElementById("eg-insp").onclick = function () { var p = prompt("Which page? (e.g. / or /services/)", "/"); if (!p) return; api("eng/inspect", "POST", { path: p }).then(function (r) { if (!r.ok) return err(out, r); out.innerHTML = '<div class="ob-card"><p>' + esc(r.note) + '</p><button class="ob-btn sm" id="eg-goc">Open in Changes</button></div>'; document.getElementById("eg-goc").onclick = function () { TAB = "changes"; VIEWS.engineer(); }; }); };
+    document.getElementById("eg-opr").onclick = function () {
+      out.innerHTML = '<form class="ob-card" id="eg-of"><h2>Web Operator</h2><p class="ob-empty">FODO Brain opens the website in a real browser, clicks, types and checks the result — then shows EXPECTED vs ACTUAL with screenshots. Works on FODO and FODO-built websites.</p><input class="ob-in" name="url" value="https://www.fodo.co.in/" required><textarea class="ob-in" name="goal" rows="3" style="margin-top:8px" placeholder="Test whether a new user can start a Business X-Ray for example.com and see the report" required></textarea><div class="ob-row" style="margin-top:10px"><button class="ob-btn pri" type="submit">Run it</button></div></form><div id="eg-oout"></div>';
+      document.getElementById("eg-of").onsubmit = function (e) { e.preventDefault(); var f = new FormData(this), oo = document.getElementById("eg-oout"); oo.innerHTML = '<p class="ob-empty">Planning the browser steps…</p>';
+        api("eng/operate", "POST", { url: f.get("url"), goal: f.get("goal") }).then(function (r) { if (!r.ok) return err(oo, r); oo.innerHTML = '<div class="ob-card"><p>' + esc(r.note) + "</p><ol>" + r.steps.map(function (x) { return "<li><b>" + esc(x.do) + "</b> " + esc(x.say || x.target || x.value) + "</li>"; }).join("") + '</ol><button class="ob-btn sm" id="eg-goo">Open in Changes</button></div>'; document.getElementById("eg-goo").onclick = function () { TAB = "changes"; VIEWS.engineer(); }; }); };
+    };
     document.getElementById("eg-rep").onclick = function () {
       out.innerHTML = '<form class="ob-card" id="eg-rf"><h2>Change text everywhere</h2><p class="ob-empty">Finds the exact text in every page, the page generator, JS and CSS. You see the count and the diff before anything happens.</p><div class="ob-grid g2"><input class="ob-in" name="find" placeholder="Current text (exact)" required><input class="ob-in" name="replace" placeholder="New text"></div><input class="ob-in" name="phrase" placeholder="Only for core files: ' + PHRASE + '" style="margin-top:8px"><div class="ob-row" style="margin-top:10px"><button class="ob-btn pri" type="submit">Find &amp; prepare</button></div></form><div id="eg-rout"></div>';
       document.getElementById("eg-rf").onsubmit = function (e) { e.preventDefault(); var f = new FormData(this), ro = document.getElementById("eg-rout"); ro.innerHTML = '<p class="ob-empty">Searching the repository…</p>';
@@ -139,6 +144,14 @@
     });
   }
 
+  /* ---------- every FODO Website Builder website (owner: global, audited) ---------- */
+  function sitesView() {
+    api("eng/sites").then(function (j) { if (!j.ok) return err(body(), j); var L = j.sites || [];
+      body().innerHTML = '<div class="ob-row" style="margin-bottom:12px"><a class="ob-btn pri" href="/website-builder/#new=1" target="_blank" rel="noopener">+ Build a website</a><a class="ob-btn" href="/website-builder/" target="_blank" rel="noopener">Open Website Builder ↗</a></div>' +
+        (L.length ? '<div class="ob-card ob-scroll"><table class="ob-table"><thead><tr><th>Website</th><th>Owner</th><th>Status</th><th>Domain</th><th></th></tr></thead><tbody>' + L.map(function (s) { return "<tr><td><b>" + esc(s.name) + "</b><br><small class=\"ob-empty\">" + esc(s.slug) + " · " + fmtDate(s.updated_at) + "</small></td><td><small>" + esc(s.owner_email || "") + "</small></td><td>" + badge(s.status === "live" ? "ok" : "info") + " " + esc(s.status) + "</td><td><small>" + esc(s.domain || "—") + '</small></td><td><a class="ob-btn sm" target="_blank" rel="noopener" href="/website-builder/#site=' + esc(s.id) + '">Edit</a> <button class="ob-btn sm" data-chk="' + esc(s.id) + '">Check</button><div id="ck-' + esc(s.id) + '"></div></td></tr>'; }).join("") + "</tbody></table></div>" : '<p class="ob-empty">No builder websites yet.</p>');
+      body().querySelectorAll("[data-chk]").forEach(function (b) { b.onclick = function () { var box = document.getElementById("ck-" + b.dataset.chk); box.innerHTML = '<small class="ob-empty">Checking…</small>'; api("eng/site-check?site=" + b.dataset.chk).then(function (r) { if (!r.ok) return err(box, r); var q = r.quality || {}; box.innerHTML = '<small>' + (r.live ? (r.live.status ? "HTTP " + r.live.status + " · " + r.live.ms + " ms" : "down: " + esc(r.live.error)) : "not published") + " · " + (q.issues || []).filter(function (x) { return x.level === "critical"; }).length + " critical · " + (q.issues || []).length + " notes" + (r.domains || []).map(function (d) { return " · " + esc(d.domain) + " " + esc(d.status); }).join("") + "</small>"; }); }; });
+    });
+  }
   /* ---------- project map ---------- */
   function mapView() {
     api("eng/map").then(function (j) { var m = j.map; if (!j.ok || !m) return err(body(), j.ok ? { reason: "GitHub is not connected — add GITHUB_TOKEN (Setup)." } : j);

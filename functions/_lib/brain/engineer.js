@@ -327,3 +327,32 @@ export async function changeDetail(env, id) {
   if (out.plan && !out.plan.diff && c.edits && c.edits !== "[]") out.plan.diff = "(diff not stored for this older change)";
   return out;
 }
+
+/* ---------- v28 Web Operator: the Brain uses a website like a person (real Chromium on GitHub Actions) ----------
+   The AI turns the owner's goal into a short list of browser steps (open, click, type, choose, wait, expect, screenshot);
+   GitHub Actions runs them (scripts/qa.mjs MODE=operate) and reports EXPECTED vs ACTUAL per step with screenshots, failed
+   API calls and console errors. Only FODO's own sites, the builder's sites and connected client domains can be operated. */
+const STEP_DO = ["goto", "click", "fill", "select", "press", "wait", "expect", "shot"];
+export async function operableHost(env, host) {
+  host = String(host || "").toLowerCase(); if (/(^|\.)fodo\.co\.in$/.test(host) || /\.pages\.dev$/.test(host) || (env.SITES_HOST && host === env.SITES_HOST)) return true;
+  try { const d = await brainDb(env); const r = await d.prepare("SELECT 1 FROM site_domains WHERE status='connected' AND (domain=?1 OR domain=?2)").bind(host, host.replace(/^www\./, "")).first(); return !!r; } catch (e) { return false; }
+}
+export async function operate(ctx, url, goal) {
+  const env = ctx.env; let u; try { u = new URL(String(url || "")); } catch (e) { throw new Error("Give a full URL, e.g. https://www.fodo.co.in/business-x-ray/"); }
+  if (u.protocol !== "https:" || !(await operableHost(env, u.hostname))) throw new Error("I can only operate FODO's own websites, FODO-built client websites and their connected domains.");
+  goal = clean(goal, 1500); if (goal.length < 5) throw new Error("What should I do on the page?");
+  const r = await brainAI(env, { kind: "code", json: true, purpose: "web-operate", max: 2000, messages: [
+    { role: "system", content: "Turn the goal into browser steps for Playwright. Reply JSON only: {\"steps\":[{\"do\":\"" + STEP_DO.join("|") + "\",\"target\":\"visible text, label, placeholder, or css=selector\",\"value\":\"text to type / option / key / expected text / URL\",\"say\":\"what this step checks, plain words\"}],\"expected\":\"what a correct result looks like\"}. Max 20 steps. Start with goto of the start URL. Use realistic TEST data (test@example.com, 9999999999) — never real customer data, never payments. Add expect steps for what should appear. " + UNTRUSTED },
+    { role: "user", content: "START URL: " + u.href + "\nGOAL: " + goal }] });
+  const j = parseJson(r.text) || {}, steps = (j.steps || []).filter((x) => STEP_DO.indexOf(x.do) > -1).slice(0, 20).map((x) => ({ do: x.do, target: clip(String(x.target || ""), 200), value: clip(String(x.value || ""), 500), say: clip(clean(x.say, 160), 160) }));
+  for (const st of steps) if (st.do === "goto") { try { const g = new URL(st.value || st.target, u); if (!(await operableHost(env, g.hostname))) throw 0; st.value = g.href; } catch (e) { throw new Error("A step tried to leave the allowed websites — refused."); } }
+  if (!steps.length) throw new Error("I couldn't turn that into browser steps — describe it step by step.");
+  if (steps[0].do !== "goto") steps.unshift({ do: "goto", target: "", value: u.href, say: "Open the page" });
+  const d = await brainDb(env), id = "ch_" + rid(10), now = nowIso();
+  await d.prepare("INSERT INTO brain_changes (id, title, request, summary, edits, risk, status, note, created_at, updated_at, plan, klass, kind, attempts, qa_status) VALUES (?1,?2,?3,?4,'[]','low','inspecting','',?5,?5,?6,'normal','inspect',0,'waiting')")
+    .bind(id, clip("Operate: " + goal, 90), goal, clip(clean(j.expected, 400), 400), now, JSON.stringify({ routes: [u.pathname], steps, expected: clip(clean(j.expected, 400), 400), operate: true })).run();
+  await dispatch(env, "fodo-engineer.yml", { mode: "operate", url: u.href, change: id, steps: JSON.stringify(steps) });
+  await audit(env, { owner: ctx.owner.email, kind: "code", tool: "eng_operate", status: "ok", detail: id + " · " + u.hostname + " · " + steps.length + " steps" });
+  return { changeId: id, steps, expected: j.expected || "", note: "Running " + steps.length + " browser steps on GitHub Actions (~2–4 min). Results (expected vs actual, screenshots) appear in Engineer → Changes." };
+}
+const dispatch = (env, wf, inputs) => GH.dispatch(env, wf, inputs);

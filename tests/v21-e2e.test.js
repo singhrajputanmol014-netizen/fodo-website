@@ -77,6 +77,19 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     ok(/Not connected/.test(await p.textContent("#ob-view")) && /HEALTH SCORE/.test(await p.textContent("#ob-view")), "v27: Engineer command center (honest 'Not connected')"); await shot(p, "brain-engineer", true);
     for (const t of ["work", "changes", "map", "find", "setup"]) { await p.click('.eg-tabs [data-t="' + t + '"]'); await p.waitForTimeout(400); }
     ok(/GitHub connected/.test(await p.textContent("#ob-view")), "v27: Engineer tabs render (setup checklist shown)"); await shot(p, "brain-engineer-setup", true);
+    // v28 Website Builder: wizard → website → editor (select a section, edit, undo) → publish checks
+    await p.goto(BASE + "/website-builder/#new=1"); await p.waitForSelector("#wb-wf input[name=name]", { timeout: 20000 });
+    await p.fill("#wb-wf input[name=name]", "Smile Dental"); await p.fill("#wb-wf input[name=industry]", "Dental clinic"); await p.fill("#wb-wf input[name=location]", "Dwarka, Delhi"); await p.click("#wb-wf .wb-btn.pri");
+    await p.click("#wb-wf .wb-btn.pri"); await p.click("#wb-wf .wb-btn.pri"); await p.waitForSelector(".wb-rec", { timeout: 15000 }); await shot(p, "builder-templates", true);
+    await p.click("#wb-wf .wb-btn.pri"); await p.waitForSelector("#wb-if", { timeout: 60000 }); await p.waitForTimeout(1200);
+    const fr = p.frameLocator("#wb-if"); await fr.locator("[data-sec='1']").click(); await p.waitForSelector("#wb-pf [data-p]", { timeout: 8000 });
+    ok(/Hero/.test(await p.textContent("#wb-rp")), "v28: builder wizard → website → click a section → its properties"); await shot(p, "builder-editor");
+    const inp = p.locator('#wb-pf [data-p="title"]'); await inp.fill("Gentle care for every smile"); await inp.dispatchEvent("change"); await p.waitForTimeout(400);
+    ok(await fr.locator("h1").first().textContent() === "Gentle care for every smile", "v28: editing a field updates the canvas");
+    await p.click(".wb-bar .wb-name"); await p.keyboard.press("Control+z"); await p.waitForTimeout(500); ok(await fr.locator("h1").first().textContent() !== "Gentle care for every smile", "v28: undo (Ctrl+Z)");
+    await p.waitForFunction(() => /Saved/.test(document.getElementById("wb-save").textContent), null, { timeout: 15000 }); ok(true, "v28: autosave");
+    await p.click("#wb-pub"); await p.waitForSelector(".wb-modal", { timeout: 15000 }); ok(/fix these first|is live/i.test(await p.textContent(".wb-modal")), "v28: publish runs the checks"); await shot(p, "builder-publish");
+    await p.click(".wb-modal [data-x]"); await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(400); await shot(p, "builder-mobile"); await p.setViewportSize({ width: 1440, height: 900 });
     await p.goto(BASE + "/owner-brain/#automations"); await p.waitForFunction(() => /Tell me about every payment/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
     ok(true, "v22: Automations page lists the default automations"); await shot(p, "brain-automations", true);
     await p.goto(BASE + "/owner-brain/#connectors"); await p.waitForFunction(() => /Google/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });

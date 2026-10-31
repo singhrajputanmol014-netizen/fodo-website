@@ -72,6 +72,11 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     ok(!!(await p.$("#ob-hf")), "v22: 'Hey FODO' hands-free button present");
     await p.goto(BASE + "/owner-brain/#changes"); await p.waitForFunction(() => /GitHub/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
     ok(/GitHub/.test(await p.textContent("#ob-view")), "v22: Site changes page (GitHub status shown)"); await shot(p, "brain-changes", true);
+    // v27 Website Engineer: owner sees it; every tab renders against the real backend (GitHub not connected here → says so)
+    await p.goto(BASE + "/owner-brain/#engineer"); await p.waitForSelector(".eg-tiles", { timeout: 20000 });
+    ok(/Not connected/.test(await p.textContent("#ob-view")) && /HEALTH SCORE/.test(await p.textContent("#ob-view")), "v27: Engineer command center (honest 'Not connected')"); await shot(p, "brain-engineer", true);
+    for (const t of ["work", "changes", "map", "find", "setup"]) { await p.click('.eg-tabs [data-t="' + t + '"]'); await p.waitForTimeout(400); }
+    ok(/GitHub connected/.test(await p.textContent("#ob-view")), "v27: Engineer tabs render (setup checklist shown)"); await shot(p, "brain-engineer-setup", true);
     await p.goto(BASE + "/owner-brain/#automations"); await p.waitForFunction(() => /Tell me about every payment/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });
     ok(true, "v22: Automations page lists the default automations"); await shot(p, "brain-automations", true);
     await p.goto(BASE + "/owner-brain/#connectors"); await p.waitForFunction(() => /Google/.test(document.getElementById("ob-view").textContent), null, { timeout: 15000 });

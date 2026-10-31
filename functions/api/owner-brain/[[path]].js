@@ -11,7 +11,7 @@
      PATCH memory/<id> · tasks/<id>          DELETE memory/<id> · memory?scope=personal · tasks/<id> · docs/<id> · thread/<id> */
 import { json, accountsOn, sessionUser, isOwner, sameOrigin, count } from "../../_lib/accounts.js";
 import { applyConfig } from "../../_lib/config.js";
-import { brainDb, getSettings, saveSettings, audit, nowIso, clean, redact, scrubEnv } from "../../_lib/brain/store.js";
+import { brainDb, getSettings, saveSettings, audit, nowIso, clean, clip, redact, scrubEnv } from "../../_lib/brain/store.js";
 import { chat, ingest } from "../../_lib/brain/orchestrator.js";
 import { TOOLS, LEVELS, systemCheck, confirmAction, execute } from "../../_lib/brain/tools.js";
 import { listMemory, remember, updateMemory, forget, forgetScope, memoryHistory, listTasks, createTask, updateTask, deleteTask, projects, listDocs, deleteDoc } from "../../_lib/brain/memory.js";
@@ -28,11 +28,12 @@ import * as SO from "../../_lib/brain/social.js";
 import * as MD from "../../_lib/brain/media.js";
 import * as VO from "../../_lib/brain/voice.js";
 import * as LV from "../../_lib/brain/live.js";
+import * as EN from "../../_lib/brain/engineer.js";
 import { mayOpenThread } from "../../_lib/brain/orchestrator.js";
 const SITE = (env) => env.SITE_ORIGIN || "https://www.fodo.co.in";
 /* which permission each page endpoint needs ("owner" = the two owner logins only) */
-const NEED = { GET: { status: null, briefing: "business", diagnostics: "business", memory: "memory", tasks: "tasks", projects: "tasks", docs: "memory", threads: null, thread: null, tools: null, alerts: "business", activity: "owner", analytics: "business", changes: "changes", automations: "automations", connectors: "owner", connect: "owner", settings: null, export: "owner", social: "social", members: "owner", ga: "owner", live: "chat" },
-  POST: { chat: "chat", ingest: "memory", confirm: null, memory: "memory", tasks: "tasks", feedback: null, tts: null, stt: null, automations: "automations", changes: "changes", connectors: "owner", settings: "owner", alerts: "business", social: "social", members: "owner" },
+const NEED = { GET: { status: null, briefing: "business", diagnostics: "business", memory: "memory", tasks: "tasks", projects: "tasks", docs: "memory", threads: null, thread: null, tools: null, alerts: "business", activity: "owner", analytics: "business", changes: "changes", automations: "automations", connectors: "owner", connect: "owner", settings: null, export: "owner", social: "social", members: "owner", ga: "owner", live: "chat", eng: "owner" },
+  POST: { chat: "chat", ingest: "memory", confirm: null, memory: "memory", tasks: "tasks", feedback: null, tts: null, stt: null, automations: "automations", changes: "changes", connectors: "owner", settings: "owner", alerts: "business", social: "social", members: "owner", eng: "owner" },
   PUT: { social: "social" }, PATCH: { memory: "memory", tasks: "tasks" }, DELETE: { memory: "memory", tasks: "tasks", automations: "automations", docs: "memory", thread: null, social: "owner", members: "owner" } };
 const sameKey = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 
@@ -57,6 +58,13 @@ export async function onRequest(ctx) {
       const r = await AU.tick(env), daily = new Date(Date.now() + 5.5 * 3600e3).getUTCHours() >= 6 ? await brainDaily(env, request) : { skipped: "before 06:00 IST" };
       let social = null, cleaned = null; try { social = await SO.runDue(env, SITE(env)); cleaned = await MD.cleanup(env); const exp = (await SO.accounts(env, false)).filter((a) => a.expiresSoon); for (const a of exp) await AU.notifyOwner(env, "Reconnect " + a.name + " (" + a.platform + ")", "The " + a.platform + " connection expires " + String(a.expires_at).slice(0, 10) + " — LinkedIn allows 60 days. Open Brain → Social → Reconnect.", "info"); } catch (e) { social = { error: e.message }; }
       return json({ ok: true, automations: r, briefing: daily, social, media: cleaned });
+    }
+    // v27 Website Engineer: GitHub Actions reports (QA of a Brain pull request, visual inspection, project index) — CRON_KEY, not a session
+    if (p0 === "eng" && (path[1] === "qa" || path[1] === "index") && m === "POST") {
+      if (!env.CRON_KEY || String(env.CRON_KEY).length < 16 || !sameKey(request.headers.get("x-cron-key"), env.CRON_KEY) || String(env.BRAIN_ENABLED || "1") === "0") return deny();
+      const b = (await request.json().catch(() => null)) || {}; await brainDb(env);
+      if (path[1] === "index") return json(Object.assign({ ok: true }, await EN.saveIndex(env, b)));
+      return json(await EN.qaReport(env, b, ctx.waitUntil ? (p) => ctx.waitUntil(p) : null));
     }
     const u = await step("session", gate(env, request));
     if (!u) return deny();
@@ -102,6 +110,15 @@ export async function onRequest(ctx) {
         const fb = await d.prepare("SELECT sum(rating>0) up, sum(rating<0) down FROM brain_feedback").first();
         const mem = await d.prepare("SELECT count(*) n FROM brain_memory").first();
         return json({ ok: true, days: 30, activity: A, models: M, perDay: day, feedback: fb, memories: mem.n });
+      }
+      if (p0 === "eng") {   // owner-only (NEED) — Website Engineer
+        const p1 = path[1] || "overview";
+        if (p1 === "overview") return json(Object.assign({ ok: true }, await EN.overview(ctxT)));
+        if (p1 === "map") { const mp = await EN.getMap(env); return json({ ok: true, map: mp ? Object.assign({}, mp, { env: EN.envPresence(env, mp.env || []) }) : null }); }
+        if (p1 === "find") return json(Object.assign({ ok: true }, await EN.find(env, q.get("q") || "")));
+        if (p1 === "change" && path[2]) { const c = await EN.changeDetail(env, path[2]); return c ? json({ ok: true, change: c }) : json({ ok: false, reason: "Not found." }, 404); }
+        if (p1 === "shot" && path[2]) { const b = await EN.shot(env, path[2]); return b ? new Response(b, { headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=86400", "x-content-type-options": "nosniff" } }) : json({ ok: false }, 404); }
+        return json({ ok: false, reason: "Not found." }, 404);
       }
       if (p0 === "changes") return json({ ok: true, items: await GH.listChanges(env), github: await GH.ghStatus(env) });
       if (p0 === "automations") return json({ ok: true, items: await AU.list(env), events: AU.EVENTS, actions: AU.ACTIONS });
@@ -169,6 +186,20 @@ export async function onRequest(ctx) {
       if (p0 === "automations" && !path[1]) { try { const r = await AU.save(env, body || {}); await audit(env, { owner: u.email, kind: "automation", tool: "save", status: "ok", detail: r.name }); return json({ ok: true, item: r }); } catch (e) { return json({ ok: false, reason: e.message }, 400); } }
       if (p0 === "automations" && path[1] && path[2] === "toggle") { await AU.toggle(env, path[1], !!body.on); return json({ ok: true }); }
       if (p0 === "automations" && path[1] && path[2] === "run") { const r = await AU.tick(env); return json({ ok: true, result: r }); }
+      if (p0 === "eng") {   // owner-only (NEED)
+        const p1 = path[1] || ""; if (await count(env, "brain-eng:" + u.id, 120, 3600)) return json({ ok: false, reason: "Too many Engineer requests this hour." }, 429);
+        try {
+          if (p1 === "plan") return json(Object.assign({ ok: true }, await EN.plan(ctxT, body.request)));
+          if (p1 === "build" && path[2]) return json(Object.assign({ ok: true }, await EN.build(ctxT, path[2], { phrase: body.phrase, feedback: body.feedback })));
+          if (p1 === "replace") return json(Object.assign({ ok: true }, await EN.replaceAll(ctxT, body.find, body.replace, { phrase: body.phrase })));
+          if (p1 === "inspect") return json(Object.assign({ ok: true }, await EN.inspect(ctxT, body.path)));
+          if (p1 === "audit") return json({ ok: true, audit: await EN.runAudit(env, body.url) });
+          if (p1 === "reindex") { await GH.dispatch(env, "fodo-engineer.yml", { mode: "index", url: "", change: "" }); return json({ ok: true, note: "Indexing on GitHub Actions (~1 min)." }); }
+          if (p1 === "repair" && path[2]) { const c = await (await brainDb(env)).prepare("SELECT * FROM brain_changes WHERE id=?1").bind(path[2]).first(); if (!c || c.status !== "pr_open") return json({ ok: false, reason: "No open preview for that change." }, 400); if ((c.attempts || 0) >= EN.MAX_REPAIRS + 3) return json({ ok: false, reason: "Too many repair attempts — change the request instead." }, 400); return json(Object.assign({ ok: true }, await EN.repair(env, c))); }
+          if (p1 === "rollback" && path[2]) { const r = await execute(ctxT, "eng_rollback", { change: path[2] }, { intent: "engineer page" }); return json(r.ok ? { ok: true, pending: !!r.pending, action: r.action, result: r.result } : { ok: false, reason: r.error }, r.ok ? 200 : 400); }
+        } catch (e) { return json({ ok: false, reason: clip(scrubEnv(env, e.message || "failed"), 400), needPhrase: !!e.needPhrase }, 400); }
+        return json({ ok: false, reason: "Not found." }, 404);
+      }
       if (p0 === "changes" && path[1] && ["open", "merge", "discard"].indexOf(path[2]) > -1) {   // open/merge return a confirmation card — same token flow as chat
         const tool = path[2] === "open" ? "open_change" : path[2] === "merge" ? "merge_change" : "discard_change";
         const r = await execute(ctxT, tool, { change: path[1] }, { intent: "changes page" }); return json(r.ok ? { ok: true, pending: !!r.pending, action: r.action, result: r.result } : { ok: false, reason: r.error }, r.ok ? 200 : 400);

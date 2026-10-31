@@ -21,6 +21,7 @@ export const DDL = [
   "CREATE TABLE IF NOT EXISTS brain_settings (k TEXT PRIMARY KEY, v TEXT, updated_at TEXT)",
   "CREATE TABLE IF NOT EXISTS brain_briefings (day TEXT PRIMARY KEY, data TEXT, text TEXT, created_at TEXT)",
   // v22: code changes (GitHub pull requests), automations, connectors (Google), event inbox
+  "CREATE TABLE IF NOT EXISTS brain_eng_index (k TEXT PRIMARY KEY, sha TEXT, data TEXT, updated_at TEXT)",
   "CREATE TABLE IF NOT EXISTS brain_changes (id TEXT PRIMARY KEY, title TEXT, request TEXT, summary TEXT, edits TEXT, risk TEXT, status TEXT, branch TEXT, pr_number INTEGER, pr_url TEXT, preview_url TEXT, note TEXT, created_at TEXT, updated_at TEXT)",
   "CREATE TABLE IF NOT EXISTS brain_automations (id TEXT PRIMARY KEY, name TEXT, trigger_type TEXT, trigger_value TEXT, cond TEXT, action TEXT, action_args TEXT, enabled INTEGER, last_run TEXT, next_run TEXT, runs INTEGER DEFAULT 0, last_result TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS brain_connectors (id TEXT PRIMARY KEY, data TEXT, scopes TEXT, account TEXT, connected_at TEXT, last_used TEXT)",
@@ -32,14 +33,16 @@ export const DDL = [
   "CREATE TABLE IF NOT EXISTS brain_media (id TEXT PRIMARY KEY, name TEXT, mime TEXT, size INTEGER, parts INTEGER, store TEXT, width INTEGER, height INTEGER, duration REAL, variant_of TEXT, status TEXT, created_at TEXT, ready_at TEXT)",
 ];
 /* additive column migrations (each may already exist → ignored) */
-const MIGRATIONS = ["ALTER TABLE brain_memory ADD COLUMN emb TEXT", "ALTER TABLE brain_chunks ADD COLUMN emb TEXT", "ALTER TABLE brain_tasks ADD COLUMN assignee TEXT", "ALTER TABLE brain_tasks ADD COLUMN kind TEXT", "ALTER TABLE brain_threads ADD COLUMN owner TEXT"];
+const MIGRATIONS = ["ALTER TABLE brain_memory ADD COLUMN emb TEXT", "ALTER TABLE brain_chunks ADD COLUMN emb TEXT", "ALTER TABLE brain_tasks ADD COLUMN assignee TEXT", "ALTER TABLE brain_tasks ADD COLUMN kind TEXT", "ALTER TABLE brain_threads ADD COLUMN owner TEXT",
+  // v27 Website Engineer
+  "ALTER TABLE brain_changes ADD COLUMN plan TEXT", "ALTER TABLE brain_changes ADD COLUMN klass TEXT", "ALTER TABLE brain_changes ADD COLUMN qa TEXT", "ALTER TABLE brain_changes ADD COLUMN qa_status TEXT", "ALTER TABLE brain_changes ADD COLUMN attempts INTEGER", "ALTER TABLE brain_changes ADD COLUMN head_sha TEXT", "ALTER TABLE brain_changes ADD COLUMN merged_sha TEXT", "ALTER TABLE brain_changes ADD COLUMN base_sha TEXT", "ALTER TABLE brain_changes ADD COLUMN approved_by TEXT", "ALTER TABLE brain_changes ADD COLUMN rollback_of TEXT", "ALTER TABLE brain_changes ADD COLUMN kind TEXT"];
 const made = new WeakSet();
 export async function brainDb(env) {
   const d = env && env.XRAY_DB; if (!d) return null;
   if (!made.has(d)) {
     await d.batch(DDL.map((s) => d.prepare(s)));
     // add only the columns that are missing (no failing ALTERs on every cold start)
-    for (const m of MIGRATIONS) { const x = /ALTER TABLE (\w+) ADD COLUMN (\w+)/.exec(m); try { const cols = ((await d.prepare("PRAGMA table_info(" + x[1] + ")").all()).results || []).map((c) => c.name); if (cols.indexOf(x[2]) < 0) await d.prepare(m).run(); } catch (e) {} }
+    const seen = {}; for (const m of MIGRATIONS) { const x = /ALTER TABLE (\w+) ADD COLUMN (\w+)/.exec(m); try { const cols = seen[x[1]] || (seen[x[1]] = ((await d.prepare("PRAGMA table_info(" + x[1] + ")").all()).results || []).map((c) => c.name)); if (cols.indexOf(x[2]) < 0) { await d.prepare(m).run(); cols.push(x[2]); } } catch (e) {} }
     made.add(d);
   }
   return d;
@@ -77,7 +80,7 @@ export async function audit(env, o) {
 }
 
 /* ---------- settings (owner-editable in the Brain) ---------- */
-export const SETTING_DEFAULTS = { provider: "auto", memory: "on", tools: "{}", briefing: "on", alerts: "on", retentionDays: "365", voice: "thalia", notifyEmail: "on", wakeWord: "on", theme: "dark", gaProperty: "", liveVoice: "Puck", voiceEngine: "auto" };
+export const SETTING_DEFAULTS = { provider: "auto", memory: "on", tools: "{}", briefing: "on", alerts: "on", retentionDays: "365", voice: "thalia", notifyEmail: "on", wakeWord: "on", theme: "dark", gaProperty: "", liveVoice: "Puck", voiceEngine: "auto", autoDeploy: "off" };
 export async function getSettings(env) {
   const out = Object.assign({}, SETTING_DEFAULTS);
   try { const d = await brainDb(env); ((await d.prepare("SELECT k, v FROM brain_settings").all()).results || []).forEach((r) => { if (r.k in out) out[r.k] = r.v; }); } catch (e) {}
@@ -86,7 +89,7 @@ export async function getSettings(env) {
 }
 export async function saveSettings(env, patch) {
   const d = await brainDb(env), ok = {};
-  const allowed = { provider: /^(auto|workers-ai|groq|gemini)$/, memory: /^(on|off)$/, briefing: /^(on|off)$/, alerts: /^(on|off)$/, retentionDays: /^\d{1,4}$/, voice: /^(amalthea|andromeda|apollo|arcas|aries|asteria|athena|atlas|aurora|callista|cora|cordelia|delia|draco|electra|harmonia|helena|hera|hermes|hyperion|iris|janus|juno|jupiter|luna|mars|minerva|neptune|odysseus|ophelia|orion|orpheus|pandora|phoebe|pluto|saturn|thalia|theia|vesta|zeus|stella|perseus|angus|helios|browser)$/, notifyEmail: /^(on|off)$/, wakeWord: /^(on|off)$/, theme: /^(dark|light|auto)$/, gaProperty: /^\d{0,14}$/, liveVoice: /^(Puck|Charon|Kore|Fenrir|Aoede|Leda|Orus|Zephyr)$/, voiceEngine: /^(auto|classic)$/ };
+  const allowed = { autoDeploy: /^(off|low)$/, provider: /^(auto|workers-ai|groq|gemini)$/, memory: /^(on|off)$/, briefing: /^(on|off)$/, alerts: /^(on|off)$/, retentionDays: /^\d{1,4}$/, voice: /^(amalthea|andromeda|apollo|arcas|aries|asteria|athena|atlas|aurora|callista|cora|cordelia|delia|draco|electra|harmonia|helena|hera|hermes|hyperion|iris|janus|juno|jupiter|luna|mars|minerva|neptune|odysseus|ophelia|orion|orpheus|pandora|phoebe|pluto|saturn|thalia|theia|vesta|zeus|stella|perseus|angus|helios|browser)$/, notifyEmail: /^(on|off)$/, wakeWord: /^(on|off)$/, theme: /^(dark|light|auto)$/, gaProperty: /^\d{0,14}$/, liveVoice: /^(Puck|Charon|Kore|Fenrir|Aoede|Leda|Orus|Zephyr)$/, voiceEngine: /^(auto|classic)$/ };
   for (const k of Object.keys(patch || {})) {
     let v = patch[k];
     if (k === "toolsOff") { if (typeof v !== "object" || !v) continue; const o = {}; Object.keys(v).slice(0, 80).forEach((t) => { if (/^[a-z_]{2,40}$/.test(t) && v[t]) o[t] = true; }); v = JSON.stringify(o); await d.prepare("INSERT INTO brain_settings (k, v, updated_at) VALUES ('tools', ?1, ?2) ON CONFLICT(k) DO UPDATE SET v=?1, updated_at=?2").bind(v, nowIso()).run(); ok.tools = true; continue; }

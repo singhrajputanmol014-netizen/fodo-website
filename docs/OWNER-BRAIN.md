@@ -8,6 +8,30 @@
 
 The tool list is in [OWNER-BRAIN-TOOLS.md](OWNER-BRAIN-TOOLS.md), which is generated from the registry.
 
+## v27. Website Engineer
+
+Full design: [FODO-WEBSITE-ENGINEER-ARCHITECTURE.md](FODO-WEBSITE-ENGINEER-ARCHITECTURE.md). FODO Brain → **Website Engineer** (owners only; never granted to team members).
+
+- **Flow:** plan → build (exact edits + line diff + security review) → open preview (pull request + Cloudflare preview, level-2 confirmation) → GitHub Actions QA → automatic repair (up to 3) → deploy (level 4) → rollback (level 4).
+- **QA** (`.github/workflows/fodo-engineer.yml` + `scripts/qa.mjs`) checks:
+  - syntax of every changed file
+  - local links and assets
+  - generated pages match `scripts/build_pages.py`
+  - the fast test suites
+  - the preview in Chromium at 320–1440px: overflow, JS errors, failed requests, broken images, accessibility basics — compared with production
+  - before/after screenshots
+
+  The report goes to `POST /api/owner-brain/eng/qa` (CRON_KEY).
+- **Index** (`scripts/eng-index.mjs`, on every push to main) builds the project map: pages, APIs, D1 tables, env variable names (never values), design tokens, components, dependents, symbols and CTAs.
+- **Path classes:**
+  - HARD: `.github`, `wrangler.toml`, secrets — never editable.
+  - GUARDED: Brain, login, payments, headers — need the typed phrase `CONFIRM PRODUCTION CHANGE` and passed QA.
+  - NORMAL: everything else.
+- **Deploy gate:** blocked while QA has failed or is still running. Auto-deploy is off by default; when on, it covers low-risk normal changes only.
+- **Command center** shows real checks only (GitHub, D1, data sources, last deploy, last QA, PageSpeed on demand). A missing source says "Not connected".
+- **Tools:** `eng_find`, `eng_map`, `eng_plan`, `eng_build`, `eng_replace`, `eng_inspect`, `eng_health`, `eng_audit`, `eng_rollback`.
+- **Tests:** `tests/v27-engineer.test.mjs` (48 checks), plus two Engineer checks in `tests/v21-e2e.test.js`.
+
 ## 00000. v26.1 fixes
 
 - **Live voice token format fixed.** Google's token API expects the locked Live setup under `bidiGenerateContentSetup` (checked against Google's own `@google/genai` SDK 2.32). v26 sent `liveConnectConstraints`, which Google rejected. Text typed into a live session now uses `realtimeInput.text`, the current Live API way.

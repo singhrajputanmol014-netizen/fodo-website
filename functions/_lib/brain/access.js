@@ -24,6 +24,7 @@ export const OWNER_ONLY = ["access", "connectors", "settings", "export", "person
 /* which permission a tool needs */
 const CAT = { Business: "business", "Growth Lab": "business", Clients: "business", "X-Ray": "business", System: "chat", Memory: "memory", Tasks: "tasks", Research: "chat", Write: "chat", Automation: "automations", Code: "changes", Email: "inbox", Calendar: "inbox", Social: "social", Data: "data", Interface: "chat" };
 export function permFor(name, t) {
+  if (/^eng_/.test(name)) return "website_engineer";
   if (name === "merge_change") return "deploy";
   if (name === "send_email") return "inbox";
   if (["grant_plan", "switch_feature", "change_price", "block_user", "reply_ticket"].indexOf(name) > -1) return "admin";
@@ -41,7 +42,8 @@ export async function who(env, u) {
   const perms = m.role === "full" ? Object.keys(PERMS) : JSON.parse(m.perms || "[]").filter((p) => PERMS[p]);
   return { email: u.email, name: u.name || "", role: m.role, perms, owner: false };
 }
-export const can = (W, perm) => !!(W && (W.owner || W.perms.indexOf(perm) > -1));
+// "website_engineer" (v27) is owner-only: never granted to members, not even "full" ones
+export const can = (W, perm) => !!(W && (W.owner || (perm !== "website_engineer" && W.perms.indexOf(perm) > -1)));
 export async function save(env, by, m) {
   const email = cleanEmail(m.email); if (!email) throw new Error("Enter a valid email address.");
   if (isOwner({ email })) throw new Error("Owners already have full access.");

@@ -15,7 +15,7 @@
   try { setTheme(localStorage.getItem("ob-theme") || "dark"); } catch (e) { setTheme("dark"); }
   /* who is using the Brain: an owner (everything) or a team member (only what the owners allowed) */
   var can = function (p) { var me = S.status && S.status.me; return !me || me.owner || p == null || (p !== "owner" && me.perms.indexOf(p) > -1); };
-  var VIEW_NEED = { home: null, chat: "chat", alerts: "business", tasks: "tasks", changes: "changes", memory: "memory", knowledge: "memory", social: "social", automations: "automations", connectors: "owner", access: "owner", activity: "owner", tools: null, diagnostics: "business", analytics: "business", settings: null };
+  var VIEW_NEED = { engineer: "owner", home: null, chat: "chat", alerts: "business", tasks: "tasks", changes: "changes", memory: "memory", knowledge: "memory", social: "social", automations: "automations", connectors: "owner", access: "owner", activity: "owner", tools: null, diagnostics: "business", analytics: "business", settings: null };
   try { S.voiceOut = localStorage.getItem("ob-voice") === "1"; S.thread = sessionStorage.getItem("ob-thread"); } catch (e) {}
   var fmtDate = function (t) { if (!t) return "—"; var d = new Date(t); return isNaN(d) ? esc(t) : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); };
   var inr = function (n) { return n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN"); };
@@ -47,7 +47,7 @@
     setInterval(function () { if (!document.hidden) api("status").then(function (x) { if (x.ok) { S.status = x; pill(); } }); }, 60000);
   });
 
-  var NAV = [["Command", [["home", "Overview", "◎"], ["chat", "Brain", "✦"], ["social", "Social media", "◍"], ["alerts", "Notifications", "◉"]]], ["Work", [["tasks", "Tasks & commitments", "☑"], ["changes", "Site changes", "⌘"], ["memory", "Memory", "◈"], ["knowledge", "Knowledge", "▤"]]],
+  var NAV = [["Command", [["home", "Overview", "◎"], ["chat", "Brain", "✦"], ["social", "Social media", "◍"], ["alerts", "Notifications", "◉"]]], ["Work", [["engineer", "Website Engineer", "⌬"], ["tasks", "Tasks & commitments", "☑"], ["changes", "Site changes", "⌘"], ["memory", "Memory", "◈"], ["knowledge", "Knowledge", "▤"]]],
     ["System", [["automations", "Automations", "↻"], ["connectors", "Connectors", "⇄"], ["access", "Access", "⚿"], ["activity", "Activity", "≡"], ["tools", "Tools", "⚙"], ["diagnostics", "Diagnostics", "✚"], ["analytics", "Analytics", "▦"], ["settings", "Settings", "⋯"]]]];
   function frame() {
     document.title = "FODO BRAIN";

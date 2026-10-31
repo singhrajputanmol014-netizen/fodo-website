@@ -23,14 +23,14 @@ async function workersAi(env, messages, kind, max, temp) {
   }
   throw last || new Error("no answer");
 }
-async function gemini(env, messages, max, temp) {
+async function gemini(env, messages, max, temp, code) {
   if (!env.GEMINI_API_KEY) throw new Error("no GEMINI_API_KEY");
   const sys = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
   const contents = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: String(m.content) }] }));
   let last;
-  for (const model of [env.GEMINI_MODEL].filter(Boolean).concat(GEMINI_MODELS)) {
+  for (const model of [code ? env.GEMINI_CODE_MODEL : null, env.GEMINI_MODEL].filter(Boolean).concat(GEMINI_MODELS)) {
     const r = await outbound(env)("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", { method: "POST", headers: { "x-goog-api-key": env.GEMINI_API_KEY, "content-type": "application/json" },
-      body: JSON.stringify({ contents, systemInstruction: sys ? { parts: [{ text: sys }] } : undefined, generationConfig: { maxOutputTokens: max, temperature: temp } }), signal: AbortSignal.timeout(40000) });
+      body: JSON.stringify({ contents, systemInstruction: sys ? { parts: [{ text: sys }] } : undefined, generationConfig: { maxOutputTokens: max, temperature: temp } }), signal: AbortSignal.timeout(code ? 100000 : 40000) });
     if (!r.ok) { last = new Error("gemini " + r.status); if (r.status === 404) continue; throw last; }
     const j = await r.json(), c = (j.candidates || [])[0] || {}, t = ((c.content || {}).parts || []).filter((p) => !p.thought).map((p) => p.text || "").join("");
     if (t) return { text: t, model: model }; last = new Error("gemini: empty answer");
@@ -41,14 +41,15 @@ export function availableProviders(env) { return { "workers-ai": !!env.AI, groq:
 
 /* → { text, provider, model, ms, fallback, tried } — throws { detail } when every provider failed */
 export async function brainAI(env, o) {
-  const kind = o.kind === "fast" ? "fast" : "deep", max = o.max || (kind === "fast" ? 500 : 1100), temp = o.json ? 0.1 : o.temp != null ? o.temp : 0.35;
-  const avail = availableProviders(env), base = ["workers-ai", "groq", "gemini"], pref = o.provider && o.provider !== "auto" ? o.provider : null;
+  // kind "code" (v27 Website Engineer): the strongest code model first — Gemini (free key), then Groq, then Workers AI; long outputs
+  const code = o.kind === "code", kind = o.kind === "fast" ? "fast" : "deep", max = o.max || (code ? 6000 : kind === "fast" ? 500 : 1100), temp = o.json ? 0.1 : o.temp != null ? o.temp : 0.35;
+  const avail = availableProviders(env), base = code ? ["gemini", "groq", "workers-ai"] : ["workers-ai", "groq", "gemini"], pref = !code && o.provider && o.provider !== "auto" ? o.provider : null;
   const order = (pref ? [pref] : []).concat(base.filter((p) => p !== pref)).filter((p) => avail[p]);
   const tried = [];
   for (const p of order) {
     const t0 = Date.now();
     try {
-      const r = p === "workers-ai" ? await workersAi(env, o.messages, kind, max, temp) : p === "groq" ? await groqChat(env, o.messages, max, kind === "fast" ? 20000 : 40000) : await gemini(env, o.messages, max, temp);
+      const r = p === "workers-ai" ? await workersAi(env, o.messages, kind, max, temp) : p === "groq" ? await groqChat(env, o.messages, max, code ? 90000 : kind === "fast" ? 20000 : 40000) : await gemini(env, o.messages, max, temp, code);
       const ms = Date.now() - t0;
       await logUsage(env, { provider: p === "groq" ? "groq" : p, endpoint: "brain", tool: ("brain:" + (o.purpose || kind) + " · " + String(r.model).split("/").pop()).slice(0, 160), status: 200, ms, units: toks(JSON.stringify(o.messages)) + toks(r.text) });
       return { text: r.text, provider: p, model: String(r.model).replace(/^groq\//, ""), ms, fallback: tried.length > 0, tried };

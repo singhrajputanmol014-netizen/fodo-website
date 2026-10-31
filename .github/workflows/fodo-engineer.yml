@@ -1,0 +1,95 @@
+# FODO Website Engineer (v27) — the Brain's hands and eyes on GitHub Actions. Free for public repos; ~4 min per QA run.
+#   index    on every push to main (and on demand): scans the repo → project map for the Brain (scripts/eng-index.mjs)
+#   qa       on every FODO Brain pull request (branch brain/*): static checks + tests + the Cloudflare preview in a real browser at
+#            8 screen sizes + before/after screenshots → report to the Brain (scripts/qa.mjs). A failure is repaired by the Brain
+#            (max 3 commits) and this runs again on the new commit. The Brain cannot edit this file (.github/ is protected).
+#   inspect  on demand from Engineer → Inspect: one live page at 8 sizes.
+# Secret: FODO_CRON_KEY (same as the other FODO workflows = CRON_KEY in Cloudflare). Optional variable: FODO_PAGES_PROJECT.
+name: FODO Engineer
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect | index"
+        default: "inspect"
+      url:
+        description: "page to inspect"
+        default: ""
+      change:
+        description: "Brain change id"
+        default: ""
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+  pull-requests: read
+concurrency:
+  group: fodo-engineer-${{ github.head_ref || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+jobs:
+  index:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'index')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Index the project for FODO Brain
+        env:
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+        run: node scripts/eng-index.mjs
+  qa:
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'brain/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install QA tools
+        run: npm i --no-save acorn@8.12.1 playwright@1.48.2 && npx playwright install --with-deps chromium
+      - name: QA the change
+        env:
+          MODE: pr
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+          BRANCH: ${{ github.head_ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.base_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          PAGES_PROJECT: ${{ vars.FODO_PAGES_PROJECT || 'fodo-website' }}
+        run: node scripts/qa.mjs
+  inspect:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'inspect'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser
+        run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
+      - name: Inspect the page
+        env:
+          MODE: inspect
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+          URL: ${{ inputs.url }}
+          CHANGE: ${{ inputs.change }}
+        run: node scripts/qa.mjs

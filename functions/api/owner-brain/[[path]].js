@@ -12,7 +12,7 @@
 import { json, accountsOn, sessionUser, isOwner, sameOrigin, count } from "../../_lib/accounts.js";
 import { applyConfig } from "../../_lib/config.js";
 import { brainDb, getSettings, saveSettings, audit, nowIso, clean, clip, redact, scrubEnv } from "../../_lib/brain/store.js";
-import { chat, ingest } from "../../_lib/brain/orchestrator.js";
+import { chat, ingest, voiceLog } from "../../_lib/brain/orchestrator.js";
 import { TOOLS, LEVELS, systemCheck, confirmAction, execute } from "../../_lib/brain/tools.js";
 import { listMemory, remember, updateMemory, forget, forgetScope, memoryHistory, listTasks, createTask, updateTask, deleteTask, projects, listDocs, deleteDoc } from "../../_lib/brain/memory.js";
 import { briefing, listAlerts, ackAlert } from "../../_lib/brain/insights.js";
@@ -34,7 +34,7 @@ import { mayOpenThread } from "../../_lib/brain/orchestrator.js";
 const SITE = (env) => env.SITE_ORIGIN || "https://www.fodo.co.in";
 /* which permission each page endpoint needs ("owner" = the two owner logins only) */
 const NEED = { GET: { status: null, briefing: "business", diagnostics: "business", memory: "memory", tasks: "tasks", projects: "tasks", docs: "memory", threads: null, thread: null, tools: null, alerts: "business", activity: "owner", analytics: "business", changes: "changes", automations: "automations", connectors: "owner", connect: "owner", settings: null, export: "owner", social: "social", members: "owner", ga: "owner", live: "chat", eng: "owner" },
-  POST: { chat: "chat", ingest: "memory", confirm: null, memory: "memory", tasks: "tasks", feedback: null, tts: null, stt: null, automations: "automations", changes: "changes", connectors: "owner", settings: "owner", alerts: "business", social: "social", members: "owner", eng: "owner" },
+  POST: { chat: "chat", voicelog: "chat", ingest: "memory", confirm: null, memory: "memory", tasks: "tasks", feedback: null, tts: null, stt: null, automations: "automations", changes: "changes", connectors: "owner", settings: "owner", alerts: "business", social: "social", members: "owner", eng: "owner" },
   PUT: { social: "social" }, PATCH: { memory: "memory", tasks: "tasks" }, DELETE: { memory: "memory", tasks: "tasks", automations: "automations", docs: "memory", thread: null, threads: null, social: "owner", members: "owner" } };
 const sameKey = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 
@@ -139,7 +139,7 @@ export async function onRequest(ctx) {
       if (p0 === "members") return json({ ok: true, items: await AC.members(env), perms: AC.PERMS, ownerOnly: AC.OWNER_ONLY });
       if (p0 === "live") {   // a single-use Gemini Live token for this browser (the API key stays on the server)
         if (await count(env, "brain:live:" + u.id + ":" + Math.floor(Date.now() / 3600e3), 60, 3700)) return json({ ok: false, reason: "Too many voice sessions this hour." }, 429);
-        try { const t = await LV.token(env, W, u, q.get("voice") || settings.liveVoice); await audit(env, { owner: u.email, kind: "voice", tool: "live", status: "token", detail: t.model }); return json(Object.assign({ ok: true }, t)); }
+        try { const t = await LV.token(env, W, u, q.get("voice") || settings.liveVoice, { mode: q.get("mode") || settings.liveMode, lite: q.get("lite") === "1", handle: q.get("handle") || "" }); await audit(env, { owner: u.email, kind: "voice", tool: "live", status: "token", detail: t.model }); return json(Object.assign({ ok: true }, t)); }
         catch (e) { return json({ ok: false, reason: e.message }, 503); } }
       if (p0 === "ga" && path[1] === "properties") { try { return json({ ok: true, items: await GO.gaProperties(env) }); } catch (e) { return json({ ok: true, items: [], reason: e.message }); } }
       if (p0 === "connect" && path[1] === "google" && path[2] === "callback") {
@@ -159,6 +159,7 @@ export async function onRequest(ctx) {
 
     /* ---------- POST ---------- */
     if (m === "POST") {
+      if (p0 === "voicelog") { if (await count(env, "brain:vlog:" + u.id + ":" + Math.floor(Date.now() / 60e3), 40, 120)) return json({ ok: false, reason: "Too many." }, 429); return json(Object.assign({ ok: true }, await voiceLog(env, W, body.threadId, body.turns))); }
       if (p0 === "chat") { if (await count(env, "brain:chat:" + u.id + ":" + Math.floor(Date.now() / 60e3), 30, 120)) return json({ ok: false, reason: "Slow down a little — 30 messages a minute." }, 429);
         return json(await chat(base, body || {})); }
       if (p0 === "ingest") { if (await count(env, "brain:ingest:" + u.id + ":" + Math.floor(Date.now() / 3600e3), 30, 3700)) return json({ ok: false, reason: "Too many uploads this hour." }, 429);

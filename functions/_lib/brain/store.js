@@ -80,7 +80,7 @@ export async function audit(env, o) {
 }
 
 /* ---------- settings (owner-editable in the Brain) ---------- */
-export const SETTING_DEFAULTS = { provider: "auto", memory: "on", tools: "{}", briefing: "on", alerts: "on", retentionDays: "365", voice: "thalia", notifyEmail: "on", wakeWord: "on", theme: "dark", gaProperty: "", liveVoice: "Puck", voiceEngine: "auto", autoDeploy: "off" };
+export const SETTING_DEFAULTS = { provider: "auto", memory: "on", tools: "{}", briefing: "on", alerts: "on", retentionDays: "365", voice: "thalia", notifyEmail: "on", wakeWord: "on", theme: "dark", gaProperty: "", liveVoice: "Puck", liveMode: "chat", voiceEngine: "auto", autoDeploy: "off" };
 export async function getSettings(env) {
   const out = Object.assign({}, SETTING_DEFAULTS);
   try { const d = await brainDb(env); ((await d.prepare("SELECT k, v FROM brain_settings").all()).results || []).forEach((r) => { if (r.k in out) out[r.k] = r.v; }); } catch (e) {}
@@ -89,7 +89,7 @@ export async function getSettings(env) {
 }
 export async function saveSettings(env, patch) {
   const d = await brainDb(env), ok = {};
-  const allowed = { autoDeploy: /^(off|low)$/, provider: /^(auto|workers-ai|groq|gemini)$/, memory: /^(on|off)$/, briefing: /^(on|off)$/, alerts: /^(on|off)$/, retentionDays: /^\d{1,4}$/, voice: /^(amalthea|andromeda|apollo|arcas|aries|asteria|athena|atlas|aurora|callista|cora|cordelia|delia|draco|electra|harmonia|helena|hera|hermes|hyperion|iris|janus|juno|jupiter|luna|mars|minerva|neptune|odysseus|ophelia|orion|orpheus|pandora|phoebe|pluto|saturn|thalia|theia|vesta|zeus|stella|perseus|angus|helios|browser)$/, notifyEmail: /^(on|off)$/, wakeWord: /^(on|off)$/, theme: /^(dark|light|auto)$/, gaProperty: /^\d{0,14}$/, liveVoice: /^(Puck|Charon|Kore|Fenrir|Aoede|Leda|Orus|Zephyr)$/, voiceEngine: /^(auto|classic)$/ };
+  const allowed = { autoDeploy: /^(off|low)$/, provider: /^(auto|workers-ai|groq|gemini)$/, memory: /^(on|off)$/, briefing: /^(on|off)$/, alerts: /^(on|off)$/, retentionDays: /^\d{1,4}$/, voice: /^(amalthea|andromeda|apollo|arcas|aries|asteria|athena|atlas|aurora|callista|cora|cordelia|delia|draco|electra|harmonia|helena|hera|hermes|hyperion|iris|janus|juno|jupiter|luna|mars|minerva|neptune|odysseus|ophelia|orion|orpheus|pandora|phoebe|pluto|saturn|thalia|theia|vesta|zeus|stella|perseus|angus|helios|browser)$/, notifyEmail: /^(on|off)$/, wakeWord: /^(on|off)$/, theme: /^(dark|light|auto)$/, gaProperty: /^\d{0,14}$/, liveVoice: /^(Puck|Charon|Kore|Fenrir|Aoede|Leda|Orus|Zephyr|Callirrhoe|Autonoe|Enceladus|Iapetus|Umbriel|Algieba|Despina|Erinome|Algenib|Rasalgethi|Laomedeia|Achernar|Alnilam|Schedar|Gacrux|Pulcherrima|Achird|Zubenelgenubi|Vindemiatrix|Sadachbia|Sadaltager|Sulafat)$/, liveMode: /^(chat|wake)$/, voiceEngine: /^(auto|classic)$/ };
   for (const k of Object.keys(patch || {})) {
     let v = patch[k];
     if (k === "toolsOff") { if (typeof v !== "object" || !v) continue; const o = {}; Object.keys(v).slice(0, 80).forEach((t) => { if (/^[a-z_]{2,40}$/.test(t) && v[t]) o[t] = true; }); v = JSON.stringify(o); await d.prepare("INSERT INTO brain_settings (k, v, updated_at) VALUES ('tools', ?1, ?2) ON CONFLICT(k) DO UPDATE SET v=?1, updated_at=?2").bind(v, nowIso()).run(); ok.tools = true; continue; }

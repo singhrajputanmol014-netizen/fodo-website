@@ -59,7 +59,8 @@ export function validateDoc(doc, lim) {
   if (!pages.length) throw err("A website needs at least one page.");
   if (pages.length > (lim ? lim.pages : 100)) throw err("Your plan allows " + lim.pages + " pages.");
   const out = { theme: {}, settings: cleanVal(doc.settings || {}, 0) || {}, pages: [] }, t = doc.theme || {};
-  ["mode", "primary", "accent", "bg", "text", "font", "headingFont", "radius"].forEach((k) => { if (t[k] != null) out.theme[k] = clip(t[k], 40); });
+  ["mode", "primary", "accent", "bg", "text", "font", "headingFont", "radius", "motion"].forEach((k) => { if (t[k] != null) out.theme[k] = clip(t[k], 40); });
+  if (out.theme.motion && ["subtle", "lively", "none"].indexOf(out.theme.motion) < 0) delete out.theme.motion;
   if (out.theme.font && !FONTS[out.theme.font]) delete out.theme.font; if (out.theme.headingFont && !FONTS[out.theme.headingFont]) delete out.theme.headingFont;
   if (out.settings.customCss) out.settings.customCss = sanitizeCss(out.settings.customCss);
   delete out.settings.customJs; delete out.settings.headCode;   // scripts are never accepted (a website is data)

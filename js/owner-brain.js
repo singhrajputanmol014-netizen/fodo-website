@@ -16,6 +16,7 @@
   /* who is using the Brain: an owner (everything) or a team member (only what the owners allowed) */
   var can = function (p) { var me = S.status && S.status.me; return !me || me.owner || p == null || (p !== "owner" && me.perms.indexOf(p) > -1); };
   var VIEW_NEED = { engineer: "owner", home: null, chat: "chat", alerts: "business", tasks: "tasks", changes: "changes", memory: "memory", knowledge: "memory", social: "social", automations: "automations", connectors: "owner", access: "owner", activity: "owner", tools: null, diagnostics: "business", analytics: "business", settings: null };
+  var LIVE_VOICES = [["Puck","Puck — upbeat male"],["Charon","Charon — deep, informative male"],["Fenrir","Fenrir — excitable male"],["Orus","Orus — firm male"],["Enceladus","Enceladus — breathy male"],["Iapetus","Iapetus — clear male"],["Umbriel","Umbriel — easy-going male"],["Algieba","Algieba — smooth male"],["Algenib","Algenib — gravelly male"],["Rasalgethi","Rasalgethi — informative male"],["Alnilam","Alnilam — firm male"],["Schedar","Schedar — even male"],["Achird","Achird — friendly male"],["Zubenelgenubi","Zubenelgenubi — casual male"],["Sadachbia","Sadachbia — lively male"],["Sadaltager","Sadaltager — knowledgeable male"],["Kore","Kore — firm female"],["Aoede","Aoede — breezy female"],["Leda","Leda — youthful female"],["Zephyr","Zephyr — bright female"],["Callirrhoe","Callirrhoe — easy-going female"],["Autonoe","Autonoe — bright female"],["Despina","Despina — smooth female"],["Erinome","Erinome — clear female"],["Laomedeia","Laomedeia — upbeat female"],["Achernar","Achernar — soft female"],["Gacrux","Gacrux — mature female"],["Pulcherrima","Pulcherrima — forward female"],["Vindemiatrix","Vindemiatrix — gentle female"],["Sulafat","Sulafat — warm female"]];
   try { S.voiceOut = localStorage.getItem("ob-voice") === "1"; S.thread = sessionStorage.getItem("ob-thread"); } catch (e) {}
   var fmtDate = function (t) { if (!t) return "—"; var d = new Date(t); return isNaN(d) ? esc(t) : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); };
   var inr = function (n) { return n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN"); };
@@ -64,9 +65,17 @@
     var vo = document.createElement("div"); vo.className = "ob-vo"; vo.id = "ob-vo"; vo.hidden = true;
     vo.innerHTML = '<div class="ob-vo-bg" aria-hidden="true"></div><header class="ob-vo-h"><span class="ob-vo-brand">FODO</span><span class="sp"></span><button class="ob-vo-x" id="ob-vomute" aria-label="Mute FODO">🔇</button><button class="ob-vo-x" id="ob-vox" aria-label="Close voice mode">✕</button></header>' +
       '<button class="ob-vo-stage" id="ob-vostage" aria-label="Tap to talk or to stop"><canvas id="ob-voc" aria-hidden="true"></canvas></button>' +
-      '<div class="ob-vo-text"><p class="ob-vo-st" id="ob-vost">Tap the mic to start</p><p class="ob-vo-tr" id="ob-votr"></p><div class="ob-vo-ans" id="ob-voans"></div><div class="ob-vo-acts" id="ob-voacts"></div><p class="ob-vo-diag" id="ob-vodiag"></p></div>' +
+      '<div class="ob-vo-text"><p class="ob-vo-st" id="ob-vost">Tap the mic to start</p><p class="ob-vo-tr" id="ob-votr"></p><div class="ob-vo-ans" id="ob-voans"></div><div class="ob-vo-acts" id="ob-voacts"></div><p class="ob-vo-diag" id="ob-vodiag"></p><div class="ob-vo-log" id="ob-volog" aria-live="polite" aria-label="Conversation"></div></div>' +
+      '<div class="ob-vo-opts"><button class="ob-chip" id="ob-vomode" type="button"></button><select class="ob-sel ob-vosel" id="ob-vovoice" aria-label="Voice"></select></div>' +
       '<div class="ob-vo-ctrl"><button class="ob-micbtn" id="ob-vomic" aria-pressed="false" aria-label="Microphone on/off"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg></button><p class="ob-vo-hint" id="ob-vohint">Talk freely — no wake word needed here</p></div>';
     document.body.appendChild(vo);
+    (function () { var mb = document.getElementById("ob-vomode"), vs = document.getElementById("ob-vovoice");
+      var lab = function () { var w = liveModeNow() === "wake"; mb.textContent = w ? "🔔 Only when I say “FODO”" : "💬 Always answer"; mb.setAttribute("aria-pressed", w); var h = document.getElementById("ob-vohint"); if (h) h.textContent = w ? "Others can talk — I answer when you say “FODO …”" : "Just talk — interrupt any time"; };
+      var restart = function () { if (window.FodoLive && FodoLive.isActive()) { FodoLive.stop(); setTimeout(function () { if (voIsOpen()) liveStart(); }, 300); } };
+      mb.onclick = function () { var n = liveModeNow() === "wake" ? "chat" : "wake"; try { localStorage.setItem("ob-livemode", n); } catch (e) {} if (window.FodoLive) FodoLive.setMode(n); lab(); restart(); };
+      vs.innerHTML = LIVE_VOICES.map(function (v) { return '<option value="' + v[0] + '">' + esc(v[1]) + "</option>"; }).join(""); vs.value = liveVoiceNow();
+      vs.onchange = function () { try { localStorage.setItem("ob-livevoice", vs.value); } catch (e) {} restart(); };
+      lab(); })();
     document.getElementById("ob-menu").onclick = document.getElementById("ob-bmenu").onclick = function () { document.getElementById("ob-side").classList.toggle("open"); };
     document.getElementById("ob-scrim").onclick = function () { document.getElementById("ob-side").classList.remove("open"); };
     document.getElementById("ob-pill").onclick = statusPop; pill();
@@ -141,11 +150,14 @@
   /* ---- chat ---- */
   VIEWS.chat = function (tid) {
     if (tid) S.thread = tid;
-    V().innerHTML = '<div class="ob-chat"><div class="ob-threads" id="ob-threads"><button class="ob-btn sm" id="ob-new" style="width:100%;margin-bottom:8px">+ New conversation</button><div id="ob-tl"></div></div>' +
-      '<div class="ob-conv"><div class="ob-log" id="ob-log" aria-live="polite"></div><form class="ob-compose" id="ob-form"><textarea class="ob-ta" id="ob-in" rows="1" placeholder="Message FODO…" aria-label="Message"></textarea>' +
+    V().innerHTML = '<div class="ob-chat"><div class="ob-threads" id="ob-threads"><div class="ob-thead"><b>Chat history</b><button class="ob-thclose" id="ob-thclose" aria-label="Close history">✕</button></div><button class="ob-btn sm" id="ob-new" style="width:100%;margin-bottom:8px">+ New conversation</button><div id="ob-tl"></div></div>' +
+      '<div class="ob-conv"><div class="ob-convbar"><button class="ob-btn sm" id="ob-histbtn" type="button" aria-controls="ob-threads">☰ History</button><button class="ob-btn sm" id="ob-new2" type="button">+ New</button></div><div class="ob-log" id="ob-log" aria-live="polite"></div><form class="ob-compose" id="ob-form"><textarea class="ob-ta" id="ob-in" rows="1" placeholder="Message FODO…" aria-label="Message"></textarea>' +
       '<button type="button" class="ob-cbtn" id="ob-spk" title="Read answers aloud" aria-pressed="' + S.voiceOut + '"><svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6L7 10H3Zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-9v2.1a7 7 0 0 1 0 13.8V21a9 9 0 0 0 0-18Z"/></svg></button>' +
       '<button type="button" class="ob-cbtn ob-mic" id="ob-mic" title="Speak" aria-label="Speak"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg></button>' +
       '<button class="ob-cbtn send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg></button></form></div></div>';
+    var thw = document.getElementById("ob-threads"); document.getElementById("ob-histbtn").onclick = function () { thw.classList.add("open"); threads(); }; document.getElementById("ob-thclose").onclick = function () { thw.classList.remove("open"); };
+    thw.addEventListener("click", function (e) { if (e.target.closest("a")) thw.classList.remove("open"); });
+    document.getElementById("ob-new2").onclick = function () { document.getElementById("ob-new").click(); };
     document.getElementById("ob-new").onclick = function () { S.thread = null; try { sessionStorage.removeItem("ob-thread"); } catch (e) {} VIEWS.chat(); };
     var inp = document.getElementById("ob-in");
     document.getElementById("ob-form").onsubmit = function (e) { e.preventDefault(); if (S.voiceOut && !S.muted && window.FodoVoice) { FodoVoice.unlock(); primeSpeech(); } var v = inp.value.trim(); if (v) { inp.value = ""; inp.style.height = ""; send(v); } };
@@ -267,7 +279,16 @@
   function liveStart(text) {
     if (!liveWanted() || FodoLive.isActive()) { if (text && FodoLive.isActive()) FodoLive.say(text); return; }
     var x = document.getElementById("ob-vost"); if (x) x.textContent = "Connecting…";
-    FodoLive.start({ text: text || null, voice: S.status.settings.liveVoice, tool: brainTool }).then(function (ok) { if (ok) { HF.on = true; hfLabel(); } });
+    FodoLive.start({ text: text || null, voice: liveVoiceNow(), mode: liveModeNow(), tool: brainTool }).then(function (ok) { if (ok) { HF.on = true; hfLabel(); } });
+  }
+  function liveModeNow() { try { var m = localStorage.getItem("ob-livemode"); if (m) return m; } catch (e) {} return (S.status && S.status.settings && S.status.settings.liveMode) || "chat"; }
+  function liveVoiceNow() { try { var v = localStorage.getItem("ob-livevoice"); if (v) return v; } catch (e) {} return (S.status && S.status.settings && S.status.settings.liveVoice) || "Puck"; }
+  /* voice conversation → chat history (batched) + the transcript in the voice panel */
+  var VLQ = [], VLT = null;
+  function voTurn(t) {
+    var lg = document.getElementById("ob-volog"); if (lg) { var p = document.createElement("p"); p.className = t.role === "you" ? "u" + (t.ignored ? " ig" : "") : "a"; p.textContent = (t.ignored ? "🔕 " : "") + t.text; lg.appendChild(p); while (lg.children.length > 60) lg.removeChild(lg.firstChild); lg.scrollTop = lg.scrollHeight; }
+    if (t.ignored) return; VLQ.push({ role: t.role, text: t.text }); clearTimeout(VLT);
+    VLT = setTimeout(function () { var q = VLQ; VLQ = []; api("voicelog", "POST", { threadId: S.thread, turns: q }).then(function (r) { if (r.ok && r.threadId && r.threadId !== S.thread) { S.thread = r.threadId; try { sessionStorage.setItem("ob-thread", r.threadId); } catch (e) {} } }); }, 2500);
   }
   function brainTool(req) {   // Gemini asked FODO Brain → the normal chat with all rules and confirmations
     S.lastQ = req;
@@ -292,6 +313,9 @@
       if (d.ready && d.sent > 40 && d.mic < 0.004) { var x = document.getElementById("ob-vost"); if (x && !HF.micWarned) { HF.micWarned = true; x.textContent = "I can't hear anything from your microphone — check the right mic is selected and not muted."; } } });
     FodoLive.on("you", function (t) { var tr = document.getElementById("ob-votr"); if (tr) tr.textContent = t; orbAsk(t); });
     FodoLive.on("fodo", function (t) { voSay(t); });
+    FodoLive.on("turn", voTurn);
+    FodoLive.on("ignored", function () { var x = document.getElementById("ob-vost"); if (x) x.textContent = "Not for me — say “FODO …” when you want me"; });
+    FodoLive.on("reconnect", function () { var x = document.getElementById("ob-vost"); if (x) x.textContent = "Reconnecting — the conversation continues…"; });
     FodoLive.on("error", function (m) {
       var x = document.getElementById("ob-vost");
       if (m === "mic") { if (x) x.textContent = "Microphone blocked — allow it for fodo.co.in, then tap the mic."; return; }
@@ -508,7 +532,8 @@
       "<label>Email me important alerts" + sel("notifyEmail", [["on", "On"], ["off", "Off"]], s.notifyEmail) + "</label>" +
       "<label>“Hey FODO” wake word" + sel("wakeWord", [["on", "On — always listening while this page is open"], ["off", "Off"]], s.wakeWord) + "</label>" +
       "<label>Voice conversation" + sel("voiceEngine", [["auto", "Live (Gemini) — talks like a person, best"], ["classic", "Standard (Whisper + Aura)"]], s.voiceEngine || "auto") + (j.live ? "" : "<small>Live needs GEMINI_API_KEY</small>") + "</label>" +
-      "<label>Live voice" + sel("liveVoice", [["Puck", "Puck — upbeat male"], ["Charon", "Charon — deep male"], ["Fenrir", "Fenrir — excited male"], ["Orus", "Orus — firm male"], ["Kore", "Kore — firm female"], ["Aoede", "Aoede — breezy female"], ["Leda", "Leda — youthful female"], ["Zephyr", "Zephyr — bright female"]], s.liveVoice || "Puck") + "</label>" +
+      "<label>Live voice (30 voices)" + sel("liveVoice", LIVE_VOICES, s.liveVoice || "Puck") + '<button type="button" class="ob-btn sm" id="ob-vprev" style="margin-top:6px">▶ Preview this voice</button><small id="ob-vpst"></small></label>' +
+      "<label>When should FODO answer?" + sel("liveMode", [["chat", "Always — I'm alone, just talk"], ["wake", "Only when I say “FODO” — people are talking around me"]], s.liveMode || "chat") + "</label>" +
       "<label>Theme" + sel("theme", [["dark", "Dark"], ["light", "Light"]], s.theme || "dark") + "</label>" +
       '<label>I speak<select class="ob-sel" id="ob-lang">' + [["auto", "Automatic — Hindi, English, Hinglish (best)"], ["hi", "Mostly Hindi"], ["en", "Mostly English"]].map(function (o) { var cur = (function () { try { return localStorage.getItem("ob-lang") || "auto"; } catch (e) { return "auto"; } })(); return '<option value="' + o[0] + '"' + (o[0] === cur ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" +
       '</div><div class="ob-row" style="margin-top:14px"><button class="ob-btn pri" type="submit">Save</button><span class="ob-empty" id="ob-sst"></span></div></form>' +
@@ -517,6 +542,8 @@
     if (!j.owner) { V().querySelectorAll("#ob-sf select:not(#ob-lang):not([name=theme])").forEach(function (x) { x.disabled = true; }); }
     document.getElementById("ob-vtest").onclick = function () { var o = document.getElementById("ob-vtres"), btn = this; if (!window.FodoLive) { o.textContent = "Live voice script not loaded."; return; } btn.disabled = true; o.textContent = "Testing…";
       FodoLive.test(s.liveVoice).then(function (r) { btn.disabled = false; o.textContent = (r.ok ? "✓ Live voice works" : "✗ Not working") + "\nModel: " + (r.model || "—") + (r.version ? " (" + r.version + (r.locked ? ", locked" : ", unlocked") + ")" : "") + "\nStep: " + r.step + (r.ms ? " · " + r.ms + " ms" : "") + (r.detail ? "\nDetail: " + r.detail : "") + (S.liveErr ? "\nLast error in voice mode: " + S.liveErr : ""); if (r.ok) S.liveFailed = false; }); };
+    document.getElementById("ob-vprev").onclick = function () { var b = this, st = document.getElementById("ob-vpst"), v = document.querySelector("#ob-sf [name=liveVoice]").value; if (!window.FodoLive) return; b.disabled = true; st.textContent = " Playing…";
+      FodoLive.preview(v).then(function (r) { b.disabled = false; st.textContent = r.ok ? " " : " ✗ " + (r.detail || "no audio"); }); };
     document.getElementById("ob-lang").onchange = function () { try { localStorage.setItem("ob-lang", this.value); } catch (e) {} };
     document.getElementById("ob-sf").onsubmit = function (e) { e.preventDefault(); var f = new FormData(this), b = {}; f.forEach(function (v, k) { b[k] = v; }); if (b.theme) setTheme(b.theme); if (!j.owner) { document.getElementById("ob-sst").textContent = "Saved on this device."; return; } api("settings", "POST", b).then(function (r) { document.getElementById("ob-sst").textContent = r.ok ? "Saved." : r.reason; }); }; }); };
   /* ---- site changes (code agent) ---- */

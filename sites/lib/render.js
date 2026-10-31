@@ -91,7 +91,38 @@ export function themeCss(t) {
     ".prod .pimg{display:block;margin:-24px -24px 14px}.prod .pimg img,.prod .pimg .ph{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--r) var(--r) 0 0}.prod h3 a,.post h3 a{color:var(--tx);text-decoration:none}.pp{margin:6px 0 12px!important;color:var(--tx)!important}.pp s{color:var(--mut);font-weight:400}.oos{color:#c0392b!important;font-weight:700}.cartlink{margin-top:24px}" +
     ".pd{display:grid;gap:32px}@media(min-width:900px){.pd{grid-template-columns:1.1fr .9fr}}.pd .thumbs{display:flex;gap:8px;margin-top:8px;overflow:auto}.pd .thumbs img{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:pointer}.pd .amt{font-size:1.8rem;font-weight:800}.qty{width:90px}.cart-t{width:100%;border-collapse:collapse}.cart-t td,.cart-t th{padding:12px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}.cart-t img{width:56px;height:56px;object-fit:cover;border-radius:8px}.sum{max-width:420px;margin-left:auto}.sum p{display:flex;justify-content:space-between;margin:6px 0}.sum .tot{font-size:1.25rem;font-weight:800;border-top:1px solid var(--line);padding-top:10px}.pay{display:grid;gap:8px;margin:12px 0}.pay label{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;font-weight:600}.status-pill{display:inline-block;padding:6px 12px;border-radius:999px;background:color-mix(in srgb,var(--p) 14%,transparent);color:var(--p);font-weight:800}" +
     ".article{max-width:760px}.article img{border-radius:var(--r);margin:18px 0}.article h2{margin-top:1.6em}.article p,.article li{font-size:1.08rem}" +
-    "@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}";
+    motionCss(t.motion) +
+    "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}.rv{opacity:1!important;transform:none!important}}";
+}
+/* v31 motion graphics — "subtle" (default), "lively" or "none". Pure CSS + a tiny observer script; content is never hidden
+   without JavaScript (elements are only prepared for the reveal by the script itself), and reduced-motion users see no motion. */
+export const MOTIONS = ["subtle", "lively", "none"];
+function motionCss(m) {
+  if (m === "none") return "";
+  const big = m === "lively", d = big ? 34 : 18;
+  return "@keyframes fu{from{opacity:0;transform:translateY(" + d + "px)}to{opacity:1;transform:none}}@keyframes drift{0%{background-position:0% 0%,100% 100%}50%{background-position:30% 20%,70% 80%}100%{background-position:0% 0%,100% 100%}}" +
+    "@keyframes shine{from{transform:translateX(-120%) skewX(-20deg)}to{transform:translateX(220%) skewX(-20deg)}}@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-" + (big ? 14 : 8) + "px)}}@keyframes mq{to{transform:translateX(-50%)}}@keyframes pop{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}" +
+    ".m-on .hero .hero-copy>*{animation:fu " + (big ? ".9s" : ".7s") + " cubic-bezier(.2,.8,.2,1) both}.m-on .hero .hero-copy>*:nth-child(2){animation-delay:.08s}.m-on .hero .hero-copy>*:nth-child(3){animation-delay:.16s}.m-on .hero .hero-copy>*:nth-child(4){animation-delay:.24s}.m-on .hero-art{animation:pop 1s .2s cubic-bezier(.2,.8,.2,1) both}" +
+    ".bg-gradient{background-size:140% 140%,140% 140%;animation:drift " + (big ? "14s" : "22s") + " ease-in-out infinite}" +
+    ".rv{opacity:0;transform:translateY(" + d + "px);transition:opacity .7s cubic-bezier(.2,.8,.2,1),transform .7s cubic-bezier(.2,.8,.2,1)}.rv.in{opacity:1;transform:none}" +
+    ".card,.stat,.member,.plan{transition:transform .25s,box-shadow .25s,border-color .25s,opacity .7s cubic-bezier(.2,.8,.2,1)}.card:hover,.plan:hover{transform:translateY(-" + (big ? 6 : 3) + "px);box-shadow:0 18px 40px -22px color-mix(in srgb,var(--p) 60%,transparent);border-color:color-mix(in srgb,var(--p) 40%,var(--line))}" +
+    ".card .cimg,.gal .r,.prod .pimg img{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.card:hover .cimg,.gal a:hover .r,.gal figure:hover .r,.prod:hover .pimg img{transform:scale(1.04)}.gal figure,.prod .pimg,.card{overflow:hidden}" +
+    ".btn{position:relative;overflow:hidden}.btn:not(.ghost):after{content:'';position:absolute;inset:0 auto 0 0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:translateX(-120%) skewX(-20deg)}.btn:not(.ghost):hover:after{animation:shine .9s ease}" +
+    ".nav{transition:box-shadow .3s,min-height .3s}.nav.scrolled{box-shadow:0 8px 30px -18px rgba(0,0,0,.45)}.ic{transition:transform .3s}.card:hover .ic{transform:rotate(-8deg) scale(1.1)}" +
+    (big ? ".hero-art .r,.hero-art .ph{animation:floaty 6s ease-in-out infinite}.logo-row.mq{flex-wrap:nowrap;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}.logo-row.mq>div{display:flex;gap:28px;animation:mq 26s linear infinite;width:max-content}" +
+      ".m-prog{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--p),var(--a));z-index:50;width:0}" : "");
+}
+/* the reveal / count-up / sticky-nav script (no libraries) */
+export function motionScript(m) {
+  if (m === "none") return "";
+  return "<script>(function(){var R=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;if(R)return;var b=document.body;b.classList.add('m-on');" +
+    "var sel='section:not(.hero) .wrap>h2,section:not(.hero) .wrap>.sub,section:not(.hero) .wrap>p,.card,.stat,.steps li,.member,.gal>*,.two>*,details,.cta-in>*,.plan,.q';" +
+    "var els=[].slice.call(document.querySelectorAll(sel));if(!('IntersectionObserver' in window))return;" +
+    "var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);count(e.target)}})},{rootMargin:'0px 0px -8% 0px',threshold:.08});" +
+    "els.forEach(function(el){var sib=el.parentNode?[].indexOf.call(el.parentNode.children,el):0;el.classList.add('rv');el.style.transitionDelay=Math.min(sib,6)*70+'ms';io.observe(el)});" +
+    "function count(el){[].slice.call(el.matches('.stat')?[el.querySelector('b')]:[]).forEach(function(n){if(!n)return;var t=n.textContent,m=/^([^\d]*)([\d,]+(?:\.\d+)?)(.*)$/.exec(t);if(!m)return;var to=parseFloat(m[2].replace(/,/g,'')),dec=(m[2].split('.')[1]||'').length,t0=performance.now();(function f(now){var k=Math.min(1,(now-t0)/1400),e=1-Math.pow(1-k,3);n.textContent=m[1]+(to*e).toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec})+m[3];if(k<1)requestAnimationFrame(f);else n.textContent=t})(t0)})}" +
+    "var nav=document.querySelector('.nav'),pg=null;" + (m === "lively" ? "pg=document.createElement('div');pg.className='m-prog';b.appendChild(pg);[].forEach.call(document.querySelectorAll('.logo-row'),function(r){if(r.children.length<4)return;r.classList.add('mq');var w=document.createElement('div');w.innerHTML=r.innerHTML+r.innerHTML;r.innerHTML='';r.appendChild(w)});" : "") +
+    "addEventListener('scroll',function(){var y=scrollY;if(nav)nav.classList.toggle('scrolled',y>10);if(pg)pg.style.width=Math.min(100,y/Math.max(1,document.documentElement.scrollHeight-innerHeight)*100)+'%'},{passive:true})})()</script>";
 }
 
 /* ---------- page / site ---------- */
@@ -112,7 +143,7 @@ export function renderPage(site, slug, o) {
   return "<!doctype html><html lang=\"" + esc(S.lang || "en") + "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + esc(title) + "</title>" + (desc ? '<meta name="description" content="' + esc(desc) + '">' : "") +
     (canon ? '<link rel="canonical" href="' + esc(canon) + '">' : "") + '<meta property="og:title" content="' + esc(seo.ogTitle || title) + '">' + (desc ? '<meta property="og:description" content="' + esc(desc) + '">' : "") + (safeUrl(seo.ogImage) ? '<meta property="og:image" content="' + esc(safeUrl(seo.ogImage)) + '">' : "") + '<meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">' +
     (page.noindex || o.noindex ? '<meta name="robots" content="noindex">' : "") + (safeUrl(S.favicon) ? '<link rel="icon" href="' + esc(safeUrl(S.favicon)) + '">' : "") + (fonts.length ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?' + fonts.map((f) => "family=" + f).join("&") + '&display=swap">' : "") +
-    "<style>" + themeCss(site.theme) + (S.customCss ? "\n/* custom */\n" + sanitizeCss(S.customCss) : "") + "</style>" + (page.slug === "home" ? '<script type="application/ld+json">' + JSON.stringify(schema).replace(/</g, "\\u003c") + "</script>" : "") + (o.headExtra || "") + "</head><body>" + body2 + (o.bodyExtra || "") + "</body></html>";
+    "<style>" + themeCss(site.theme) + (S.customCss ? "\n/* custom */\n" + sanitizeCss(S.customCss) : "") + "</style>" + (page.slug === "home" ? '<script type="application/ld+json">' + JSON.stringify(schema).replace(/</g, "\\u003c") + "</script>" : "") + (o.headExtra || "") + "</head><body>" + body2 + (o.bodyExtra || "") + (o.noMotion || o.edit ? "" : motionScript((site.theme || {}).motion)) + "</body></html>";
 }
 /* the tiny script a LIVE site gets: page-view + CTA-click beacon and the form submit (no cookies, no third parties) */
 export function liveScript(endpoint, siteId) {

@@ -137,6 +137,14 @@ async function thread(env, id, firstMsg, W) {
   await d.prepare("INSERT INTO brain_threads (id, title, mode, scope, project, created_at, updated_at, owner) VALUES (?1,?2,?3,?4,NULL,?5,?5,?6)").bind(t.id, t.title, t.mode, t.scope, t.created_at, (W && W.email) || null).run();
   return t;
 }
+/* v31: a live voice conversation is kept in the chat history too (what he said / what FODO said), so it shows on every device */
+export async function voiceLog(env, W, threadId, turns) {
+  const L = (Array.isArray(turns) ? turns : []).slice(0, 40).map((t) => ({ role: t.role === "fodo" ? "assistant" : "user", text: clip(clean(t.text, 4000), 4000) })).filter((t) => t.text);
+  if (!L.length) return { threadId: threadId || null, saved: 0 };
+  const th = await thread(env, threadId, "🎙 " + L[0].text, W);
+  for (const t of L) await saveMsg(env, th.id, t.role, t.text, { voice: true, model: t.role === "assistant" ? "gemini-live" : undefined });
+  return { threadId: th.id, threadTitle: th.title, saved: L.length };
+}
 async function history(env, tid, n) { const d = await brainDb(env); return ((await d.prepare("SELECT id, role, content, meta, created_at FROM brain_messages WHERE thread_id=?1 ORDER BY id DESC LIMIT ?2").bind(tid, n || 10).all()).results || []).reverse(); }
 async function saveMsg(env, tid, role, content, meta) {
   const d = await brainDb(env), r = await d.prepare("INSERT INTO brain_messages (thread_id, role, content, meta, created_at) VALUES (?1,?2,?3,?4,?5)").bind(tid, role, clip(content, 20000), meta ? JSON.stringify(meta) : null, nowIso()).run();

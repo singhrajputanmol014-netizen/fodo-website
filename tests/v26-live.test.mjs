@@ -52,7 +52,11 @@ ok(tk.setup.tools[0].functionDeclarations[0].name === "fodo_brain" && /fodo_brai
 const sys = instructions({ owner: true, name: "Anmol Singh" }, {}); ok(/Hinglish/.test(sys) && /never formal/.test(sys) && /Never invent numbers/.test(sys) && /Confirm/.test(sys) && /Anmol/.test(sys), "persona: human, mirrors Hinglish, never invents numbers, confirmations on screen");
 ok(TOOL.functionDeclarations[0].parameters.required[0] === "request", "fodo_brain tool takes the user's request");
 calls.length = 0; r = await B("live"); ok(!calls.some((c) => /\/models\?/.test(c.u)), "the model choice is cached (no model-list call every time)");
-tokenFail = 1; r = await B("live"); ok(r.j.ok && r.j.locked === false, "if Google rejects the locked config, a simpler token is used (the page sends the persona in setup)");
+tokenFail = 1; r = await B("live"); ok(r.j.ok && r.j.locked === true && r.j.tier === "mid", "v31: if Google refuses the newest features, the next richest locked setup is used");
+tokenFail = 3; r = await B("live"); ok(r.j.ok && r.j.locked === false, "if Google rejects every locked config, a simpler token is used (the page sends the persona in setup)");
+tokenFail = 0; r = await B("live?mode=wake&handle=resumeHANDLE_123456&voice=Sulafat"); const rs = r.j.setup;
+ok(r.j.tier === "rich" && r.j.mode === "wake" && r.j.resumed && rs.sessionResumption.handle === "resumeHANDLE_123456" && rs.contextWindowCompression.slidingWindow && rs.proactivity.proactiveAudio === true && rs.tools.some((t) => t.googleSearch) && rs.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity === "END_SENSITIVITY_LOW" && rs.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName === "Sulafat" && /GROUP MODE/.test(rs.systemInstruction.parts[0].text), "v31: long conversations (compression + resumption), patient turn-taking, Google Search, group mode (proactive audio), 30 voices");
+r = await B("live?lite=1&handle=x%3Cscript%3E"); ok(r.j.tier === "basic" && !r.j.resumed && !("contextWindowCompression" in r.j.setup), "lite session (fallback) and bad handles ignored");
 await B("settings", { liveVoice: "Kore", voiceEngine: "classic" }); r = await B("settings"); ok(r.j.settings.liveVoice === "Kore" && r.j.settings.voiceEngine === "classic" && r.j.live === true, "settings: live voice + engine choice");
 r = await B("live"); ok(r.j.voice === "Kore", "chosen live voice used");
 r = await B("live?voice=Hacker"); ok(r.j.voice === "Puck", "unknown voice → default");

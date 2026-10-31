@@ -107,6 +107,13 @@ ok(ws && ws.ok && gem.length === 1 && gem[0].body.tools[0].google_search && gem[
 ok(/Agency A/.test(prompts[prompts.length - 1].sys) && /example\.com\/list/.test(prompts[prompts.length - 1].sys), "grounded answer + real source links reach the answer");
 gemDown = true; r = await ask("search karo seo agency"); const ws2 = r.j.tools_used.find((t) => t.tool === "web_search"); ok(ws2 && !ws2.ok && /Web search failed/.test(ws2.error), "search failure reported honestly"); gemDown = false;
 
+/* v31: a live voice conversation is saved to chat history */
+r = await B("voicelog", { turns: [{ role: "you", text: "FODO, aaj kitne users aaye?" }, { role: "fodo", text: "Aaj 12 naye users aaye." }, { role: "you", text: "" }] });
+ok(r.j.ok && r.j.saved === 2 && /^c_/.test(r.j.threadId) && /🎙/.test(r.j.threadTitle), "voice turns saved as a conversation (empty turns skipped)");
+const vt = r.j.threadId; r = await B("voicelog", { threadId: vt, turns: [{ role: "you", text: "aur kal?" }] }); ok(r.j.threadId === vt, "…later turns go to the same conversation");
+r = await B("thread/" + vt); ok(r.j.messages.length === 3 && r.j.messages[1].role === "assistant" && r.j.messages[1].meta.voice, "voice conversation visible in history (any device)");
+r = await B("voicelog", { turns: [{ role: "you", text: "x" }] }, "cust"); ok(r.status === 403, "customers can't write to the Brain's history");
+
 /* chat history: delete one / delete all */
 await ask("hello there brain"); const T1 = (await B("threads")).j.items; ok(T1.length >= 3, "several conversations exist");
 r = await B("thread/" + T1[0].id, undefined, "own", { method: "DELETE" }); ok(r.j.ok && !(await B("threads")).j.items.some((t) => t.id === T1[0].id), "delete one conversation");

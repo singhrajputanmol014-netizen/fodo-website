@@ -133,6 +133,9 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     await m.click("#ob-vox");
     await m.goto(BASE + "/owner-brain/#chat"); await m.waitForSelector("#ob-form"); const ch = await m.evaluate(() => document.getElementById("ob-form").getBoundingClientRect().height);
     ok(ch < 60, "phone: slim chat box (" + Math.round(ch) + " px tall)"); await m.fill("#ob-in", "kaise ho fodo?"); await m.click("#ob-form button[type=submit]"); await m.waitForSelector(".ob-msg.a .ob-meta", { timeout: 40000 }); await shot(m, "brain-phone-chat", false);
+    await m.click("#ob-histbtn"); await m.waitForFunction(() => document.getElementById("ob-threads").classList.contains("open") && document.getElementById("ob-threads").getBoundingClientRect().left >= -1, null, { timeout: 5000 }); await m.waitForSelector("#ob-tl a", { timeout: 10000 });
+    ok((await m.$$("#ob-tl a")).length >= 1, "v31: phone — chat history opens as a drawer with the conversations"); await shot(m, "brain-phone-history", false); await m.click("#ob-thclose");
+    ok(await m.evaluate(() => !!document.getElementById("ob-vomode") && document.getElementById("ob-vovoice").options.length === 30), "v31: voice panel has the 'only when I say FODO' switch + 30 voices");
     await m.goto(BASE + "/owner-brain/#tools"); await m.waitForSelector(".ob-table"); ok((await m.evaluate(() => document.documentElement.scrollWidth)) <= 390 && (await m.evaluate(() => { const t = document.querySelector(".ob-table td:nth-child(2)"); return t && t.getBoundingClientRect().right <= 392; })), "phone: tables turn into cards — nothing cut off"); await shot(m, "brain-phone-tools", false);
     ok(!errs.length, "no page errors" + (errs.length ? ": " + errs.join(" | ") : ""));
     ok(!csp.length, "no CSP violations" + (csp.length ? ": " + csp.slice(0, 2).join(" | ") : ""));

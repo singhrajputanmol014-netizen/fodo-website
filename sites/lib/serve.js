@@ -3,7 +3,7 @@
    /api/sites/view/<slug>/ (served with a sandbox CSP, so a client page can never act as fodo.co.in).
    Only the published snapshot is served — drafts never leave the builder. Password-protected pages ask for the page password. */
 import { renderPage, liveScript, sitemap, esc } from "./render.js";
-import { productPage, cartPage, checkoutPage, orderPage, blogList, blogPost, storeScript } from "./shop.js";
+import { productPage, cartPage, checkoutPage, orderPage, blogList, blogPost, storeScript, shell } from "./shop.js";
 
 export async function findSite(env, by) {
   const d = env.XRAY_DB; if (!d) return null;
@@ -19,8 +19,8 @@ export async function serve(env, request, row, o) {
   if (rest === "robots.txt") return new Response("User-agent: *\nAllow: /\nSitemap: " + origin + base + "sitemap.xml\n", { headers: { "content-type": "text/plain" } });
   // v29 store + blog: read-only queries of this website's own products/posts
   const api0 = o.api || "https://www.fodo.co.in/api/sites", st = (site.settings && site.settings.store) || {}, needs = JSON.stringify(site.pages || []);
-  const live = { base, origin, formAction: api0 + "/f/" + row.id, badge: !(site.settings && site.settings.hideBadge), bodyExtra: liveScript(api0, row.id) + storeScript(api0, row.id, base, st, origin), headers: o.headers };
-  const prods = /"products"/.test(needs) || /^(p\/|cart|checkout)/.test(rest) ? await liveProducts(env, row.id) : [], posts = /"blog"/.test(needs) || /^blog/.test(rest) ? await livePosts(env, row.id) : [];
+  const live = { allowCode: !!o.ownDomain, base, origin, formAction: api0 + "/f/" + row.id, badge: !(site.settings && site.settings.hideBadge), bodyExtra: liveScript(api0, row.id) + storeScript(api0, row.id, base, st, origin), headers: o.headers };
+  const prods = /"products"/.test(needs) || /^(p\/|cart|checkout|search)/.test(rest) ? await liveProducts(env, row.id) : [], posts = /"blog"/.test(needs) || /^(blog|search)/.test(rest) ? await livePosts(env, row.id) : [];
   live.data = { products: prods.map((p) => ({ id: p.id, slug: p.slug, title: p.title, price: p.variants.length ? Math.min.apply(null, p.variants.map((v) => v.price)) : p.price, compare: p.compare, image: p.images[0] || "", collection: p.collection, opts: p.variants.length ? 1 : 0, stock: p.track && !p.variants.length ? p.stock : null })), posts, currency: st.currency };
   if (rest === "sitemap.xml") { const P = await liveProducts(env, row.id), B = await livePosts(env, row.id); return new Response(sitemap(site, origin, base, P.map((x) => "p/" + x.slug + "/").concat(B.length ? ["blog/"] : [], B.map((x) => "blog/" + x.slug + "/"))), { headers: { "content-type": "application/xml" } }); }
   let m;
@@ -28,6 +28,8 @@ export async function serve(env, request, row, o) {
   if (/^cart\/?$/.test(rest)) return html(cartPage(site, prods, live), 200, Object.assign({ "cache-control": "no-store" }, o.headers || {}));
   if (/^checkout\/?$/.test(rest)) return html(checkoutPage(site, prods, live), 200, Object.assign({ "cache-control": "no-store" }, o.headers || {}));
   if ((m = /^order\/(or_[a-z0-9]{14})\/?$/.exec(rest))) return html(orderPage(site, { site: row.id, order: m[1] }, Object.assign({}, live, { api: api0 })), 200, Object.assign({ "cache-control": "no-store" }, o.headers || {}));
+  if (/^thank-you\/?$/.test(rest)) { const ty = (site.settings && site.settings.thankYou) || {}; return html(shell(site, ty.title || "Thank you", '<section><div class="wrap narrow center"><h1>' + esc(ty.title || "Thank you!") + '</h1><p class="lead">' + esc(ty.text || "We received your message and will get back to you soon.") + '</p><p><a class="btn" href="' + esc(base) + '">Back to the home page</a></p></div></section>', Object.assign({}, live, { noindex: true })), 200, o.headers); }
+  if (/^search\/?$/.test(rest)) { const idx = searchIndex(site, base, posts, prods); return html(shell(site, "Search", '<section><div class="wrap narrow"><h1>Search</h1><input class="srch-box" id="srch" type="search" placeholder="Search pages, articles and products…" aria-label="Search" autofocus><div class="srch-r" id="srch-r"></div></div></section>', Object.assign({}, live, { noindex: true, bodyExtra: (live.bodyExtra || "") + '<script type="application/json" id="srch-i">' + JSON.stringify(idx).replace(/</g, "\\u003c") + '</script><script>(function(){var I=JSON.parse(document.getElementById("srch-i").textContent),q=document.getElementById("srch"),r=document.getElementById("srch-r");function e(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c]})}function go(){var w=q.value.toLowerCase().split(/\\s+/).filter(Boolean);if(!w.length){r.innerHTML="";return}var L=I.filter(function(x){var h=(x.t+" "+x.x).toLowerCase();return w.every(function(k){return h.indexOf(k)>-1})}).slice(0,20);r.innerHTML=L.length?L.map(function(x){return "<a href=\\""+e(x.u)+"\\"><b>"+e(x.t)+"</b><small>"+e(x.k)+" · "+e(x.x.slice(0,140))+"</small></a>"}).join(""):"<p class=sub>Nothing found.</p>"}q.oninput=go;var p=new URLSearchParams(location.search).get("q");if(p){q.value=p;go()}})()</script>' })), 200, o.headers); }
   if (/^blog\/?$/.test(rest)) return html(blogList(site, posts, live), 200, o.headers);
   if ((m = /^blog\/([a-z0-9-]+)\/?$/.exec(rest))) { const p = await livePost(env, row.id, m[1]); return p ? html(blogPost(site, p, live), 200, o.headers) : html("<h1>Post not found</h1>", 404); }
   const slug = rest.replace(/\/$/, "") || "home", page = (site.pages || []).find((p) => p.slug === slug && !p.hidden);
@@ -47,3 +49,10 @@ const J = (s, d) => { try { return JSON.parse(s); } catch (e) { return d; } };
 async function liveProducts(env, siteId) { try { return ((await env.XRAY_DB.prepare("SELECT * FROM site_products WHERE site_id=?1 AND status='active' ORDER BY sort, created_at DESC LIMIT 200").bind(siteId).all()).results || []).map((r) => Object.assign(r, { images: J(r.images, []), variants: J(r.variants, []), track: !!r.track, optionName: r.option_name })); } catch (e) { return []; } }
 async function livePosts(env, siteId) { const now = new Date().toISOString(); try { return ((await env.XRAY_DB.prepare("SELECT slug, title, excerpt, image, tags, author, COALESCE(published_at, publish_at) AS published_at FROM site_posts WHERE site_id=?1 AND (status='published' OR (status='scheduled' AND publish_at<=?2)) ORDER BY COALESCE(published_at, publish_at) DESC LIMIT 60").bind(siteId, now).all()).results || []); } catch (e) { return []; } }
 async function livePost(env, siteId, slug) { const now = new Date().toISOString(); try { return await env.XRAY_DB.prepare("SELECT slug, title, excerpt, body, image, tags, author, COALESCE(published_at, publish_at) AS published_at FROM site_posts WHERE site_id=?1 AND slug=?2 AND (status='published' OR (status='scheduled' AND publish_at<=?3))").bind(siteId, slug, now).first(); } catch (e) { return null; } }
+
+/* v32 site search: a small index of the published pages (titles + visible text), blog posts and products */
+function searchIndex(site, base, posts, prods) {
+  const txt = (v) => (typeof v === "string" ? v : Array.isArray(v) ? v.map(txt).join(" ") : v && typeof v === "object" ? Object.keys(v).filter((k) => !/^(href|image|src|url|icon|_s|bg|align|logoImg)$/.test(k)).map((k) => txt(v[k])).join(" ") : "");
+  return (site.pages || []).filter((p) => !p.hidden && !p.password && !p.noindex).map((p) => ({ k: "Page", t: p.title, u: base + (p.slug === "home" ? "" : p.slug + "/"), x: txt(p.sections.filter((s) => s.type !== "navbar" && s.type !== "footer").map((s) => s.props)).replace(/\s+/g, " ").slice(0, 1500) }))
+    .concat((posts || []).map((x) => ({ k: "Article", t: x.title, u: base + "blog/" + x.slug + "/", x: String(x.excerpt || "") }))).concat((prods || []).map((x) => ({ k: "Product", t: x.title, u: base + "p/" + x.slug + "/", x: String(x.description || x.collection || "") })));
+}

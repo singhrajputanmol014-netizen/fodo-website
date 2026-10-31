@@ -68,7 +68,7 @@ r = await S("create", { name: "Smile Dental", industry: "Dental clinic", locatio
 const id = r.j.id; ok(r.j.ok && /^ws_/.test(id) && r.j.ai && r.j.template === "dental-premium" && r.j.slug === "smile-dental", "create: template + AI copy → draft website");
 r = await S(id); const doc0 = r.j.site.doc;
 ok(/Smile Dental — /.test(JSON.stringify(doc0.pages[0].sections[1])) && !/Fake Person|Best clinic ever/.test(JSON.stringify(doc0)), "AI personalises the copy — but its invented review was thrown away (reviews stay placeholders)");
-ok(doc0.pages.map((p) => p.slug).join() === "home,services,about,contact" && doc0.settings.notifyEmail === "priya@smiledental.in", "chosen pages + notification email");
+ok(doc0.pages.map((p) => p.slug).join() === "home,services,about,contact,privacy" && doc0.settings.notifyEmail === "priya@smiledental.in", "chosen pages + notification email (+ privacy policy draft added by the automatic QA, because forms collect data)");
 r = await S(id, undefined, "b"); ok(r.status === 404 && /not found/i.test(r.j.reason), "another customer can't open it (404, no hint it exists)");
 r = await S(id, { doc: doc0, baseRev: 1 }, "b", { method: "PUT" }); ok(r.status === 404, "…or save over it");
 r = await S(id + "/publish", {}, "b"); ok(r.status === 404, "…or publish it");

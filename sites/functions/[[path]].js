@@ -17,5 +17,5 @@ export async function onRequest({ request, env }) {
   }
   const row = await findSite(env, { domain: host.replace(/^www\./, "") }) || await findSite(env, { domain: host });
   if (!row) return new Response("This domain is not connected to a FODO website yet.", { status: 404, headers: { "content-type": "text/plain" } });
-  return serve(env, request, row, { rest: u.pathname, base: "/", origin: u.origin, api });
+  return serve(env, request, row, { rest: u.pathname, base: "/", origin: u.origin, api, ownDomain: true });   // its own origin: the only place custom code may run
 }

@@ -5,6 +5,9 @@
 import { renderPage, SECTION_TYPES, SECTION_LABELS, FONTS, checkSite, esc } from "/sites/lib/render.js";
 import { TEMPLATES } from "/sites/lib/templates.js";
 import { openStore, loadStoreData } from "/js/website-store.js";
+import * as PN from "/js/wb-panels.js";
+import * as CR from "/js/wb-create.js";
+import { legalText as legalTextFor } from "/sites/lib/industry.js";
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
 const api = (p, method, body, raw) => fetch("/api/sites/" + p, { method: method || "GET", credentials: "same-origin", headers: raw ? { "content-type": raw.type } : body ? { "content-type": "application/json" } : {}, body: raw ? raw.data : body ? JSON.stringify(body) : undefined }).then((r) => r.json().then((j) => Object.assign(j, { _status: r.status })).catch(() => ({ ok: false, reason: "Server error (" + r.status + ")" })));
@@ -20,115 +23,68 @@ async function boot() {
   for (let i = 0; i < 40 && !A(); i++) await new Promise((r) => setTimeout(r, 100));
   if (!A()) { root.innerHTML = "<p class='wb-pad'>Couldn't load. Refresh the page.</p>"; return; }
   ME = await A().me().catch(() => null);
+  CR.bindCreate({ api, toast, login: (m) => A().login(m), me: () => ME, setCfg: (j) => { CFG = j; }, setLogo });
+  await CR.loadTemplates();
   const h = new URLSearchParams(location.hash.slice(1));
-  if (!ME) return landing();
-  if (h.get("site")) return editor(h.get("site"));
-  if (h.get("new")) return wizard();
-  return dashboard();
+  if (!ME) return CR.landing(root);
+  if (h.get("site")) return editor(h.get("site"), h.get("paused") ? "paused" : null);
+  if (h.get("new")) return CR.wizard(root);
+  return CR.dashboard(root, h.get("archived") ? "archived" : "");
 }
-window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (ED && h.indexOf("site=" + ED.id) === 0) return; if (ED && ED.dirty) save(); ED = null; document.onkeydown = null; window.onbeforeunload = null; boot(); });
-
-/* ---------- landing (logged out) ---------- */
-const GROUPS = [["all", "All"], ["biz", "Business & services"], ["food", "Food & cafés"], ["health", "Health & beauty"], ["store", "Online stores"], ["creative", "Creative & personal"], ["tech", "Tech & startups"], ["edu", "Education & causes"], ["travel", "Travel & events"]];
-const groupOf = (t) => { const k = (t.category + " " + t.tags.join(" ")).toLowerCase();
-  return /store|shop|jewel|sell products/.test(k) ? "store" : /restaurant|cafe|food|kitchen|bakery|dining/.test(k) ? "food" : /dental|clinic|doctor|salon|spa|yoga|gym|makeup|beauty|pet/.test(k) ? "health" : /saas|startup|it services|tech|app/.test(k) ? "tech" : /portfolio|photograph|blog|resume|personal|interior/.test(k) ? "creative" : /school|education|coaching|ngo|academy/.test(k) ? "edu" : /travel|hotel|wedding|event|car rental/.test(k) ? "travel" : "biz"; };
-function landing() {
-  root.innerHTML = '<section class="wb-hero"><div class="wb-aurora" aria-hidden="true"><i></i><i></i><i></i></div><p class="wb-eyebrow wb-ani">FODO WEBSITE BUILDER</p><h1 class="wb-ani">Your business website,<br><span class="wb-grad">built by AI in minutes.</span></h1><p class="wb-lead wb-ani">Tell us about your business — FODO\'s AI writes it, you change anything by clicking or just asking. ' + TEMPLATES.length + ' templates, online store, blog, your own domain, motion effects — and you can download everything any time.</p><div class="wb-row wb-ani"><button class="wb-btn pri wb-glow" id="wb-start">Start free →</button><a class="wb-btn" href="#templates">See ' + TEMPLATES.length + ' templates</a></div>' +
-    '<div class="wb-feats wb-ani">' + [["✦", "AI writes it", "Pages, headlines and SEO in your words"], ["🛒", "Sell online", "Products, cart, UPI/cards, COD, WhatsApp"], ["✍️", "Blog", "Write, schedule, rank on Google"], ["🌐", "Your domain", "Step-by-step DNS help"], ["✨", "Motion", "Smooth reveals and hover effects"], ["⬇", "No lock-in", "Download your site as a ZIP"]].map((f) => '<div><span>' + f[0] + "</span><b>" + f[1] + "</b><small>" + f[2] + "</small></div>").join("") + "</div>" +
-    '<ol class="wb-steps"><li><b>1</b>Tell us about your business</li><li><b>2</b>Choose a style</li><li><b>3</b>Pick a template or let AI decide</li><li><b>4</b>Customise</li><li><b>5</b>Connect your domain</li><li><b>6</b>Publish</li></ol></section>' +
-    '<section class="wb-pad" id="templates"><div class="wb-top"><div><p class="wb-eyebrow">TEMPLATES</p><h2>Start from a design you love</h2></div><input class="wb-in wb-search" id="wb-q" placeholder="Search: bakery, dark, luxury…" aria-label="Search templates"></div><div class="wb-chiprow" id="wb-gr">' + GROUPS.map((g, i) => '<button type="button" class="wb-gchip' + (i ? "" : " on") + '" data-g="' + g[0] + '">' + g[1] + "</button>").join("") + '</div><div class="wb-tgrid" id="wb-tg"></div></section>';
-  const go = (tid) => A().login("Log in to build your website — it's free to start.").then(() => { try { if (tid) sessionStorage.setItem("wb-tpl", tid); } catch (e) {} location.hash = "new=1"; boot(); }).catch(() => {});
-  $("#wb-start").onclick = () => go(null);
-  let g = "all"; const draw = () => { const w = ($("#wb-q").value || "").toLowerCase().split(/\s+/).filter(Boolean); tplGrid($("#wb-tg"), TEMPLATES.filter((t) => (g === "all" || groupOf(t) === g) && (!w.length || w.every((x) => (t.name + " " + t.category + " " + t.tags.join(" ") + " " + t.theme.mode).toLowerCase().indexOf(x) > -1))), (t) => go(t.id)); };
-  $$("[data-g]").forEach((b) => { b.onclick = () => { g = b.dataset.g; $$("[data-g]").forEach((x) => x.classList.toggle("on", x === b)); draw(); }; });
-  $("#wb-q").oninput = draw; draw();
-}
-function tplGrid(el, list, onPick, sel) {
-  if (!list.length) { el.innerHTML = '<p class="wb-muted">No template matches — try another word.</p>'; return; }
-  el.innerHTML = list.map((t, i) => '<button class="wb-tpl' + (sel === t.id ? " on" : "") + '" data-id="' + t.id + '" type="button" style="--d:' + Math.min(i, 12) * 40 + 'ms"><div class="wb-tv"><iframe tabindex="-1" aria-hidden="true" sandbox="" loading="lazy"></iframe></div><span><b>' + esc(t.name) + "</b><small>" + esc(t.category) + " · " + (t.theme.mode === "dark" ? "Dark" : "Light") + (t.theme.motion === "lively" ? " · ✨ Lively motion" : "") + '</small><em class="wb-use">Use this →</em></span></button>').join("");
-  const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => { if (!e.isIntersecting) return; io.unobserve(e.target); fill(e.target); }), { rootMargin: "300px" }) : null;
-  const fill = (b) => { const t = list.find((x) => x.id === b.dataset.id); b.querySelector("iframe").srcdoc = renderPage({ name: t.category, theme: t.theme, settings: { business: { name: t.category } }, pages: t.pages }, "home", { base: "#", badge: false, noMotion: true }); };
-  $$(".wb-tpl", el).forEach((b) => { const t = list.find((x) => x.id === b.dataset.id); if (io) io.observe(b); else fill(b); if (onPick) b.onclick = () => onPick(t); });
-  const fit = () => { const c = el.querySelector(".wb-tv"); if (c && c.clientWidth) el.style.setProperty("--s", (c.clientWidth / 1280).toFixed(4)); };   // thumbnails fill the card at any width
-  fit(); if (!el._fit && "ResizeObserver" in window) { el._fit = new ResizeObserver(fit); el._fit.observe(el); }
-}
-
-/* ---------- dashboard ---------- */
-async function dashboard() {
-  root.innerHTML = '<div class="wb-pad"><p class="ob-empty">Loading your websites…</p></div>';
-  const j = await api("list?all=1");   // the server only honours all=1 for FODO owners if (!j.ok) { root.innerHTML = '<div class="wb-pad"><p>' + esc(j.reason) + "</p></div>"; return; }
-  CFG = j;
-  root.innerHTML = '<div class="wb-pad"><div class="wb-top"><div><p class="wb-eyebrow">' + (j.owner ? "FODO OWNER · ALL WEBSITES" : "MY WEBSITES") + '</p><h1>' + (j.sites.length ? "Your websites" : "Let's build your first website") + '</h1></div><button class="wb-btn pri" id="wb-new">+ Create website</button></div>' +
-    (j.sites.length ? '<div class="wb-cards">' + j.sites.map((s) => '<article class="wb-card"><div class="wb-st ' + (s.status === "live" ? "live" : "") + '">' + (s.status === "live" ? "● LIVE" : "○ DRAFT") + "</div><h3>" + esc(s.name) + "</h3><p>" + esc(s.domain || s.slug) + (s.owner_email ? " · " + esc(s.owner_email) : "") + "</p><small>Updated " + fmt(s.updated_at) + '</small><div class="wb-row"><a class="wb-btn pri sm" href="#site=' + s.id + '">Edit website</a>' + (s.status === "live" ? '<a class="wb-btn sm" target="_blank" rel="noopener" href="' + (j.sitesHost ? "https://" + j.sitesHost + "/" + s.slug + "/" : "/api/sites/view/" + s.slug + "/") + '">View live ↗</a>' : "") + "</div></article>").join("") + "</div>" : '<p class="wb-lead">Answer a few questions and FODO creates a complete website for you to edit.</p>') +
-    '<p class="wb-muted">Plan limits: ' + j.limits.sites + " website(s) · " + j.limits.pages + " pages each · " + j.limits.domains + " custom domain(s).</p></div>";
-  $("#wb-new").onclick = () => { location.hash = "new=1"; };
-}
-
-/* ---------- onboarding wizard ---------- */
-function wizard() {
-  let pre = null; try { pre = sessionStorage.getItem("wb-tpl"); sessionStorage.removeItem("wb-tpl"); } catch (e) {}
-  const st = { step: 0, name: "", industry: "", location: "", phone: "", email: ME.email || "", whatsapp: "", goal: "Get more enquiries", style: "Premium", about: "", services: "", pages: ["services", "about", "contact"], templateId: TEMPLATES.some((t) => t.id === pre) ? pre : null, lang: "en" };
-  const steps = ["Your business", "Goal & style", "Pages", "Template", "Build"];
-  const draw = () => {
-    const S = st.step;
-    root.innerHTML = '<div class="wb-wiz"><div class="wb-prog">' + steps.map((x, i) => '<span class="' + (i <= S ? "on" : "") + '">' + (i + 1) + ". " + x + "</span>").join("") + '</div><form id="wb-wf" class="wb-wcard">' + [
-      () => '<h2>Tell us about your business</h2><label>Business name<input name="name" required value="' + esc(st.name) + '" placeholder="Smile Dental Clinic"></label><label>What kind of business?<input name="industry" list="wb-ind" required value="' + esc(st.industry) + '" placeholder="Dental clinic, restaurant, salon…"></label><datalist id="wb-ind">' + ["Dental clinic", "Doctor", "Restaurant", "Cafe", "Salon & spa", "Gym", "Coaching institute", "Lawyer", "Real estate", "Agency", "Hotel", "Travel", "Photographer", "Portfolio", "SaaS / app", "Construction", "Local shop", "NGO"].map((x) => '<option value="' + x + '">').join("") + '</datalist><label>City / area<input name="location" value="' + esc(st.location) + '" placeholder="Dwarka, New Delhi"></label><div class="wb-g2"><label>Phone<input name="phone" value="' + esc(st.phone) + '" inputmode="tel"></label><label>WhatsApp<input name="whatsapp" value="' + esc(st.whatsapp) + '" inputmode="tel"></label></div><label>Email for enquiries<input name="email" type="email" value="' + esc(st.email) + '"></label><label>In one line, what makes you good? <small>(optional — helps the AI)</small><textarea name="about" rows="2">' + esc(st.about) + "</textarea></label>",
-      () => '<h2>What should the website do?</h2><div class="wb-chips" data-k="goal">' + ["Get more enquiries", "Get bookings / appointments", "Show my work", "Sell products", "Build trust"].map((x) => '<button type="button" class="' + (st.goal === x ? "on" : "") + '">' + x + "</button>").join("") + '</div><h3>Style</h3><div class="wb-chips" data-k="style">' + ["Premium", "Minimal", "Bold", "Warm & friendly", "Luxury", "Dark & modern"].map((x) => '<button type="button" class="' + (st.style === x ? "on" : "") + '">' + x + "</button>").join("") + '</div><label>Main services / products <small>(comma separated, optional)</small><input name="services" value="' + esc(st.services) + '"></label><label>Website language<select name="lang"><option value="en">English</option><option value="hi"' + (st.lang === "hi" ? " selected" : "") + ">Hindi</option></select></label>",
-      () => '<h2>Which pages?</h2><p class="wb-muted">Home is always included. You can add or remove pages later.</p>' + [["services", "Services / Menu"], ["about", "About"], ["contact", "Contact"], ["menu", "Menu (restaurants)"], ["pricing", "Pricing"]].map((x) => '<label class="wb-ck"><input type="checkbox" name="pg" value="' + x[0] + '"' + (st.pages.indexOf(x[0]) > -1 ? " checked" : "") + "> " + x[1] + "</label>").join(""),
-      () => '<h2>Pick a template — or let AI decide</h2><p class="wb-muted" id="wb-rec">Finding the best fit…</p><div class="wb-recs" id="wb-recs"></div><details><summary>Browse all templates</summary><input id="wb-ts" placeholder="Search: premium dental, dark saas, minimal restaurant…" class="wb-in"><div class="wb-tgrid" id="wb-tall"></div></details>',
-      () => '<h2>Building your website…</h2><p class="wb-muted" id="wb-bs">FODO\'s AI is writing your pages (20–60 seconds).</p><div class="wb-spin" aria-hidden="true"></div>',
-    ][S]() + '<div class="wb-row wb-nav">' + (S > 0 && S < 4 ? '<button type="button" class="wb-btn" id="wb-back">Back</button>' : '<a class="wb-btn" href="#">Cancel</a>') + (S < 4 ? '<button class="wb-btn pri">' + (S === 3 ? "Build my website" : "Next") + "</button>" : "") + "</div></form></div>";
-    $$(".wb-chips", root).forEach((c) => $$("button", c).forEach((b) => { b.onclick = () => { st[c.dataset.k] = b.textContent; $$("button", c).forEach((x) => x.classList.toggle("on", x === b)); }; }));
-    if ($("#wb-back")) $("#wb-back").onclick = () => { st.step--; draw(); };
-    if (S === 3) {
-      const q = st.industry + " " + st.style + " " + st.goal;
-      api("recommend?q=" + encodeURIComponent(q)).then((r) => { const L = (r.templates || []); if (!st.templateId && L[0]) st.templateId = L[0].id; $("#wb-rec").textContent = "Recommended for a " + st.industry + ":";
-        $("#wb-recs").innerHTML = L.map((t, i) => '<label class="wb-rec' + (st.templateId === t.id ? " on" : "") + '"><input type="radio" name="tpl" value="' + t.id + '"' + (st.templateId === t.id ? " checked" : "") + '><iframe tabindex="-1" aria-hidden="true" sandbox=""></iframe><span><b>' + (i + 1) + ". " + esc(t.name) + "</b><small>" + esc(t.why) + '</small><small class="wb-lic">License: ' + esc(t.license.license) + " · Commercial " + (t.license.commercial_allowed ? "YES" : "NO") + " · Client work " + (t.license.client_use_allowed ? "YES" : "NO") + " · Attribution " + (t.license.attribution_required ? "REQUIRED" : "NO") + "</small></span></label>").join("");
-        $$(".wb-rec", root).forEach((l) => { const t = TEMPLATES.find((x) => x.id === l.querySelector("input").value); l.querySelector("iframe").srcdoc = renderPage({ theme: t.theme, settings: { business: { name: st.name } }, pages: t.pages }, "home", { base: "#", badge: false }); l.onclick = () => { st.templateId = t.id; $$(".wb-rec", root).forEach((x) => x.classList.toggle("on", x === l)); }; }); });
-      const all = () => tplGrid($("#wb-tall"), TEMPLATES.filter((t) => { const w = ($("#wb-ts").value || "").toLowerCase().split(/\s+/).filter(Boolean); return !w.length || w.every((x) => (t.name + " " + t.category + " " + t.tags.join(" ") + " " + t.theme.mode).toLowerCase().indexOf(x) > -1); }), (t) => { st.templateId = t.id; toast("Template: " + t.name); all(); }, st.templateId);
-      $("#wb-ts").oninput = all; all();
-    }
-    $("#wb-wf").onsubmit = async (e) => { e.preventDefault(); const f = new FormData(e.target);
-      if (S === 0) ["name", "industry", "location", "phone", "whatsapp", "email", "about"].forEach((k) => { st[k] = String(f.get(k) || "").trim(); });
-      if (S === 1) { st.services = String(f.get("services") || ""); st.lang = f.get("lang"); }
-      if (S === 2) st.pages = f.getAll("pg");
-      if (S === 3) { st.step = 4; draw(); const r = await api("create", "POST", st); if (!r.ok) { $("#wb-bs").textContent = r.reason; $(".wb-spin").remove(); return; } location.hash = "site=" + r.id; ED = null; return editor(r.id, r.ai ? "Your website is ready — written by AI for " + st.name + ". Click anything to change it." : "Your website is ready. (The AI was busy, so it used the template's text — ask the AI bar to rewrite it.)"); }
-      st.step++; draw(); };
-  };
-  draw();
-}
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1), q = new URLSearchParams(h); if (ED && q.get("site") === ED.id) { if (q.get("settings")) PN.settingsPage(q.get("settings")); if (q.get("preview")) preview(); return; } if (ED && ED.dirty) save(); ED = null; document.onkeydown = null; window.onbeforeunload = null; clearInterval(tickT); boot(); });
+/* after onboarding: put the uploaded logo into every navbar of the new website */
+async function setLogo(id, url) { const j = await api(id); if (!j.ok) return; const d = j.site.doc; d.pages.forEach((p) => p.sections.forEach((x) => { if (x.type === "navbar") x.props.logoImg = url; })); await api(id, "PUT", { doc: d, baseRev: j.site.rev, note: "Logo added" }); }
 
 /* ---------- the editor ---------- */
 let ED = null;
 async function editor(id, hello) {
   root.innerHTML = '<div class="wb-pad">Opening the editor…</div>';
   const j = await api(id); if (!j.ok) { root.innerHTML = '<div class="wb-pad"><p>' + esc(j.reason) + '</p><a class="wb-btn" href="#">Back</a></div>'; return; }
-  const s = j.site; ED = { id, s, doc: s.doc, rev: s.rev, page: "home", sel: null, undo: [], redo: [], dev: "desktop", tab: "sections", dirty: false, saving: false, limits: j.limits };
+  const s = j.site; s.role = j.role || s.role; ED = { id, s, doc: s.doc, rev: s.rev, page: "home", sel: null, undo: [], redo: [], dev: "desktop", tab: "add", dirty: false, saving: false, limits: j.limits, adv: ls.get("wb-adv") === "1", savedAt: Date.now(), rtab: "content" };
   const key = "wb-draft-" + id, draft = ls.get(key);
   if (draft) { try { const d = JSON.parse(draft); if (d.rev >= s.rev && JSON.stringify(d.doc) !== JSON.stringify(s.doc) && confirm("You have unsaved changes from " + fmt(d.at) + " (the browser closed before they were saved). Restore them?")) { ED.doc = d.doc; ED.dirty = true; } else ls.del(key); } catch (e) { ls.del(key); } }
-  root.innerHTML = '<div class="wb-ed"><header class="wb-bar"><a class="wb-ib" href="#" title="All websites">←</a><b class="wb-name">' + esc(s.name) + '</b><span class="wb-save" id="wb-save">Saved</span><div class="wb-sp"></div><button class="wb-ib" id="wb-undo" title="Undo (Ctrl+Z)">↶</button><button class="wb-ib" id="wb-redo" title="Redo (Ctrl+Shift+Z)">↷</button><div class="wb-dev" role="group" aria-label="Device">' + [["desktop", "▭"], ["tablet", "▯"], ["mobile", "▮"]].map((x) => '<button data-dev="' + x[0] + '" title="' + x[0] + '" aria-pressed="' + (x[0] === "desktop") + '">' + x[1] + "</button>").join("") + '</div><button class="wb-btn sm" id="wb-ai-open" title="Ctrl K">✦ Ask AI</button><button class="wb-btn sm" id="wb-prev">Preview</button><button class="wb-btn pri sm" id="wb-pub">Publish</button></header>' +
-    '<aside class="wb-left"><nav class="wb-tabs">' + [["sections", "Sections"], ["pages", "Pages"], ["theme", "Style"], ["seo", "SEO"], ["store", "Store"], ["more", "More"]].map((x) => '<button data-tab="' + x[0] + '">' + x[1] + "</button>").join("") + '</nav><div id="wb-lp"></div></aside><main class="wb-canvas"><div class="wb-frame" id="wb-fw"><iframe id="wb-if" title="Website preview" sandbox="allow-scripts"></iframe></div></main><aside class="wb-right" id="wb-rp"></aside>' +
+  root.innerHTML = '<div class="wb-ed"><header class="wb-bar"><a class="wb-ib" href="#" title="All websites">←</a><b class="wb-name">' + esc(s.name) + '</b><span class="wb-save" id="wb-save">Saved</span><div class="wb-sp"></div><button class="wb-ib" id="wb-undo" title="Undo (Ctrl+Z)">↶</button><button class="wb-ib" id="wb-redo" title="Redo (Ctrl+Shift+Z)">↷</button><div class="wb-dev" role="group" aria-label="Device">' + [["desktop", "▭"], ["tablet", "▯"], ["mobile", "▮"]].map((x) => '<button data-dev="' + x[0] + '" title="' + x[0] + '" aria-pressed="' + (x[0] === "desktop") + '">' + x[1] + "</button>").join("") + '</div><button class="wb-btn sm" id="wb-ai-open" title="Ctrl K">✦ Ask AI</button><button class="wb-btn sm" id="wb-audit" title="Website audit">✓ Audit</button><button class="wb-btn sm" id="wb-share" title="Share preview / client approval">🔗 Share</button><button class="wb-btn sm" id="wb-prev">Preview</button><button class="wb-ib" id="wb-set" title="Website settings">⚙</button><button class="wb-ib" id="wb-help" title="Help">?</button><label class="wb-mode" title="Advanced mode shows layers, responsive & code controls"><input type="checkbox" id="wb-adv"' + (ls.get("wb-adv") === "1" ? " checked" : "") + '> Advanced</label><span class="wb-live" id="wb-live"></span><button class="wb-btn pri sm" id="wb-pub">Publish</button></header>' +
+    '<aside class="wb-left"><nav class="wb-tabs">' + TABS().map((x) => '<button data-tab="' + x[0] + '">' + x[1] + "</button>").join("") + '</nav><div id="wb-lp"></div></aside><main class="wb-canvas"><div class="wb-frame" id="wb-fw"><iframe id="wb-if" title="Website preview" sandbox="allow-scripts"></iframe></div></main><aside class="wb-right" id="wb-rp"></aside>' +
     '<div class="wb-cmd" id="wb-cmd" hidden><form id="wb-cf"><span>✦</span><input id="wb-ci" placeholder="Ask FODO AI to change anything… e.g. “make the hero shorter”, “add a testimonials section”, “use a dark luxury style”" autocomplete="off"><button class="wb-btn pri sm">Do it</button></form><p id="wb-cs"></p></div></div>';
   $$("[data-dev]").forEach((b) => { b.onclick = () => { ED.dev = b.dataset.dev; $$("[data-dev]").forEach((x) => x.setAttribute("aria-pressed", x === b)); $("#wb-fw").className = "wb-frame " + ED.dev; }; });
   $$("[data-tab]").forEach((b) => { b.onclick = () => { ED.tab = b.dataset.tab; left(); }; });
-  $("#wb-undo").onclick = undo; $("#wb-redo").onclick = redo; $("#wb-prev").onclick = preview; $("#wb-pub").onclick = publishFlow; $("#wb-ai-open").onclick = openCmd;
+  $("#wb-undo").onclick = undo; $("#wb-redo").onclick = redo; $("#wb-prev").onclick = () => preview(); $("#wb-pub").onclick = publishFlow; $("#wb-ai-open").onclick = openCmd;
+  $("#wb-audit").onclick = () => PN.auditPanel(); $("#wb-share").onclick = () => PN.sharePanel(); $("#wb-set").onclick = () => PN.settingsPage("general"); $("#wb-help").onclick = () => PN.helpPanel();
+  $("#wb-adv").onchange = function () { ED.adv = this.checked; ls.set("wb-adv", this.checked ? "1" : "0"); $(".wb-left .wb-tabs").innerHTML = TABS().map((x) => '<button data-tab="' + x[0] + '">' + x[1] + "</button>").join(""); $$("[data-tab]").forEach((b) => { b.onclick = () => { ED.tab = b.dataset.tab; left(); }; }); if (!TABS().some((x) => x[0] === ED.tab)) ED.tab = "add"; left(); right(); };
+  PN.bind(panelX()); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
   $("#wb-cf").onsubmit = (e) => { e.preventDefault(); askAI($("#wb-ci").value); };
   window.onmessage = onFrame; document.onkeydown = keys; window.onbeforeunload = () => (ED && ED.dirty ? "You have unsaved changes." : undefined);
-  paint(); left(); right(); if (hello) toast(hello); if (ED.dirty) queueSave();
+  paint(); left(); right(); if (hello && hello !== "paused") toast(hello); if (ED.dirty) queueSave();
+  if (hello === "paused") pausedBanner();
+  const hq = new URLSearchParams(location.hash.slice(1)); if (hq.get("settings")) PN.settingsPage(hq.get("settings")); else if (hq.get("preview")) preview(); else PN.tutorial();
   loadStoreData(storeX()).then((d) => { if (ED && ED.id === id) { ED.data = d; paint(); } }).catch(() => {});
 }
 const curPage = () => ED.doc.pages.find((p) => p.slug === ED.page) || ED.doc.pages[0];
 /* canvas: the real renderer + a small editor bridge (select, inline text editing, hover outline) */
-const BRIDGE = "<style>[data-sec]{position:relative}[data-sec]:hover{outline:2px dashed rgba(123,97,255,.6);outline-offset:-2px;cursor:pointer}[data-sec].sel{outline:3px solid #7B61FF;outline-offset:-3px}[data-f]:hover{background:rgba(123,97,255,.08)}[contenteditable]{outline:2px solid #FFB547!important}</style><script>(function(){document.addEventListener('click',function(e){var a=e.target.closest('a');if(a)e.preventDefault();var s=e.target.closest('[data-sec]');if(s)parent.postMessage({fodo:'sel',i:+s.dataset.sec},'*')},true);document.addEventListener('dblclick',function(e){var f=e.target.closest('[data-f]'),s=e.target.closest('[data-sec]');if(!f||!s)return;f.contentEditable='true';f.focus();var done=function(){f.removeAttribute('contenteditable');parent.postMessage({fodo:'text',i:+s.dataset.sec,f:f.dataset.f,t:f.innerText},'*');f.removeEventListener('blur',done)};f.addEventListener('blur',done);f.addEventListener('keydown',function(k){if(k.key==='Enter'&&!k.shiftKey){k.preventDefault();f.blur()}})});window.addEventListener('message',function(e){if(e.data&&e.data.fodo==='mark'){document.querySelectorAll('.sel').forEach(function(x){x.classList.remove('sel')});var x=document.querySelector('[data-sec=\"'+e.data.i+'\"]');if(x){x.classList.add('sel');if(e.data.scroll)x.scrollIntoView({block:'center',behavior:'smooth'})}}if(e.data&&e.data.fodo==='check'){var w=document.documentElement.scrollWidth-innerWidth,bad=[];document.querySelectorAll('body *').forEach(function(n){var r=n.getBoundingClientRect();if(r.right>innerWidth+2&&r.width>0&&bad.length<8)bad.push((n.closest('[data-sec]')||{dataset:{}}).dataset.sec)});parent.postMessage({fodo:'checked',over:w,secs:bad},'*')}})})()</script>";
+const BRIDGE = "<style>[data-sec]{position:relative}[data-sec]:hover{outline:2px dashed rgba(123,97,255,.6);outline-offset:-2px;cursor:pointer}[data-sec].sel{outline:3px solid #7B61FF;outline-offset:-3px}[data-f]:hover{background:rgba(123,97,255,.08)}[contenteditable]{outline:2px solid #FFB547!important}</style><script>(function(){document.addEventListener('click',function(e){var a=e.target.closest('a');if(a)e.preventDefault();var s=e.target.closest('[data-sec]');if(s)parent.postMessage({fodo:'sel',i:+s.dataset.sec},'*')},true);document.addEventListener('dblclick',function(e){var f=e.target.closest('[data-f]'),s=e.target.closest('[data-sec]');if(!f||!s)return;f.contentEditable='true';f.focus();var done=function(){f.removeAttribute('contenteditable');parent.postMessage({fodo:'text',i:+s.dataset.sec,f:f.dataset.f,t:f.innerText},'*');f.removeEventListener('blur',done)};f.addEventListener('blur',done);f.addEventListener('keydown',function(k){if(k.key==='Enter'&&!k.shiftKey){k.preventDefault();f.blur()}})});document.addEventListener('contextmenu',function(e){var s=e.target.closest('[data-sec]');if(!s)return;e.preventDefault();parent.postMessage({fodo:'ctx',i:+s.dataset.sec,x:e.clientX,y:e.clientY},'*')});var ln=document.createElement('div');ln.style.cssText='position:absolute;left:0;right:0;height:4px;background:#7B61FF;box-shadow:0 0 0 3px rgba(123,97,255,.25);z-index:9999;display:none;pointer-events:none';document.body.appendChild(ln);var dropAt=null;function where(e){var secs=[].slice.call(document.querySelectorAll('[data-sec]'));for(var i=0;i<secs.length;i++){var r=secs[i].getBoundingClientRect();if(e.clientY<r.top+r.height/2)return{at:+secs[i].dataset.sec,y:r.top+scrollY};}var l=secs[secs.length-1];if(!l)return{at:0,y:0};var rr=l.getBoundingClientRect();return{at:+l.dataset.sec+1,y:rr.bottom+scrollY}}document.addEventListener('dragover',function(e){e.preventDefault();var w=where(e);dropAt=w.at;ln.style.top=(w.y-2)+'px';ln.style.display='block'});document.addEventListener('dragleave',function(e){if(!e.relatedTarget)ln.style.display='none'});document.addEventListener('drop',function(e){e.preventDefault();ln.style.display='none';var t=e.dataTransfer.getData('text/plain')||'';if(/^fodo-sec:/.test(t))parent.postMessage({fodo:'drop',type:t.slice(9),at:dropAt},'*');else if(/^fodo-move:/.test(t))parent.postMessage({fodo:'move',from:+t.slice(10),to:dropAt},'*')});[].forEach.call(document.querySelectorAll('[data-sec]'),function(s){if(/navbar|footer/.test(s.tagName.toLowerCase()==='header'?'navbar':'')||s.tagName==='FOOTER')return;s.setAttribute('draggable','true');s.addEventListener('dragstart',function(e){if(e.target!==s)return;e.dataTransfer.setData('text/plain','fodo-move:'+s.dataset.sec);e.dataTransfer.effectAllowed='move'})});window.addEventListener('message',function(e){if(e.data&&e.data.fodo==='mark'){document.querySelectorAll('.sel').forEach(function(x){x.classList.remove('sel')});var x=document.querySelector('[data-sec=\"'+e.data.i+'\"]');if(x){x.classList.add('sel');if(e.data.scroll)x.scrollIntoView({block:'center',behavior:'smooth'})}}if(e.data&&e.data.fodo==='check'){var w=document.documentElement.scrollWidth-innerWidth,bad=[];document.querySelectorAll('body *').forEach(function(n){var r=n.getBoundingClientRect();if(r.right>innerWidth+2&&r.width>0&&bad.length<8)bad.push((n.closest('[data-sec]')||{dataset:{}}).dataset.sec)});parent.postMessage({fodo:'checked',over:w,secs:bad},'*')}})})()</script>";
+/* v32: simple vs advanced tabs, live status, "saved N s ago", paused generation, panel context */
+const TABS = () => [["add", "Add"], ["sections", "Sections"], ["pages", "Pages"], ["design", "Design"], ["seo", "SEO"], ["store", "Store"]].concat(ED && ED.adv ? [["layers", "Layers"]] : []).concat([["more", "More"]]);
+let tickT = null;
+function savedTick() { if (!ED || ED.dirty || ED.saving) return; const el = $("#wb-save"); if (!el) return clearInterval(tickT); const s = Math.round((Date.now() - ED.savedAt) / 1000); el.textContent = s < 5 ? "Saved" : "Saved " + (s < 60 ? s + " seconds" : Math.round(s / 60) + " min") + " ago"; }
+function liveState() { const el = $("#wb-live"); if (!el) return; const R = { ready: "👀 In review", changes: "✏️ Changes requested", approved: "✅ Approved" }; el.textContent = (ED.s.status === "live" ? "🟢 Live" : "🟡 Draft") + (R[ED.s.review] ? " · " + R[ED.s.review] : ""); }
+function pausedBanner() { const b = document.createElement("div"); b.className = "wb-banner"; b.innerHTML = "<b>Generation paused — your current work is safe.</b> The AI didn't finish writing your copy. <button class=\"wb-btn sm pri\" id=\"wb-cont\">Continue generation</button> <button class=\"wb-ib sm\" data-x>✕</button>"; $(".wb-ed").prepend(b); b.querySelector("[data-x]").onclick = () => b.remove();
+  $("#wb-cont").onclick = async () => { const bt = $("#wb-cont"); bt.disabled = true; bt.textContent = "Writing…"; const r = await api(ED.id + "/generate", "POST", {}); bt.disabled = false; bt.textContent = "Continue generation"; if (!r.ok) return toast(r.reason, true); change(() => { ED.doc = r.doc; }); save("AI copy (continued)"); b.remove(); toast("Copy written — Undo if you prefer the previous text."); }; }
+function select(i) { ED.sel = i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); const f = $("#wb-if"); if (f && f.contentWindow) f.contentWindow.postMessage({ fodo: "mark", i, scroll: true }, "*"); }
+function goPage(slug) { ED.page = slug; ED.sel = null; paint(); left(); right(); }
+function panelX() { return { ED: () => ED, site: () => Object.assign({}, ED.s, { urls: ED.urls || ED.s.urls }), api, toast, change, paint, left, right, upload, askAI, openCmd, curPage, select, goPage, DEFAULTS, BRIDGE, isOwner: () => !!(CFG && CFG.owner) || !!(ED && ED.limits && ED.limits.owner), save: (note) => save(note), preview: (anim) => preview(anim), panels: { domain: domainPanel, stats: statsPanel } }; }
 function paint(keepScroll) {
   const f = $("#wb-if"); let y = 0; try { y = keepScroll ? 0 : 0; } catch (e) {}
   f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE, data: ED.data });
   f.onload = () => { if (ED.sel != null) f.contentWindow.postMessage({ fodo: "mark", i: ED.sel }, "*"); };
 }
+const propsOf = (sec) => (sec.ref ? ((ED.doc.components || []).find((k) => k.id === sec.ref) || { props: sec.props }).props : sec.props);
 function onFrame(e) {
   if (!ED || e.source !== $("#wb-if").contentWindow && !(e.data && e.data.fodo === "checked")) return; const d = e.data || {};
-  if (d.fodo === "sel") { ED.sel = d.i; ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); }
-  if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; const cur = sec.props[d.f]; if (cur === d.t) return; change(() => { sec.props[d.f] = String(d.t).trim(); }); }
+  if (d.fodo === "sel") { ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); }
+  if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; if (sec.style && sec.style.lock) { paint(); return toast("This section is locked — unlock it to edit.", true); } const P0 = propsOf(sec), cur = P0[d.f]; if (cur === d.t) return; change(() => { P0[d.f] = String(d.t).trim(); }); }
+  if (d.fodo === "ctx") PN.contextMenu(d.i, d.x, d.y);
+  if (d.fodo === "drop" && d.type) PN.addSection(d.type, d.at);
+  if (d.fodo === "move" && d.from !== d.to && d.to !== d.from + 1) { const P = curPage(); const sec = P.sections[d.from]; if (sec && sec.style && sec.style.lock) return toast("This section is locked.", true); change(() => { const [x] = P.sections.splice(d.from, 1); const to = d.to > d.from ? d.to - 1 : d.to; P.sections.splice(to, 0, x); ED.sel = to; }); left(); right(); }
   if (d.fodo === "checked" && ED.onCheck) ED.onCheck(d);
 }
 function keys(e) {
@@ -136,7 +92,13 @@ function keys(e) {
   if (mod && k === "k") { e.preventDefault(); openCmd(); }
   else if (mod && k === "z" && !e.shiftKey && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); undo(); }
   else if (mod && ((k === "z" && e.shiftKey) || k === "y") && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); redo(); }
-  else if (k === "escape") $("#wb-cmd").hidden = true;
+  else if (k === "escape") { $("#wb-cmd").hidden = true; $$(".wb-ctx").forEach((x) => x.remove()); }
+  else if (mod && k === "s") { e.preventDefault(); save("Saved version (Ctrl+S)").then((ok) => ok && toast("Version saved.")); }
+  else if (/input|textarea|select/i.test(e.target.tagName) || e.target.isContentEditable) return;
+  else if ((k === "delete" || k === "backspace") && ED.sel != null) { e.preventDefault(); PN.deleteSection(ED.sel); }
+  else if (mod && k === "d" && ED.sel != null) { e.preventDefault(); PN.duplicateSection(ED.sel); }
+  else if (mod && k === "c" && ED.sel != null && !String(getSelection())) { PN.copySection(ED.sel); }
+  else if (mod && k === "v") { e.preventDefault(); PN.pasteSection(ED.sel != null ? ED.sel + 1 : null); }
 }
 /* every edit goes through change(): history (undo/redo), local draft, debounced server save */
 function change(fn, noPaint) { const before = JSON.stringify(ED.doc); fn(); if (JSON.stringify(ED.doc) === before) return;   // nothing really changed (e.g. a repeated change event): no history entry
@@ -148,7 +110,7 @@ function queueSave() { $("#wb-save").textContent = "Unsaved changes…"; ls.set(
 async function save(note) {
   if (ED.saving) { clearTimeout(saveT); saveT = setTimeout(save, 800); return; } ED.saving = true; $("#wb-save").textContent = "Saving…";
   const r = await api(ED.id, "PUT", { doc: ED.doc, baseRev: ED.rev, note }); ED.saving = false;
-  if (r.ok) { ED.rev = r.rev; ED.dirty = false; ls.del("wb-draft-" + ED.id); $("#wb-save").textContent = "Saved " + new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }); return true; }
+  if (r.ok) { ED.rev = r.rev; ED.dirty = false; ED.savedAt = Date.now(); ls.del("wb-draft-" + ED.id); $("#wb-save").textContent = "Saved"; return true; }
   if (r._status === 409) { if (confirm("This website was changed somewhere else (another tab or person). Load the newest version? Your version stays in this browser as a draft until you reload.")) { ED.doc = r.doc; ED.rev = r.rev; ED.dirty = false; paint(); left(); right(); $("#wb-save").textContent = "Loaded newest version"; } else { ED.rev = r.rev; queueSave(); } return false; }
   $("#wb-save").textContent = "Not saved — " + (r.reason || "error"); toast(r.reason || "Couldn't save — your changes are kept in this browser.", true); return false;
 }
@@ -157,6 +119,9 @@ async function save(note) {
 function left() {
   $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === ED.tab)); const el = $("#wb-lp"), P = curPage();
   const pageSel = '<label class="wb-lab">Page<select id="wb-pg">' + ED.doc.pages.map((p) => '<option value="' + p.slug + '"' + (p.slug === ED.page ? " selected" : "") + ">" + esc(p.title) + (p.hidden ? " (hidden)" : "") + "</option>").join("") + "</select></label>";
+  if (ED.tab === "add") { PN.addPanel(el); return; }
+  if (ED.tab === "design") { PN.designPanel(el); return; }
+  if (ED.tab === "layers") { el.innerHTML = pageSel + '<div id="wb-lyr"></div>'; PN.layersPanel($("#wb-lyr")); $("#wb-pg").onchange = function () { ED.page = this.value; ED.sel = null; paint(); left(); right(); }; return; }
   if (ED.tab === "sections") {
     el.innerHTML = pageSel + '<ul class="wb-secs" id="wb-secs">' + P.sections.map((x, i) => '<li draggable="true" data-i="' + i + '" class="' + (ED.sel === i ? "on" : "") + '"><span class="wb-drag" aria-hidden="true">⋮⋮</span><button class="wb-sname" data-pick="' + i + '">' + esc(SECTION_LABELS[x.type] || x.type) + "<small>" + esc(String((x.props && (x.props.title || x.props.logo)) || "").slice(0, 28)) + '</small></button><button class="wb-ib sm" data-dup="' + i + '" title="Duplicate">⧉</button><button class="wb-ib sm" data-del="' + i + '" title="Delete">✕</button></li>').join("") + '</ul><details class="wb-add"><summary class="wb-btn sm">+ Add section</summary><div class="wb-lib">' + SECTION_TYPES.map((t) => '<button data-add="' + t + '">' + esc(SECTION_LABELS[t]) + "</button>").join("") + '</div><button class="wb-btn sm" id="wb-gen">✦ Generate a section with AI</button></details>';
     $$("[data-pick]", el).forEach((b) => { b.onclick = () => { ED.sel = +b.dataset.pick; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: ED.sel, scroll: true }, "*"); }; });
@@ -203,12 +168,16 @@ function left() {
   } else if (ED.tab === "more") {
     const b = ED.doc.settings.business || {};
     el.innerHTML = '<details open><summary>Business details</summary>' + [["name", "Business name"], ["tagline", "Tagline"], ["phone", "Phone"], ["email", "Email"], ["whatsapp", "WhatsApp"], ["address", "Address"], ["city", "City"]].map((x) => '<label class="wb-lab">' + x[1] + '<input data-b="' + x[0] + '" value="' + esc(b[x[0]] || "") + '"></label>').join("") + '<label class="wb-lab">Send form messages to<input data-set="notifyEmail" type="email" value="' + esc(ED.doc.settings.notifyEmail || "") + '"></label></details>' +
+      '<div class="wb-tools"><button class="wb-btn sm" id="mt-fr">⌕ Find &amp; replace</button><button class="wb-btn sm" id="mt-legal">§ Legal pages</button><button class="wb-btn sm" id="mt-gen">✦ Continue generation</button><button class="wb-btn sm" id="mt-set">⚙ All settings</button></div>' +
       '<details><summary>Domain</summary><div id="wb-dom">Loading…</div></details><details><summary>Form messages</summary><div id="wb-forms">Loading…</div></details><details><summary>Visitors</summary><div id="wb-stats">Loading…</div></details><details><summary>Version history</summary><div id="wb-vers">Loading…</div></details>' +
       '<details><summary>Images</summary><div id="wb-media">Loading…</div></details><details><summary>Advanced</summary><label class="wb-lab">Custom CSS <small>(scripts are not allowed)</small><textarea id="wb-css" rows="6" spellcheck="false">' + esc(ED.doc.settings.customCss || "") + '</textarea></label><label class="wb-ck"><input type="checkbox" id="wb-badge"' + (ED.doc.settings.hideBadge ? " checked" : "") + '> Hide “Made with FODO”</label></details>' +
       '<div class="wb-row"><a class="wb-btn sm" href="/api/sites/' + ED.id + '/export">Download website (ZIP)</a><button class="wb-btn sm" id="wb-unpub"' + (ED.s.status === "live" ? "" : " hidden") + ">Unpublish</button><button class=\"wb-btn sm danger\" id=\"wb-delsite\">Delete website</button></div>";
     $$("[data-b]", el).forEach((i) => { i.onchange = () => change(() => { ED.doc.settings.business = Object.assign({}, ED.doc.settings.business, { [i.dataset.b]: i.value.trim() }); }); });
     $$("[data-set]", el).forEach((i) => { i.onchange = () => change(() => { ED.doc.settings[i.dataset.set] = i.value.trim(); }, true); });
     $("#wb-css").onchange = function () { change(() => { ED.doc.settings.customCss = this.value; }); }; $("#wb-badge").onchange = function () { change(() => { ED.doc.settings.hideBadge = this.checked || undefined; }, true); };
+    $("#mt-fr").onclick = () => PN.findReplace(); $("#mt-set").onclick = () => PN.settingsPage("general");
+    $("#mt-gen").onclick = async () => { const bt = $("#mt-gen"); bt.disabled = true; bt.textContent = "Writing…"; const r = await api(ED.id + "/generate", "POST", {}); bt.disabled = false; bt.textContent = "✦ Continue generation"; if (!r.ok) return toast(r.reason, true); change(() => { ED.doc = r.doc; }); save("AI copy (continued)"); toast("AI rewrote the copy — Undo if you prefer the previous text."); };
+    $("#mt-legal").onclick = () => legalPages();
     $("#wb-unpub").onclick = async () => { const r = await api(ED.id + "/unpublish", "POST", {}); if (r.ok) { ED.s.status = "draft"; toast("Unpublished — the website is offline."); left(); } };
     $("#wb-delsite").onclick = async () => { if (prompt("Type DELETE to delete this website") !== "DELETE") return; const r = await api(ED.id, "DELETE"); if (r.ok) { ED = null; location.hash = ""; dashboard(); } };
     $$("details", el).forEach((d) => d.addEventListener("toggle", () => { if (!d.open) return; const id = (d.querySelector("[id]") || {}).id; ({ "wb-dom": domainPanel, "wb-forms": formsPanel, "wb-stats": statsPanel, "wb-vers": versionsPanel, "wb-media": mediaPanel })[id] && ({ "wb-dom": domainPanel, "wb-forms": formsPanel, "wb-stats": statsPanel, "wb-vers": versionsPanel, "wb-media": mediaPanel })[id](); }));
@@ -217,14 +186,35 @@ function left() {
   if ($("#wb-pg")) $("#wb-pg").onchange = function () { ED.page = this.value; ED.sel = null; paint(); left(); right(); };
 }
 function storeX() { return { id: ED.id, api, toast, upload, doc: () => ED.doc, change, refresh: async () => { if (!ED) return; ED.data = await loadStoreData(storeX()).catch(() => ED.data); paint(); left(); } }; }
+/* legal pages (drafts — the editor asks the owner to review them; FODO is not a lawyer) */
+function legalPages() {
+  const L = [["privacy", "Privacy Policy"], ["terms", "Terms of Use"], ["cookies", "Cookie Policy"], ["refund", "Returns & Refunds"], ["shipping", "Shipping Policy"]], have = (k) => ED.doc.pages.some((p) => p.slug === k);
+  const m = PN.modal('<h2>Legal pages</h2><p class="wb-muted">FODO drafts these from your business details. <b>Review them for your business and jurisdiction</b> — they are a starting point, not legal advice. Fill every [bracket] before publishing.</p>' + L.map((x) => '<label class="wb-ck"><input type="checkbox" value="' + x[0] + '"' + (have(x[0]) ? " disabled checked" : "") + "> " + x[1] + (have(x[0]) ? " <small>(exists)</small>" : "") + "</label>").join("") + '<label class="wb-ck"><input type="checkbox" id="lg-cc"' + ((ED.doc.settings.cookies || {}).on ? " checked" : "") + '> Also show a cookie consent banner</label><div class="wb-row"><button class="wb-btn pri" id="lg-go">Create pages</button></div>');
+  $("#lg-go", m).onclick = () => { const pick = [...m.querySelectorAll("input[value]:checked:not(:disabled)")].map((i) => i.value), home = ED.doc.pages.find((p) => p.slug === "home") || ED.doc.pages[0], nav = home.sections.find((x) => x.type === "navbar"), foot = home.sections.find((x) => x.type === "footer");
+    change(() => { pick.forEach((k) => { const lt = legalTextFor(k, ED.doc.settings.business || {}); ED.doc.pages.push({ slug: k, title: lt.title, nav: false, seo: {}, sections: [nav, { type: "legal", props: lt }, foot].filter(Boolean).map((x) => JSON.parse(JSON.stringify(x))) }); }); if ($("#lg-cc", m).checked) ED.doc.settings.cookies = Object.assign({}, ED.doc.settings.cookies, { on: true, policy: ED.doc.pages.some((p) => p.slug === "cookies") ? "cookies/" : "privacy/" }); });
+    m.close(); left(); toast(pick.length + " legal page(s) added — linked in the footer. Review the text before publishing."); };
+}
 function uniq(s) { s = s.replace(/[^a-z0-9-]+/g, "-").slice(0, 36) || "page"; if (/^(p|cart|checkout|order|blog)$/.test(s)) s += "-page"; let x = s, n = 2; while (ED.doc.pages.some((p) => p.slug === x)) x = s + "-" + n++; return x; }
 
 /* right panel: properties of the selected section, generated from its data */
 function right() {
   const el = $("#wb-rp"), P = curPage(), sec = ED.sel != null ? P.sections[ED.sel] : null;
   if (!sec) { el.innerHTML = '<div class="wb-hint"><b>Click any part of your website</b> to change it.<br>Double-click text to type directly.<br><br>Or press <kbd>Ctrl</kbd> + <kbd>K</kbd> and tell the AI what you want.</div>'; return; }
-  const p = sec.props || {}, field = (path, v, label) => {
+  const comp = sec.ref ? (ED.doc.components || []).find((k) => k.id === sec.ref) : null, p = comp ? comp.props : (sec.props = sec.props || {}), locked = !!(sec.style && sec.style.lock);
+  const head0 = '<div class="wb-rhead"><b>' + esc(SECTION_LABELS[sec.type]) + '</b><button class="wb-ib sm" id="wb-up" title="Move up">↑</button><button class="wb-ib sm" id="wb-dn" title="Move down">↓</button><button class="wb-ib sm" id="wb-dup2" title="Duplicate (Ctrl D)">⧉</button><button class="wb-ib sm" id="wb-del2" title="Delete">✕</button></div>' +
+    (comp ? '<p class="wb-compnote">⧉ Component “' + esc(comp.name) + '” — edits update every page that uses it. <button class="wb-btn sm" id="wb-unl">Detach</button></p>' : "") +
+    '<nav class="wb-rtabs"><button data-rt="content" aria-selected="' + (ED.rtab !== "style") + '">Content</button><button data-rt="style" aria-selected="' + (ED.rtab === "style") + '">Style &amp; animation</button></nav>';
+  const wireHead = () => { $("#wb-up").onclick = () => { if (ED.sel > 0) change(() => { const [x] = P.sections.splice(ED.sel, 1); P.sections.splice(--ED.sel, 0, x); left(); }); }; $("#wb-dn").onclick = () => { if (ED.sel < P.sections.length - 1) change(() => { const [x] = P.sections.splice(ED.sel, 1); P.sections.splice(++ED.sel, 0, x); left(); }); };
+    $("#wb-dup2").onclick = () => PN.duplicateSection(ED.sel); $("#wb-del2").onclick = () => { if (confirm("Delete this " + SECTION_LABELS[sec.type] + " section?")) PN.deleteSection(ED.sel); }; if ($("#wb-unl")) $("#wb-unl").onclick = () => { PN.unlink(ED.sel); right(); };
+    $$("[data-rt]", el).forEach((b) => { b.onclick = () => { ED.rtab = b.dataset.rt; right(); }; }); };
+  if (ED.rtab === "style") { el.innerHTML = head0 + '<div id="wb-stp"></div>'; wireHead(); PN.stylePanel($("#wb-stp"), sec); return; }
+  if (locked) { el.innerHTML = head0 + '<div class="wb-hint">🔒 This section is locked so it can\'t be changed by accident.<br><br><button class="wb-btn sm" id="wb-unlock">Unlock</button></div>'; wireHead(); $("#wb-unlock").onclick = () => { change(() => { delete sec.style.lock; }); right(); }; return; }
+  const field = (path, v, label) => {
     const k = path.join("."), lab = label || path[path.length - 1];
+    if (lab === "date" && sec.type === "countdown") return '<label class="wb-lab">Launch date<input type="date" data-p="' + k + '" value="' + esc(v || "") + '"></label>';
+    if (lab === "size" && sec.type === "spacer") return '<label class="wb-lab">Height<select data-p="' + k + '"><option value="s"' + (v === "s" ? " selected" : "") + '>Small</option><option value="m"' + (v !== "s" && v !== "l" ? " selected" : "") + '>Medium</option><option value="l"' + (v === "l" ? " selected" : "") + ">Large</option></select></label>";
+    if (/^(line|wide)$/.test(lab)) return '<label class="wb-ck"><input type="checkbox" data-p="' + k + '" data-bool="1"' + (v ? " checked" : "") + "> " + (lab === "line" ? "Show a divider line" : "Wide") + "</label>";
+    if (lab === "body") return '<label class="wb-lab">Text <small>**bold** · *italic* · ## heading · - list · [link](https://…)</small><textarea rows="12" data-p="' + k + '">' + esc(v || "") + "</textarea></label>";
     if (/^(align)$/.test(lab)) return '<label class="wb-lab">' + lab + '<select data-p="' + k + '"><option value="center">Centre</option><option value="left"' + (v === "left" ? " selected" : "") + ">Left</option></select></label>";
     if (/^(bg)$/.test(lab)) return '<label class="wb-lab">Background<select data-p="' + k + '">' + [["theme", "Plain"], ["gradient", "Soft gradient"], ["dark", "Dark"], ["image", "Photo"]].map((o) => '<option value="' + o[0] + '"' + (v === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></label>";
     if (/^(featured)$/.test(lab)) return '<label class="wb-ck"><input type="checkbox" data-p="' + k + '" data-bool="1"' + (v ? " checked" : "") + "> Highlight</label>";
@@ -233,24 +223,27 @@ function right() {
     const NAMES = { href: "Link (page like contact/ or https://…)", url: "YouTube link", cta: "Button", cta2: "Second button", q: "Question", a: "Answer", logo: "Logo text", icon: "Icon (emoji)" }, noAi = /^(href|url|icon|value|price|period|phone|email|whatsapp|address)$/.test(lab);
     return '<label class="wb-lab">' + esc(NAMES[lab] || lab) + (typeof v === "string" && !noAi ? ' <select class="wb-rw" data-rw="' + k + '"><option value="">✦ AI</option>' + REWRITES.map((r) => '<option value="' + r[0] + '">' + r[1] + "</option>").join("") + "</select>" : "") + (long ? '<textarea rows="3" data-p="' + k + '">' + esc(v || "") + "</textarea>" : '<input data-p="' + k + '" value="' + esc(v == null ? "" : v) + '">') + "</label>";
   };
-  const walk = (obj, path) => Object.keys(obj).map((key) => { const v = obj[key], pth = path.concat([key]);
+  const walk = (obj, path) => Object.keys(obj).filter((key) => !/^(_s|form|generated|reviewed|hours)$/.test(key) || (key === "hours" && sec.type !== "booking")).map((key) => { const v = obj[key], pth = path.concat([key]);
     if (Array.isArray(v)) { if (v.every((x) => typeof x === "string")) return '<label class="wb-lab">' + esc(key) + ' <small>(one per line)</small><textarea rows="4" data-lines="' + pth.join(".") + '">' + esc(v.join("\n")) + "</textarea></label>";
       return '<fieldset class="wb-list"><legend>' + esc(key) + "</legend>" + v.map((it, i) => '<div class="wb-item"><div class="wb-itbar"><b>' + (i + 1) + '</b><button type="button" class="wb-ib sm" data-iu="' + pth.join(".") + "|" + i + '">↑</button><button type="button" class="wb-ib sm" data-ix="' + pth.join(".") + "|" + i + '">✕</button></div>' + (typeof it === "object" && it ? walk(it, pth.concat([String(i)])) : field(pth.concat([String(i)]), it, "item")) + "</div>").join("") + '<button type="button" class="wb-btn sm" data-ia="' + pth.join(".") + '">+ Add</button></fieldset>'; }
     if (v && typeof v === "object") return '<fieldset class="wb-obj"><legend>' + esc(key) + "</legend>" + walk(v, pth) + "</fieldset>";
     return field(pth, v); }).join("");
-  const extra = { hero: ["eyebrow", "title", "subtitle", "cta", "cta2", "image", "align", "bg"], about: ["title", "text", "points", "image", "cta"], contact: ["title", "text", "button", "phone", "whatsapp", "email", "address", "fields"], cta: ["title", "text", "button"], navbar: ["logo", "logoImg", "cta"] }[sec.type] || [];
-  extra.forEach((k) => { if (!(k in p)) p[k] = /^(cta|cta2|button)$/.test(k) && sec.type !== "contact" ? { label: "", href: "" } : /^(points|fields)$/.test(k) ? [] : ""; });
-  el.innerHTML = '<div class="wb-rhead"><b>' + esc(SECTION_LABELS[sec.type]) + '</b><button class="wb-ib sm" id="wb-up" title="Move up">↑</button><button class="wb-ib sm" id="wb-dn" title="Move down">↓</button></div><button class="wb-btn sm wb-full" id="wb-secai">✦ Ask AI about this section</button><form id="wb-pf">' + walk(p, []) + "</form>";
+  const extra = { hero: ["eyebrow", "title", "subtitle", "cta", "cta2", "image", "align", "bg"], about: ["title", "text", "points", "image", "cta"], contact: ["title", "text", "button", "phone", "whatsapp", "email", "address"], cta: ["title", "text", "button"], navbar: ["logo", "logoImg", "cta"], booking: ["title", "text", "services", "staff", "locations", "button"], whatsapp: ["title", "text", "number", "message", "button"], image: ["title", "src", "alt", "caption", "link"], text: ["title", "body"], legal: ["title", "updated", "body"], embed: ["title", "url"], countdown: ["title", "date", "cta"], social: ["title", "links"], buttons: ["title", "items"], spacer: ["size", "line"], hours: ["title", "items", "note"], newsletter: ["title", "text", "button"], portfolio: ["title", "items"] }[sec.type] || [];
+  extra.forEach((k) => { if (!(k in p)) p[k] = /^(cta|cta2)$/.test(k) || (k === "button" && /hero|cta/.test(sec.type)) ? { label: "", href: "" } : /^(points|fields|services|staff|locations)$/.test(k) ? [] : /^(links|items)$/.test(k) ? [] : k === "line" ? false : ""; });
+  const embedNote = sec.type === "embed" ? '<p class="wb-muted">' + (p.url ? (PN.embedUrl(p.url) ? "✓ Embeds from " + esc(new URL(PN.embedUrl(p.url)).hostname) : "⚠ This link can't be embedded — use YouTube, Vimeo, a Google Maps “Embed a map” link, Calendly, Typeform, Google Forms or Spotify.") : "Paste a YouTube, Vimeo, Google Maps embed, Calendly, Typeform, Google Forms or Spotify link.") + "</p>" : "";
+  const legalNote = sec.type === "legal" && p.generated ? '<div class="wb-warnbox">⚖ Generated draft — review it for your business and jurisdiction (FODO is not a lawyer) and fill every [bracket].<label class="wb-ck"><input type="checkbox" id="wb-lrev"' + (p.reviewed ? " checked" : "") + "> I've reviewed this text</label></div>" : "";
+  el.innerHTML = head0 + '<button class="wb-btn sm wb-full" id="wb-secai">✦ Ask AI about this section</button>' + legalNote + embedNote + '<form id="wb-pf">' + walk(p, []) + '</form><div id="wb-fb"></div>' + (comp ? "" : '<button class="wb-btn sm wb-full" id="wb-mkc">⧉ Save as component (reuse everywhere)</button>');
+  wireHead(); if (/contact|booking/.test(sec.type)) PN.formBuilder($("#wb-fb"), sec, p);
+  if ($("#wb-lrev")) $("#wb-lrev").onchange = function () { change(() => { p.reviewed = this.checked; }, true); };
+  if ($("#wb-mkc")) $("#wb-mkc").onclick = () => { PN.saveAsComponent(ED.sel); right(); };
   const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), p), set = (path, val) => { const ks = path.split("."), last = ks.pop(), o = ks.reduce((a, k) => a[k], p); o[last] = val; };
   $$("[data-p]", el).forEach((i) => { i.onchange = () => change(() => set(i.dataset.p, i.dataset.bool ? i.checked : i.value)); });
   $$("[data-lines]", el).forEach((i) => { i.onchange = () => change(() => set(i.dataset.lines, i.value.split("\n").map((x) => x.trim()).filter(Boolean))); });
-  $$("[data-ia]", el).forEach((b) => { b.onclick = () => change(() => { const a = get(b.dataset.ia); a.push(a.length ? JSON.parse(JSON.stringify(a[a.length - 1])) : { title: "", text: "" }); right(); }); });
+  $$("[data-ia]", el).forEach((b) => { b.onclick = () => change(() => { const a = get(b.dataset.ia); a.push(a.length ? JSON.parse(JSON.stringify(a[a.length - 1])) : ({ links: { label: "Instagram", href: "https://instagram.com/" }, items: sec.type === "buttons" ? { label: "Button", href: "contact/" } : sec.type === "hours" ? { day: "Monday", time: "10:00 – 19:00" } : sec.type === "portfolio" ? { title: "Project", category: "", text: "", image: "", link: "" } : { title: "", text: "" } }[b.dataset.ia.split(".").pop()] || { title: "", text: "" })); right(); }); });
   $$("[data-ix]", el).forEach((b) => { b.onclick = () => change(() => { const [pa, i] = b.dataset.ix.split("|"); get(pa).splice(+i, 1); right(); }); });
   $$("[data-iu]", el).forEach((b) => { b.onclick = () => change(() => { const [pa, i] = b.dataset.iu.split("|"), a = get(pa); if (+i > 0) { const [x] = a.splice(+i, 1); a.splice(+i - 1, 0, x); } right(); }); });
   $$("[data-rw]", el).forEach((s) => { s.onchange = async () => { const mode = s.value; if (!mode) return; const cur = get(s.dataset.rw); s.disabled = true; const r = await api(ED.id + "/rewrite", "POST", { text: cur, mode }); s.disabled = false; s.value = ""; if (!r.ok) return toast(r.reason, true); change(() => set(s.dataset.rw, r.text)); right(); }; });
   $$("[data-up]", el).forEach((b) => { b.onclick = () => upload((url) => change(() => { set(b.dataset.up, url); right(); })); });
-  $("#wb-up").onclick = () => { if (ED.sel > 0) change(() => { const [x] = P.sections.splice(ED.sel, 1); P.sections.splice(--ED.sel, 0, x); left(); }); };
-  $("#wb-dn").onclick = () => { if (ED.sel < P.sections.length - 1) change(() => { const [x] = P.sections.splice(ED.sel, 1); P.sections.splice(++ED.sel, 0, x); left(); }); };
   $("#wb-secai").onclick = () => { openCmd(); $("#wb-ci").value = "For the selected " + SECTION_LABELS[sec.type] + " section: "; $("#wb-ci").focus(); };
 }
 /* image upload: resized in the browser (max 1600px) and re-encoded to WebP before it leaves the device */
@@ -269,7 +262,19 @@ async function askAI(text) {
   change(() => { ED.doc = r.doc; if (!ED.doc.pages.some((p) => p.slug === ED.page)) ED.page = "home"; }); left(); right();
   $("#wb-cs").innerHTML = esc(r.say) + " <small>(" + r.applied + " change" + (r.applied === 1 ? "" : "s") + ' — <a href="#" id="wb-undo2">undo</a>)</small>'; $("#wb-ci").value = ""; $("#wb-undo2").onclick = (e) => { e.preventDefault(); undo(); };
 }
-function preview() { const w = window.open("", "_blank"); if (!w) return toast("Allow pop-ups to preview.", true); w.document.open(); w.document.write(renderPage(ED.doc, ED.page, { base: "#", badge: false, data: ED.data }).replace("<head>", '<head><meta name="robots" content="noindex">')); w.document.close(); }
+/* preview: desktop / tablet / mobile / full screen / new tab — with all animations */
+function preview(anim) {
+  let dev = ED.dev || "desktop", page = ED.page;
+  const html = () => renderPage(ED.doc, page, { base: "#", badge: false, data: ED.data }).replace("<head>", '<head><meta name="robots" content="noindex">');
+  const m = PN.modal('<div class="wb-pvbar"><b>Preview</b><select id="pr-p" aria-label="Page">' + ED.doc.pages.map((p) => '<option value="' + p.slug + '"' + (p.slug === page ? " selected" : "") + ">" + esc(p.title) + "</option>").join("") + '</select><div class="wb-dev" role="group" aria-label="Device">' + [["desktop", "▭ Desktop"], ["tablet", "▯ Tablet"], ["mobile", "▮ Mobile"]].map((x) => '<button data-pd="' + x[0] + '" aria-pressed="' + (x[0] === dev) + '">' + x[1] + "</button>").join("") + '</div><span class="wb-sp"></span><button class="wb-btn sm" id="pr-fs">⛶ Full screen</button><button class="wb-btn sm" id="pr-tab">↗ New tab</button></div><div class="wb-pvwrap"><iframe id="pr-if" title="Website preview" sandbox="allow-scripts allow-popups"></iframe></div>' + (anim ? '<p class="wb-muted">Animation preview — scroll the page to see every entrance. Motion: ' + esc((ED.doc.theme || {}).motion || "modern") + '. <button class="wb-btn sm" id="pr-re">↻ Replay</button></p>' : ""), "wb-big wb-prev");
+  const draw = () => { const f = $("#pr-if", m); f.className = "pv-" + dev; f.srcdoc = html(); };
+  $$("[data-pd]", m).forEach((b) => { b.onclick = () => { dev = b.dataset.pd; $$("[data-pd]", m).forEach((x) => x.setAttribute("aria-pressed", x === b)); draw(); }; });
+  $("#pr-p", m).onchange = function () { page = this.value; draw(); };
+  $("#pr-fs", m).onclick = () => { const w = $(".wb-pvwrap", m); (w.requestFullscreen || w.webkitRequestFullscreen || (() => {})).call(w); };
+  $("#pr-tab", m).onclick = () => { const w = window.open("", "_blank"); if (!w) return toast("Allow pop-ups to open a new tab.", true); w.document.open(); w.document.write(html()); w.document.close(); };
+  if ($("#pr-re", m)) $("#pr-re", m).onclick = draw;
+  draw();
+}
 /* responsive check: the page is measured in a 375px-wide sandboxed frame (real layout, not a guess) */
 function responsiveCheck() {
   const out = $("#wb-respo"); out.textContent = "Checking at 375px…"; const f = document.createElement("iframe"); f.setAttribute("sandbox", "allow-scripts"); f.style.cssText = "position:fixed;left:-2000px;top:0;width:375px;height:800px;border:0"; document.body.appendChild(f);
@@ -277,14 +282,21 @@ function responsiveCheck() {
   f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE + "<script>setTimeout(function(){window.postMessage({fodo:'check'},'*')},400)<\/script>" });
 }
 /* publish: the server runs the checks; critical problems block it */
+/* publish: Website → SEO → Responsive → Forms → Performance → Security checks → build → deploy → live (real server checks) */
 async function publishFlow() {
-  if (ED.dirty && !(await save())) return; const b = $("#wb-pub"); b.disabled = true; b.textContent = "Checking…";
-  const r = await api(ED.id + "/publish", "POST", {}); b.disabled = false; b.textContent = "Publish";
-  const box = document.createElement("div"); box.className = "wb-modal"; box.setAttribute("role", "dialog");
-  if (!r.ok) { toast(r.reason, true); return; }
-  if (!r.published) box.innerHTML = '<div class="wb-mc"><h2>Almost there — fix these first</h2><ul class="wb-iss">' + r.issues.map((x) => '<li class="' + x.level + '"><b>' + esc(x.page || "site") + ":</b> " + esc(x.msg) + (x.fix ? " <small>" + esc(x.fix) + "</small>" : "") + "</li>").join("") + '</ul><div class="wb-row"><button class="wb-btn pri" data-x>OK</button></div></div>';
-  else { ED.s.status = "live"; box.innerHTML = '<div class="wb-mc"><h2>🎉 Your website is live</h2><p><a target="_blank" rel="noopener" href="' + esc(r.urls.sites || r.urls.fodo) + '">' + esc(r.urls.sites || r.urls.fodo) + "</a></p>" + (r.issues.length ? '<p class="wb-muted">Suggestions:</p><ul class="wb-iss">' + r.issues.map((x) => '<li class="' + x.level + '">' + esc(x.msg) + "</li>").join("") + "</ul>" : "") + '<div class="wb-row"><button class="wb-btn" data-dom>Connect your own domain</button><button class="wb-btn pri" data-x>Done</button></div></div>'; }
-  document.body.appendChild(box); $$("[data-x]", box).forEach((x) => { x.onclick = () => box.remove(); }); const dm = $("[data-dom]", box); if (dm) dm.onclick = () => { box.remove(); ED.tab = "more"; left(); const d = $("#wb-dom").closest("details"); d.open = true; };
+  if (ED.dirty && !(await save())) return; const b = $("#wb-pub"); b.disabled = true; b.textContent = "Publishing…"; $("#wb-live").textContent = "⏳ Publishing";
+  const m = PN.modal('<h2>Publishing</h2><ol class="wb-stages" id="pb-s">' + ["Website check", "SEO check", "Responsive check", "Form check", "Performance check", "Security check", "Build", "Deploy", "Live"].map((x) => '<li class="doing"><span class="wb-dot"></span>' + x + "</li>").join("") + '</ol><div id="pb-o"></div>');
+  const r = await api(ED.id + "/publish", "POST", {}); b.disabled = false; b.textContent = "Publish"; liveState();
+  const L = $$("#pb-s li", m), o = $("#pb-o", m);
+  if (!r.ok) { L.forEach((x) => { x.className = "fail"; }); o.innerHTML = "<p><b>We couldn't publish your website.</b></p><p>Reason: " + esc(r.reason || "server error") + '</p><div class="wb-row"><button class="wb-btn pri" id="pb-again">Try again</button></div>'; $("#pb-again", m).onclick = () => { m.close(); publishFlow(); }; return; }
+  const cl = r.checklist || [], bad = (n) => cl.some((x) => x.item === n && !x.ok);
+  const stepOk = [!r.issues.some((x) => x.level === "critical" && !/Placeholder|Link/.test(x.msg)) && !r.issues.some((x) => /Placeholder/.test(x.msg)), !bad("SEO"), !bad("Mobile"), !bad("Forms"), true, true];
+  L.forEach((x, k) => { x.className = k < 6 ? (stepOk[k] ? "done" : r.published ? "warn" : "fail") : r.published ? "done" : "skip"; });
+  const list = '<ul class="wb-check">' + cl.map((x) => '<li class="' + (x.ok ? "ok" : "no") + '">' + (x.ok ? "✓" : "✗") + " " + esc(x.item) + "</li>").join("") + "</ul>" + (r.audit ? '<p class="wb-muted">Audit score: <b>' + r.audit.overall + "/100</b> — open ✓ Audit for details and one-click fixes.</p>" : "");
+  if (!r.published) o.innerHTML = '<h3>Almost there — fix these first</h3>' + list + '<ul class="wb-iss">' + r.issues.filter((x) => x.level === "critical").map((x) => '<li class="critical"><b>' + esc(x.page || "site") + ":</b> " + esc(x.msg) + (x.fix ? " <small>" + esc(x.fix) + "</small>" : "") + (x.page ? ' <button class="wb-btn sm" data-gp="' + esc(x.page) + '">Open page</button>' : "") + "</li>").join("") + '</ul><div class="wb-row"><button class="wb-btn" id="pb-au">Open audit</button><button class="wb-btn pri" data-x>OK</button></div>';
+  else { ED.s.status = "live"; ED.urls = r.urls; liveState(); o.innerHTML = '<h3>🎉 Your website is live</h3><p><a target="_blank" rel="noopener" href="' + esc(r.urls.sites || r.urls.fodo) + '">' + esc(r.urls.sites || r.urls.fodo) + "</a> · SSL active (https)</p>" + list + (r.issues.length ? '<p class="wb-muted">Suggestions:</p><ul class="wb-iss">' + r.issues.map((x) => '<li class="' + x.level + '">' + esc(x.msg) + "</li>").join("") + "</ul>" : "") + '<div class="wb-row"><button class="wb-btn" data-dom>Connect your own domain</button><a class="wb-btn" target="_blank" rel="noopener" href="/business-x-ray/?u=' + encodeURIComponent(r.urls.sites || r.urls.fodo) + '&go=1">Analyze with Business X-Ray</a><button class="wb-btn pri" data-x>Done</button></div>'; }
+  $$("[data-gp]", m).forEach((x) => { x.onclick = () => { m.close(); goPage(x.dataset.gp); }; }); if ($("#pb-au", m)) $("#pb-au", m).onclick = () => { m.close(); PN.auditPanel(); };
+  const dm = $("[data-dom]", m); if (dm) dm.onclick = () => { m.close(); PN.settingsPage("domain"); };
 }
 async function domainPanel() {
   const el = $("#wb-dom"), r = await api(ED.id + "/domains"); if (!r.ok) { el.textContent = r.reason; return; }

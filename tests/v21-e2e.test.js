@@ -19,7 +19,7 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
   const b = await chromium.launch(), errs = [], csp = [];
   const page = async (w, h) => { const c = await b.newContext({ viewport: { width: w, height: h } }), p = await c.newPage(); p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) csp.push(m.text()); }); return p; };
   const login = (p, email, plan) => p.evaluate(([e, pl]) => fetch("/api/account/test-login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(pl ? { email: e, plan: pl } : { email: e }) }).then((r) => r.status), [email, plan]);
-  const shot = (p, n, full) => SHOTS ? p.screenshot({ path: path.join(SHOTS, n + ".png"), fullPage: !!full }) : null;
+  const shot = async (p, n, full) => SHOTS ? (await p.waitForTimeout(450), p.screenshot({ path: path.join(SHOTS, n + ".png"), fullPage: !!full })) : null;
   try {
     // strangers
     const s = await page(1280, 860); await s.goto(BASE + "/owner-brain/"); await s.waitForSelector(".ob-gate h1", { timeout: 15000 });
@@ -87,18 +87,38 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     for (const t of ["work", "changes", "map", "find", "setup"]) { await p.click('.eg-tabs [data-t="' + t + '"]'); await p.waitForTimeout(400); }
     ok(/GitHub connected/.test(await p.textContent("#ob-view")), "v27: Engineer tabs render (setup checklist shown)"); await shot(p, "brain-engineer-setup", true);
     // v28 Website Builder: wizard → website → editor (select a section, edit, undo) → publish checks
-    await p.goto(BASE + "/website-builder/#new=1"); await p.waitForSelector("#wb-wf input[name=name]", { timeout: 20000 });
-    await p.fill("#wb-wf input[name=name]", "Smile Dental"); await p.fill("#wb-wf input[name=industry]", "Dental clinic"); await p.fill("#wb-wf input[name=location]", "Dwarka, Delhi"); await p.click("#wb-wf .wb-btn.pri");
-    await p.click("#wb-wf .wb-btn.pri"); await p.click("#wb-wf .wb-btn.pri"); await p.waitForSelector(".wb-rec", { timeout: 15000 }); await shot(p, "builder-templates", true);
-    await p.click("#wb-wf .wb-btn.pri"); await p.waitForSelector("#wb-if", { timeout: 60000 }); await p.waitForTimeout(1200);
+    await p.goto(BASE + "/website-builder/#new=1"); await p.waitForSelector("#w-pt", { timeout: 20000 }); await shot(p, "builder-start");
+    await p.fill("#w-pt", "Build a premium website for a dental clinic in Dwarka, Delhi focused on cosmetic dentistry."); await p.click("#w-aib");
+    await p.waitForSelector("#w-f input[name=name]"); ok(await p.inputValue("#w-f input[name=location]") === "Dwarka, Delhi", "v32: AI prompt understood (industry + location pre-filled)");
+    await p.fill("#w-f input[name=name]", "Smile Dental"); await p.click("#w-next");
+    await p.waitForSelector("[data-k=goals]"); await p.click("[data-k=goals] >> text=Book Appointments"); await p.click("#w-next");
+    await p.waitForSelector(".wb-stycard"); ok((await p.$$(".wb-stycard")).length === 10 && /recommended/.test(await p.textContent(".wb-stycards")), "v32: 10 style cards with live previews (one recommended)"); await shot(p, "builder-style"); await p.click("#w-next");
+    await p.waitForSelector(".wb-smap"); const smap = (await p.$$eval(".wb-smap [data-pt]", (a) => a.map((x) => x.value))).join(" "); console.log("SITEMAP", smap); ok(/Treatments/.test(smap) && /Doctors/.test(smap) && /Book/.test(smap) && /Privacy/.test(smap), "v32: AI sitemap for a dental clinic (treatments, doctors, booking, privacy) — editable"); await shot(p, "builder-sitemap"); await p.click("#w-next");
+    await p.waitForSelector("#w-genai"); ok((await p.$$(".wb-rec2")).length >= 1 && /%/.test(await p.textContent(".wb-recs2")), "v32: recommended templates with match %"); await p.click("#w-genai");
+    await p.waitForSelector(".wb-stages .done", { timeout: 20000 }); await shot(p, "builder-making");
+    await p.waitForSelector("#wb-if", { timeout: 90000 }); await p.waitForTimeout(1500); if (await p.$("#tu-skip")) { ok(true, "v32: first-visit tutorial shows"); await p.click("#tu-skip"); }
     const fr = p.frameLocator("#wb-if"); await fr.locator("[data-sec='1']").click(); await p.waitForSelector("#wb-pf [data-p]", { timeout: 8000 });
     ok(/Hero/.test(await p.textContent("#wb-rp")), "v28: builder wizard → website → click a section → its properties"); await shot(p, "builder-editor");
     const inp = p.locator('#wb-pf [data-p="title"]'); await inp.fill("Gentle care for every smile"); await inp.dispatchEvent("change"); await p.waitForTimeout(400);
     ok(await fr.locator("h1").first().textContent() === "Gentle care for every smile", "v28: editing a field updates the canvas");
     await p.click(".wb-bar .wb-name"); await p.keyboard.press("Control+z"); await p.waitForTimeout(500); ok(await fr.locator("h1").first().textContent() !== "Gentle care for every smile", "v28: undo (Ctrl+Z)");
     await p.waitForFunction(() => /Saved/.test(document.getElementById("wb-save").textContent), null, { timeout: 15000 }); ok(true, "v28: autosave");
-    await p.click("#wb-pub"); await p.waitForSelector(".wb-modal", { timeout: 15000 }); ok(/fix these first|is live/i.test(await p.textContent(".wb-modal")), "v28: publish runs the checks"); await shot(p, "builder-publish");
+    await p.click("#wb-pub"); await p.waitForSelector(".wb-modal .wb-check", { timeout: 20000 }); ok(/fix these first|is live/i.test(await p.textContent(".wb-modal")), "v28: publish runs the checks"); await shot(p, "builder-publish");
     await p.click(".wb-modal [data-x]");
+    // v32 editor upgrades
+    await p.click('[data-tab="add"]'); await p.waitForSelector("[data-addt=faq]"); const nSec = await p.frameLocator("#wb-if").locator("[data-sec]").count(); await p.click("[data-addt=faq]"); await p.waitForTimeout(700);
+    ok(await p.frameLocator("#wb-if").locator("[data-sec]").count() === nSec + 1, "v32: Add tab — FAQ section added");
+    await p.click('[data-tab="design"]'); await p.waitForSelector("[data-sty=luxury]"); await p.click("[data-sty=dark]"); await p.waitForTimeout(600);
+    ok(/--bg:#0/i.test(await p.frameLocator("#wb-if").locator("style").first().textContent()), "v32: Design system — Dark style preset switches the whole website"); await shot(p, "builder-design");
+    await p.frameLocator("#wb-if").locator("[data-sec='2']").click({ button: "right" }); await p.waitForSelector(".wb-ctx"); ok(/Save as component/.test(await p.textContent(".wb-ctx")), "v32: right-click menu on a section"); await p.click(".wb-ctx [data-c=dup]"); await p.waitForTimeout(500);
+    ok(await p.frameLocator("#wb-if").locator("[data-sec]").count() === nSec + 2, "v32: duplicate from the context menu");
+    await p.click("[data-rt=style]"); await p.selectOption("[data-st=bg]", "alt"); await p.waitForTimeout(700); ok(await p.frameLocator("#wb-if").locator(".s-bg-alt").count() > 0, "v32: section Style — background changes on the canvas");
+    await p.click("#wb-audit"); await p.waitForSelector(".wb-scores"); ok((await p.$$(".wb-sc")).length === 7, "v32: audit with 7 scores"); await shot(p, "builder-audit");
+    const before = await p.textContent(".wb-score"); if (await p.isEnabled("#au-all")) { await p.click("#au-all"); await p.waitForSelector("#au-ba b", { timeout: 15000 }); ok(/Before → after/.test(await p.textContent("#au-ba")), "v32: fix all auto-fixable issues → before/after shown (" + before + " → " + await p.textContent(".wb-score") + ")"); } else ok(/\(0\)/.test(await p.textContent("#au-all")), "v32: QA already auto-fixed everything at creation (score " + before + ")");
+    await p.click(".wb-modal [data-x]"); await p.click("#wb-share"); await p.waitForSelector("#sh-new"); await p.click("#sh-new"); await p.waitForSelector("[data-cp]", { timeout: 10000 }); ok(true, "v32: share preview link created"); await p.click(".wb-modal [data-x]");
+    await p.click("#wb-set"); await p.waitForSelector("[data-stab=members]"); await p.click("[data-stab=members]"); await p.waitForSelector("#mb-f"); ok(/Owner/.test(await p.textContent("#ws-b")), "v32: settings → members"); await p.click("[data-stab=danger]"); await p.waitForSelector("#dz-dup"); await shot(p, "builder-settings"); await p.click(".wb-modal [data-x]");
+    await p.click("#wb-prev"); await p.waitForSelector("#pr-if"); await p.click("[data-pd=mobile]"); ok(await p.getAttribute("#pr-if", "class") === "pv-mobile", "v32: preview on mobile"); await p.click(".wb-modal [data-x]");
+    await p.click("#wb-pub"); await p.waitForSelector(".wb-check", { timeout: 20000 }); ok((await p.$$(".wb-check li")).length === 10, "v32: publish checklist (10 checks)"); await shot(p, "builder-publish2"); await p.click(".wb-modal [data-x]");
     // v29 Store & Blog manager
     await p.click('[data-tab="store"]'); await p.waitForSelector("[data-sto=products]"); await p.click("[data-sto=products]"); await p.waitForSelector("#np", { timeout: 10000 });
     await p.click("#np"); await p.fill('#pf [name=title]', "Whitening kit"); await p.fill('#pf [name=price]', "799"); await p.check('#pf [name=track]'); await p.fill('#pf [name=stock]', "5"); await p.click("#pf .wb-btn.pri");

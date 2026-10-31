@@ -15,12 +15,12 @@ const rec = (q) => (typeof searchTemplates === "function" ? searchTemplates(q, {
 ok(rec("cafe coffee") === "cafe-cozy" && rec("chartered accountant gst") === "ca-firm" && rec("wedding planner") === "wedding-planner" && rec("pet grooming") === "pet-care", "recommendations find the new templates (café, CA, wedding, pets)");
 const site = (motion) => ({ theme: Object.assign({}, TEMPLATES[0].theme, { motion }), pages: TEMPLATES[0].pages, settings: { business: { name: "X" } } });
 const sub = renderPage(site("subtle"), "home"), liv = renderPage(site("lively"), "home"), none = renderPage(site("none"), "home"), ed = renderPage(site("lively"), "home", { edit: true });
-ok(/IntersectionObserver/.test(sub) && /@keyframes fu/.test(sub) && !/m-prog/.test(sub), "subtle motion: scroll reveal + hero entrance");
+ok(/IntersectionObserver/.test(sub) && /@keyframes fu/.test(sub) && /var L=0/.test(sub) && !/\.m-prog\{/.test(sub), "subtle motion: scroll reveal + hero entrance (no progress bar)");
 ok(/m-prog/.test(liv) && /floaty/.test(liv) && /logo-row/.test(liv), "lively motion: floating hero art, scroll progress, logo marquee");
 ok(!/IntersectionObserver/.test(none) && !/@keyframes fu/.test(none), "motion none: no animation at all");
 ok(!/IntersectionObserver/.test(ed), "the editor canvas stays still (no motion script while editing)");
 ok(/prefers-reduced-motion:reduce\)\{\*\{transition:none!important;animation:none!important/.test(sub) && /matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches;if\(R\)return/.test(sub), "reduced-motion users get no motion");
 const d = validateDoc({ theme: { motion: "lively" }, settings: {}, pages: [{ slug: "home", title: "Home", sections: [{ type: "hero", props: { title: "Hi" } }] }] });
 const d2 = validateDoc({ theme: { motion: "<script>" }, settings: {}, pages: [{ slug: "home", title: "Home", sections: [{ type: "hero", props: { title: "Hi" } }] }] });
-ok(d.theme.motion === "lively" && !d2.theme.motion && MOTIONS.join() === "subtle,lively,none", "motion setting saved; anything else dropped");
+ok(d.theme.motion === "dynamic" && !d2.theme.motion && MOTIONS.join() === "none,subtle,modern,dynamic,experimental", "motion setting saved (v31 'lively' = v32 'dynamic'); anything else dropped");
 console.log("\nv31 builder: " + pass + "/" + (pass + fail) + " passed"); process.exit(fail ? 1 : 0);

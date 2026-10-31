@@ -4,16 +4,8 @@
    (escaped first, then **bold**, *italic*, [link](url), ![image](url), # headings, - lists). */
 import { renderPage, esc, safeUrl, money } from "./render.js";
 
-export function md(src) {
-  const lines = String(src || "").replace(/\r/g, "").split("\n"), out = []; let list = false;
-  const inline = (t) => esc(t).replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, a, u) => (safeUrl(u) ? '<img src="' + esc(safeUrl(u)) + '" alt="' + a + '" loading="lazy">' : "")).replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, a, u) => (safeUrl(u) ? '<a href="' + esc(safeUrl(u)) + '"' + (/^https?:/.test(u) ? ' rel="noopener" target="_blank"' : "") + ">" + a + "</a>" : a)).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  for (const l of lines) {
-    if (/^\s*[-*]\s+/.test(l)) { if (!list) { out.push("<ul>"); list = true; } out.push("<li>" + inline(l.replace(/^\s*[-*]\s+/, "")) + "</li>"); continue; }
-    if (list) { out.push("</ul>"); list = false; }
-    if (/^###\s/.test(l)) out.push("<h3>" + inline(l.slice(4)) + "</h3>"); else if (/^##?\s/.test(l)) out.push("<h2>" + inline(l.replace(/^##?\s/, "")) + "</h2>"); else if (l.trim()) out.push("<p>" + inline(l) + "</p>");
-  }
-  if (list) out.push("</ul>"); return out.join("\n");
-}
+import { md } from "./md.js";
+export { md };
 /* a virtual page: the home page's navigation + footer around our own (escaped) HTML */
 export function shell(site, title, html, o) {
   const home = (site.pages || []).find((p) => p.slug === "home") || (site.pages || [])[0] || { sections: [] }, nav = home.sections.find((s) => s.type === "navbar"), foot = home.sections.find((s) => s.type === "footer");

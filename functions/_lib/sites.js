@@ -5,7 +5,7 @@
    The client AI only ever sees ONE website's document and can only return edits to it. */
 import { PW_RE } from "../../sites/lib/protect.js";
 import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail } from "./accounts.js";
-import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS } from "../../sites/lib/render.js";
+import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS, COLLECTIONS } from "../../sites/lib/render.js";
 import { TEMPLATES, templateById, searchTemplates, why, clientAllowed, SOURCES, FODO_LICENSE } from "../../sites/lib/templates.js";
 import { brainAI, parseJson } from "./brain/models.js";
 import { safeUrl as netSafe, safeFetch } from "./xray-core.js";
@@ -86,12 +86,20 @@ export function validateDoc(doc, lim) {
   if (out.theme.font && !FONTS[out.theme.font]) delete out.theme.font; if (out.theme.headingFont && !FONTS[out.theme.headingFont]) delete out.theme.headingFont;
   if (out.settings.customCss) out.settings.customCss = sanitizeCss(out.settings.customCss);
   delete out.settings.customJs; delete out.settings.headCode;
+  /* v36: search-engine ownership codes (Google Search Console, Bing). Only the code is kept, never markup. */
+  if (out.settings.verify) { const v = out.settings.verify, tok = (x) => { const m = String(x || "").match(/content=["']([^"']+)["']/); const t = (m ? m[1] : String(x || "")).trim(); return /^[A-Za-z0-9_\-]{8,100}$/.test(t) ? t : ""; };
+    out.settings.verify = { google: tok(v.google) || undefined, bing: tok(v.bing) || undefined }; if (!out.settings.verify.google && !out.settings.verify.bing) delete out.settings.verify; }
   // v32 custom code (advanced): stored, but only ever served on the website's OWN connected domain (its own origin), never on
   // FODO's shared address or inside the builder, so it can't touch FODO or another customer's website
   ["customHead", "customBody"].forEach((k) => { if (out.settings[k] != null) out.settings[k] = clip(String(out.settings[k]), 20000); });
   if (out.settings.forms && out.settings.forms.webhook && !/^https:\/\/[^\s]{4,300}$/.test(out.settings.forms.webhook)) delete out.settings.forms.webhook;
   const comps = (Array.isArray(doc.components) ? doc.components : []).slice(0, 40).filter((k) => k && /^cmp_[a-z0-9]{6,16}$/.test(String(k.id)) && SECTION_TYPES.indexOf(k.type) > -1).map((k) => ({ id: k.id, name: clip(k.name || k.type, 60), type: k.type, props: cleanVal(k.props || {}, 0) || {} }));
   if (comps.length) out.components = comps;
+  /* v36: shared collections, only the known lists and fields, text clipped */
+  if (doc.collections && typeof doc.collections === "object") { const cl = {};
+    Object.keys(COLLECTIONS).forEach((k) => { const C = COLLECTIONS[k], a = doc.collections[k]; if (!Array.isArray(a)) return;
+      cl[k] = a.slice(0, C.max).filter((x) => x && typeof x === "object").map((x) => { const o = {}; C.fields.forEach((f) => { if (x[f] != null && x[f] !== "") o[f] = clip(String(x[f]), C.long.indexOf(f) > -1 ? 1500 : 300); }); return o; }); });
+    if (Object.keys(cl).length) out.collections = cl; }
   for (const p of pages) {
     const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); if (/^(p|cart|checkout|order|blog|thank-you|search)$/.test(slug)) throw err("“" + slug + "” is reserved (store, blog, search, thank-you), use another page address."); seen.add(slug);
     const secs = (Array.isArray(p.sections) ? p.sections : []).slice(0, 40).filter((s) => s && SECTION_TYPES.indexOf(s.type) > -1).map((s) => Object.assign({ type: s.type, props: cleanVal(s.props || {}, 0) || {} }, s.style && typeof s.style === "object" ? { style: cleanVal(s.style, 0) } : {}, s.ref && comps.some((k) => k.id === s.ref) ? { ref: s.ref } : {}));

@@ -9,6 +9,7 @@ import * as PN from "/js/wb-panels.js";
 import * as CR from "/js/wb-create.js";
 import * as V from "/js/wb-v34.js";
 import * as AS from "/js/wb-assets.js";
+import * as CL from "/js/wb-collections.js";
 import { legalText as legalTextFor } from "/sites/lib/industry.js";
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
@@ -53,7 +54,7 @@ async function editor(id, hello) {
   $("#wb-undo").onclick = undo; $("#wb-redo").onclick = redo; $("#wb-prev").onclick = () => preview(); $("#wb-pub").onclick = publishFlow; $("#wb-ai-open").onclick = openCmd;
   $("#wb-audit").onclick = () => PN.auditPanel(); $("#wb-share").onclick = () => PN.sharePanel(); $("#wb-set").onclick = () => PN.settingsPage("general"); $("#wb-help").onclick = () => PN.helpPanel();
   $("#wb-adv").onchange = function () { ED.adv = this.checked; ls.set("wb-adv", this.checked ? "1" : "0"); $(".wb-left .wb-tabs").innerHTML = TABS().map((x) => '<button data-tab="' + x[0] + '">' + x[1] + "</button>").join(""); $$("[data-tab]").forEach((b) => { b.onclick = () => { ED.tab = b.dataset.tab; left(); }; }); if (!TABS().some((x) => x[0] === ED.tab)) ED.tab = "add"; left(); right(); };
-  PN.bind(panelX()); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
+  PN.bind(panelX()); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); CL.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
   $("#wb-cf").onsubmit = (e) => { e.preventDefault(); askAI($("#wb-ci").value); };
   window.onmessage = onFrame; document.onkeydown = keys; window.onbeforeunload = () => (ED && ED.dirty ? "You have unsaved changes." : undefined);
   paint(); left(); right(); if (hello && hello !== "paused") toast(hello); if (ED.dirty) queueSave();
@@ -180,7 +181,7 @@ function left() {
     el.innerHTML = '<details open><summary>Business details</summary>' + [["name", "Business name"], ["tagline", "Tagline"], ["phone", "Phone"], ["email", "Email"], ["whatsapp", "WhatsApp"], ["address", "Address"], ["city", "City"]].map((x) => '<label class="wb-lab">' + x[1] + '<input data-b="' + x[0] + '" value="' + esc(b[x[0]] || "") + '"></label>').join("") + '<label class="wb-lab">Send form messages to<input data-set="notifyEmail" type="email" value="' + esc(ED.doc.settings.notifyEmail || "") + '"></label></details>' +
       '<div class="wb-tools"><button class="wb-btn sm" id="mt-fr">⌕ Find &amp; replace</button><button class="wb-btn sm" id="mt-legal">§ Legal pages</button><button class="wb-btn sm" id="mt-gen">✦ Continue generation</button><button class="wb-btn sm" id="mt-set">⚙ All settings</button></div>' +
       '<details><summary>Domain</summary><div id="wb-dom">Loading…</div></details><details><summary>Form messages</summary><div id="wb-forms">Loading…</div></details><details><summary>Visitors</summary><div id="wb-stats">Loading…</div></details><details><summary>Version history</summary><div id="wb-vers">Loading…</div></details>' +
-      '<details><summary>Images</summary><div id="wb-media">Loading…</div></details><details><summary>Advanced</summary><label class="wb-lab">Custom CSS <small>(scripts are not allowed)</small><textarea id="wb-css" rows="6" spellcheck="false">' + esc(ED.doc.settings.customCss || "") + '</textarea></label><label class="wb-ck"><input type="checkbox" id="wb-badge"' + (ED.doc.settings.hideBadge ? " checked" : "") + '> Hide “Made with FODO”</label></details>' +
+      '<details><summary>Images</summary><div id="wb-media">Loading…</div></details><details><summary>Collections</summary><div id="wb-coll">Loading…</div></details><details><summary>Advanced</summary><label class="wb-lab">Custom CSS <small>(scripts are not allowed)</small><textarea id="wb-css" rows="6" spellcheck="false">' + esc(ED.doc.settings.customCss || "") + '</textarea></label><label class="wb-ck"><input type="checkbox" id="wb-badge"' + (ED.doc.settings.hideBadge ? " checked" : "") + '> Hide “Made with FODO”</label></details>' +
       '<div class="wb-row"><a class="wb-btn sm" href="/api/sites/' + ED.id + '/export">Download website (ZIP)</a><button class="wb-btn sm" id="wb-unpub"' + (ED.s.status === "live" ? "" : " hidden") + ">Unpublish</button><button class=\"wb-btn sm danger\" id=\"wb-delsite\">Delete website</button></div>";
     $$("[data-b]", el).forEach((i) => { i.onchange = () => change(() => { ED.doc.settings.business = Object.assign({}, ED.doc.settings.business, { [i.dataset.b]: i.value.trim() }); }); });
     $$("[data-set]", el).forEach((i) => { i.onchange = () => change(() => { ED.doc.settings[i.dataset.set] = i.value.trim(); }, true); });
@@ -190,7 +191,7 @@ function left() {
     $("#mt-legal").onclick = () => legalPages();
     $("#wb-unpub").onclick = async () => { const r = await api(ED.id + "/unpublish", "POST", {}); if (r.ok) { ED.s.status = "draft"; toast("Unpublished, the website is offline."); left(); } };
     $("#wb-delsite").onclick = async () => { if (prompt("Type DELETE to delete this website") !== "DELETE") return; const r = await api(ED.id, "DELETE"); if (r.ok) { ED = null; location.hash = ""; dashboard(); } };
-    $$("details", el).forEach((d) => d.addEventListener("toggle", () => { if (!d.open) return; const id = (d.querySelector("[id]") || {}).id; ({ "wb-dom": domainPanel, "wb-forms": formsPanel, "wb-stats": statsPanel, "wb-vers": versionsPanel, "wb-media": mediaPanel })[id] && ({ "wb-dom": domainPanel, "wb-forms": formsPanel, "wb-stats": statsPanel, "wb-vers": versionsPanel, "wb-media": mediaPanel })[id](); }));
+    $$("details", el).forEach((d) => d.addEventListener("toggle", () => { if (!d.open) return; const id = (d.querySelector("[id]") || {}).id; ({ "wb-dom": domainPanel, "wb-forms": formsPanel, "wb-stats": statsPanel, "wb-vers": versionsPanel, "wb-media": mediaPanel, "wb-coll": () => CL.panel($("#wb-coll")) })[id] && ({ "wb-dom": domainPanel, "wb-forms": formsPanel, "wb-stats": statsPanel, "wb-vers": versionsPanel, "wb-media": mediaPanel, "wb-coll": () => CL.panel($("#wb-coll")) })[id](); }));
     return;
   }
   if ($("#wb-pg")) $("#wb-pg").onchange = function () { ED.page = this.value; ED.sel = null; paint(); left(); right(); };
@@ -235,7 +236,8 @@ function right() {
     const NAMES = { href: "Link (page like contact/ or https://…)", url: "YouTube link", cta: "Button", cta2: "Second button", q: "Question", a: "Answer", logo: "Logo text", icon: "Icon (emoji)" }, noAi = /^(href|url|icon|value|price|period|phone|email|whatsapp|address)$/.test(lab);
     return '<label class="wb-lab">' + esc(NAMES[lab] || lab) + (typeof v === "string" && !noAi ? ' <select class="wb-rw" data-rw="' + k + '"><option value="">✦ AI</option>' + REWRITES.map((r) => '<option value="' + r[0] + '">' + r[1] + "</option>").join("") + "</select>" : "") + (long ? '<textarea rows="3" data-p="' + k + '">' + esc(v || "") + "</textarea>" : '<input data-p="' + k + '" value="' + esc(v == null ? "" : v) + '">') + "</label>";
   };
-  const walk = (obj, path) => Object.keys(obj).filter((key) => !/^(_s|form|generated|reviewed|hours)$/.test(key) || (key === "hours" && sec.type !== "booking")).map((key) => { const v = obj[key], pth = path.concat([key]);
+  const hide = CL.hiddenKeys(sec, p);
+  const walk = (obj, path) => Object.keys(obj).filter((key) => !(path.length === 0 && hide.indexOf(key) > -1)).filter((key) => !/^(_s|form|generated|reviewed|hours)$/.test(key) || (key === "hours" && sec.type !== "booking")).map((key) => { const v = obj[key], pth = path.concat([key]);
     if (Array.isArray(v)) { if (v.every((x) => typeof x === "string")) return '<label class="wb-lab">' + esc(key) + ' <small>(one per line)</small><textarea rows="4" data-lines="' + pth.join(".") + '">' + esc(v.join("\n")) + "</textarea></label>";
       return '<fieldset class="wb-list"><legend>' + esc(key) + "</legend>" + v.map((it, i) => '<div class="wb-item"><div class="wb-itbar"><b>' + (i + 1) + '</b><button type="button" class="wb-ib sm" data-iu="' + pth.join(".") + "|" + i + '">↑</button><button type="button" class="wb-ib sm" data-ix="' + pth.join(".") + "|" + i + '">✕</button></div>' + (typeof it === "object" && it ? walk(it, pth.concat([String(i)])) : field(pth.concat([String(i)]), it, "item")) + "</div>").join("") + '<button type="button" class="wb-btn sm" data-ia="' + pth.join(".") + '">+ Add</button></fieldset>'; }
     if (v && typeof v === "object") return '<fieldset class="wb-obj"><legend>' + esc(key) + "</legend>" + walk(v, pth) + "</fieldset>";
@@ -244,8 +246,8 @@ function right() {
   extra.forEach((k) => { if (!(k in p)) p[k] = /^(cta|cta2)$/.test(k) || (k === "button" && /hero|cta/.test(sec.type)) ? { label: "", href: "" } : /^(points|fields|services|staff|locations)$/.test(k) ? [] : /^(links|items)$/.test(k) ? [] : k === "line" ? false : ""; });
   const embedNote = sec.type === "embed" ? '<p class="wb-muted">' + (p.url ? (PN.embedUrl(p.url) ? "✓ Embeds from " + esc(new URL(PN.embedUrl(p.url)).hostname) : "⚠ This link can't be embedded, use YouTube, Vimeo, a Google Maps “Embed a map” link, Calendly, Typeform, Google Forms or Spotify.") : "Paste a YouTube, Vimeo, Google Maps embed, Calendly, Typeform, Google Forms or Spotify link.") + "</p>" : "";
   const legalNote = sec.type === "legal" && p.generated ? '<div class="wb-warnbox">⚖ Generated draft, review it for your business and jurisdiction (FODO is not a lawyer) and fill every [bracket].<label class="wb-ck"><input type="checkbox" id="wb-lrev"' + (p.reviewed ? " checked" : "") + "> I've reviewed this text</label></div>" : "";
-  el.innerHTML = head0 + '<button class="wb-btn sm wb-full" id="wb-secai">✦ Ask AI about this section</button>' + legalNote + embedNote + '<form id="wb-pf">' + walk(p, []) + '</form><div id="wb-fb"></div>' + (comp ? "" : '<button class="wb-btn sm wb-full" id="wb-mkc">⧉ Save as component (reuse everywhere)</button>');
-  wireHead(); if (/contact|booking/.test(sec.type)) PN.formBuilder($("#wb-fb"), sec, p);
+  el.innerHTML = head0 + '<button class="wb-btn sm wb-full" id="wb-secai">✦ Ask AI about this section</button>' + legalNote + embedNote + CL.sourceBox(sec, p) + '<form id="wb-pf">' + walk(p, []) + '</form><div id="wb-fb"></div>' + (comp ? "" : '<button class="wb-btn sm wb-full" id="wb-mkc">⧉ Save as component (reuse everywhere)</button>');
+  wireHead(); CL.wireSource(el, sec, p); if (/contact|booking/.test(sec.type)) PN.formBuilder($("#wb-fb"), sec, p);
   if ($("#wb-lrev")) $("#wb-lrev").onchange = function () { change(() => { p.reviewed = this.checked; }, true); };
   if ($("#wb-mkc")) $("#wb-mkc").onclick = () => { PN.saveAsComponent(ED.sel); right(); };
   const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), p), set = (path, val) => { const ks = path.split("."), last = ks.pop(), o = ks.reduce((a, k) => a[k], p); o[last] = val; };

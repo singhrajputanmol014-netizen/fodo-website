@@ -270,7 +270,7 @@ export function renderPage(site, slug, o) {
   const S = site.settings || {}, biz = S.business || {}, name = biz.name || site.name || "Website", seo = page.seo || {};
   let h1 = false; const c = { data: o.data || null, virtual: !!o.virtual, name, edit: !!o.edit, home: base, nav: navOf(site, base, page.slug), legal: (site.pages || []).filter((x) => x.nav === false && !x.hidden && /^(privacy|terms|shipping|returns|refund|cookies?)/.test(x.slug)).map((x) => ({ label: x.title, href: base + x.slug + "/" })), search: !!S.search, formAction: o.formAction || "#", badge: o.badge !== false, si: 0, h1: (close) => { if (close) return c._t; c._t = h1 ? "h2" : "h1"; h1 = true; return c._t; } };
   const comps = {}; (site.components || []).forEach((k) => { if (k && k.id) comps[k.id] = k; });
-  const body = (page.sections || []).map((s, i) => { const f = R[s.type]; if (!f) return ""; c.si = i; const props = s.ref && comps[s.ref] && comps[s.ref].type === s.type ? comps[s.ref].props || {} : s.props || {};
+  const body = (page.sections || []).map((s, i) => { const f = R[s.type]; if (!f) return ""; c.si = i; const props = fromCollection(site, s.type, s.ref && comps[s.ref] && comps[s.ref].type === s.type ? comps[s.ref].props || {} : s.props || {});
     let html = f(props, c); if (!html) return o.edit ? '<section data-sec="' + i + '" class="ed-empty"><div class="wrap"><p class="sub">' + esc(SECTION_LABELS[s.type] || s.type) + ", add details in the panel</p></div></section>" : "";
     html = wrapStyle(html, s.style || props._s, s.type); return o.edit ? html.replace(/^<(header|section|footer)/, '<$1 data-sec="' + i + '"') : html; }).join("\n");
   let body2 = body; if (!/<h1[\s>]/.test(body2)) { const k = body2.indexOf("<h2"); if (k > -1) { const e = body2.indexOf("</h2>", k); body2 = body2.slice(0, k) + "<h1" + body2.slice(k + 3, e) + "</h1>" + body2.slice(e + 5); } }   // every page gets exactly one H1
@@ -280,9 +280,24 @@ export function renderPage(site, slug, o) {
   const schema = { "@context": "https://schema.org", "@type": biz.schemaType || "LocalBusiness", name, url: canon || undefined, telephone: biz.phone || undefined, email: biz.email || undefined, address: biz.address ? { "@type": "PostalAddress", streetAddress: biz.address, addressLocality: biz.city || undefined, addressCountry: biz.country || "IN" } : undefined };
   return "<!doctype html><html lang=\"" + esc(S.lang || "en") + "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + esc(title) + "</title>" + (desc ? '<meta name="description" content="' + esc(desc) + '">' : "") +
     (canon ? '<link rel="canonical" href="' + esc(canon) + '">' : "") + '<meta property="og:title" content="' + esc(seo.ogTitle || title) + '">' + (desc ? '<meta property="og:description" content="' + esc(desc) + '">' : "") + (safeUrl(seo.ogImage) ? '<meta property="og:image" content="' + esc(safeUrl(seo.ogImage)) + '">' : "") + '<meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">' +
-    (page.noindex || o.noindex ? '<meta name="robots" content="noindex">' : "") + (safeUrl(S.favicon) ? '<link rel="icon" href="' + esc(safeUrl(S.favicon)) + '">' : "") + (fonts.length ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?' + fonts.map((f) => "family=" + f).join("&") + '&display=swap">' : "") +
+    (page.noindex || o.noindex ? '<meta name="robots" content="noindex">' : "") + verifyMeta(S.verify) + (safeUrl(S.favicon) ? '<link rel="icon" href="' + esc(safeUrl(S.favicon)) + '">' : "") + (fonts.length ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?' + fonts.map((f) => "family=" + f).join("&") + '&display=swap">' : "") +
     "<style>" + themeCss(site.theme) + (S.customCss ? "\n/* custom */\n" + sanitizeCss(S.customCss) : "") + "</style>" + (page.slug === "home" ? '<script type="application/ld+json">' + JSON.stringify(schema).replace(/</g, "\\u003c") + "</script>" : "") + (o.allowCode && S.customHead ? String(S.customHead).slice(0, 20000) : "") + (o.headExtra || "") + "</head><body>" + body2 + extras(S, biz, o) + (o.bodyExtra || "") + (o.noMotion || o.edit ? "" : motionScript((site.theme || {}).motion)) + (o.edit ? "" : siteScript()) + (o.allowCode && S.customBody ? String(S.customBody).slice(0, 20000) : "") + "</body></html>";
 }
+/* v36: shared collections (team, reviews, portfolio). One list in doc.collections, shown by any number of sections:
+   a section with { from: "collection", limit, category } renders the shared items instead of its own. */
+export const COLLECTIONS = { team: { label: "Team", fields: ["name", "role", "image", "bio"], long: ["bio"], max: 60 },
+  testimonials: { label: "Reviews", fields: ["quote", "name", "role", "source"], long: ["quote"], max: 100 },
+  portfolio: { label: "Portfolio", fields: ["title", "category", "text", "image", "link", "result"], long: ["text"], max: 100 } };
+export function fromCollection(site, type, props) {
+  if (!props || props.from !== "collection" || !COLLECTIONS[type]) return props;
+  let items = (((site || {}).collections || {})[type] || []).filter((x) => x && typeof x === "object");
+  if (type === "portfolio" && props.category) items = items.filter((x) => String(x.category || "").toLowerCase() === String(props.category).toLowerCase());
+  const n = parseInt(props.limit, 10); if (n > 0) items = items.slice(0, n);
+  return Object.assign({}, props, { items });
+}
+/* v36: Search Console / Bing ownership meta tags (codes only, validated again here) */
+export function verifyMeta(v) { v = v || {}; const ok = (t) => typeof t === "string" && /^[A-Za-z0-9_\-]{8,100}$/.test(t);
+  return (ok(v.google) ? '<meta name="google-site-verification" content="' + v.google + '">' : "") + (ok(v.bing) ? '<meta name="msvalidate.01" content="' + v.bing + '">' : ""); }
 /* floating WhatsApp button + cookie consent (settings), never shown inside the editor canvas */
 function extras(S, biz, o) {
   let h = ""; const wa = String(biz.whatsapp || "").replace(/\D/g, "");

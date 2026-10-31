@@ -137,6 +137,17 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     await p.click("#cf-me"); await p.waitForSelector(".wb-save.s-saved", { timeout: 15000 }); ok(true, "v34: Keep mine → saved (the other version went to history)");
     await p.context().setOffline(true); await fld.fill("Typed while offline"); await fld.dispatchEvent("change"); await p.waitForSelector(".wb-save.s-offline", { timeout: 15000 }); ok(/Offline/.test(await p.textContent("#wb-save")), "v34: offline → 'changes kept on this device'");
     await p.context().setOffline(false); await p.evaluate(() => window.dispatchEvent(new Event("online"))); await p.waitForSelector(".wb-save.s-saved", { timeout: 20000 }); ok(true, "v34: back online → saved automatically");
+    // v36 shared collections: a Reviews section shows the shared list; editing the list updates the page
+    await p.click('[data-tab="add"]'); await p.waitForSelector("[data-addt=testimonials]"); await p.click("[data-addt=testimonials]"); await p.waitForTimeout(700);
+    await p.frameLocator("#wb-if").locator(".quotes").last().click(); await p.waitForSelector("#wb-csrc", { timeout: 10000 });
+    ok(true, "v36: Reviews section has a Content source (own list / shared collection)");
+    for (let k = 0; k < 4 && !(await p.$("#wb-cedit")); k++) { await p.waitForTimeout(400); await p.selectOption("#wb-csrc", "collection").catch(() => {}); await p.waitForSelector("#wb-cedit", { timeout: 2500 }).catch(() => {}); }   // the panel may still be re-drawing after the add
+    await p.waitForSelector("#wb-cedit", { timeout: 5000 });
+    await p.click("#wb-cedit"); await p.waitForSelector(".wb-cm"); ok(/Add only real reviews/.test(await p.textContent(".wb-cm")), "v36: the shared reviews editor asks for real reviews only");
+    await p.click("#cm-add"); const last = p.locator(".wb-cm [data-i]").last();
+    for (const [f, v] of [["quote", "Real review from Asha at the clinic"], ["name", "Asha"], ["source", "Google review"]]) { await last.locator('[data-f="' + f + '"]').fill(v); await last.locator('[data-f="' + f + '"]').dispatchEvent("change"); }
+    await shot(p, "builder-collection"); await p.click(".wb-cm [data-x]"); await p.waitForTimeout(800);
+    ok(/Real review from Asha at the clinic/.test(await p.frameLocator("#wb-if").locator(".quotes").last().textContent()), "v36: the new review appears in the section on the canvas");
     // v29 Store & Blog manager
     await p.click('[data-tab="store"]'); await p.waitForSelector("[data-sto=products]"); await p.click("[data-sto=products]"); await p.waitForSelector("#np", { timeout: 10000 });
     await p.click("#np"); await p.fill('#pf [name=title]', "Whitening kit"); await p.fill('#pf [name=price]', "799"); await p.check('#pf [name=track]'); await p.fill('#pf [name=stock]', "5"); await p.click("#pf .wb-btn.pri");

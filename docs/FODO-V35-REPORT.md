@@ -82,7 +82,7 @@ On a phone, a long email address in the Overview activity feed could not wrap. T
 | | Suites | Checks | Failing |
 |---|---:|---:|---:|
 | v34 final | 50 | 3,246 | 0 |
-| v35 | 51 | 3,282 | 0 |
+| v35 | 52 | 3,282 | 0 |
 
 The new suite `tests/v35.test.mjs` (34 checks) covers:
 - media: dedupe, metadata, tenant isolation, in-use delete warning

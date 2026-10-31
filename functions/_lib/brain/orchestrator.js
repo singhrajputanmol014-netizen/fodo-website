@@ -45,7 +45,8 @@ const PAGES = { home: "home", overview: "home", dashboard: "home", chat: "chat",
 const SOCIAL = /\b(instagram|insta|facebook|fb|linkedin|twitter|youtube|yt|social media|socials|sab jagah|everywhere|all (my )?(accounts|platforms|socials))\b|\bx\b(?= (pe|par|account|handle|and|aur|,))/i;
 const CODE = /\b(website|site|homepage|home page|page|landing|admin|dashboard|panel|button|section|heading|headline|title|text|colou?r|font|footer|header|menu|navbar|banner|form|feature|code|css|logo|pricing page|plans page)\b/i;
 const CHANGE = /\b(change|edit|update|add|remove|delete|replace|fix|rename|move|make|create|build|implement|badal(o|na|do)?|badlo|hata(o|do|na)?|daal(o|do)?|dal(o|do)|jod(o|do)?|laga(o|do)?|bana(o|do)?|kar do|theek karo)\b/i;
-export function route(msg) {
+export function route(msg, env) {
+  env = env || {};
   msg = stripWake(msg).text;
   const m = String(msg || "").trim(), n = m.toLowerCase(), calls = [], add = (name, args) => { if (!calls.some((c) => c.name === name)) calls.push({ name, args: args || {} }); };
   // small talk: "fodo tum kaise ho", "how are you", "hi" → a warm reply with a live pulse
@@ -86,7 +87,8 @@ export function route(msg) {
   if (/\b(cost|costs|costing|kharcha|spend(ing)?|bill(ing)?|neurons?|tokens?)\b/i.test(m) && !/\bads?\b/i.test(m)) add("costs", { days: /\btoday|aaj\b/i.test(m) ? 1 : /\bweek|hafte\b/i.test(m) ? 7 : 30 });
   if (/\b(google analytics|ga4|analytics report)\b/i.test(m) || (/\b(traffic|visitors|sessions|page ?views|bounce rate|top pages)\b/i.test(m) && !/\bx-?ray\b/i.test(m))) add("analytics", { days: /\b(today|aaj)\b/i.test(m) ? 1 : /\b(week|hafte|7 days)\b/i.test(m) ? 7 : /\b(year|saal)\b/i.test(m) ? 365 : 28, by: /\b(pages?)\b/i.test(m) ? "page" : /\b(source|kahan se|channels?)\b/i.test(m) ? "channel" : /\b(country|countries|city|cities)\b/i.test(m) ? "country" : /\b(daily|per day|day by day|trend)\b/i.test(m) ? "day" : "" });
   if (/\b(google drive|my drive|drive (me|mein|pe|par)|google docs?|spreadsheet|google sheets?)\b/i.test(m)) add("drive_search", { query: ((/\b(?:named|called|about|for|naam|wala|wali)\s+["“]?([^"”?]{2,60})/i.exec(m) || [])[1] || "").trim() || m.replace(/.*\b(drive|docs?|sheets?|spreadsheet)\b/i, "").trim() || "" });
-  if (/\b(cashfree|settlements?|payouts?|payment gateway)\b/i.test(m)) add("cashfree", { days: /\b(today|aaj)\b/i.test(m) ? 1 : /\b(month|mahine)\b/i.test(m) ? 30 : 7 });
+  if (/\b(cashfree|razorpay|settlements?|payouts?|payment gateway|payments?|paise aaye|collection)\b/i.test(m)) { const dd = { days: /\b(today|aaj)\b/i.test(m) ? 1 : /\b(month|mahine)\b/i.test(m) ? 30 : 7 };
+    if (env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET && !/\bcashfree\b/i.test(m)) add("razorpay", dd); else if (env.CASHFREE_APP_ID || /\bcashfree\b/i.test(m)) add("cashfree", dd); }
   if (/\b(how many users|kitne users|users (count|kitne)|total users|new users|sign ?ups?)\b/i.test(m)) add("fodo_today");
   if (/\bleads?\b(?![@.\w])/i.test(m)) { add("leads"); add("fodo_today"); }
   if (/\b(revenue|sales|orders?|payments?|kamai|earning|paise aaye|income)\b/i.test(m)) { add("orders_revenue"); add("fodo_today"); }
@@ -187,7 +189,7 @@ export async function chat(base, body) {
   const scope = mode === "personal" ? "personal" : "fodo", ctx = Object.assign({}, base, { settings, ai, scope, thread: th.id });
   const hist = await history(env, th.id, 10); await saveMsg(env, th.id, "user", msg);
   const steps = [], results = [], memoryUpdates = [], actions = [];
-  let r = sw.wakeOnly ? { intent: "wake", calls: [{ name: "pulse", args: {} }] } : route(msg), answer = null, model = null, confidence = "LOW";
+  let r = sw.wakeOnly ? { intent: "wake", calls: [{ name: "pulse", args: {} }] } : route(msg, env), answer = null, model = null, confidence = "LOW";
   ctx.historyText = hist.slice(-4).map((h) => (h.role === "user" ? "Owner: " : "Brain: ") + clip(h.content, 400)).join("\n");
 
   /* 1. special intents: remember · forget · create task */

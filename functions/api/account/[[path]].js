@@ -11,10 +11,11 @@
  *   POST cancel                 → stop auto-renew
  *   GET/POST team (Agency) · GET/POST clients (Agency) · POST brand (Agency white-label)
  *   POST webhook/cashfree       → signed Cashfree webhooks (payments + subscriptions)
+ *   POST webhook/razorpay       → signed Razorpay webhooks (order.paid / payment.captured)
  */
 import { PRODUCTS } from "../../_lib/products.js";
 import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
-  verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
+  verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, payOn, payProvider, rzp, rzpOn, rzpMode, rzpVerifyWebhook, rzpVerifyPayment, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
 import { PLANS, PACKS, rank, has, publicPlans } from "../../_lib/plans.js";
 import { log, providers, outbound } from "../../_lib/xray-core.js";
 import { applyConfig } from "../../_lib/config.js";
@@ -29,6 +30,7 @@ export async function onRequest(ctx) {
     if (path === "config" && m === "GET") return config(env);
     if (!accountsOn(env)) return json({ ok: false, disabled: true, reason: "Accounts are not switched on yet." }, 503);
     if (path === "webhook/cashfree" && m === "POST") return await webhook(request, env);
+    if (path === "webhook/razorpay" && m === "POST") return await rzpWebhook(request, env);
     if (path === "webhook/whatsapp") return await waWebhook(request, env, m);
     if (m === "POST" && (!sameOrigin(request) || !/json/.test(request.headers.get("content-type") || ""))) return json({ ok: false, reason: "Bad request." }, 403);
     if (path === "me" && m === "GET") { const u = await sessionUser(env, request); if (!u) return json({ ok: true, user: null });
@@ -72,7 +74,7 @@ function config(env) {
   return json(Object.assign({ ok: true, enabled: on, google: on && env.GOOGLE_CLIENT_ID ? env.GOOGLE_CLIENT_ID : "",
     whatsapp: on && waOn(env),
     firebase: on && firebaseOn(env) ? { apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN || env.FIREBASE_PROJECT_ID + ".firebaseapp.com", projectId: env.FIREBASE_PROJECT_ID, providers: fbp } : null, email: on && !!env.RESEND_API_KEY, payments: on && cfOn(env),
-    autoRenew: on && cfOn(env) && env.CASHFREE_SUBSCRIPTIONS === "1", mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox", testMode: env.XRAY_TEST_MODE === "1" },
+    autoRenew: on && payProvider(env) === "cashfree" && env.CASHFREE_SUBSCRIPTIONS === "1", payments: on ? payProvider(env) : null, mode: payProvider(env) === "razorpay" ? rzpMode(env) : env.CASHFREE_ENV === "production" ? "production" : "sandbox", testMode: env.XRAY_TEST_MODE === "1" },
     publicPlans({ seo: !!P.seo, authority: !!env.OPR_API_KEY })), 200, { "cache-control": "public, max-age=60" });
 }
 
@@ -224,7 +226,7 @@ async function history(env, u, b, q) {
 /* ---------------- payments ---------------- */
 const istPlus = (days) => { const t = new Date(Date.now() + days * 864e5 + 5.5 * 3600e3); return t.toISOString().slice(0, 19) + "+05:30"; };
 async function checkout(request, env, u, b, body) {
-  if (!cfOn(env)) return json({ ok: false, reason: "Payments are not switched on yet." }, 503);
+  if (!payOn(env)) return json({ ok: false, reason: "Payments are not switched on yet." }, 503);
   if (b.id !== u.id) return json({ ok: false, reason: "Your team owner manages payments for this plan." }, 403);
   if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login — every feature is already free." }, 409);
   const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : "plan", item = String(body.item || "");
@@ -238,6 +240,13 @@ async function checkout(request, env, u, b, body) {
   if (phone !== b.phone) await (await db(env)).prepare("UPDATE acct_users SET phone=?2 WHERE id=?1").bind(b.id, phone).run();
   if (await count(env, "checkout:" + b.id, 20, 3600)) return json({ ok: false, reason: "Too many payment attempts. Try again later." }, 429);
   const d = await db(env), site = SITE(request), cust = { customer_id: b.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 50), customer_email: b.email, customer_phone: phone, customer_name: (b.name || b.email.split("@")[0]).slice(0, 100).padEnd(3, ".") };
+  if (payProvider(env) === "razorpay") {   // Razorpay Standard Checkout: server creates the order, the page opens Razorpay's popup
+    const oid = "fo_" + randId(20), what = ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + " — 1 run" : thing.name + " — 1 month")).slice(0, 200);
+    const o = await rzp(env, "POST", "/orders", { amount: Math.round(thing.price * 100), currency: "INR", receipt: oid, notes: { kind, item, user: b.id.slice(0, 40) } });
+    await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.id), nowIso()).run();
+    return json({ ok: true, provider: "razorpay", orderId: oid, rzpOrderId: o.id, keyId: env.RAZORPAY_KEY_ID, amount: o.amount, currency: "INR", description: what, mode: rzpMode(env),
+      prefill: { name: cust.customer_name, email: b.email, contact: phone }, returnUrl: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid });
+  }
   if (kind === "plan" && body.autoRenew && env.CASHFREE_SUBSCRIPTIONS === "1") {
     const sid = "fs_" + randId(20);
     const s = await cf(env, "POST", "/subscriptions", { subscription_id: sid, customer_details: { customer_name: cust.customer_name, customer_email: cust.customer_email, customer_phone: phone },
@@ -267,7 +276,7 @@ async function settleSub(env, sid, payment) {
   return { ok: true, status: st, granted };
 }
 async function verify(env, b, body) {
-  if (!cfOn(env)) return json({ ok: false, reason: "Payments are not switched on." }, 503);
+  if (!payOn(env)) return json({ ok: false, reason: "Payments are not switched on." }, 503);
   const d = await db(env);
   if (body.order_id) {
     const o = await d.prepare("SELECT user_id FROM acct_orders WHERE order_id=?1").bind(String(body.order_id)).first();
@@ -297,6 +306,17 @@ async function webhook(request, env) {
   if (dt.order && dt.order.order_id && /^fo_/.test(dt.order.order_id)) r = await settleOrder(env, dt.order.order_id);
   else if (/^SUBSCRIPTION_/.test(t)) { const sid = dt.subscription_id || (dt.subscription_details || {}).subscription_id; if (sid && /^fs_/.test(sid)) r = await settleSub(env, sid, /PAYMENT_SUCCESS/.test(t) ? dt : null); }
   log({ route: "webhook", type: t, ok: !!r.ok });
+  return json({ ok: true });
+}
+
+async function rzpWebhook(request, env) {
+  const raw = await request.text();
+  if (!rzpOn(env) || !(await rzpVerifyWebhook(env, raw, request.headers.get("x-razorpay-signature")))) { log({ route: "webhook-rzp", ok: false, err: "signature" }); return json({ ok: false }, 401); }
+  let j = {}; try { j = JSON.parse(raw); } catch (e) { return json({ ok: false }, 400); }
+  const P = j.payload || {}, rid = (P.order && P.order.entity && P.order.entity.id) || (P.payment && P.payment.entity && P.payment.entity.order_id) || "";
+  let r = { ok: true, ignored: true };
+  if (/^order_/.test(rid)) { const o = await (await db(env)).prepare("SELECT order_id FROM acct_orders WHERE cf_order_id=?1").bind(rid).first(); if (o) r = await settleOrder(env, o.order_id); }
+  log({ route: "webhook-rzp", type: String(j.event || ""), ok: !!r.ok });
   return json({ ok: true });
 }
 

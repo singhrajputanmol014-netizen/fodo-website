@@ -156,12 +156,25 @@
   }
   function logout() { return api("logout", {}).then(function () { meP = Promise.resolve(set(null)); }); }
 
-  /* ---------- payments (Cashfree) ---------- */
+  /* ---------- payments (Razorpay or Cashfree) ---------- */
   function askPhone(have) {
     return new Promise(function (resolve, reject) {
-      var d = box('<h3 style="margin:0 0 6px">Mobile number</h3><p class="muted" style="margin:0 0 14px">The payment page (Cashfree) needs a 10-digit Indian mobile number for the receipt and UPI. We don\'t call or message you.</p><form id="acct-pf" class="acct-f"><label for="acct-ph">Mobile</label><input id="acct-ph" inputmode="tel" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" value="' + esc(have || "") + '"><button class="btn" type="submit">Continue to payment</button></form><p class="cf-status" id="acct-pm" role="status"></p>', "Mobile number");
+      var d = box('<h3 style="margin:0 0 6px">Mobile number</h3><p class="muted" style="margin:0 0 14px">The payment page needs a 10-digit Indian mobile number for the receipt and UPI. We don\'t call or message you.</p><form id="acct-pf" class="acct-f"><label for="acct-ph">Mobile</label><input id="acct-ph" inputmode="tel" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" value="' + esc(have || "") + '"><button class="btn" type="submit">Continue to payment</button></form><p class="cf-status" id="acct-pm" role="status"></p>', "Mobile number");
       d._cancel = function () { reject(Object.assign(new Error("cancelled"), { cancelled: true })); };
       d.querySelector("#acct-pf").addEventListener("submit", function (e) { e.preventDefault(); var v = d.querySelector("#acct-ph").value.replace(/\D/g, "").slice(-10); if (!/^[6-9]\d{9}$/.test(v)) { msg(d.querySelector("#acct-pm"), "Enter a 10-digit mobile number starting with 6–9.", "warn"); return; } d._cancel = null; close(); resolve(v); });
+    });
+  }
+  /* Razorpay Standard Checkout popup → on success go to the return page, which asks our server to confirm with Razorpay */
+  function rzpOpen(j, kind, item) {
+    return load("https://checkout.razorpay.com/v1/checkout.js", function () { return typeof window.Razorpay === "function"; }).then(function () {
+      try { sessionStorage.setItem("fodo-pay", JSON.stringify({ kind: kind, item: item, id: j.orderId, t: Date.now() })); } catch (e) {}
+      return new Promise(function (resolve, reject) {
+        var rp = new window.Razorpay({ key: j.keyId, order_id: j.rzpOrderId, amount: j.amount, currency: j.currency || "INR", name: "FODO", description: j.description, prefill: j.prefill || {},
+          theme: { color: "#7B61FF" }, handler: function () { resolve(true); location.href = j.returnUrl; },
+          modal: { ondismiss: function () { reject(Object.assign(new Error("cancelled"), { cancelled: true })); } } });
+        rp.on("payment.failed", function (r) { var e = r && r.error; if (e && e.description) try { console.warn("Razorpay:", e.description); } catch (x) {} });
+        rp.open();
+      });
     });
   }
   function checkout(kind, item, opt) {
@@ -170,6 +183,7 @@
       return askPhone(u.phone).then(function (phone) {
         return api("checkout", { kind: kind, item: item, phone: phone, autoRenew: !!opt.autoRenew }).then(function (j) {
           if (!j.ok) throw Object.assign(new Error(j.reason || "Could not start the payment."), { user: true });
+          if (j.provider === "razorpay") return rzpOpen(j, kind, item);
           return config().then(function (c) {
             return load("https://sdk.cashfree.com/js/v3/cashfree.js", function () { return typeof window.Cashfree === "function"; }).then(function () {
               var cf = window.Cashfree({ mode: j.mode || c.mode || "sandbox" });

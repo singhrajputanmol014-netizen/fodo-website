@@ -20,7 +20,7 @@ import * as G from "./google.js";
 import * as AU from "./automations.js";
 import * as SO from "./social.js";
 import { permFor, can } from "./access.js";
-import { cf, cfOn } from "../accounts.js";
+import { cf, cfOn, rzp, rzpOn, rzpMode } from "../accounts.js";
 import { parseJson } from "./models.js";
 
 /* ---------- helpers ---------- */
@@ -306,6 +306,19 @@ export const TOOLS = {
       const since = new Date(Date.now() - days * 864e5).toISOString(), orders = ((await env.XRAY_DB.prepare("SELECT order_id, amount, status, paid_at, created_at FROM acct_orders WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT 30").bind(since).all().catch(() => ({ results: [] }))).results || []);
       let settlements = null, sErr = null; try { const r = await cf(env, "POST", "/settlements", { pagination: { limit: 20 }, filters: { start_date: since.replace(/\.\d+Z$/, "Z"), end_date: new Date().toISOString().replace(/\.\d+Z$/, "Z") } }); settlements = (r.data || r || []).slice ? (r.data || r).slice(0, 20).map((x) => ({ id: x.cf_settlement_id || x.settlement_id, amount: x.amount_settled || x.settlement_amount, status: x.status, utr: x.settlement_utr || x.utr, at: x.settlement_date || x.transfer_time })) : r; } catch (e) { sErr = e.message; }
       return { days, orders, paidOrders: orders.filter((o) => o.status === "PAID").length, settlements, settlementsError: sErr }; } },
+  razorpay: { cat: "Data", level: 0, desc: "Razorpay payments: recent payments and settlements (live from Razorpay) plus FODO's own order records for the last N days; or one order/payment checked live.", args: { days: S("number", "default 7"), order: S("string", "FODO order id (fo_…), Razorpay order id (order_…) or payment id (pay_…)") },
+    run: async (c, a) => { if (!rzpOn(c.env)) throw new Error("Razorpay keys are not set yet (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET)."); const env = c.env, days = Math.max(1, Math.min(60, a.days || 7));
+      const pay = (p) => ({ id: p.id, order: p.order_id, amount: p.amount / 100, status: p.status, method: p.method, email: p.email, at: new Date(p.created_at * 1000).toISOString(), error: p.error_description || undefined });
+      if (a.order) { let id = String(a.order);
+        if (/^pay_/.test(id)) return pay(await rzp(env, "GET", "/payments/" + encodeURIComponent(id)));
+        if (/^fo_/.test(id)) { const r = await env.XRAY_DB.prepare("SELECT cf_order_id FROM acct_orders WHERE order_id=?1").bind(id).first(); if (!r) throw new Error("No such FODO order."); id = r.cf_order_id; }
+        const o = await rzp(env, "GET", "/orders/" + encodeURIComponent(id)), ps = await rzp(env, "GET", "/orders/" + encodeURIComponent(id) + "/payments");
+        return { order: o.receipt, razorpayOrder: o.id, status: o.status, amount: o.amount / 100, paid: o.amount_paid / 100, payments: (ps.items || []).map(pay) }; }
+      const from = Math.floor(Date.now() / 1000 - days * 86400), since = new Date(from * 1000).toISOString();
+      const orders = ((await env.XRAY_DB.prepare("SELECT order_id, amount, status, paid_at, created_at FROM acct_orders WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT 30").bind(since).all().catch(() => ({ results: [] }))).results || []);
+      const ps = await rzp(env, "GET", "/payments?count=50&from=" + from), items = (ps.items || []).map(pay), cap = items.filter((p) => p.status === "captured");
+      let settlements = null, sErr = null; try { const st = await rzp(env, "GET", "/settlements?count=20&from=" + from); settlements = (st.items || []).map((x) => ({ id: x.id, amount: x.amount / 100, fees: x.fees / 100, tax: x.tax / 100, status: x.status, utr: x.utr, at: new Date(x.created_at * 1000).toISOString() })); } catch (e) { sErr = e.message; }
+      return { mode: rzpMode(env), days, payments: items.slice(0, 30), captured: cap.length, collected: cap.reduce((t, p) => t + p.amount, 0), failed: items.filter((p) => p.status === "failed").length, orders, settlements, settlementsError: sErr }; } },
   /* ---- social media ---- */
   social_accounts: { cat: "Social", level: 0, desc: "The social media accounts connected to FODO Brain (Facebook Pages, Instagram, LinkedIn, X, YouTube).", args: {}, run: async (c) => (await SO.accounts(c.env)).map((a) => ({ id: a.id, platform: a.platform, name: a.name, handle: a.handle, expiresSoon: a.expiresSoon, status: a.status })) },
   social_stats: { cat: "Social", level: 0, desc: "Live numbers from the connected social accounts: followers, posts, recent posts' likes/comments/shares, Instagram reach, YouTube views.", args: { platform: S("string", "facebook | instagram | linkedin | x | youtube (optional)") }, run: async (c, a) => SO.stats(c.env, a.platform) },

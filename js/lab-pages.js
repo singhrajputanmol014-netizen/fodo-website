@@ -9,7 +9,12 @@
   var msg = function (el, t, kind) { if (!el) return; el.textContent = t || ""; el.className = "cf-status" + (kind ? " " + kind : ""); };
   var date = function (s) { try { return new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return s; } };
   var RANK = ["free", "starter", "growth", "pro", "agency"];
-  var buyErr = function (el) { return function (e) { if (!e || e.cancelled) return; msg(el, e.message || "Could not start the payment.", "warn"); }; };
+  var buyErr = function (el) { return function (e) { if (!e || e.cancelled) return; var t = e.message || "Could not start the payment."; msg(el, t, "warn");
+    // the status line sits above the plans — if it is off-screen (e.g. buying a pack lower down), also show the reason where the person is looking
+    try { var r = el && el.getBoundingClientRect(); if (!el || r.bottom < 0 || r.top > innerHeight) toast(t); } catch (x) { toast(t); } }; };
+  function toast(t) { var d = document.createElement("div"); d.setAttribute("role", "alert"); d.textContent = t;
+    d.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;max-width:min(92vw,520px);padding:14px 18px;border-radius:14px;background:#1b1530;color:#fff;border:1px solid rgba(255,191,71,.6);font:500 15px/1.45 Inter,system-ui,sans-serif;box-shadow:0 10px 40px rgba(0,0,0,.5)";
+    document.body.appendChild(d); setTimeout(function () { d.remove(); }, 7000); }
 
   /* ================= /plans/ ================= */
   var grid = $("pl-grid");
@@ -47,7 +52,7 @@
   var qs = new URLSearchParams(location.search), st2 = $("ac-status");
   function payReturn() {
     var oid = qs.get("order_id"), sid = qs.get("subscription_id"); if (!oid && !sid) return Promise.resolve();
-    msg(st2, "Confirming your payment with Cashfree…", "busy");
+    msg(st2, "Confirming your payment…", "busy");
     var tries = 0;
     var once = function () {
       return A.api("verify", oid ? { order_id: oid } : { subscription_id: sid }).then(function (j) {
@@ -56,7 +61,7 @@
         var s = j.status || "";
         if (/FAILED|CANCELLED|EXPIRED|TERMINATED/.test(s)) { msg(st2, "The payment did not go through (" + s.toLowerCase() + "). Nothing was charged for this order — you can try again from Plans.", "warn"); return; }
         if (++tries < 6) { msg(st2, "Waiting for the bank to confirm… (" + tries + ")", "busy"); return new Promise(function (r) { setTimeout(r, 3500); }).then(once); }
-        msg(st2, "The payment is still pending. If money left your account, it will be added automatically within a few minutes (Cashfree tells us directly). Refresh this page later.", "warn");
+        msg(st2, "The payment is still pending. If money left your account, it will be added automatically within a few minutes (the payment gateway tells us directly). Refresh this page later.", "warn");
       });
     };
     return once();

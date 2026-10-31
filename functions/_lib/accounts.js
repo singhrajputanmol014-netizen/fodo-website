@@ -253,6 +253,35 @@ export async function sendMail(env, to, subject, html, text, opt) {
 }
 export const otpHash = (env, email, code) => sha256("otp|" + (env.CASHFREE_SECRET_KEY || env.RESEND_API_KEY || "fodo") + "|" + email + "|" + code);
 
+/* ---------------- payments: Razorpay (preferred when its keys are set) or Cashfree ----------------
+   RAZORPAY_KEY_ID (public, rzp_test_… / rzp_live_…), RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET (the secret typed when the
+   webhook is created in the Razorpay dashboard). PAYMENT_PROVIDER = razorpay | cashfree forces one. */
+export const rzpOn = (env) => !!(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+export function payProvider(env) {
+  const f = String(env.PAYMENT_PROVIDER || "").toLowerCase();
+  if (f === "razorpay" && rzpOn(env)) return "razorpay";
+  if (f === "cashfree" && cfOn(env)) return "cashfree";
+  return rzpOn(env) ? "razorpay" : cfOn(env) ? "cashfree" : null;
+}
+export const payOn = (env) => !!payProvider(env);
+export const rzpMode = (env) => (/^rzp_live_/.test(env.RAZORPAY_KEY_ID || "") ? "production" : "sandbox");
+export async function rzp(env, method, path, body) {
+  const r = await outbound(env)("https://api.razorpay.com/v1" + path, { method, headers: { authorization: "Basic " + btoa(env.RAZORPAY_KEY_ID + ":" + env.RAZORPAY_KEY_SECRET), "content-type": "application/json", accept: "application/json" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
+  const j = await r.json().catch(() => ({}));
+  log({ route: "razorpay", path: path.replace(/\/[A-Za-z0-9_]{10,}/g, "/:id").replace(/\?.*/, ""), status: r.status, ok: r.ok });
+  if (!r.ok) { const e = new Error((j.error && j.error.description) || "Razorpay " + r.status); e.status = r.status; e.body = j; throw e; }
+  return j;
+}
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(msg)))].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+const same = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+/* webhook: X-Razorpay-Signature = HMAC-SHA256(raw body, webhook secret), hex */
+export async function rzpVerifyWebhook(env, raw, sig) { return !!env.RAZORPAY_WEBHOOK_SECRET && same(await hmacHex(env.RAZORPAY_WEBHOOK_SECRET, raw), sig); }
+/* checkout handler: razorpay_signature = HMAC-SHA256(order_id + "|" + payment_id, key secret), hex */
+export async function rzpVerifyPayment(env, orderId, paymentId, sig) { return same(await hmacHex(env.RAZORPAY_KEY_SECRET, orderId + "|" + paymentId), sig); }
+
 /* ---------------- Cashfree ---------------- */
 export const cfBase = (env) => (env.CASHFREE_ENV === "production" ? "https://api.cashfree.com/pg" : "https://sandbox.cashfree.com/pg");
 export const cfOn = (env) => !!(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY);
@@ -278,10 +307,20 @@ export async function verifyWebhook(env, ts, raw, sig) {
 export async function settleOrder(env, orderId) {
   const d = await db(env), o = await d.prepare("SELECT * FROM acct_orders WHERE order_id=?1").bind(orderId).first(); if (!o) return { ok: false, reason: "unknown order" };
   if (o.status === "PAID") return { ok: true, already: true, order: o };
+  if (/^order_/.test(o.cf_order_id || "")) {   // a Razorpay order: re-read it from Razorpay (never trust the browser or the webhook body)
+    if (!rzpOn(env)) return { ok: false, reason: "Razorpay keys are not set" };
+    const ro = await rzp(env, "GET", "/orders/" + encodeURIComponent(o.cf_order_id));
+    if (ro.status !== "paid") { await d.prepare("UPDATE acct_orders SET status=?2 WHERE order_id=?1").bind(orderId, ro.status === "attempted" ? "ATTEMPTED" : "ACTIVE").run(); return { ok: false, status: String(ro.status || "").toUpperCase() }; }
+    if (ro.receipt !== orderId || Math.abs(+ro.amount_paid - Math.round(o.amount * 100)) > 0) { log({ route: "settle", ok: false, err: "amount/receipt mismatch", order: orderId }); return { ok: false, reason: "amount mismatch" }; }
+    return finishPaid(env, d, o, orderId, o.cf_order_id);
+  }
   const cfo = await cf(env, "GET", "/orders/" + encodeURIComponent(orderId));
   if (cfo.order_status !== "PAID") { await d.prepare("UPDATE acct_orders SET status=?2 WHERE order_id=?1").bind(orderId, cfo.order_status || "ACTIVE").run(); return { ok: false, status: cfo.order_status }; }
   if (Math.abs(+cfo.order_amount - o.amount) > 0.01) { log({ route: "settle", ok: false, err: "amount mismatch", order: orderId }); return { ok: false, reason: "amount mismatch" }; }
-  const upd = await d.prepare("UPDATE acct_orders SET status='PAID', paid_at=?2, cf_order_id=?3 WHERE order_id=?1 AND status != 'PAID'").bind(orderId, nowIso(), String(cfo.cf_order_id || "")).run();
+  return finishPaid(env, d, o, orderId, String(cfo.cf_order_id || ""));
+}
+async function finishPaid(env, d, o, orderId, providerId) {
+  const upd = await d.prepare("UPDATE acct_orders SET status='PAID', paid_at=?2, cf_order_id=?3 WHERE order_id=?1 AND status != 'PAID'").bind(orderId, nowIso(), providerId).run();
   if (upd.meta && upd.meta.changes) await logEvent(env, o.user_id, "paid", o.kind + ":" + o.item + ":" + o.amount);
   if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "tool") await grantTool(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
   return { ok: true, order: Object.assign(o, { status: "PAID" }) };

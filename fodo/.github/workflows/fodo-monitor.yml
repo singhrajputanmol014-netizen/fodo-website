@@ -1,0 +1,27 @@
+# FODO Growth Lab — free daily monitoring (Competitor Change Detector + your own site).
+# GitHub runs this once a day for free and calls the website, one site at a time, until every due check is done.
+# Setup (once): GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+#   Name: FODO_CRON_KEY   Value: the same long random text you saved as CRON_KEY in Cloudflare (Settings → Variables and Secrets).
+name: FODO monitoring
+on:
+  schedule:
+    - cron: "17 1 * * *"   # every day 01:17 UTC (06:47 India)
+  workflow_dispatch: {}
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check due websites
+        env:
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+        run: |
+          if [ -z "$KEY" ]; then echo "FODO_CRON_KEY secret is not set — skipping."; exit 0; fi
+          for i in $(seq 1 120); do
+            R=$(curl -s -m 60 -X POST "$SITE/api/monitor/tick" -H "x-cron-key: $KEY" -H "content-type: application/json" -d '{}' || echo '{}')
+            echo "$R"
+            LEFT=$(echo "$R" | sed -n 's/.*"remaining":\([0-9]*\).*/\1/p')
+            if [ -z "$LEFT" ] || [ "$LEFT" = "0" ]; then break; fi
+            sleep 2
+          done

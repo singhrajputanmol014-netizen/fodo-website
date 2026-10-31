@@ -1,0 +1,28 @@
+# Cloudflare Pages config (used by Git deploys and `npx wrangler pages deploy`).
+# It makes the free Workers AI binding automatic. Secrets are added in the dashboard (see DEPLOY-GUIDE.md).
+name = "fodo-website"
+pages_build_output_dir = "."
+compatibility_date = "2026-10-01"
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "CHAT_KV"
+id = "dc36f659051342a39608e79046ae2d44"
+
+# Business X-Ray storage (Cloudflare D1). Until this is filled in, X-Ray reports are kept in CHAT_KV instead (works, fewer tables).
+# 1) Cloudflare dashboard → Storage & Databases → D1 → Create database → name: fodo-xray
+# 2) copy its Database ID, remove the "# " in front of the 4 lines below and paste the ID. Tables are created automatically.
+# D1 connected 29 Oct 2026.
+# The same database holds Growth Lab accounts, plans and payments (v13) — they switch on with ACCOUNTS_ENABLED=1 (docs/ACCOUNTS-PAYMENTS.md).
+[[d1_databases]]
+binding = "XRAY_DB"
+database_name = "fodo-xray"
+database_id = "8672c9a1-7d55-4789-8160-0f69875922c2"
+
+# v23 FODO Brain social posting: uploaded photos/videos are stored in CHAT_KV (free 1 GB) unless an R2 bucket is bound.
+# Optional (faster Instagram/Facebook posting, bigger storage): R2 → Create bucket "fodo-media" FIRST, then remove the "# " below.
+# [[r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "fodo-media"

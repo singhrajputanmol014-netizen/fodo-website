@@ -1,0 +1,10 @@
+{
+  "name": "fodo-runner",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "FODO background X-Ray runner (Cloudflare Worker: Queue + Browser Rendering)",
+  "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev" },
+  "dependencies": { "@cloudflare/puppeteer": "1.4.0" },
+  "devDependencies": { "wrangler": "^4" }
+}

@@ -1,0 +1,20 @@
+# FODO BRAIN — hourly heartbeat: runs the owner's scheduled automations (e.g. "email me the briefing at 08:00"), raises
+# reminders for overdue commitments, and writes the daily briefing (once a day, after 06:00 India time).
+# Uses the same secret as the monitoring workflow: FODO_CRON_KEY (= CRON_KEY in Cloudflare). Free on GitHub Actions.
+name: FODO brain
+on:
+  schedule:
+    - cron: "5 * * * *"   # every hour at :05
+  workflow_dispatch: {}
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Brain tick
+        env:
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+        run: |
+          if [ -z "$KEY" ]; then echo "FODO_CRON_KEY secret is not set — skipping."; exit 0; fi
+          curl -s -m 90 -X POST "$SITE/api/owner-brain/tick" -H "x-cron-key: $KEY" -H "content-type: application/json" -d '{}' || true

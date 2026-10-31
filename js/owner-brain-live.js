@@ -24,7 +24,8 @@
     for (var i = 0; i < n; i++) { var s0 = Math.floor(i * ratio), s1 = Math.floor((i + 1) * ratio), acc = 0; for (var k = s0; k < s1; k++) acc += f[k]; var v = gate ? 0 : acc / Math.max(1, s1 - s0); out[i] = Math.max(-1, Math.min(1, v)) * 0x7fff; }
     L.chunk.push(out); L.chunkLen += n;
     if (L.chunkLen >= 1600) { var all = new Int16Array(L.chunkLen), o = 0; L.chunk.forEach(function (c) { all.set(c, o); o += c.length; }); L.chunk = []; L.chunkLen = 0;
-      send({ realtimeInput: { audio: { data: b64(new Uint8Array(all.buffer)), mimeType: "audio/pcm;rate=16000" } } }); }
+      send({ realtimeInput: { audio: { data: b64(new Uint8Array(all.buffer)), mimeType: "audio/pcm;rate=16000" } } }); L.sent++; }
+    L.mic = Math.max(L.mic * .9, fr.rms);
   }
   /* Gemini's voice: 24 kHz PCM16 → scheduled back-to-back */
   function play(data, rate) {
@@ -39,6 +40,7 @@
   function levelLoop() { if (L.levelLoop) return; L.levelLoop = true; var data = new Uint8Array(128); (function loop() { if (!L.active) { L.levelLoop = false; return; } if (L.an) { L.an.getByteFrequencyData(data); var s = 0; for (var k = 2; k < 48; k++) s += data[k]; L.outLvl = Math.min(1, s / (46 * 140)); if (L.playing) emit("level", L.outLvl); } requestAnimationFrame(loop); })(); }
 
   function handle(m) {
+    L.recv++; L.last = Object.keys(m)[0] || ""; if (m.serverContent) L.last = Object.keys(m.serverContent).join("+");
     if (m.setupComplete) { L.ready = true; clearTimeout(L.setupTimer); emit("ready", true); emit("state", "listening"); if (L.firstText) { sendText(L.firstText); L.firstText = null; emit("state", "thinking"); } return; }
     var sc = m.serverContent;
     if (sc) {
@@ -66,7 +68,7 @@
   function start(opt) {
     opt = opt || {}; if (L.active) return Promise.resolve(true);
     if (!window.FodoVoice) { emit("error", "voice engine missing"); return Promise.resolve(false); }
-    L.active = true; L.ready = false; L.turnDone = true; L.youText = L.fodoText = ""; L.firstText = opt.text || null; L.tool = opt.tool; emit("state", "connecting");
+    L.active = true; L.ready = false; L.turnDone = true; L.sent = 0; L.recv = 0; L.mic = 0; L.last = ""; L.youText = L.fodoText = ""; L.firstText = opt.text || null; L.tool = opt.tool; emit("state", "connecting");
     return FodoVoice.start().then(function (ok) {
       if (!ok) throw new Error("mic");
       L.ac = FodoVoice.context(); L.an = L.ac.createAnalyser(); L.an.fftSize = 256; L.an.connect(L.ac.destination);
@@ -78,7 +80,7 @@
       if (!L.active) return false;
       return new Promise(function (resolve, reject) {
         var ws = new WebSocket(t.ws); L.ws = ws; L.sessionStart = Date.now(); var opened = false;
-        ws.onopen = function () { opened = true; send({ setup: t.setup }); levelLoop(); L.setupTimer = setTimeout(function () { if (L.active && !L.ready) { L.why = "Gemini didn't accept the voice session (no reply in 10 s)."; stop(true); emit("error", L.why); } }, 10000); resolve(true); };
+        ws.onopen = function () { opened = true; send({ setup: t.setup }); levelLoop(); clearInterval(L.diagT); L.diagT = setInterval(function () { if (!L.active) { clearInterval(L.diagT); return; } emit("diag", { ready: L.ready, sent: L.sent, recv: L.recv, mic: L.mic, last: L.last, model: t.model, playing: L.playing }); }, 700); L.setupTimer = setTimeout(function () { if (L.active && !L.ready) { L.why = "Gemini didn't accept the voice session (no reply in 10 s)."; stop(true); emit("error", L.why); } }, 10000); resolve(true); };
         ws.onmessage = function (ev) { var go = function (txt) { var m; try { m = JSON.parse(txt); } catch (e) { return; } handle(m); }; if (typeof ev.data === "string") go(ev.data); else if (ev.data && ev.data.text) ev.data.text().then(go); else if (ev.data instanceof ArrayBuffer) go(new TextDecoder().decode(ev.data)); };
         ws.onerror = function () { if (!opened) reject(new Error("Couldn't connect to Gemini Live.")); };
         ws.onclose = function (ev) { var was = L.active, ready = L.ready; L.ws = null; clearTimeout(L.setupTimer); if (!opened) return reject(new Error("Gemini Live closed: " + (ev.reason || ev.code))); if (was) { var why = ev.reason || ("code " + ev.code); stop(true); if (!ready) emit("error", "Gemini rejected the session: " + why); else emit("closed", why); } };

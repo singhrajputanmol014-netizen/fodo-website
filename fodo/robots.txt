@@ -1,0 +1,10 @@
+# FODO — https://www.fodo.co.in
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /scripts/
+Disallow: /tests/
+Disallow: /docs/
+
+Sitemap: https://www.fodo.co.in/sitemap.xml

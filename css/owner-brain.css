@@ -235,3 +235,5 @@ body.ob-muted #ob-hf canvas,body.ob-muted #ob-bvc{filter:grayscale(1) brightness
 .ob-vo{background:#000}
 .ob-vo-bg{opacity:.45}
 .ob-vo-stage{background:radial-gradient(closest-side,rgba(255,255,255,.02),transparent 70%);border:0}
+
+.ob-vo-diag{margin:8px 0 0;font:11px/1.4 var(--b-mono);color:var(--b-dim);opacity:.8;word-break:break-word}

@@ -1,0 +1,33 @@
+# FODO background runner — a separate Cloudflare Worker (free plan).
+# Setup (once, see runner/README.md):
+#   1. Cloudflare → Storage & Databases → Queues → Create queue  → name: fodo-xray
+#   2. Workers & Pages → Create → Import a repository → this repo, Root directory: runner  (deploys on every push)
+#   3. Worker → Settings → Variables and Secrets → Secret RUNNER_KEY (the same text as the website's RUNNER_KEY)
+name = "fodo-runner"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SITE_URL = "https://www.fodo.co.in"
+
+[browser]
+binding = "BROWSER"
+
+[[queues.producers]]
+queue = "fodo-xray"
+binding = "JOBS"
+
+[[queues.consumers]]
+queue = "fodo-xray"
+max_batch_size = 1
+max_batch_timeout = 1
+max_retries = 12
+max_concurrency = 2
+retry_delay = 300
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[observability]
+enabled = true

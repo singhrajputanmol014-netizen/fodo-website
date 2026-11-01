@@ -227,10 +227,14 @@ async function history(env, u, b, q) {
 const istPlus = (days) => { const t = new Date(Date.now() + days * 864e5 + 5.5 * 3600e3); return t.toISOString().slice(0, 19) + "+05:30"; };
 async function checkout(request, env, u, b, body) {
   if (!payOn(env)) return json({ ok: false, reason: "Payments are not switched on yet." }, 503);
-  if (b.id !== u.id) return json({ ok: false, reason: "Your team owner manages payments for this plan." }, 403);
-  if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login, every feature is already free." }, 409);
-  const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : body.kind === "builder" ? "builder" : "plan", item = String(body.item || "");
-  const thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : kind === "builder" ? (BUILDER_SELL.indexOf(item) > -1 ? BUILDER[item] : null) : PLANS[item];
+  if (b.id !== u.id && body.kind !== "milestone") return json({ ok: false, reason: "Your team owner manages payments for this plan." }, 403);
+  if (isOwner(b) && body.kind !== "milestone") return json({ ok: false, reason: "This is a FODO owner login, every feature is already free." }, 409);
+  const kind = ["pack", "tool", "builder", "milestone"].indexOf(body.kind) > -1 ? body.kind : "plan", item = String(body.item || "");
+  let thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : kind === "builder" ? (BUILDER_SELL.indexOf(item) > -1 ? BUILDER[item] : null) : kind === "milestone" ? null : PLANS[item];
+  if (kind === "milestone") {   // v40: a FODO Pros project milestone, priced from the database, only the project's client can pay it
+    try { thing = await (await import("../../_lib/biz.js")).milestoneForCheckout(env, u, item); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400); }
+    if (!thing) return json({ ok: false, reason: "Milestone not found." }, 404);
+  }
   if (kind === "builder" && !thing) return json({ ok: false, reason: "Unknown Website Builder plan." }, 400);
   if (kind === "builder") {   // v39: never sell a Builder level the account already has (from its Growth Lab plan or a running Builder plan)
     const bt = builderTier(b);
@@ -247,11 +251,11 @@ async function checkout(request, env, u, b, body) {
   if (await count(env, "checkout:" + b.id, 20, 3600)) return json({ ok: false, reason: "Too many payment attempts. Try again later." }, 429);
   const d = await db(env), site = SITE(request), cust = { customer_id: b.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 50), customer_email: b.email, customer_phone: phone, customer_name: (b.name || b.email.split("@")[0]).slice(0, 100).padEnd(3, ".") };
   if (payProvider(env) === "razorpay") {   // Razorpay Standard Checkout: server creates the order, the page opens Razorpay's popup
-    const oid = "fo_" + randId(20), what = ("FODO " + (kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200);
+    const oid = "fo_" + randId(20), what = ("FODO " + (kind === "milestone" ? "Pros milestone: " + thing.name : kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200);
     const o = await rzp(env, "POST", "/orders", { amount: Math.round(thing.price * 100), currency: "INR", receipt: oid, notes: { kind, item, user: b.id.slice(0, 40) } });
     await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.id), nowIso()).run();
     return json({ ok: true, provider: "razorpay", orderId: oid, rzpOrderId: o.id, keyId: env.RAZORPAY_KEY_ID, amount: o.amount, currency: "INR", description: what, mode: rzpMode(env),
-      prefill: { name: cust.customer_name, email: b.email, contact: phone }, returnUrl: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid });
+      prefill: { name: cust.customer_name, email: b.email, contact: phone }, returnUrl: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : kind === "milestone" ? "/workspace/?order_id=" : "/account/?order_id=") + oid });
   }
   if (kind === "plan" && body.autoRenew && env.CASHFREE_SUBSCRIPTIONS === "1") {
     const sid = "fs_" + randId(20);
@@ -265,7 +269,7 @@ async function checkout(request, env, u, b, body) {
   }
   const oid = "fo_" + randId(20);
   const o = await cf(env, "POST", "/orders", { order_id: oid, order_amount: thing.price, order_currency: "INR", customer_details: cust,
-    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO " + (kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200),
+    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : kind === "milestone" ? "/workspace/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO " + (kind === "milestone" ? "Pros milestone: " + thing.name : kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200),
     order_tags: { kind, item, user: b.id.slice(0, 40) } }, oid);
   await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.cf_order_id || ""), nowIso()).run();
   return json({ ok: true, paymentSessionId: o.payment_session_id, orderId: oid, mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox" });

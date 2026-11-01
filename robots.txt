@@ -3,6 +3,7 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /admin/
+Disallow: /workspace/
 Disallow: /scripts/
 Disallow: /tests/
 Disallow: /docs/

@@ -344,6 +344,6 @@ export async function settleOrder(env, orderId) {
 async function finishPaid(env, d, o, orderId, providerId) {
   const upd = await d.prepare("UPDATE acct_orders SET status='PAID', paid_at=?2, cf_order_id=?3 WHERE order_id=?1 AND status != 'PAID'").bind(orderId, nowIso(), providerId).run();
   if (upd.meta && upd.meta.changes) await logEvent(env, o.user_id, "paid", o.kind + ":" + o.item + ":" + o.amount);
-  if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "builder") await grantBuilder(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "tool") await grantTool(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
+  if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "builder") await grantBuilder(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "milestone") { const B = await import("./biz.js"); await B.fundMilestone(env, o.item, orderId); } else if (o.kind === "tool") await grantTool(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
   return { ok: true, order: Object.assign(o, { status: "PAID" }) };
 }

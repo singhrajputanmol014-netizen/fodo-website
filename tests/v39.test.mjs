@@ -150,7 +150,7 @@ ok(/\.wb-ed input,\.wb-ed select,\.wb-ed textarea\{font-size:16px\}/.test(css), 
 ok(/guardUse\(t/.test(js("wb-create.js")) && /CR\.guardUse/.test(js("wb-home.js")) && /data-only="free"/.test(js("wb-create.js")), "every 'use template' goes through the plan check; a Free filter in the gallery");
 ok(/wb_upgrade_shown/.test(fs.readFileSync(new URL("../functions/_lib/traffic.js", import.meta.url), "utf8")), "upgrade sheet views are counted (first-party analytics)");
 /* ---------- 9. Builder System Health (stale deploy / cache detection) ---------- */
-r = await S("version", undefined, "nobody"); ok(r.j.ok && r.j.templates === TEMPLATES.length && r.j.api === "v39" && /^[a-z0-9]+$/.test(r.j.registry) && !/@|ws_/.test(r.t), "public /api/sites/version: real template count + registry hash, no account data");
+r = await S("version", undefined, "nobody"); ok(r.j.ok && r.j.templates === TEMPLATES.length && r.j.api === "v40" && /^[a-z0-9]+$/.test(r.j.registry) && !/@|ws_/.test(r.t), "public /api/sites/version: real template count + registry hash, no account data");
 r = await S("system-health", undefined, "f"); ok(r.status === 403, "system health is owner-only");
 r = await S("system-health", undefined, "own"); ok(r.j.ok && r.j.templates === TEMPLATES.length && r.j.checks.some((c) => /Builder plan columns/.test(c.name) && c.ok) && r.j.checks.some((c) => /Custom domains API/.test(c.name) && !c.ok) && !/test-sites-secret/.test(r.t), "owner sees schema, hosting, secrets present (never their values) and what is not configured");
 { const b = JSON.parse(fs.readFileSync(new URL("../data/build.json", import.meta.url), "utf8")), wbh = fs.readFileSync(new URL("../website-builder/index.html", import.meta.url), "utf8");

@@ -19,6 +19,7 @@ import { ghOn, searchCode, readFile, proposeChange, openPr, mergePr, closePr, li
 import * as G from "./google.js";
 import * as EN from "./engineer.js";
 import * as WS from "../sites.js";
+import * as BZ from "../biz.js";
 import * as AU from "./automations.js";
 import * as SO from "./social.js";
 import { permFor, can } from "./access.js";
@@ -319,6 +320,14 @@ export const TOOLS = {
   eng_site_check: { cat: "Code", level: 0, desc: "Is a client website working? Live HTTP check, publish-quality checks (SEO, headings, placeholders, links), domain/DNS/SSL status.", args: { site: S("string", "website id, name or domain", true) }, run: async (c, a) => { const s = await findSiteFor(c, a.site); return Object.assign({ site: s.name, id: s.id, status: s.status }, await WS.health(c.env, s)); } },
   /* v37: the Brain can start a new website. Same pipeline as the builder wizard (sitemap → design → pages → AI copy → QA);
      always a private DRAFT under the owner's account, never published here; nothing about the business is invented beyond what was given. */
+  /* v40 FODO Pros marketplace (read + moderation). The Brain never pays out money and never edits reviews. */
+  mk_overview: { cat: "Marketplace", level: 0, desc: "FODO Pros marketplace status: pending profiles, live professionals, active/disputed projects, money held, commission and what is owed to professionals.", args: {},
+    run: async (c) => BZ.adminOverview(c.env, { roles: ["owner", "admin", "moderator", "finance"] }) },
+  mk_pending_pros: { cat: "Marketplace", level: 0, desc: "List FODO Pro profiles waiting for review (name, role, city, email, completeness of skills/bio).", args: {},
+    run: async (c) => ({ items: (await BZ.adminPros(c.env, { roles: ["owner", "admin"] }, "pending")).map((p) => ({ id: p.id, name: p.name, role: p.role, city: p.city, email: p.email, skills: p.skills.slice(0, 6), bio: (p.bio || "").slice(0, 200) })) }) },
+  mk_moderate_pro: { cat: "Marketplace", level: 1, desc: "Approve, reject or suspend one FODO Pro profile (by id from mk_pending_pros), with a note to the professional.", args: { id: S("string", "profile id (pr…)", true), action: S("string", "approve | reject | suspend | publish", true), note: S("string", "why (sent to the professional)") },
+    validate: (a) => /^pr[a-z0-9]{14}$/.test(String(a.id || "")) && ["approve", "reject", "suspend", "publish"].indexOf(a.action) > -1 ? null : "Need a profile id and approve / reject / suspend / publish.",
+    run: async (c, a) => BZ.moderatePro(c.env, c.owner, { roles: ["owner", "admin", "moderator"] }, a.id, a.action, a.note) },
   eng_site_create: { cat: "Code", level: 1, desc: "Create a NEW FODO website as a private draft ('make a website for Sharma Dental in Dwarka, goal: more appointments'). Builds sitemap, design system, pages, AI copy and runs the quality audit, exactly like the builder wizard. Never publishes; returns the editor link and what still needs real details.",
     args: { name: S("string", "business name", true), industry: S("string", "e.g. dental clinic, restaurant, CA firm"), location: S("string", "area / city"), goal: S("string", "main goal, e.g. more appointments, online orders"), style: S("string", "optional: minimal, premium, bold, dark, playful…"), phone: S("string", ""), email: S("string", ""), whatsapp: S("string", "") },
     run: async (c, a) => { const name = String(a.name || "").trim(); if (name.length < 2) return { error: "Tell me the business name." };

@@ -43,7 +43,7 @@ export const limitsFor = (u) => { if (isOwner(u)) return { sites: 9999, pages: 2
   const b = builderInfo(u || {}); return Object.assign({}, b.limits, { allTemplates: b.allTemplates, tier: b.tier, tierName: b.name }); };
 export const builderPlan = (u) => Object.assign(builderInfo(u || {}), { freeTemplates: FREE_TEMPLATES.length, totalTemplates: TEMPLATES.filter((t) => clientAllowed(t.license)).length });
 /* v39 Builder System Health: what the server really has, so a stale page / old deploy / cached file is visible, never guessed */
-export const API_VERSION = "v39";
+export const API_VERSION = "v40";
 export function registryInfo() {
   const L = TEMPLATES.filter((t) => clientAllowed(t.license)), ids = L.map((t) => t.id).join(",");
   let h = 0; for (let i = 0; i < ids.length; i++) h = (h * 31 + ids.charCodeAt(i)) >>> 0;

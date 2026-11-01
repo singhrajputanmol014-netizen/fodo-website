@@ -8,7 +8,8 @@
    - taxes are charged only when FODO_GSTIN is set (or the owner forces it), the rest of the tax setup stays configurable;
    - every catalog or pricing change is written to biz_price_history (old → new, who, why). */
 import { nowIso, randId, isOwner, migrateOnce } from "./accounts.js";
-import { bdb, err, can, auditLog, proOut, dayOk, slotFree } from "./biz.js";
+import { bdb, err, can, auditLog, proOut } from "./biz.js";
+import { proFree, dayList } from "./availability.js";
 import { ROLES, EQUIPMENT, TEMPLATES, FAMILIES, GROUPS } from "./catalog-seed.js";
 
 const clip = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
@@ -17,7 +18,6 @@ const J = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
-const r100 = (x) => Math.round(x / 10) * 10;   // prices are shown to the nearest ₹10
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 export const UNITS = ["day", "hour", "project", "month", "item"];
 export const TIER_KEYS = ["essential", "professional", "premium"];
@@ -47,6 +47,7 @@ export const PRICING_DEFAULTS = {
   mgmtMin: 7500, mgmtMax: 0, contingencyPct: 5, taxPct: 18, taxLabel: "GST", taxForce: false, rushPct: 15, rushDays: 3, weekendPct: 0,
   travelPerPersonDay: 0, quoteValidityDays: 7, paymentPlan: [{ label: "Booking", pct: 50 }, { label: "On final delivery", pct: 50 }],
   weights: { role: 25, skills: 20, availability: 15, portfolio: 10, budget: 10, location: 5, experience: 5, verified: 5, completion: 3, reliability: 2 },
+  inviteHours: 48, teamAutoInvite: false, equipmentBufferDays: 1,
   terms: "Prices are estimates until a quote is accepted. Ad spend, location fees, talent usage beyond the stated media and travel outside the city are billed separately unless listed. Cancellation and refund terms follow the FODO marketplace terms in force when the quote is accepted.",
 };
 export async function pricingConfig(env) {
@@ -58,6 +59,7 @@ export async function savePricingConfig(env, u, b) {
   const old = await pricingConfig(env), c = Object.assign({}, old), reason = clip(b.reason, 200); if (reason.length < 3) throw err("Say why you're changing the pricing rules (kept in the history).");
   const pct = (k, hi) => { if (b[k] != null) { const v = num(b[k], 0, hi); if (v == null) throw err(k + " must be 0 – " + hi + "."); c[k] = v; } };
   ["contingencyPct", "rushPct", "weekendPct"].forEach((k) => pct(k, 100)); pct("taxPct", 40); pct("rushDays", 60); pct("quoteValidityDays", 90);
+  pct("inviteHours", 336); pct("equipmentBufferDays", 3); if (b.teamAutoInvite != null) c.teamAutoInvite = !!b.teamAutoInvite;
   ["mgmtMin", "mgmtMax", "travelPerPersonDay"].forEach((k) => { if (b[k] != null) { const v = num(b[k], 0, 1e8); if (v == null) throw err(k + " must be ₹0 or more."); c[k] = Math.round(v); } });
   if (b.taxLabel != null) c.taxLabel = clip(b.taxLabel, 20) || "Tax"; if (b.taxForce != null) c.taxForce = !!b.taxForce; if (b.terms != null) c.terms = clip(b.terms, 3000);
   if (Array.isArray(b.mgmtBands)) { const L = b.mgmtBands.slice(0, 8).map((x) => ({ upto: Math.round(num(x.upto, 0, 1e10) || 0), pct: num(x.pct, 0, 60), custom: !!x.custom })); if (L.some((x) => x.pct == null)) throw err("Each fee band needs a percentage (0 – 60)."); c.mgmtBands = L.sort((a, z) => (a.upto || 1e18) - (z.upto || 1e18)); }
@@ -248,7 +250,7 @@ export function priceIt(team, eq, A, C, adjust, env) {
   const contingency = Math.round(base * (adjust && adjust.contingencyPct != null && num(adjust.contingencyPct, 0, 50) != null ? num(adjust.contingencyPct, 0, 50) : (C.contingencyPct || 0)) / 100);
   const discount = adjust && adjust.discount ? Math.min(Math.round(num(adjust.discount, 0, 1e9) || 0), base + mgmt) : 0;
   const subtotal = base + rush + weekend + mgmt + contingency - discount;
-  const taxOn = !!(env && env.FODO_GSTIN) || !!C.taxForce, tax = taxOn ? Math.round(subtotal * (C.taxPct || 0) / 100) : 0, total = r100(subtotal + tax);
+  const taxOn = !!(env && env.FODO_GSTIN) || !!C.taxForce, tax = taxOn ? Math.round(subtotal * (C.taxPct || 0) / 100) : 0, total = subtotal + tax;   // exact: the total always equals the lines shown
   const incomplete = team.some((x) => x.rate == null) || eq.some((x) => x.rate == null);
   const providerCost = people + post + rush + weekend + sum(extra, (l) => l.cost != null ? l.cost : l.amount) + travelAuto, fodo = mgmt + (equip - equipCost) - discount, gm = fodo, sub = subtotal || 1;
   return { groups: [["People", people], ["Equipment", equip], ["Production & location", location + otherL], ["Post-production", post], ["Travel", travel], ["Rush surcharge", rush], ["Weekend surcharge", weekend], ["FODO production management", mgmt], ["Contingency (" + ((adjust && adjust.contingencyPct) != null ? adjust.contingencyPct : C.contingencyPct) + "%)", contingency], ["Discount", -discount]].filter((g) => g[1]).map((g) => ({ label: g[0], amount: g[1] })),
@@ -259,7 +261,7 @@ export function priceIt(team, eq, A, C, adjust, env) {
 /* ---------- matching: hard filters first, then the admin weights; reasons only from real data ---------- */
 export async function match(env, R, b) {
   const d = await pdb(env), C = await pricingConfig(env), W = C.weights, role = (await roles(env)).find((r) => r.id === clip(b.roleId, 40)); if (!role) throw err("Unknown role.", 404);
-  const date = DAY.test(b.date || "") ? b.date : null, city = clip(b.city, 60).toLowerCase(), mode = ["online", "onsite", "hybrid"].indexOf(b.mode) > -1 ? b.mode : "onsite", budget = num(b.budget, 0, 1e9), limit = Math.min(10, Math.max(1, +b.limit || 5));
+  const date = DAY.test(b.date || "") ? b.date : null, city = clip(b.city, 60).toLowerCase(), mode = ["online", "onsite", "hybrid", "any"].indexOf(b.mode) > -1 ? b.mode : "onsite", budget = num(b.budget, 0, 1e9), limit = Math.min(10, Math.max(1, +b.limit || 5));
   const names = role.match.map((x) => x.toLowerCase()), like = names.map(() => "lower(role)=?").join(" OR ");
   const rows = await all(d, "SELECT * FROM biz_pros WHERE status IN ('approved','published') AND (" + like + ") LIMIT 400", ...names);   // hard filter: role, server-side, bounded
   const reli = {}; for (const r of await all(d, "SELECT x.pro_id, sum(CASE WHEN x.status='accepted' THEN 1 ELSE 0 END) a, sum(CASE WHEN x.status IN ('accepted','declined') THEN 1 ELSE 0 END) n FROM biz_project_pros x GROUP BY x.pro_id")) reli[r.pro_id] = r;
@@ -267,9 +269,10 @@ export async function match(env, R, b) {
   const tot = Object.values(W).reduce((a, x) => a + x, 0) || 1, out = [];
   for (const p of rows) {
     const o = proOut(p), why = [], skip = []; let s = 0;
-    if (mode !== "online" && city) { const here = (o.city || "").toLowerCase().indexOf(city) > -1; if (!here && !o.onsite) continue; }   // onsite: must be local or willing to travel
+    if (mode !== "online" && mode !== "any" && city) { const here = (o.city || "").toLowerCase().indexOf(city) > -1; if (!here && !o.onsite) continue; }   // onsite: must be local or willing to travel
     if (mode === "online" && !o.remote) continue;
-    let avail = null; if (date) { const why2 = dayOk(p, date); avail = !why2 && (await slotFree(d, p.id, date, "")); if (!avail) skip.push(why2 ? "The date " + why2 : "Already booked on " + date); }
+    if (mode === "any" && city && !o.remote && (o.city || "").toLowerCase().indexOf(city) < 0 && !o.onsite) continue;   // v47.2 desk roles: remote, local or travelling
+    let avail = null; if (date) { const f = await proFree(d, p, dayList(date, Math.max(1, Math.min(30, +b.days || 1))), { city: mode === "online" || mode === "any" ? null : city }); avail = f.ok; if (!avail) skip.push(f.why[0]); }   // v47.2 availability engine
     s += W.role; why.push(o.role);
     const skills = role.skills.length ? role.skills.filter((k) => o.skills.map((x) => x.toLowerCase()).indexOf(k.toLowerCase()) > -1) : []; if (skills.length) { s += W.skills * Math.min(1, skills.length / Math.max(1, role.skills.length)); why.push("Skills: " + skills.slice(0, 3).join(", ")); }
     if (avail === true) { s += W.availability; why.push("Available on " + date); }

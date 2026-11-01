@@ -59,7 +59,19 @@ const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT",   // v40.1
   "CREATE TABLE IF NOT EXISTS biz_time (id TEXT PRIMARY KEY, project_id TEXT, pro_id TEXT, day TEXT, minutes INTEGER, note TEXT, status TEXT, milestone_id TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_refunds (id TEXT PRIMARY KEY, project_id TEXT, milestone_id TEXT, amount INTEGER, reason TEXT, status TEXT, by_id TEXT, provider TEXT, provider_ref TEXT, note TEXT, created_at TEXT, done_at TEXT)",
   /* v47.1 refund state machine: remember the state before a refund started, so a failed refund can restore it */
-  "ALTER TABLE biz_milestones ADD COLUMN pre_refund TEXT", "ALTER TABLE biz_refunds ADD COLUMN attempts INTEGER"];
+  "ALTER TABLE biz_milestones ADD COLUMN pre_refund TEXT", "ALTER TABLE biz_refunds ADD COLUMN attempts INTEGER",
+  /* v47.2 availability rules + teams + equipment holds */
+  "ALTER TABLE biz_pros ADD COLUMN tz TEXT", "ALTER TABLE biz_pros ADD COLUMN hours_start TEXT", "ALTER TABLE biz_pros ADD COLUMN hours_end TEXT", "ALTER TABLE biz_pros ADD COLUMN horizon_days INTEGER",
+  "ALTER TABLE biz_pros ADD COLUMN max_week INTEGER", "ALTER TABLE biz_pros ADD COLUMN travel_buffer INTEGER", "ALTER TABLE biz_pros ADD COLUMN overrides TEXT",
+  "CREATE TABLE IF NOT EXISTS biz_teams (id TEXT PRIMARY KEY, quote_id TEXT UNIQUE, client_id TEXT, title TEXT, template_id TEXT, status TEXT, start_day TEXT, days INTEGER, city TEXT, mode TEXT, quote_version INTEGER, locked_at TEXT, locked_by TEXT, reminded_at TEXT, created_at TEXT, updated_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS biz_team_members (id TEXT PRIMARY KEY, team_id TEXT, slot INTEGER, role_id TEXT, role_name TEXT, pro_id TEXT, status TEXT, rate INTEGER, units REAL, unit TEXT, amount INTEGER, invited_at TEXT, expires_at TEXT, answered_at TEXT, note TEXT, created_at TEXT, updated_at TEXT)",
+  "CREATE INDEX IF NOT EXISTS biz_team_members_t ON biz_team_members(team_id, slot)", "CREATE INDEX IF NOT EXISTS biz_team_members_p ON biz_team_members(pro_id, status)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS biz_team_slot_live ON biz_team_members(team_id, slot) WHERE status IN ('open','invited','accepted','conflict')",
+  "CREATE UNIQUE INDEX IF NOT EXISTS biz_team_pro_live ON biz_team_members(team_id, pro_id) WHERE status IN ('invited','accepted','conflict') AND pro_id IS NOT NULL",
+  "CREATE TABLE IF NOT EXISTS biz_team_events (id INTEGER PRIMARY KEY AUTOINCREMENT, team_id TEXT, kind TEXT, by_email TEXT, note TEXT, created_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS biz_equipment_holds (id TEXT PRIMARY KEY, team_id TEXT, equipment_id TEXT, qty INTEGER, start_day TEXT, end_day TEXT, status TEXT, note TEXT, created_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS biz_equipment_days (equipment_id TEXT, day TEXT, unit INTEGER, hold_id TEXT, PRIMARY KEY (equipment_id, day, unit))",
+  "CREATE INDEX IF NOT EXISTS biz_equipment_days_h ON biz_equipment_days(hold_id)"];
 const ready = new WeakSet();
 export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); await migrateOnce(d, MIG); ready.add(d); } return d; }
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
@@ -444,7 +456,7 @@ export async function proDashboard(env, u) {
   return { pro: { id: me.id, name: me.name, status: me.status, note: me.note, completeness: me.completeness, rating: me.rating, reviews: me.reviews, completed: me.completed, days: me.days, blackout: me.blackout },
     counts: { invites: invites.length, requests: P.filter((p) => p.status === "requested").length, proposed: P.filter((p) => p.status === "proposed").length, active: P.filter((p) => ["accepted", "in_progress", "delivered"].indexOf(p.status) > -1).length, completed: P.filter((p) => p.status === "completed").length, disputed: P.filter((p) => p.status === "disputed").length },
     replyRate: P.length ? Math.round(replied / P.length * 100) : null, earnings: E.totals, pendingPayout: E.items.filter((x) => x.status !== "paid").reduce((a, x) => a + x.net, 0), automaticPayouts: E.automatic,
-    bookings: await all(d, "SELECT b.day, b.slot, j.title, j.id FROM biz_bookings b JOIN biz_projects j ON j.id=b.project_id WHERE b.pro_id=?1 AND b.day >= ?2 ORDER BY b.day, b.slot LIMIT 60", me.id, today), slots: me.slots,
+    bookings: await all(d, "SELECT b.day, b.slot, COALESCE(j.title, t.title) title, COALESCE(j.id, t.id) id, CASE WHEN t.id IS NULL THEN 'project' ELSE 'team' END kind FROM biz_bookings b LEFT JOIN biz_projects j ON j.id=b.project_id LEFT JOIN biz_teams t ON t.id=b.project_id WHERE b.pro_id=?1 AND b.day >= ?2 ORDER BY b.day, b.slot LIMIT 60", me.id, today), slots: me.slots,   /* v47.2: bookings include team days */
     reviews: await all(d, "SELECT rating, text, created_at FROM biz_reviews WHERE pro_id=?1 ORDER BY created_at DESC LIMIT 50", me.id), next: A.slice(0, 6) };
 }
 /* v44: time slots a client can book (e.g. 09:00-13:00), saved without sending the profile back to review */

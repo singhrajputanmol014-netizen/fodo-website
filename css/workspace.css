@@ -164,3 +164,9 @@ html:has(.ws-body){background:var(--bg)}
 .pb-yn input[type=radio]{width:18px;height:18px;min-height:0;margin:0;flex:none;accent-color:var(--signal)}.pb-yn label{flex-direction:row}
 .pb-add select,.pb-form select{width:100%;max-width:420px;box-sizing:border-box}.pb-grid>div{min-width:0}
 .pb-bar{margin:0 0 12px}
+/* ===== v47.2 teams ===== */
+.pb-meter{display:inline-block;width:90px;height:8px;border-radius:99px;background:color-mix(in srgb,var(--line) 80%,transparent);overflow:hidden;vertical-align:middle}.pb-meter i{display:block;height:100%;background:var(--signal);border-radius:99px}.pb-meter.wide{width:100%;max-width:420px;margin:0 0 12px}
+.tm-people{list-style:none;padding:0;margin:0 0 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}.tm-people li{display:grid;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.tm-people small{color:var(--muted)}
+.ws-rows li.pt-i>div:first-child,.ws-rows li.tm-slot>div:first-child{display:grid;gap:3px;flex:1 1 260px;min-width:0}.ws-rows li.pt-i.open{border-color:var(--signal)}
+.pb-okmsg{border:1px solid color-mix(in srgb,var(--ok,#2ecc71) 55%,var(--line));background:color-mix(in srgb,var(--ok,#2ecc71) 8%,transparent);border-radius:12px;padding:10px 14px;margin:12px 0}
+#tm-add{min-height:40px;max-width:100%}

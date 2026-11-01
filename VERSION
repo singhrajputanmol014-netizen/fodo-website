@@ -1,8 +1,8 @@
-FODO v47.1
+FODO v47.2
 Date: 2026-11-02
-Features: Build a Team (Project Builder), production catalog (roles, equipment, project types), pricing engine, team builder engine, explainable matching, versioned quotes, admin catalog & pricing rules, Brain marketplace tools, refund state-machine fix.
-Migrations (additive, migrateOnce): biz_roles, biz_equipment, biz_templates, biz_price_history, biz_builds, biz_quotes, biz_quote_versions, biz_quote_events; biz_milestones.pre_refund, biz_refunds.attempts.
-API: /api/biz/builder/*, /api/biz/quotes/*, /api/biz/admin/catalog/*, /api/biz/admin/pricing, /api/biz/admin/price-history, /api/biz/admin/quotes/*.
-Environment: no new variables (FODO_GSTIN decides whether tax is charged).
-Rollback: GitHub Desktop → History → revert the v47.1 commit → Push. The new tables are additive and are simply unused by the older code.
-Details: docs/FODO-V47.1-REPORT.md
+Features: v47.1 (Build a Team, catalog, pricing engine, versioned quotes, refund fix) + v47.2 team staffing from accepted quotes (invitations, acceptance, decline, expiry, replacement, locking, date changes), availability engine, database-level double-booking protection, equipment reservations + maintenance, Brain team tools.
+Migrations (additive, migrateOnce): v47.1 tables + biz_teams, biz_team_members (partial unique indexes), biz_team_events, biz_equipment_holds, biz_equipment_days; biz_pros.tz, hours_start, hours_end, horizon_days, max_week, travel_buffer, overrides.
+API: /api/biz/builder/*, quotes/*, quotes/<id>/team, pro/teams/*, pro/availability, admin/catalog/*, admin/pricing, admin/price-history, admin/quotes/*, admin/teams/*, admin/equipment/*.
+Environment: no new variables.
+Rollback: GitHub Desktop → History → revert the commit → Push. New tables are additive and unused by older code.
+Details: docs/FODO-V47.1-REPORT.md, docs/FODO-V47.2-REPORT.md

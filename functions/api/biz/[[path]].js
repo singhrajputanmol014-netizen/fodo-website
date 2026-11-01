@@ -24,6 +24,8 @@ import * as AN from "../../_lib/analytics.js";
 import * as PO from "../../_lib/payouts.js";
 import * as PR from "../../_lib/production.js";
 import * as QT from "../../_lib/quotes.js";
+import * as TM from "../../_lib/teams.js";
+import * as AV from "../../_lib/availability.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -159,8 +161,14 @@ export async function onRequest(ctx) {
         const jj = Object.assign({}, qq); return new Response(JSON.stringify(jj, null, 2), { headers: Object.assign({ "content-type": "application/json; charset=utf-8", "content-disposition": 'attachment; filename="' + nm + '.json"' }, H) });
       }
       if (p1 && ["accept", "decline", "changes"].indexOf(p2) > -1 && m === "POST") return ok({ quote: await QT.answer(env, u, R, p1, p2, body, request) });
+      if (p1 && p2 === "team" && m === "GET") { await QT.getQuote(env, u, R, p1, { noView: true }); return ok({ team: await TM.clientTeam(env, u, R, p1) }); }   // v47.2
       return json({ ok: false, reason: "Not found." }, 404);
     }
+    /* v47.2 FODO Pro side: team invitations + availability rules */
+    if (p0 === "pro" && p1 === "teams" && !p2 && m === "GET") return ok({ items: await TM.proTeams(env, u) });
+    if (p0 === "pro" && p1 === "teams" && p2 && ["accept", "decline"].indexOf(path[3]) > -1 && m === "POST") return ok({ items: await TM.proAnswer(env, u, p2, path[3] === "accept", body) });
+    if (p0 === "pro" && p1 === "availability") { const d0 = await B.bdb(env), pr = await d0.prepare("SELECT * FROM biz_pros WHERE user_id=?1").bind(u.id).first(); if (!pr) return json({ ok: false, reason: "Create your FODO Pro profile first." }, 404);
+      if (m === "GET") return ok({ rules: AV.rulesOf(pr) }); if (m === "POST") return ok({ rules: await AV.saveRules(d0, pr, body) }); }
     /* admin / moderation / finance (roles checked inside) */
     if (p0 === "admin") {
       /* v47.1 catalog, pricing rules and quotes */
@@ -171,6 +179,14 @@ export async function onRequest(ctx) {
       if (p1 === "catalog" && p2 === "templates" && m === "POST") return ok({ template: await PR.saveTemplate(env, u, R, body) });
       if (p1 === "pricing" && m === "POST") return ok({ pricing: await PR.savePricingConfig(env, u, body) });
       if (p1 === "price-history" && m === "GET") return ok({ items: await PR.priceHistory(env, R, q) });
+      /* v47.2 teams + equipment holds */
+      if (p1 === "teams" && !p2 && m === "GET") return ok({ items: await TM.adminTeams(env, R, q) });
+      if (p1 === "teams" && p2 && !path[3] && m === "GET") return ok(await TM.adminTeam(env, R, p2));
+      if (p1 === "teams" && p2 && path[3] && m === "POST") return ok(await TM.adminAction(env, u, R, p2, path[3], body));
+      if (p1 === "quotes" && p2 && path[3] === "team" && m === "POST") return ok(await TM.adminTeam(env, R, await TM.createForQuote(env, u, R, p2)));
+      if (p1 === "equipment" && !p2 && m === "GET") return ok(await TM.equipmentBoard(env, R, q));
+      if (p1 === "equipment" && p2 === "block" && m === "POST") return ok({ hold: await TM.blockEquipment(env, u, R, body) });
+      if (p1 === "equipment" && p2 === "release" && path[3] && m === "POST") return ok(await TM.releaseEquipment(env, u, R, path[3]));
       if (p1 === "quotes" && !p2 && m === "GET") return ok({ items: await QT.adminQuotes(env, R, q) });
       if (p1 === "quotes" && !p2 && m === "POST") return ok({ quote: await QT.adminCreate(env, u, R, body) });
       if (p1 === "quotes" && p2 && !path[3] && m === "GET") return ok({ quote: await QT.getQuote(env, u, R, p2, { version: q.version }) });

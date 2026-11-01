@@ -143,3 +143,33 @@ All of it runs on the existing Cloudflare Pages + Functions + D1 stack. There is
 - **`v21-e2e`, 6 new browser checks:** workspace overview, brief builder, admin, phone menu.
 - **Visual QA:** every workspace view at 1440 and 390, plus the professional modal, admin, payouts and pro profile. No sideways scroll, no console errors.
 - **Full suite** (`node tests/run.mjs all`): **57 suites, 3,524 checks, 0 failing**.
+
+## v40.1: FODO Pros portal (invite-only)
+
+**The page:** `/fodo-pros/` is one page that holds both the professional's profile and their dashboard.
+- It is **not linked anywhere**: no menu, no footer, no other page, not in the sitemap.
+- It is hidden from search and other sites: `noindex, nofollow`, robots Disallow, and `no-referrer` (the invite token never leaks to another site).
+
+**Invite-only:**
+- Creating a profile needs an invite link `/fodo-pros/?i=<24-char token>`.
+- Owners, admins and moderators create links in **Workspace → Marketplace admin → Invite links**. Each link has a note, a number of uses (default 1) and a validity period (default 14 days). Links can be copied, shared on WhatsApp, or revoked.
+- Use is atomic: a 1-use link works once.
+- A wrong, used, expired or revoked link shows "FODO Pros is invite-only".
+- `GET /api/biz/invite?i=` only answers valid / not valid.
+- Existing professionals just log in at `/fodo-pros/`.
+
+**Clients:** the client workspace no longer shows any "Pro profile" link. Only accounts that already have a profile get the Pro area.
+
+**Professional dashboard (real data only):**
+- **Dashboard:** what to do next (send proposal, deliver a paid milestone, complete profile, submit), new requests, active and completed projects, earnings after commission, pending payout, rating, reply rate, upcoming bookings, disputes.
+- **My profile:** signup, packages, portfolio, submit for approval.
+- **Requests & projects:** proposals, delivery, chat.
+- **Calendar:** month view with bookings, blocked dates and days off. Tapping a date blocks or unblocks it. A booked day can't be blocked, clients can't book blocked days, and blocking does not send the profile back to review.
+- **Earnings & payouts:** commission and transfer references.
+- **Reviews.**
+- **Notifications.**
+
+The approval email links to `/fodo-pros/`.
+
+**Tests:** `v40.test.mjs` now has 99 checks: invite-only signup, one-use / revoked / fake links, client nav, the pro dashboard, blackout dates, and the unlisted-page checks.
+- **Full suite after v40.1:** 57 suites, **3,540 checks, 0 failing**.

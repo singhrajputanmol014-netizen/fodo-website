@@ -15,6 +15,7 @@ export async function onRequest(ctx) {
   try {
     if (!accountsOn(env)) return json({ ok: false, reason: "FODO accounts are not switched on." }, 503);
     if (p0 === "roles" && m === "GET") return json({ ok: true, roles: B.PRO_ROLES, categories: B.PRO_CATS, platforms: B.AD_PLATFORMS, contentStates: B.CONTENT_STATES });
+    if (p0 === "invite" && m === "GET") return json(Object.assign({ ok: true }, await B.inviteStatus(env, new URL(request.url).searchParams.get("i"))), 200, { "cache-control": "no-store" });   // valid or not, nothing else
     const u = await sessionUser(env, request); if (!u) return json({ ok: false, reason: "Log in to use your FODO workspace.", login: true }, 401);
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !/json/.test(request.headers.get("content-type") || "")))) return json({ ok: false, reason: "Bad request." }, 403);
     if (m !== "GET" && (await count(env, "biz:" + u.id, 400, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
@@ -44,6 +45,8 @@ export async function onRequest(ctx) {
     if (p0 === "pro" && !p1 && m === "GET") return ok({ pro: await B.myPro(env, u) });
     if (p0 === "pro" && !p1 && m === "POST") return ok({ pro: await B.savePro(env, u, body) });
     if (p0 === "pro" && p1 === "submit" && m === "POST") return ok({ pro: await B.submitPro(env, u) });
+    if (p0 === "pro" && p1 === "dashboard" && m === "GET") return ok(await B.proDashboard(env, u));
+    if (p0 === "pro" && p1 === "blackout" && m === "POST") return ok(await B.setBlackout(env, u, body));
     if (p0 === "pro" && p1 === "earnings" && m === "GET") return ok(await B.proEarnings(env, u));
     if (p0 === "pro" && p1 === "packages" && m === "POST") return ok({ pro: await B.savePackage(env, u, body) });
     if (p0 === "pro" && p1 === "packages" && p2 && m === "DELETE") return ok({ pro: await B.delPackage(env, u, p2) });
@@ -70,6 +73,10 @@ export async function onRequest(ctx) {
       if (p1 === "payouts" && p2 && m === "POST") return ok(await B.markPaid(env, u, R, p2, body.ref));
       if (p1 === "disputes" && !p2 && m === "GET") return ok({ items: await B.adminDisputes(env, R) });
       if (p1 === "disputes" && p2 && m === "POST") return ok(await B.resolveDispute(env, u, R, p2, body));
+      const origin = new URL(request.url).origin;
+      if (p1 === "invites" && !p2 && m === "GET") return ok({ items: await B.listInvites(env, R, origin) });
+      if (p1 === "invites" && !p2 && m === "POST") return ok(await B.createInvite(env, u, R, body, origin));
+      if (p1 === "invites" && p2 && m === "POST") return ok(await B.revokeInvite(env, u, R, p2));
       if (p1 === "staff" && m === "GET") { if (!isOwner(u)) return json({ ok: false, reason: "Only FODO owners." }, 403); const d = await B.bdb(env); return ok({ items: (await d.prepare("SELECT email, role, added_at FROM biz_staff ORDER BY added_at").all()).results || [] }); }
       if (p1 === "staff" && m === "POST") return ok(await B.setStaff(env, u, body.email, body.role));
       if (p1 === "settings" && m === "POST") return ok(await B.saveSettings(env, u, body));

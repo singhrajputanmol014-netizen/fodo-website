@@ -84,3 +84,5 @@ html:has(.ws-body){background:var(--bg)}
 .ws-app h1,.ws-app h2,.ws-app h3,.ws-mc h2,.ws-mc h3{font-family:inherit;letter-spacing:-.01em;font-weight:700}
 .ws-main h2,.ws-mc h2{font-size:20px!important;line-height:1.25!important;margin:18px 0 10px!important}.ws-main h3,.ws-mc h3{font-size:16px!important;line-height:1.3!important;margin:16px 0 8px!important}
 .ws-main .ws-h h1{font-size:clamp(24px,3vw,32px)!important;line-height:1.15!important}.ws-mc .ws-ph h2{font-size:24px!important;margin:0!important}.ws-board h3{margin:0!important;font-size:14px!important}
+.ws-day.bk{border-color:#2fbf71;background:color-mix(in srgb,#2fbf71 10%,transparent)}.ws-day.bl{border-color:#ff6b6b;background:color-mix(in srgb,#ff6b6b 8%,transparent)}.ws-day.off{opacity:.45}.ws-day small{color:var(--muted)}
+.ws-day .ws-chip[data-on="1"]{background:transparent;border:1px dashed var(--line);color:var(--muted)}

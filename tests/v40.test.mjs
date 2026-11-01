@@ -96,9 +96,19 @@ r = await Z("content", { id: cid, title: "x y" }, "o"); ok(r.status === 404, "co
 r = await Z("campaigns", { name: "Weekend bookings", platform: "Meta", objective: "Leads", budget: 30000, days: 30, status: "live", landing: "javascript:alert(1)" });
 ok(r.j.ok && r.j.item.status === "draft" && r.j.item.landing === "" && r.j.item.daily === 1000 && /Not connected/.test(r.j.item.publishing), "ad plans are never marked live without a connected ad account; bad landing URL dropped");
 
-/* ---------- 4. FODO Pro signup + moderation ---------- */
-r = await Z("pro", { name: "Aarav Films", role: "Cinematographer", title: "Food & hospitality cinematographer", skills: "food, restaurant, reels, color grading", tools: "Sony FX3, DaVinci", years: 7, city: "Delhi", remote: false, onsite: true, langs: "Hindi, English", bio: "x".repeat(20), days: ["mon", "tue", "wed", "thu", "fri", "sat"], rateDay: 18000, noticeDays: 2 }, "p");
+/* ---------- 4. FODO Pro signup (invite-only) + moderation ---------- */
+r = await Z("me"); ok(!r.j.nav.some((n) => n.id === "pro"), "v40.1: clients see no Pro link anywhere in their workspace");
+r = await Z("pro", { name: "Sneaky", role: "Photographer" }, "o"); ok(r.status === 403 && /invite-only/.test(r.j.reason), "v40.1: no profile without an invite link");
+r = await Z("pro", { name: "Sneaky", role: "Photographer", invite: "a".repeat(24) }, "o"); ok(r.status === 403 && /expired|used/.test(r.j.reason), "v40.1: a made-up invite is refused");
+r = await Z("admin/invites", { note: "Aarav", maxUses: 1, days: 7 }, "c"); ok(r.status === 403, "v40.1: clients can't create invite links");
+r = await Z("admin/invites", { note: "Aarav", maxUses: 1, days: 7 }, "own"); const inv = r.j.token; ok(r.j.ok && /^[a-z0-9]{24}$/.test(inv) && /\/fodo-pros\/\?i=/.test(r.j.url), "v40.1: owner creates a personal invite link (/fodo-pros/?i=…)");
+r = await Z("invite?i=" + inv, undefined, "nobody"); ok(r.j.ok && r.j.valid === true && Object.keys(r.j).length === 2, "v40.1: the page can check a link without logging in (valid / not, nothing else)");
+r = await Z("pro", { invite: inv, name: "Aarav Films", role: "Cinematographer", title: "Food & hospitality cinematographer", skills: "food, restaurant, reels, color grading", tools: "Sony FX3, DaVinci", years: 7, city: "Delhi", remote: false, onsite: true, langs: "Hindi, English", bio: "x".repeat(20), days: ["mon", "tue", "wed", "thu", "fri", "sat"], rateDay: 18000, noticeDays: 2 }, "p");
 ok(r.j.ok && r.j.pro.status === "draft" && r.j.pro.cats.indexOf("Video") > -1 && r.j.pro.completeness.pct < 100, "pro profile created as a private draft");
+r = await Z("pro", { invite: inv, name: "Copycat", role: "Photographer" }, "o"); ok(r.status === 403, "v40.1: a 1-use invite works only once");
+r = await Z("admin/invites", { note: "Team", maxUses: 5 }, "own"); const inv2 = r.j.token; await Z("admin/invites/" + inv2, {}, "own"); r = await Z("pro", { invite: inv2, name: "Late", role: "Photographer" }, "o"); ok(r.status === 403, "v40.1: a revoked invite stops working");
+r = await Z("admin/invites", undefined, "own"); ok(r.j.items.length === 2 && r.j.items.find((x) => x.token === inv).uses === 1 && !r.j.items.find((x) => x.token === inv2).active, "v40.1: invite list shows uses and status");
+r = await Z("me", undefined, "p"); ok(r.j.nav.some((n) => n.id === "pro"), "v40.1: a professional (with a profile) gets the Pro area");
 r = await Z("pro/submit", {}, "p"); ok(r.status === 400 && r.j.missing.indexOf("Bio (60+ characters)") > -1 && r.j.missing.indexOf("At least 1 package") > -1, "can't submit an incomplete profile (exact missing items)");
 await Z("pro", { name: "Aarav Films", role: "Cinematographer", skills: "food, restaurant, reels", tools: "Sony FX3", years: 7, city: "Delhi", onsite: true, langs: "Hindi, English", bio: "Cinematographer for restaurants and cafes in Delhi NCR. Short-form reels and brand films.", days: ["mon", "tue", "wed", "thu", "fri", "sat"], rateDay: 18000, noticeDays: 2, terms: true }, "p");
 r = await Z("pro/packages", { name: "Restaurant Reels Package", price: 15000, days: 7, revisions: 2, deliverables: "5 reels, 5 covers", rights: "Social + website" }, "p"); const pkg = r.j.pro.packages[0];
@@ -160,6 +170,15 @@ r = await Z("projects/" + pid + "/review", { rating: 5, text: "Brilliant reels" 
 r = await Z("projects/" + pid + "/review", { rating: 1 }, "c"); ok(r.status === 409, "one review per project");
 r = await Z("market/" + proId, undefined, "c2"); ok(r.j.pro.rating === 5 && r.j.pro.reviews === 1 && r.j.pro.completed === 1, "rating and completed count come only from real projects");
 
+/* ---------- 6b. v40.1 professional dashboard + calendar ---------- */
+r = await Z("pro/dashboard", undefined, "p"); ok(r.j.ok && r.j.counts.completed === 1 && r.j.earnings.net === 13500 && r.j.pendingPayout === 13500 && r.j.pro.rating === 5 && r.j.reviews.length === 1 && r.j.replyRate === 100 && r.j.bookings.length >= 1, "pro dashboard: real counts, earnings, pending payout, rating, reply rate, bookings");
+r = await Z("pro/dashboard", undefined, "c"); ok(r.status === 404, "clients have no pro dashboard");
+const freeDay = nextDow(["mon", "tue", "wed", "thu", "fri"], 20);
+r = await Z("pro/blackout", { day: freeDay, on: true }, "p"); ok(r.j.ok && r.j.blackout.indexOf(freeDay) > -1 && (await Z("pro", undefined, "p")).j.pro.status === "approved", "block a date from the calendar (profile stays approved)");
+r = await Z("projects", { proId, title: "Blocked day", brief: "Shoot on a blocked day please", day: freeDay }, "c2"); ok(r.status === 400 && /blocked/.test(r.j.reason), "clients can't book a blocked date");
+r = await Z("pro/blackout", { day: workday, on: true }, "p"); ok(r.status === 409, "can't block a day that is already booked");
+await Z("pro/blackout", { day: freeDay, on: false }, "p");
+
 /* ---------- 7. finance + disputes ---------- */
 r = await Z("admin/payouts", undefined, "m"); ok(r.status === 403, "a moderator can't see payouts");
 await Z("admin/staff", { email: "client2@biz.in", role: "finance" }, "own");
@@ -187,5 +206,8 @@ ok(BRAIN_TOOLS && BRAIN_TOOLS.mk_overview && BRAIN_TOOLS.mk_pending_pros.level =
 const ws = fs.readFileSync(new URL("../workspace/index.html", import.meta.url), "utf8"), rb = fs.readFileSync(new URL("../robots.txt", import.meta.url), "utf8"), hd = fs.readFileSync(new URL("../_headers", import.meta.url), "utf8");
 ok(/noindex, nofollow/.test(ws) && /Disallow: \/workspace\//.test(rb) && /\/workspace\/\*\n  X-Robots-Tag: noindex/.test(hd) && !/workspace/.test(fs.readFileSync(new URL("../sitemap.xml", import.meta.url), "utf8")), "workspace (and pro profiles) are private: noindex, not in the sitemap, no public directory");
 ok(PRO_ROLES.length >= 40, "role catalogue");
+const pp = fs.readFileSync(new URL("../fodo-pros/index.html", import.meta.url), "utf8"), sm = fs.readFileSync(new URL("../sitemap.xml", import.meta.url), "utf8");
+const linked = fs.readdirSync(new URL("../", import.meta.url), { recursive: true }).filter((f) => /\.html$/.test(f) && !/node_modules|fodo-pros/.test(f)).some((f) => /fodo-pros/.test(fs.readFileSync(new URL("../" + f, import.meta.url), "utf8")));
+ok(/data-mode="pro"/.test(pp) && /noindex, nofollow/.test(pp) && /no-referrer/.test(pp) && /Disallow: \/fodo-pros\//.test(rb) && /\/fodo-pros\/\*\n  X-Robots-Tag: noindex/.test(hd) && !/fodo-pros/.test(sm) && !linked, "v40.1: /fodo-pros/ is unlisted: no link on any page, not in the sitemap, noindex, robots Disallow, no-referrer");
 ok(!all.some((t) => /cf_SECRET_key|re_SECRETresend|test-sites-secret/.test(t)), "no secret in any response");
 console.log(`\nv40: ${pass}/${pass + fail} passed`); process.exit(fail ? 1 : 0);

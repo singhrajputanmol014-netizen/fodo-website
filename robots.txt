@@ -4,6 +4,7 @@ Allow: /
 Disallow: /api/
 Disallow: /admin/
 Disallow: /workspace/
+Disallow: /fodo-pros/
 Disallow: /scripts/
 Disallow: /tests/
 Disallow: /docs/

@@ -19,6 +19,10 @@
   Referrer-Policy: same-origin
   X-Content-Type-Options: nosniff
   Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://cloudflareinsights.com wss://generativelanguage.googleapis.com; font-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+/fodo-pros/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
 /workspace/*
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store

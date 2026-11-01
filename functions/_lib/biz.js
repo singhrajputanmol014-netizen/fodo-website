@@ -46,10 +46,12 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS biz_payouts (id TEXT PRIMARY KEY, milestone_id TEXT UNIQUE, pro_id TEXT, gross INTEGER, commission INTEGER, net INTEGER, status TEXT, ref TEXT, created_at TEXT, paid_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, kind TEXT, text TEXT, link TEXT, read INTEGER DEFAULT 0, created_at TEXT)",
   "CREATE INDEX IF NOT EXISTS biz_notes_u ON biz_notes(user_id, id)",
+  "CREATE TABLE IF NOT EXISTS biz_invites (token TEXT PRIMARY KEY, note TEXT, max_uses INTEGER, uses INTEGER DEFAULT 0, expires_at TEXT, revoked INTEGER DEFAULT 0, created_by TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, target TEXT, detail TEXT, created_at TEXT)",
 ];
+const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT"];   // v40.1
 const ready = new WeakSet();
-export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); ready.add(d); } return d; }
+export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } ready.add(d); } return d; }
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
@@ -75,7 +77,7 @@ export async function setStaff(env, u, email, role) {
 }
 const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
   ["projects", "Projects", ["client"]], ["brand", "Brand Kit", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
-export const navFor = (R) => NAV.filter((n) => can(R, n[2])).map((n) => ({ id: n[0], label: n[1] }));
+export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
 
 /* ---------- settings (commission etc.) ---------- */
 export async function settings(env) { const d = await bdb(env), r = await all(d, "SELECT k, v FROM biz_settings"), s = { commission: 10 }; r.forEach((x) => { s[x.k] = J(x.v, x.v); }); return s; }
@@ -149,7 +151,8 @@ export async function savePro(env, u, b) {
   const days = arr(b.days, 7, 3).filter((x) => /^(mon|tue|wed|thu|fri|sat|sun)$/.test(x)), black = arr(b.blackout, 60, 10).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
   const v = [clip(b.name, 80) || (p && p.name) || "", clip(b.title, 80) || role || "", role, JSON.stringify(cats), JSON.stringify(arr(b.skills, 20, 40)), JSON.stringify(arr(b.tools, 20, 40)), int(b.years, 0, 60), clip(b.city, 60), int(b.radiusKm, 0, 3000) || 0, b.remote ? 1 : 0, b.onsite ? 1 : 0,
     JSON.stringify(arr(b.langs, 10, 30)), clip(b.bio, 1500), int(b.rateDay, 0, 1e7), url(b.photo), JSON.stringify(days), JSON.stringify(black), int(b.noticeDays, 0, 60) || 0, b.terms ? (p && p.terms_at) || now : null];
-  if (!p) { const id = "pr" + randId(14); await run(d, "INSERT INTO biz_pros (id, user_id, name, title, role, cats, skills, tools, years, city, radius_km, remote, onsite, langs, bio, rate_day, photo, days, blackout, notice_days, terms_at, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,'draft',?22,?22)", id, u.id, ...v, now); }
+  let inv = null; if (!p && !isOwner(u)) inv = await useInvite(env, d, b.invite);
+  if (!p) { const id = "pr" + randId(14); await run(d, "INSERT INTO biz_pros (id, user_id, name, title, role, cats, skills, tools, years, city, radius_km, remote, onsite, langs, bio, rate_day, photo, days, blackout, notice_days, terms_at, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,'draft',?22,?22)", id, u.id, ...v, now); if (inv) await run(d, "UPDATE biz_pros SET invite=?2 WHERE id=?1", id, inv); await auditLog(env, u.email, "pro:create", id, inv ? "invite " + inv.slice(0, 6) : "owner"); }
   else { const back = p.status === "approved" || p.status === "published" || p.status === "rejected" ? "pending" : p.status;   // a changed public profile goes back to review
     await run(d, "UPDATE biz_pros SET name=?2, title=?3, role=?4, cats=?5, skills=?6, tools=?7, years=?8, city=?9, radius_km=?10, remote=?11, onsite=?12, langs=?13, bio=?14, rate_day=?15, photo=?16, days=?17, blackout=?18, notice_days=?19, terms_at=?20, status=?21, updated_at=?22 WHERE id=?1", p.id, ...v, p.status === "draft" ? "draft" : back, now); }
   return myPro(env, u);
@@ -304,7 +307,7 @@ export async function moderatePro(env, u, R, id, action, note) {
   const d = await bdb(env), p = await one(d, "SELECT * FROM biz_pros WHERE id=?1", id); if (!p) throw err("Not found.", 404);
   await run(d, "UPDATE biz_pros SET status=?2, note=?3, approved_at=CASE WHEN ?2 IN ('approved','published') THEN ?4 ELSE approved_at END, approved_by=CASE WHEN ?2 IN ('approved','published') THEN ?5 ELSE approved_by END, updated_at=?4 WHERE id=?1", id, map[action], clip(note, 400), nowIso(), u.email);
   await auditLog(env, u.email, "pro:" + action, id, note); await notify(env, p.user_id, "moderation", "Your FODO Pro profile is now " + map[action] + (note ? ": " + clip(note, 200) : "."), "#pro");
-  if (action === "approve" || action === "reject") { const usr = await one(d, "SELECT email FROM acct_users WHERE id=?1", p.user_id); if (usr && usr.email) await sendMail(env, usr.email, "Your FODO Pro profile was " + map[action], "<p>Your FODO Pro profile is now <b>" + map[action] + "</b>." + (note ? " Note: " + clip(note, 200).replace(/[<>&]/g, "") : "") + "</p>", "Your FODO Pro profile is now " + map[action] + ".", { kind: "pro" }).catch(() => {}); }
+  if (action === "approve" || action === "reject") { const usr = await one(d, "SELECT email FROM acct_users WHERE id=?1", p.user_id); if (usr && usr.email) await sendMail(env, usr.email, "Your FODO Pro profile was " + map[action], "<p>Your FODO Pro profile is now <b>" + map[action] + "</b>. Open your dashboard: https://www.fodo.co.in/fodo-pros/" + (note ? " Note: " + clip(note, 200).replace(/[<>&]/g, "") : "") + "</p>", "Your FODO Pro profile is now " + map[action] + ".", { kind: "pro" }).catch(() => {}); }
   return { ok: true, status: map[action] };
 }
 export async function adminPayouts(env, R) { if (!can(R, ["admin", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT po.*, m.title, p.name AS pro_name FROM biz_payouts po JOIN biz_milestones m ON m.id=po.milestone_id JOIN biz_pros p ON p.id=po.pro_id ORDER BY po.status='paid', po.created_at DESC LIMIT 300"); }
@@ -360,4 +363,44 @@ export function actionsFor(text) {
   if (/ad\b|ads|pixel|campaign|meta|google ads/.test(s)) A.push({ label: "Plan an ad campaign", href: "/workspace/#ads" });
   if (/review|testimonial|trust/.test(s)) A.push({ label: "Hire a Copywriter", href: "/workspace/#pros?role=Copywriter" });
   return A.slice(0, 2);
+}
+
+/* ---------- v40.1 invite-only FODO Pros portal (/fodo-pros/?i=TOKEN): only people you send a link to can create a profile ---------- */
+async function useInvite(env, d, token) {
+  const t = clip(token, 40); if (!/^[a-z0-9]{24}$/.test(t)) throw err("FODO Pros is invite-only. Open the invite link FODO sent you.", 403);
+  const r = await d.prepare("UPDATE biz_invites SET uses=uses+1 WHERE token=?1 AND revoked=0 AND uses < max_uses AND expires_at > ?2 RETURNING token").bind(t, nowIso()).first();
+  if (!r) throw err("This invite link has expired or was already used. Ask FODO for a new one.", 403); return t;
+}
+export async function inviteStatus(env, token) { const t = clip(token, 40); if (!/^[a-z0-9]{24}$/.test(t)) return { valid: false }; const r = await one(await bdb(env), "SELECT uses, max_uses, expires_at, revoked FROM biz_invites WHERE token=?1", t); return { valid: !!(r && !r.revoked && r.uses < r.max_uses && r.expires_at > nowIso()) }; }
+export async function createInvite(env, u, R, b, origin) {
+  if (!can(R, ["admin", "moderator"])) throw err("Only admins and moderators create invite links.", 403);
+  const max = int(b.maxUses, 1, 500) || 1, days = int(b.days, 1, 365) || 14, t = randId(24), d = await bdb(env);
+  await run(d, "INSERT INTO biz_invites (token, note, max_uses, uses, expires_at, revoked, created_by, created_at) VALUES (?1,?2,?3,0,?4,0,?5,?6)", t, clip(b.note, 120), max, new Date(Date.now() + days * 864e5).toISOString(), u.email, nowIso());
+  await auditLog(env, u.email, "invite:create", t.slice(0, 6), clip(b.note, 120)); return { token: t, url: (origin || "https://www.fodo.co.in") + "/fodo-pros/?i=" + t, maxUses: max, days };
+}
+export async function listInvites(env, R, origin) { if (!can(R, ["admin", "moderator"])) throw err("Not allowed.", 403); return (await all(await bdb(env), "SELECT token, note, max_uses, uses, expires_at, revoked, created_by, created_at FROM biz_invites ORDER BY created_at DESC LIMIT 200")).map((x) => Object.assign(x, { url: (origin || "https://www.fodo.co.in") + "/fodo-pros/?i=" + x.token, active: !x.revoked && x.uses < x.max_uses && x.expires_at > nowIso() })); }
+export async function revokeInvite(env, u, R, token) { if (!can(R, ["admin", "moderator"])) throw err("Not allowed.", 403); await run(await bdb(env), "UPDATE biz_invites SET revoked=1 WHERE token=?1", clip(token, 40)); await auditLog(env, u.email, "invite:revoke", clip(token, 6)); return { ok: true }; }
+
+/* ---------- v40.1 professional dashboard (real data only) ---------- */
+export async function proDashboard(env, u) {
+  const d = await bdb(env), me = await myPro(env, u); if (!me) throw err("Create your FODO Pro profile first.", 404);
+  const P = await all(d, "SELECT j.id, j.title, j.status, j.budget, j.day, j.created_at, j.updated_at FROM biz_projects j WHERE j.pro_id=?1 ORDER BY j.updated_at DESC LIMIT 300", me.id);
+  const replied = P.filter((p) => p.status !== "requested").length, today = nowIso().slice(0, 10), E = await proEarnings(env, u);
+  const work = await all(d, "SELECT m.title, m.status, j.id pid, j.title ptitle FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id WHERE j.pro_id=?1 AND m.status IN ('funded') ORDER BY m.funded_at", me.id);
+  const A = []; P.filter((p) => p.status === "requested").forEach((p) => A.push({ text: "Send a proposal: " + p.title, why: "A client is waiting for your milestones and price.", href: "#project=" + p.id }));
+  work.forEach((m) => A.push({ text: "Deliver: " + m.title, why: "The client has paid FODO for this milestone (" + m.ptitle + ").", href: "#project=" + m.pid }));
+  if (me.completeness.missing.length) A.push({ text: "Complete your profile (" + me.completeness.pct + "%)", why: "Missing: " + me.completeness.missing.join(", "), href: "#pro" });
+  if (me.status === "draft" && !me.completeness.missing.length) A.push({ text: "Submit your profile for approval", why: "Clients can see you only after FODO approves it.", href: "#pro" });
+  return { pro: { id: me.id, name: me.name, status: me.status, note: me.note, completeness: me.completeness, rating: me.rating, reviews: me.reviews, completed: me.completed, days: me.days, blackout: me.blackout },
+    counts: { requests: P.filter((p) => p.status === "requested").length, proposed: P.filter((p) => p.status === "proposed").length, active: P.filter((p) => ["accepted", "in_progress", "delivered"].indexOf(p.status) > -1).length, completed: P.filter((p) => p.status === "completed").length, disputed: P.filter((p) => p.status === "disputed").length },
+    replyRate: P.length ? Math.round(replied / P.length * 100) : null, earnings: E.totals, pendingPayout: E.items.filter((x) => x.status !== "paid").reduce((a, x) => a + x.net, 0), automaticPayouts: E.automatic,
+    bookings: await all(d, "SELECT b.day, j.title, j.id FROM biz_bookings b JOIN biz_projects j ON j.id=b.project_id WHERE b.pro_id=?1 AND b.day >= ?2 ORDER BY b.day LIMIT 60", me.id, today),
+    reviews: await all(d, "SELECT rating, text, created_at FROM biz_reviews WHERE pro_id=?1 ORDER BY created_at DESC LIMIT 50", me.id), next: A.slice(0, 6) };
+}
+/* toggle one blackout date from the calendar (does not send the profile back to review) */
+export async function setBlackout(env, u, b) {
+  const p = await proOf(env, u), day = String(b.day || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw err("Pick a date.");
+  const d = await bdb(env); if (b.on && await one(d, "SELECT 1 x FROM biz_bookings WHERE pro_id=?1 AND day=?2", p.id, day)) throw err("You have a booking that day.", 409);
+  let L = J(p.blackout, []).filter((x) => x !== day); if (b.on) L.push(day); L = L.filter((x) => x >= nowIso().slice(0, 10)).sort().slice(0, 120);
+  await run(d, "UPDATE biz_pros SET blackout=?2, updated_at=?3 WHERE id=?1", p.id, JSON.stringify(L), nowIso()); return { blackout: L };
 }

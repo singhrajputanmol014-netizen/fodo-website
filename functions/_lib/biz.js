@@ -73,7 +73,16 @@ const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT",   // v40.1
   "CREATE TABLE IF NOT EXISTS biz_equipment_days (equipment_id TEXT, day TEXT, unit INTEGER, hold_id TEXT, PRIMARY KEY (equipment_id, day, unit))",
   "CREATE INDEX IF NOT EXISTS biz_equipment_days_h ON biz_equipment_days(hold_id)",
   /* v47.3: team settlement payouts (one payout per settlement line) + Cashfree Easy Split vendor ids */
-  "ALTER TABLE biz_payouts ADD COLUMN source_milestone TEXT", "ALTER TABLE biz_payouts ADD COLUMN label TEXT", "ALTER TABLE biz_pros ADD COLUMN cf_vendor_id TEXT"];
+  "ALTER TABLE biz_payouts ADD COLUMN source_milestone TEXT", "ALTER TABLE biz_payouts ADD COLUMN label TEXT", "ALTER TABLE biz_pros ADD COLUMN cf_vendor_id TEXT",
+  /* v47.4 Become a FODO Pro applications, Profile 2.0, case studies, FODO Recommended */
+  "CREATE TABLE IF NOT EXISTS biz_pro_applications (id TEXT PRIMARY KEY, user_id TEXT UNIQUE, status TEXT, data TEXT, reviewer TEXT, checks TEXT, message TEXT, submitted_at TEXT, decided_at TEXT, decided_by TEXT, pro_id TEXT, created_at TEXT, updated_at TEXT)",
+  "CREATE INDEX IF NOT EXISTS biz_pro_applications_s ON biz_pro_applications(status, updated_at)",
+  "CREATE TABLE IF NOT EXISTS biz_pro_app_events (id INTEGER PRIMARY KEY AUTOINCREMENT, app_id TEXT, actor TEXT, kind TEXT, from_status TEXT, to_status TEXT, note TEXT, public INTEGER DEFAULT 0, created_at TEXT)",
+  "CREATE INDEX IF NOT EXISTS biz_pro_app_events_a ON biz_pro_app_events(app_id, id)",
+  "CREATE TABLE IF NOT EXISTS biz_pro_case_studies (id TEXT PRIMARY KEY, pro_id TEXT, title TEXT, client_name TEXT, industry TEXT, role TEXT, challenge TEXT, approach TEXT, result TEXT, metrics TEXT, links TEXT, project_id TEXT, client_permission INTEGER DEFAULT 0, status TEXT, mod_note TEXT, moderated_by TEXT, moderated_at TEXT, published_at TEXT, created_at TEXT, updated_at TEXT)",
+  "CREATE INDEX IF NOT EXISTS biz_pro_case_studies_p ON biz_pro_case_studies(pro_id, status)",
+  "ALTER TABLE biz_pros ADD COLUMN specializations TEXT", "ALTER TABLE biz_pros ADD COLUMN industries TEXT", "ALTER TABLE biz_pros ADD COLUMN equipment TEXT", "ALTER TABLE biz_pros ADD COLUMN rate_project INTEGER",
+  "ALTER TABLE biz_pros ADD COLUMN recommended INTEGER DEFAULT 0", "ALTER TABLE biz_pros ADD COLUMN recommended_note TEXT", "ALTER TABLE biz_pros ADD COLUMN recommended_by TEXT", "ALTER TABLE biz_pros ADD COLUMN recommended_at TEXT"];
 const ready = new WeakSet();
 export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); await migrateOnce(d, MIG); ready.add(d); } return d; }
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
@@ -101,8 +110,8 @@ export async function setStaff(env, u, email, role) {
   await auditLog(env, u.email, "staff:" + (role || "remove"), e); return { ok: true };
 }
 const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["studio", "AI Studio", ["client"]], ["project-builder", "Build a Team", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
-  ["projects", "Projects", ["client"]], ["quotes", "Quotes", ["client"]], ["leads", "CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["settings", "Settings & privacy", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
-export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
+  ["projects", "Projects", ["client"]], ["quotes", "Quotes", ["client"]], ["leads", "CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["apply", "Become a FODO Pro", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["settings", "Settings & privacy", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
+export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro) && (n[0] !== "apply" || !R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
 
 /* ---------- settings (commission etc.) ---------- */
 export async function settings(env) { const d = await bdb(env), r = await all(d, "SELECT k, v FROM biz_settings"), s = { commission: 10 }; r.forEach((x) => { s[x.k] = J(x.v, x.v); }); return s; }
@@ -166,7 +175,8 @@ function completeness(p, c) {
 }
 export function proOut(p, mine) {
   const o = { id: p.id, name: p.name, title: p.title, role: p.role, cats: J(p.cats, []), skills: J(p.skills, []), tools: J(p.tools, []), years: p.years, city: p.city, radiusKm: p.radius_km, remote: !!p.remote, onsite: !!p.onsite, langs: J(p.langs, []), bio: p.bio, rateDay: p.rate_day, photo: p.photo,
-    days: J(p.days, []), slots: J(p.slots, []), noticeDays: p.notice_days || 0, verified: p.status === "approved" || p.status === "published", completed: p.done_n || 0, rating: p.rating_n ? Math.round(p.rating_sum / p.rating_n * 10) / 10 : null, reviews: p.rating_n || 0 };
+    days: J(p.days, []), slots: J(p.slots, []), noticeDays: p.notice_days || 0, verified: p.status === "approved" || p.status === "published", completed: p.done_n || 0, rating: p.rating_n ? Math.round(p.rating_sum / p.rating_n * 10) / 10 : null, reviews: p.rating_n || 0,
+    specializations: J(p.specializations, []), industries: J(p.industries, []), equipment: J(p.equipment, []), rateProject: p.rate_project || null, recommended: !!p.recommended, recommendedNote: p.recommended ? p.recommended_note || null : null };   /* v47.4 Profile 2.0 */
   if (mine) Object.assign(o, { status: p.status, note: p.note, blackout: J(p.blackout, []), termsAt: p.terms_at });
   return o;
 }
@@ -181,6 +191,9 @@ export async function savePro(env, u, b) {
   if (!p) { const id = "pr" + randId(14); await run(d, "INSERT INTO biz_pros (id, user_id, name, title, role, cats, skills, tools, years, city, radius_km, remote, onsite, langs, bio, rate_day, photo, days, blackout, notice_days, terms_at, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,'draft',?22,?22)", id, u.id, ...v, now); if (inv) await run(d, "UPDATE biz_pros SET invite=?2 WHERE id=?1", id, inv); await auditLog(env, u.email, "pro:create", id, inv ? "invite " + inv.slice(0, 6) : "owner"); }
   else { const back = p.status === "approved" || p.status === "published" || p.status === "rejected" ? "pending" : p.status;   // a changed public profile goes back to review
     await run(d, "UPDATE biz_pros SET name=?2, title=?3, role=?4, cats=?5, skills=?6, tools=?7, years=?8, city=?9, radius_km=?10, remote=?11, onsite=?12, langs=?13, bio=?14, rate_day=?15, photo=?16, days=?17, blackout=?18, notice_days=?19, terms_at=?20, status=?21, updated_at=?22 WHERE id=?1", p.id, ...v, p.status === "draft" ? "draft" : back, now); }
+  const has = (k) => Object.prototype.hasOwnProperty.call(b, k);   /* v47.4 Profile 2.0 fields (only when sent, so older forms keep them) */
+  if (has("specializations") || has("industries") || has("equipment") || has("rateProject")) { const q2 = await one(d, "SELECT * FROM biz_pros WHERE user_id=?1", u.id);
+    await run(d, "UPDATE biz_pros SET specializations=?2, industries=?3, equipment=?4, rate_project=?5 WHERE id=?1", q2.id, has("specializations") ? JSON.stringify(arr(b.specializations, 15, 60)) : q2.specializations, has("industries") ? JSON.stringify(arr(b.industries, 15, 60)) : q2.industries, has("equipment") ? JSON.stringify(arr(b.equipment, 30, 60)) : q2.equipment, has("rateProject") ? int(b.rateProject, 0, 1e8) : q2.rate_project); }
   return myPro(env, u);
 }
 async function proOf(env, u) { const p = await one(await bdb(env), "SELECT * FROM biz_pros WHERE user_id=?1", u.id); if (!p) throw err("Create your FODO Pro profile first.", 404); return p; }
@@ -221,12 +234,14 @@ export async function market(env, u, q) {
   if (q.budget) N.budget = int(q.budget, 0, 1e9); if (q.remote === "1") N.remote = true;
   const rows = await all(d, "SELECT * FROM biz_pros WHERE status IN ('approved','published') LIMIT 2000"), pk = await all(d, "SELECT pro_id, min(price) mp FROM biz_packages WHERE active=1 GROUP BY pro_id"), minP = {}; pk.forEach((x) => { minP[x.pro_id] = x.mp; });
   const words = String(q.q || "").toLowerCase().split(/\W+/).filter((w) => w.length > 2);
-  const scored = rows.map((p) => { const o = proOut(p), why = []; let s = 0;
+  const BM = await (await import("./proapps.js")).badgeMap(env, rows);   /* v47.4 badges from real data */
+  const scored = rows.map((p) => { const o = proOut(p), why = []; let s = 0; o.badges = BM[p.id] || [];
     if (N.role) { if (o.role === N.role) { s += 40; why.push("Role: " + o.role); } else if (Object.keys(PRO_CATS).some((c) => PRO_CATS[c].indexOf(N.role) > -1 && o.cats.indexOf(c) > -1)) s += 15; else s -= 30; }
     const hay = (o.skills.concat(o.tools).join(" ") + " " + (o.bio || "") + " " + o.title).toLowerCase(), hits = words.filter((w) => hay.indexOf(w) > -1); if (hits.length) { s += Math.min(20, hits.length * 5); why.push("Skills match: " + hits.slice(0, 3).join(", ")); }
     if (N.city) { if ((o.city || "").toLowerCase().indexOf(N.city) > -1) { s += 15; why.push("Based in " + o.city); } else if (o.remote) s += 4; else s -= 10; }
     if (N.remote && o.remote) { s += 8; why.push("Works remotely"); }
     const price = minP[p.id] || o.rateDay; if (N.budget && price) { if (price <= N.budget) { s += 12; why.push("Within budget (from ₹" + price.toLocaleString("en-IN") + ")"); } else s -= Math.min(15, Math.round((price - N.budget) / Math.max(1, N.budget) * 15)); }
+    if (o.recommended) { s += 6; why.push("Recommended by FODO"); }
     if (o.years) s += Math.min(8, o.years); if (o.verified) s += 5; if (o.rating) { s += o.rating; why.push(o.rating + "★ from " + o.reviews + " review" + (o.reviews === 1 ? "" : "s")); } s += Math.min(6, o.completed);
     return Object.assign(o, { score: s, why, fromPrice: price || null }); });
   const L = scored.filter((o) => !N.role || q.strict !== "1" || o.role === N.role).sort((a, b) => b.score - a.score || (b.completed - a.completed)).slice(0, 60);
@@ -235,10 +250,10 @@ export async function market(env, u, q) {
 export async function proPublic(env, u, id, R) {
   const d = await bdb(env), p = await one(d, "SELECT * FROM biz_pros WHERE id=?1", id); if (!p) throw err("Not found.", 404);
   const visible = p.status === "approved" || p.status === "published" || p.user_id === u.id || can(R, ["admin", "moderator"]); if (!visible) throw err("Not found.", 404);
-  return Object.assign(proOut(p, p.user_id === u.id || can(R, ["admin", "moderator"])), { packages: await all(d, "SELECT id, name, descr, deliverables, price, days, revisions, rights FROM biz_packages WHERE pro_id=?1 AND active=1 ORDER BY price", id),
+  return (await import("./proapps.js")).enrich(env, p, Object.assign(proOut(p, p.user_id === u.id || can(R, ["admin", "moderator"])), { packages: await all(d, "SELECT id, name, descr, deliverables, price, days, revisions, rights FROM biz_packages WHERE pro_id=?1 AND active=1 ORDER BY price", id),
     portfolio: await all(d, "SELECT id, kind, title, url, role, industry, descr FROM biz_portfolio WHERE pro_id=?1 ORDER BY created_at DESC", id), reviewsList: await all(d, "SELECT rating, text, created_at FROM biz_reviews WHERE pro_id=?1 ORDER BY created_at DESC LIMIT 20", id),
     saved: !!(await one(d, "SELECT 1 x FROM biz_shortlist WHERE user_id=?1 AND pro_id=?2", u.id, id)), booked: (await all(d, "SELECT day FROM biz_bookings WHERE pro_id=?1 AND day >= ?2 AND COALESCE(slot,'')=''", id, nowIso().slice(0, 10))).map((x) => x.day),
-    bookedSlots: await all(d, "SELECT day, slot FROM biz_bookings WHERE pro_id=?1 AND day >= ?2 AND COALESCE(slot,'') != ''", id, nowIso().slice(0, 10)) });
+    bookedSlots: await all(d, "SELECT day, slot FROM biz_bookings WHERE pro_id=?1 AND day >= ?2 AND COALESCE(slot,'') != ''", id, nowIso().slice(0, 10))  }));
 }
 export async function shortlist(env, u, b) {
   const d = await bdb(env); if (b && b.proId) { if (b.remove) await run(d, "DELETE FROM biz_shortlist WHERE user_id=?1 AND pro_id=?2", u.id, b.proId); else { const p = await one(d, "SELECT status FROM biz_pros WHERE id=?1", b.proId); if (!p || ["approved", "published"].indexOf(p.status) < 0) throw err("Not found.", 404); await run(d, "INSERT OR REPLACE INTO biz_shortlist (user_id, pro_id, note, tag, created_at) VALUES (?1,?2,?3,?4,?5)", u.id, b.proId, clip(b.note, 400), clip(b.tag, 30), nowIso()); } }
@@ -360,7 +375,7 @@ export async function proEarnings(env, u) { const p = await proOf(env, u), d = a
 /* ---------- admin / moderation / finance ---------- */
 export async function adminOverview(env, R) {
   if (!can(R, ["admin", "moderator", "finance", "viewer"])) throw err("Not allowed.", 403); const d = await bdb(env), n = async (sql) => ((await one(d, sql)) || {}).n || 0;
-  return { pros: { total: await n("SELECT count(*) n FROM biz_pros"), pending: await n("SELECT count(*) n FROM biz_pros WHERE status='pending'"), live: await n("SELECT count(*) n FROM biz_pros WHERE status IN ('approved','published')"), suspended: await n("SELECT count(*) n FROM biz_pros WHERE status='suspended'") },
+  return { pros: { total: await n("SELECT count(*) n FROM biz_pros"), pending: await n("SELECT count(*) n FROM biz_pros WHERE status='pending'"), live: await n("SELECT count(*) n FROM biz_pros WHERE status IN ('approved','published')"), suspended: await n("SELECT count(*) n FROM biz_pros WHERE status='suspended'"), applications: await n("SELECT count(*) n FROM biz_pro_applications WHERE status IN ('submitted','under_review','interview','verification')"), cases: await n("SELECT count(*) n FROM biz_pro_case_studies WHERE status='pending'") },
     projects: { total: await n("SELECT count(*) n FROM biz_projects"), active: await n("SELECT count(*) n FROM biz_projects WHERE status IN ('accepted','in_progress','delivered')"), completed: await n("SELECT count(*) n FROM biz_projects WHERE status='completed'"), disputed: await n("SELECT count(*) n FROM biz_projects WHERE status='disputed'") },
     money: { funded: (await one(d, "SELECT COALESCE(sum(amount),0) n FROM biz_milestones WHERE status IN ('funded','submitted','approved')")).n, commission: (await one(d, "SELECT COALESCE(sum(commission),0) n FROM biz_payouts")).n, owed: (await one(d, "SELECT COALESCE(sum(net),0) n FROM biz_payouts WHERE status != 'paid'")).n },
     automaticPayouts: payoutsOn(env), commission: (await settings(env)).commission, roles: R.roles };

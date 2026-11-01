@@ -172,3 +172,20 @@ html:has(.ws-body){background:var(--bg)}
 #tm-add{min-height:40px;max-width:100%}
 /* ===== v47.3 contracts & money ===== */
 .fn-bad{color:var(--err,#ff6b6b)}.ws-rows li.fn-st>div:first-child{flex:1 1 420px;min-width:0;display:grid;gap:4px}.ws-rows li.fn-st .pb-t{margin:6px 0 0}
+/* v47.4 Become a FODO Pro, case studies, badges */
+.pa-steps{list-style:none;display:flex;flex-wrap:wrap;gap:6px;padding:0;margin:0 0 14px;counter-reset:s}.pa-steps button{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--muted);font:inherit;font-size:13px;cursor:pointer}
+.pa-steps button b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);font-size:12px}.pa-steps button[aria-selected=true]{border-color:var(--signal);color:var(--text)}.pa-steps button[aria-selected=true] b{background:var(--signal);border-color:var(--signal);color:#fff}
+.pa-steps button.done b{border-color:color-mix(in srgb,var(--ok,#2ecc71) 70%,var(--line))}
+.pa-f fieldset[hidden]{display:none}.pa-nav{align-items:center}.pa-nav small{margin-left:auto}
+.pa-st{display:grid;gap:8px}.pa-msg{margin:4px 0;padding:10px 12px;border-left:3px solid var(--signal);background:color-mix(in srgb,var(--signal) 8%,transparent);border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere}.pa-msg small{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}
+.pa-tl{list-style:none;margin:6px 0;padding:0 0 0 14px;border-left:2px solid var(--line);display:grid;gap:8px}.pa-tl li{position:relative;display:grid;gap:2px;font-size:13px}.pa-tl li::before{content:"";position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--signal)}.pa-tl li span{color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}.pa-tl small{color:var(--muted)}
+.pa-miss{border:1px solid color-mix(in srgb,var(--warn,#f5a524) 60%,var(--line));background:color-mix(in srgb,var(--warn,#f5a524) 8%,transparent);border-radius:12px;padding:10px 14px;margin:0 0 12px}.pa-miss ul{margin:6px 0 0;padding-left:18px}
+.pa-dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:10px 0;font-size:14px}.pa-dl dt{color:var(--muted)}.pa-dl dd{margin:0;overflow-wrap:anywhere}
+@media (max-width:560px){.pa-dl{grid-template-columns:1fr}.pa-dl dd{margin-bottom:6px}}
+.pa-checks{display:grid;gap:8px}.pa-checks em{color:var(--muted);font-style:normal;font-size:12px}.pa-checks small{color:var(--muted)}
+.pa-bdgs{display:inline-flex;flex-wrap:wrap;gap:4px}.ws-pill.pa-bdg{border-color:color-mix(in srgb,var(--signal) 55%,var(--line));background:color-mix(in srgb,var(--signal) 10%,transparent)}
+.ws-pill.pa-bdg.b-recommended{border-color:color-mix(in srgb,#f5a524 70%,var(--line));background:color-mix(in srgb,#f5a524 12%,transparent)}
+.pa-why{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.cs-card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 10px;background:var(--panel);display:grid;gap:6px}.cs-card header{display:grid;gap:2px}.cs-card header small{color:var(--muted)}.cs-card p{margin:0;overflow-wrap:anywhere}
+.cs-card .cs-note{flex:1 1 220px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
+.ws-rows li.cs-i>div:first-child{display:grid;gap:3px;flex:1 1 260px;min-width:0}

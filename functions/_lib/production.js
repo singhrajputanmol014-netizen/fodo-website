@@ -266,6 +266,8 @@ export async function match(env, R, b) {
   const rows = await all(d, "SELECT * FROM biz_pros WHERE status IN ('approved','published') AND (" + like + ") LIMIT 400", ...names);   // hard filter: role, server-side, bounded
   const reli = {}; for (const r of await all(d, "SELECT x.pro_id, sum(CASE WHEN x.status='accepted' THEN 1 ELSE 0 END) a, sum(CASE WHEN x.status IN ('accepted','declined') THEN 1 ELSE 0 END) n FROM biz_project_pros x GROUP BY x.pro_id")) reli[r.pro_id] = r;
   const pf = {}; for (const r of await all(d, "SELECT pro_id, count(*) n FROM biz_portfolio GROUP BY pro_id")) pf[r.pro_id] = r.n;
+  const cs = {}; for (const r of await all(d, "SELECT pro_id, count(*) n FROM biz_pro_case_studies WHERE status='published' AND client_permission=1 GROUP BY pro_id")) cs[r.pro_id] = r.n;   /* v47.4 */
+  const BM = rows.length ? await (await import("./proapps.js")).badgeMap(env, rows) : {};
   const tot = Object.values(W).reduce((a, x) => a + x, 0) || 1, out = [];
   for (const p of rows) {
     const o = proOut(p), why = [], skip = []; let s = 0;
@@ -276,7 +278,7 @@ export async function match(env, R, b) {
     s += W.role; why.push(o.role);
     const skills = role.skills.length ? role.skills.filter((k) => o.skills.map((x) => x.toLowerCase()).indexOf(k.toLowerCase()) > -1) : []; if (skills.length) { s += W.skills * Math.min(1, skills.length / Math.max(1, role.skills.length)); why.push("Skills: " + skills.slice(0, 3).join(", ")); }
     if (avail === true) { s += W.availability; why.push("Available on " + date); }
-    if (pf[p.id]) { s += W.portfolio * Math.min(1, pf[p.id] / 6); why.push(pf[p.id] + " portfolio item" + (pf[p.id] > 1 ? "s" : "")); }
+    const work = (pf[p.id] || 0) + (cs[p.id] || 0); if (work) { s += W.portfolio * Math.min(1, work / 6); why.push((pf[p.id] ? pf[p.id] + " portfolio item" + (pf[p.id] > 1 ? "s" : "") : "") + (pf[p.id] && cs[p.id] ? " · " : "") + (cs[p.id] ? cs[p.id] + " published case stud" + (cs[p.id] > 1 ? "ies" : "y") : "")); }
     if (budget && o.rateDay) { if (o.rateDay <= budget) { s += W.budget; why.push("Day rate within budget"); } }
     if (city && (o.city || "").toLowerCase().indexOf(city) > -1) { s += W.location; why.push("Based in " + o.city); }
     if (o.years) { s += W.experience * Math.min(1, o.years / 10); why.push(o.years + " years' experience"); }
@@ -284,7 +286,8 @@ export async function match(env, R, b) {
     if (o.completed) { s += W.completion * Math.min(1, o.completed / 10); why.push(o.completed + " completed FODO project" + (o.completed > 1 ? "s" : "")); }
     const rl = reli[p.id]; if (rl && rl.n >= 3) { s += W.reliability * (rl.a / rl.n); why.push(Math.round(rl.a / rl.n * 100) + "% of team invitations accepted"); }
     if (o.rating && o.reviews) why.push(o.rating + "★ from " + o.reviews + " review" + (o.reviews > 1 ? "s" : ""));
-    out.push({ pro: { id: o.id, name: o.name, title: o.title, role: o.role, city: o.city, photo: o.photo, verified: o.verified, rating: o.rating, reviews: o.reviews, completed: o.completed, rateDay: can(R, ["admin", "finance", "viewer"]) ? o.rateDay : undefined }, score: Math.round(s / tot * 100), available: avail, why, notes: skip });
+    const bg = BM[p.id] || []; bg.filter((x) => x.key !== "verified").forEach((x) => why.push(x.label + ": " + x.why.replace(/\.$/, "")));   /* v47.4 badges explain themselves (no hidden score) */
+    out.push({ pro: { id: o.id, name: o.name, title: o.title, role: o.role, city: o.city, photo: o.photo, verified: o.verified, badges: bg.map((x) => ({ key: x.key, label: x.label, why: x.why })), specializations: o.specializations, rating: o.rating, reviews: o.reviews, completed: o.completed, rateDay: can(R, ["admin", "finance", "viewer"]) ? o.rateDay : undefined }, score: Math.round(s / tot * 100), available: avail, why, notes: skip });
   }
   out.sort((a, z) => (z.available === false ? -1 : 0) - (a.available === false ? -1 : 0) || z.score - a.score);
   return { role: { id: role.id, name: role.name }, total: out.length, availableCount: out.filter((x) => x.available !== false).length, items: out.slice(0, limit), weights: W, note: out.length ? null : "No approved FODO Pro matches this role" + (city ? " in " + b.city : "") + " yet. FODO staffs it from its network and confirms before you pay." };

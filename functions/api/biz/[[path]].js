@@ -10,6 +10,8 @@
         POST crm/contacts · crm/contacts/<id>/delete · crm/merge · crm/import-forms · crm/import-csv {csv} · crm/deals · crm/deals/<id>/delete · crm/activities · crm/activities/<id> {done} · crm/activities/<id>/delete
    v46.1: GET settings/notify · POST settings/notify · GET privacy (log + what blocks a deletion) · POST privacy/export (JSON file) · POST privacy/delete {confirm:"DELETE"} · GET admin/analytics
    v45 Studio: GET studio/usage · POST studio/caption · studio/script · studio/ads · studio/utm · studio/save
+   v47.4: GET apply · POST apply · apply/submit · GET pro/case-studies · POST pro/case-studies · pro/case-studies/<id>/submit|delete
+        GET admin/applications[?status&q] · admin/applications/<id> · admin/case-studies?status · admin/badges · POST admin/applications/<id> {action} · admin/case-studies/<id> · admin/badges · admin/pros/<id>/recommend
    v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
         POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
 import { json, accountsOn, sessionUser, sameOrigin, count, isOwner } from "../../_lib/accounts.js";
@@ -27,6 +29,7 @@ import * as QT from "../../_lib/quotes.js";
 import * as TM from "../../_lib/teams.js";
 import * as AV from "../../_lib/availability.js";
 import * as FN from "../../_lib/finance.js";
+import * as PA from "../../_lib/proapps.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -84,6 +87,14 @@ export async function onRequest(ctx) {
     if (p0 === "pro" && p1 === "packages" && p2 && m === "DELETE") return ok({ pro: await B.delPackage(env, u, p2) });
     if (p0 === "pro" && p1 === "portfolio" && m === "POST") return ok({ pro: await B.savePortfolio(env, u, body) });
     if (p0 === "pro" && p1 === "portfolio" && p2 && m === "DELETE") return ok({ pro: await B.delPortfolio(env, u, p2) });
+    /* v47.4 Become a FODO Pro (any signed-in person applies; FODO reviews) + the Pro's case studies */
+    if (p0 === "apply" && !p1 && m === "GET") return ok(await PA.myApplication(env, u));
+    if (p0 === "apply" && !p1 && m === "POST") return ok(await PA.saveApplication(env, u, body));
+    if (p0 === "apply" && p1 === "submit" && m === "POST") return ok(await PA.submitApplication(env, u));
+    if (p0 === "pro" && p1 === "case-studies" && !p2 && m === "GET") return ok(await PA.myCases(env, u));
+    if (p0 === "pro" && p1 === "case-studies" && !p2 && m === "POST") return ok(await PA.saveCase(env, u, body));
+    if (p0 === "pro" && p1 === "case-studies" && p2 && path[3] === "submit" && m === "POST") return ok(await PA.submitCase(env, u, p2));
+    if (p0 === "pro" && p1 === "case-studies" && p2 && path[3] === "delete" && m === "POST") return ok(await PA.delCase(env, u, p2));
     /* marketplace */
     if (p0 === "market" && !p1 && m === "GET") return ok(await B.market(env, u, q));
     if (p0 === "market" && p1 && m === "GET") return ok({ pro: await B.proPublic(env, u, p1, R) });
@@ -216,8 +227,17 @@ export async function onRequest(ctx) {
       if (p1 === "quotes" && p2 && path[3] === "send" && m === "POST") return ok({ quote: await QT.send(env, u, R, p2) });
       if (p1 === "quotes" && p2 && path[3] === "cancel" && m === "POST") return ok({ quote: await QT.cancel(env, u, R, p2, body) });
       if (p1 === "quotes" && p2 && path[3] === "clone" && m === "POST") return ok({ quote: await QT.clone(env, u, R, p2) });
+      /* v47.4 Pro applications, case-study moderation, badge rules */
+      if (p1 === "applications" && !p2 && m === "GET") return ok(await PA.adminApplications(env, R, q));
+      if (p1 === "applications" && p2 && m === "GET") return ok({ application: await PA.adminApplication(env, R, p2) });
+      if (p1 === "applications" && p2 && m === "POST") return ok({ application: await PA.decideApplication(env, u, R, p2, body) });
+      if (p1 === "case-studies" && !p2 && m === "GET") return ok(await PA.adminCases(env, R, q));
+      if (p1 === "case-studies" && p2 && m === "POST") return ok(await PA.moderateCase(env, u, R, p2, body));
+      if (p1 === "badges" && m === "GET") return ok(await PA.badgeOverview(env, u, R));
+      if (p1 === "badges" && m === "POST") return ok({ config: await PA.saveBadgeConfig(env, u, body) });
       if (p1 === "overview" && m === "GET") return ok(await B.adminOverview(env, R));
       if (p1 === "pros" && !p2 && m === "GET") return ok({ items: await B.adminPros(env, R, q.status) });
+      if (p1 === "pros" && p2 && path[3] === "recommend" && m === "POST") return ok(await PA.recommend(env, u, R, p2, body));   // v47.4 (before the moderation route)
       if (p1 === "pros" && p2 && m === "POST") return ok(await B.moderatePro(env, u, R, p2, body.action, body.note));
       if (p1 === "payouts" && !p2 && m === "GET") return ok({ items: await PO.adminList(env, R), automatic: B.payoutsOn(env), provider: PO.provider(env) });
       if (p1 === "payouts" && p2 && path[3] === "send" && m === "POST") return ok({ payout: await PO.send(env, u, R, p2) });   // v46.2

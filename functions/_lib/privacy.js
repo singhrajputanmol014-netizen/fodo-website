@@ -76,7 +76,7 @@ export async function deleteAccount(env, u, b) {
   /* shared work keeps the other side's record; your words are removed */
   await del("messages", "UPDATE biz_messages SET body='Message removed (account deleted).' WHERE user_id=?1", uid);
   if (pro) { await del("pro", "UPDATE biz_pros SET name='Deleted professional', title='', bio='', photo='', skills='[]', tools='[]', langs='[]', city='', status='archived', invite=NULL, updated_at=?2 WHERE id=?1", pro.id, now);
-    await safeRun(d, "DELETE FROM biz_portfolio WHERE pro_id=?1", pro.id); await safeRun(d, "UPDATE biz_packages SET active=0 WHERE pro_id=?1", pro.id); await safeRun(d, "UPDATE biz_project_pros SET status='removed' WHERE pro_id=?1 AND status IN ('invited','accepted','declined')", pro.id); }
+    await safeRun(d, "DELETE FROM biz_portfolio WHERE pro_id=?1", pro.id); await safeRun(d, "DELETE FROM biz_payout_methods WHERE pro_id=?1", pro.id); await safeRun(d, "UPDATE biz_packages SET active=0 WHERE pro_id=?1", pro.id); await safeRun(d, "UPDATE biz_project_pros SET status='removed' WHERE pro_id=?1 AND status IN ('invited','accepted','declined')", pro.id); }
   await del("support", "UPDATE help_tickets SET email='', name='' WHERE user_id=?1", uid);
   /* sign-in: every session ends; the account row stays only as an anonymous key for the kept payment records */
   await safeRun(d, "DELETE FROM acct_sessions WHERE user_id=?1", uid); await safeRun(d, "DELETE FROM acct_team WHERE owner_id=?1 OR email=?2", uid, email);

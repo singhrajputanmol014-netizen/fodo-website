@@ -21,6 +21,7 @@ import * as ST from "../../_lib/studio.js";
 import * as PV from "../../_lib/privacy.js";
 import * as AL from "../../_lib/alerts.js";
 import * as AN from "../../_lib/analytics.js";
+import * as PO from "../../_lib/payouts.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -70,6 +71,8 @@ export async function onRequest(ctx) {
     if (p0 === "pro" && p1 === "submit" && m === "POST") return ok({ pro: await B.submitPro(env, u) });
     if (p0 === "pro" && p1 === "dashboard" && m === "GET") return ok(await B.proDashboard(env, u));
     if (p0 === "pro" && p1 === "blackout" && m === "POST") return ok(await B.setBlackout(env, u, body));
+    if (p0 === "pro" && p1 === "payout-method" && m === "GET") return ok(await PO.getMethod(env, u));   // v46.2
+    if (p0 === "pro" && p1 === "payout-method" && m === "POST") return ok(await PO.saveMethod(env, u, body));
     if (p0 === "pro" && p1 === "slots" && m === "POST") return ok(await B.setSlots(env, u, body));   // v44 time slots
     if (p0 === "pro" && p1 === "earnings" && m === "GET") return ok(await B.proEarnings(env, u));
     if (p0 === "pro" && p1 === "packages" && m === "POST") return ok({ pro: await B.savePackage(env, u, body) });
@@ -133,8 +136,10 @@ export async function onRequest(ctx) {
       if (p1 === "overview" && m === "GET") return ok(await B.adminOverview(env, R));
       if (p1 === "pros" && !p2 && m === "GET") return ok({ items: await B.adminPros(env, R, q.status) });
       if (p1 === "pros" && p2 && m === "POST") return ok(await B.moderatePro(env, u, R, p2, body.action, body.note));
-      if (p1 === "payouts" && !p2 && m === "GET") return ok({ items: await B.adminPayouts(env, R), automatic: B.payoutsOn(env) });
-      if (p1 === "payouts" && p2 && m === "POST") return ok(await B.markPaid(env, u, R, p2, body.ref));
+      if (p1 === "payouts" && !p2 && m === "GET") return ok({ items: await PO.adminList(env, R), automatic: B.payoutsOn(env), provider: PO.provider(env) });
+      if (p1 === "payouts" && p2 && path[3] === "send" && m === "POST") return ok({ payout: await PO.send(env, u, R, p2) });   // v46.2
+      if (p1 === "payouts" && p2 && path[3] === "check" && m === "POST") { if (!B.can(R, ["admin", "finance"])) return json({ ok: false, reason: "Only FODO finance or admins." }, 403); return ok(await PO.check(env, p2)); }
+      if (p1 === "payouts" && p2 && !path[3] && m === "POST") return ok(await B.markPaid(env, u, R, p2, body.ref));
       if (p1 === "analytics" && m === "GET") return ok(await AN.analytics(env, R));   // v46.1
       if (p1 === "refunds" && m === "GET") return ok({ items: await B.adminRefunds(env, R) });   // v44
       if (p1 === "disputes" && !p2 && m === "GET") return ok({ items: await B.adminDisputes(env, R) });

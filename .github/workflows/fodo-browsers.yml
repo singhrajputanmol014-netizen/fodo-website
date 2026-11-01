@@ -1,0 +1,33 @@
+# FODO cross-browser check (v46.2): runs the real site on the local Cloudflare runtime and tests it in Chromium, Firefox and
+# WebKit (Safari's engine). Runs on every push to main and can be started by hand (Actions → FODO browsers → Run workflow).
+# Nothing to set up: no secrets are used (test mode, offline fixtures).
+name: FODO browsers
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+jobs:
+  browsers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install test tools
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+      - name: Install ${{ matrix.browser }}
+        working-directory: tests
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Cross-browser smoke test
+        env:
+          WRANGLER: ${{ github.workspace }}/tests/node_modules/.bin/wrangler
+          NODE_PATH: ${{ github.workspace }}/tests/node_modules
+          BROWSERS: ${{ matrix.browser }}
+        run: node tests/cross-browser.test.js

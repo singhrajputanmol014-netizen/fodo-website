@@ -62,8 +62,20 @@ export async function systemHealth(env, request) {
   add("AI", !!env.AI || !!env.GROQ_API_KEY, env.AI ? "Workers AI" : env.GROQ_API_KEY ? "Groq" : "No AI binding");
   try { if (env.ASSETS) { const r = await env.ASSETS.fetch(new Request(new URL("/data/build.json", request.url))); if (r.ok) out.deploy = await r.json(); } } catch (e) {}
   out.deploy = out.deploy || null; add("Deployed build stamp", !!out.deploy, out.deploy ? "build " + out.deploy.build + " · " + out.deploy.builtAt : "data/build.json not readable here");
+  out.clientErrors = await clientErrors(env, 20);   // v46.2: real errors people hit in the builder
   return out;
 }
+/* v46.2 builder error reports: what really goes wrong in people's browsers (message, file, line, build, browser), never
+   page content or personal data. The same error is counted, not stored again. Owners read them in System health. */
+const CE = "CREATE TABLE IF NOT EXISTS site_client_errors (k TEXT PRIMARY KEY, msg TEXT, src TEXT, build TEXT, ua TEXT, n INTEGER, first_at TEXT, last_at TEXT)";
+export async function reportClientError(env, b) {
+  const d = await sdb(env); await d.prepare(CE).run(); const msg = clip(String(b.msg || "").replace(/https?:\/\/[^\s)]+/g, (u) => { try { return new URL(u).pathname; } catch (e) { return ""; } }).replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email]"), 300);
+  if (!msg) return; const src = clip(String(b.src || "").replace(/^https?:\/\/[^/]+/, "").split("?")[0], 120) + (b.line ? ":" + (+b.line || 0) : ""), build = clip(b.build, 20), ua = /Firefox\//.test(b.ua || "") ? "Firefox" : /Edg\//.test(b.ua || "") ? "Edge" : /Chrome\//.test(b.ua || "") ? "Chrome" : /Safari\//.test(b.ua || "") ? "Safari" : "Other";
+  const k = (msg + "|" + src).slice(0, 400), now = nowIso();
+  await d.prepare("INSERT INTO site_client_errors (k, msg, src, build, ua, n, first_at, last_at) VALUES (?1,?2,?3,?4,?5,1,?6,?6) ON CONFLICT(k) DO UPDATE SET n=n+1, last_at=?6, build=?4, ua=?5").bind(k, msg, src, build, ua + (/Mobile/.test(b.ua || "") ? " mobile" : ""), now).run();
+  await d.prepare("DELETE FROM site_client_errors WHERE k IN (SELECT k FROM site_client_errors ORDER BY last_at DESC LIMIT -1 OFFSET 300)").run();
+}
+export async function clientErrors(env, n) { try { const d = await sdb(env); await d.prepare(CE).run(); return ((await d.prepare("SELECT msg, src, build, ua, n, first_at, last_at FROM site_client_errors ORDER BY last_at DESC LIMIT ?1").bind(n || 20).all()).results) || []; } catch (e) { return []; } }
 const lockedErr = (t) => Object.assign(err("“" + (t.name || "This template") + "” is part of the Website Builder plan. Your free plan includes " + FREE_TEMPLATES.length + " free templates, the AI builder and a blank start.", 402), { upgrade: true });
 
 /* ---------- tenant resolution ---------- */

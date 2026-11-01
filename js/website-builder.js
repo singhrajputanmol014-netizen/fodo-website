@@ -16,6 +16,11 @@ import * as MB from "/js/wb-mobile.js";
 import * as EL from "/js/wb-elements.js";
 import * as N from "/js/wb-v42.js";
 import { legalText as legalTextFor } from "/sites/lib/industry.js";
+/* v46.2: report real errors (message, file, line, build, browser: no content) so FODO can see and fix what goes wrong */
+(function () { let sent = 0; const seen = new Set(); const rep = (msg, src, line) => { msg = String(msg || "").slice(0, 300); if (!msg || sent >= 10 || seen.has(msg + src)) return; seen.add(msg + src); sent++;
+  try { fetch("/api/sites/client-error", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ msg, src: src || "", line: line || 0, build: ((document.querySelector('meta[name="fodo-build"]') || {}).content || ""), ua: navigator.userAgent }) }).catch(() => {}); } catch (e) {} };
+  addEventListener("error", (e) => { if (e.target && e.target !== window && e.target.src) return rep("Couldn't load " + String(e.target.src).split("?")[0].replace(location.origin, ""), "", 0); rep(e.message, e.filename, e.lineno); }, true);
+  addEventListener("unhandledrejection", (e) => rep("Unhandled: " + ((e.reason && (e.reason.message || e.reason)) || "rejection"), (e.reason && e.reason.stack ? (String(e.reason.stack).split("\n")[1] || "").trim() : ""), 0)); })();
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
 const api = (p, method, body, raw) => fetch("/api/sites/" + p, { method: method || "GET", credentials: "same-origin", headers: raw ? { "content-type": raw.type } : body ? { "content-type": "application/json" } : {}, body: raw ? raw.data : body ? JSON.stringify(body) : undefined }).then((r) => r.json().then((j) => Object.assign(j, { _status: r.status })).catch(() => ({ ok: false, _status: r.status, reason: r.status >= 500 ? "The server had a problem. Your last saved version is safe, please try again." : "Unexpected answer from the server (" + r.status + ")." })), () => ({ ok: false, offline: true, _status: 0, reason: "You're offline or the connection dropped." }));
@@ -90,16 +95,29 @@ function setDevice(dev) { if (!ED) return; ED.dev = dev; $$(".wb-bar [data-dev]"
 function openHistory() { ED.tab = "more"; left(); const d = $("#wb-vers"); if (d) { d.parentNode.open = true; versionsPanel(); d.scrollIntoView({ block: "nearest" }); } }
 function goPage(slug) { ED.page = slug; ED.sel = null; ED.elSel = []; paint(); left(); right(); }
 function panelX() { return { ED: () => ED, site: () => Object.assign({}, ED.s, { urls: ED.urls || ED.s.urls }), api, toast, change, paint, left, right, upload, askAI, openCmd, curPage, select, goPage, DEFAULTS, BRIDGE, isOwner: () => !!(CFG && CFG.owner) || !!(ED && ED.limits && ED.limits.owner), save: (note) => save(note), preview: (anim) => preview(anim), after: { design: (el) => N.tokens(el) }, panels: { domain: domainPanel, stats: statsPanel } }; }
-function paint(keepScroll) {
-  const f = $("#wb-if"); let y = 0; try { y = keepScroll ? 0 : 0; } catch (e) {}
-  f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE + EL.BRIDGE, data: ED.data }); N.refresh();
-  f.onload = () => { if (ED.sel != null) f.contentWindow.postMessage({ fodo: "mark", i: ED.sel }, "*"); };
+/* v46.2 smooth canvas: several changes in one moment = ONE repaint; the new page is built in a hidden second iframe and
+   swapped in only when it has loaded, at the same scroll position (no white flash, no jump to the top) */
+let paintQ = 0, scrollY0 = 0, scrollPage = null;
+function paint() { if (paintQ) return; paintQ = requestAnimationFrame(() => { paintQ = 0; paintNow(); }); }
+function paintNow() {
+  if (!ED) return; const fw = $("#wb-fw"), cur = $("#wb-if"); if (!fw || !cur) return;
+  if (scrollPage !== ED.page) { scrollY0 = 0; scrollPage = ED.page; }
+  const keep = '<script>(function(){var y=' + (Math.round(scrollY0) || 0) + ';if(y)scrollTo(0,y);var t=0;addEventListener("scroll",function(){clearTimeout(t);t=setTimeout(function(){parent.postMessage({fodo:"scroll",y:scrollY},"*")},120)},{passive:true})})()<\/script>';
+  const html = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE + EL.BRIDGE + keep, data: ED.data });
+  let back = fw.querySelector("iframe.wb-back");
+  if (!back) { back = document.createElement("iframe"); back.className = "wb-back"; back.title = "Website preview"; back.setAttribute("sandbox", "allow-scripts"); back.setAttribute("aria-hidden", "true"); back.tabIndex = -1; fw.appendChild(back); }
+  back.onload = () => { if (!back.isConnected || !ED) return; const old = $("#wb-if"); back.classList.remove("wb-back"); back.removeAttribute("aria-hidden"); back.removeAttribute("tabindex");
+    if (old && old !== back) { old.id = ""; old.remove(); } back.id = "wb-if";
+    if (ED.sel != null) back.contentWindow.postMessage({ fodo: "mark", i: ED.sel }, "*"); EL.remark(); };
+  back.srcdoc = html; N.refresh();
 }
 const propsOf = (sec) => (sec.ref ? ((ED.doc.components || []).find((k) => k.id === sec.ref) || { props: sec.props }).props : sec.props);   // master props (copy overrides: sec.over)
 function onFrame(e) {
-  if (!ED || e.source !== $("#wb-if").contentWindow && !(e.data && e.data.fodo === "checked")) return; const d = e.data || {};
+  if (!ED || !e.source) return; const d = e.data || {}, mine = [...document.querySelectorAll("#wb-fw iframe")].some((f) => f.contentWindow === e.source);   // v46.2: the visible OR the loading canvas (never crash when the editor is closed)
+  if (!mine && d.fodo !== "checked") return;
+  if (d.fodo === "scroll") { const cur = $("#wb-if"); if (cur && cur.contentWindow === e.source) scrollY0 = +d.y || 0; return; }
   if (EL.onFrame(d)) return;   // v41 element selection + layer list
-  if (d.fodo === "sel") { if (d.i !== ED.sel) ED.elSel = []; ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); MB.onSelect(true, (SECTION_LABELS[(curPage().sections[d.i] || {}).type] || "section")); }
+  if (d.fodo === "sel") { if (d.i !== ED.sel) ED.elSel = []; ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); e.source.postMessage({ fodo: "mark", i: d.i }, "*"); MB.onSelect(true, (SECTION_LABELS[(curPage().sections[d.i] || {}).type] || "section")); }
   if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; if (sec.style && sec.style.lock) { paint(); return toast("This section is locked, unlock it to edit.", true); } if (sec.ref && (ED.copyKey === ED.page + ":" + d.i || (sec.over && d.f in sec.over))) { if (sec.over && sec.over[d.f] === d.t) return; change(() => { sec.over = sec.over || {}; sec.over[d.f] = String(d.t).trim(); }); return; }   // v42 copy override
     const P0 = propsOf(sec), cur = P0[d.f]; if (cur === d.t) return; change(() => { P0[d.f] = String(d.t).trim(); }); }
   if (d.fodo === "ctx") PN.contextMenu(d.i, d.x, d.y);
@@ -138,6 +156,7 @@ async function save(note) {
     if (pick === "mine") { ED.rev = r.rev; ED.keepServer = true; return await save("Kept my version (after an editing conflict)"); }
     V.saveState("failed", "Not saved: choose a version"); return false; }
   if (r.offline || r._status === 0) { V.saveState("offline"); if (!ED.onl) { ED.onl = () => { window.removeEventListener("online", ED.onl); ED.onl = null; if (ED && ED.dirty) save(); }; window.addEventListener("online", ED.onl); } clearTimeout(saveT); saveT = setTimeout(save, Math.min(60000, 4000 * Math.pow(2, ED.fails = (ED.fails || 0) + 1))); return false; }
+  if (r._status === 429 || r._status >= 500) { ED.fails = (ED.fails || 0) + 1; V.saveState("failed", "Not saved yet, trying again…"); clearTimeout(saveT); saveT = setTimeout(save, Math.min(120000, 5000 * Math.pow(2, ED.fails))); if (ED.fails === 3) toast(V.friendly(r, "saving") + " Your changes are kept in this browser and will be saved automatically.", true); return false; }   // v46.2: retry with backoff
   V.saveState("failed"); toast(V.friendly(r, "saving") + " Your changes are kept in this browser.", true); return false;
 }
 

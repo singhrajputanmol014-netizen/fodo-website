@@ -61,9 +61,12 @@ export async function onRequest(ctx) {
     const u = await sessionUser(env, request); if (!u) return json({ ok: false, reason: "Log in to use the Website Builder.", login: true }, 401);
     const ctype = request.headers.get("content-type") || "";
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !(/json/.test(ctype) || (path[1] === "media" && /^image\//.test(ctype)))))) return json({ ok: false, reason: "Bad request." }, 403);
-    if (m !== "GET" && (await count(env, "sites:" + u.id, 600, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
+    /* v46.2: autosaves (PUT of a website) have their own, much larger allowance: a busy editing hour must never hit "too many changes" */
+    const autosave = m === "PUT" && path.length === 1;
+    if (m !== "GET" && (await count(env, (autosave ? "sites-save:" : "sites:") + u.id, autosave ? 3600 : 600, 3600))) return json({ ok: false, reason: autosave ? "Saving very often: your changes are kept and will be saved in a minute." : "Too many changes this hour, slow down a little." }, 429);
     const body = m === "POST" || m === "PUT" ? (path[1] === "media" && !path[2] ? null : (await request.json().catch(() => null)) || {}) : null, q = new URL(request.url).searchParams;
     if (p0 === "list" && m === "GET") return json({ ok: true, sites: await W.listSites(env, u, q.get("all") === "1", q.get("archived") === "1"), limits: W.limitsFor(u), owner: isOwner(u), hosting: W.hostingOn(env), sitesHost: env.SITES_HOST || null });
+    if (p0 === "client-error" && m === "POST") { if (!(await count(env, "site-ce:" + u.id, 30, 3600))) await W.reportClientError(env, body || {}); return json({ ok: true }); }   // v46.2
     if (p0 === "system-health" && m === "GET") { if (!isOwner(u)) return json({ ok: false, reason: "Only FODO owners." }, 403); return json(Object.assign({ ok: true }, await W.systemHealth(env, request)), 200, { "cache-control": "no-store" }); }
     if (p0 === "plan" && m === "GET") return json({ ok: true, builder: W.builderPlan(u) });   // v39: this account's Builder level
     if (p0 === "recommend" && m === "GET") return json({ ok: true, templates: W.recommend(q.get("q") || "") });

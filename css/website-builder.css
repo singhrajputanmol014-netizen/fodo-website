@@ -207,3 +207,6 @@ body.wb-body{margin:0;background:var(--w-bg);color:var(--w-text);font:15px/1.55 
 .wb-rpos{display:none;position:absolute;right:8px;top:22px;background:#16141f;color:#fff;padding:3px 6px;border-radius:6px}
 .wb-rcover{position:fixed;inset:0;z-index:9999;cursor:row-resize}.wb-rcover.v{cursor:col-resize}
 @media (max-width:980px){#bb-sbs,#bb-rul{display:none}.wb-rul{display:none}}
+
+/* v46.2 double-buffered canvas: the next page loads hidden, then replaces the visible one */
+.wb-frame iframe.wb-back{position:absolute;inset:0;width:100%;height:100%;visibility:hidden;pointer-events:none}

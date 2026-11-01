@@ -91,7 +91,7 @@ export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" |
 /* ---------- settings (commission etc.) ---------- */
 export async function settings(env) { const d = await bdb(env), r = await all(d, "SELECT k, v FROM biz_settings"), s = { commission: 10 }; r.forEach((x) => { s[x.k] = J(x.v, x.v); }); return s; }
 export async function saveSettings(env, u, body) { if (!isOwner(u)) throw err("Only FODO owners change marketplace settings.", 403); const c = int(body.commission, 0, 40); if (c == null) throw err("Commission must be 0 – 40 %."); await run(await bdb(env), "INSERT OR REPLACE INTO biz_settings (k, v) VALUES ('commission', ?1)", JSON.stringify(c)); await auditLog(env, u.email, "settings:commission", "", String(c)); return { ok: true, commission: c }; }
-export const payoutsOn = (env) => !!(env.RAZORPAY_ROUTE_ON === "1" || env.CASHFREE_PAYOUTS_ON === "1");
+export const payoutsOn = (env) => !!((env.CASHFREE_PAYOUTS_ON === "1" && env.CASHFREE_PAYOUT_CLIENT_ID && env.CASHFREE_PAYOUT_CLIENT_SECRET) || (env.RAZORPAYX_ON === "1" && env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET && env.RAZORPAYX_ACCOUNT));   // v46.2: a configured payout adapter (payouts.js)
 
 /* ---------- Brand Kit ---------- */
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -356,7 +356,7 @@ export async function moderatePro(env, u, R, id, action, note) {
 }
 export async function adminPayouts(env, R) { if (!can(R, ["admin", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT po.*, m.title, p.name AS pro_name FROM biz_payouts po JOIN biz_milestones m ON m.id=po.milestone_id JOIN biz_pros p ON p.id=po.pro_id ORDER BY po.status='paid', po.created_at DESC LIMIT 300"); }
 export async function markPaid(env, u, R, id, ref) { if (!can(R, ["admin", "finance"])) throw err("Only finance or admins.", 403); const r = clip(ref, 80); if (r.length < 4) throw err("Enter the bank / UPI transfer reference.");
-  const x = await run(await bdb(env), "UPDATE biz_payouts SET status='paid', ref=?2, paid_at=?3 WHERE id=?1 AND status != 'paid'", id, r, nowIso()); if (!x.meta.changes) throw err("Already paid or not found.", 409); await auditLog(env, u.email, "payout:paid", id, r); return { ok: true }; }
+  const x = await run(await bdb(env), "UPDATE biz_payouts SET status='paid', ref=?2, paid_at=?3 WHERE id=?1 AND status NOT IN ('paid','processing')", id, r, nowIso()); if (!x.meta.changes) throw err("Already paid, being sent by the provider (check its status first), or not found.", 409); await auditLog(env, u.email, "payout:paid", id, r); return { ok: true }; }
 export async function adminRefunds(env, R) { if (!can(R, ["admin", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT r.id, r.project_id, r.amount, r.reason, r.status, r.provider, r.provider_ref, r.note, r.created_at, r.done_at, m.title, j.title AS ptitle FROM biz_refunds r JOIN biz_milestones m ON m.id=r.milestone_id JOIN biz_projects j ON j.id=r.project_id ORDER BY r.status='refunded', r.created_at DESC LIMIT 300"); }
 export async function adminDisputes(env, R) { if (!can(R, ["admin", "moderator", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT x.*, j.title, j.status AS pstatus FROM biz_disputes x JOIN biz_projects j ON j.id=x.project_id ORDER BY x.status='resolved', x.created_at DESC LIMIT 200"); }
 export async function resolveDispute(env, u, R, id, b) {

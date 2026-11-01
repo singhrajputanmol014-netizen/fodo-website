@@ -23,6 +23,7 @@ const scope = () => { const d = ED().dev; return d === "tablet" ? "t" : d === "m
 const SCOPE_NAME = { st: "Desktop (all sizes unless overridden)", t: "Tablet override", m: "Mobile override" };
 const keyOf = (x) => String(x).replace(/^\d+-/, "");
 function mark(scroll) { const f = document.getElementById("wb-if"), E = ED(); if (f && f.contentWindow) f.contentWindow.postMessage({ fodo: "elmark", keys: (E.elSel || []).map((k) => E.sel + "-" + k), scroll: !!scroll }, "*"); }
+export const remark = () => { const E = ED(); if (E && E.elSel && E.elSel.length) mark(false); };   // v46.2: after the canvas swap
 export function onFrame(d) {
   const E = ED(); if (!E) return false;
   if (d.fodo === "els") { MAP = {}; (d.list || []).forEach((x) => { (MAP[x.i] = MAP[x.i] || []).push(x); }); if (E.elSel && E.elSel.length) mark(false); return true; }

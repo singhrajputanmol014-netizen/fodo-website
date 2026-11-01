@@ -37,13 +37,24 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS acct_wa (code TEXT PRIMARY KEY, poll_hash TEXT, phone TEXT, created INTEGER, expires INTEGER, used INTEGER DEFAULT 0)",
 ];
 // columns added after v13 went live (ALTER fails harmlessly when the column already exists)
-const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT", "ALTER TABLE acct_users ADD COLUMN builder_plan TEXT", "ALTER TABLE acct_users ADD COLUMN builder_until TEXT"];
+const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN deleted_at TEXT", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT", "ALTER TABLE acct_users ADD COLUMN builder_plan TEXT", "ALTER TABLE acct_users ADD COLUMN builder_until TEXT"];
 /* Table setup runs once per worker instance. It is NOT shared as a promise between requests: on Cloudflare Workers a request
    that awaits a promise created by ANOTHER request can hang forever (that was the Brain's "Loading…" / "timeout at session").
    Each request awaits its own (idempotent) setup until one has finished; then everyone skips it. */
 const readyDb = new WeakSet();
+/* v46 migration version table: every ALTER / index change runs ONCE per database (recorded in schema_migrations) instead of
+   being retried on every cold start. "Already there" errors count as applied; any other error is retried next time. */
+const fnv = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
+export const migId = (q) => "m" + fnv(q) + q.length.toString(36);
+export async function migrateOnce(d, list) {
+  let done; try { await d.prepare("CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, sql TEXT, applied_at TEXT)").run(); done = new Set(((await d.prepare("SELECT id FROM schema_migrations").all()).results || []).map((r) => r.id)); }
+  catch (e) { for (const q of list) { try { await d.prepare(q).run(); } catch (e2) {} } return; }   // no version table possible: old behaviour
+  for (const q of list) { const id = migId(q); if (done.has(id)) continue; let ok = false;
+    try { await d.prepare(q).run(); ok = true; } catch (e) { ok = /duplicate column|already exists/i.test(String((e && e.message) || e)); }
+    if (ok) { try { await d.prepare("INSERT OR IGNORE INTO schema_migrations (id, sql, applied_at) VALUES (?1,?2,?3)").bind(id, q.slice(0, 300), new Date().toISOString()).run(); } catch (e) {} } }
+}
 export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
-  if (!readyDb.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) {} } readyDb.add(d); }
+  if (!readyDb.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); await migrateOnce(d, MIGRATE); readyDb.add(d); }
   return d; }
 /* v15: activity log for the admin dashboard, never throws, never blocks the request */
 export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block", "admin_config", "action_update", "monitor_add", "monitor_check", "gsc_connect", "gsc_disconnect", "monthly_report", "why_winning", "budget_plan", "tool_use", "share_off", "share_on", "admin_qc", "admin_prompt", "upgrade_click", "report_view", "help_ticket", "admin_help"];

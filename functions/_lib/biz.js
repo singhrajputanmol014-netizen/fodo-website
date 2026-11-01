@@ -3,7 +3,7 @@
    messages, bookings without double booking, reviews only after completion, disputes), payouts and notifications.
    Rules: every permission is decided here on the server; nothing is invented (no fake reviews, ratings, counts, payouts or
    "live" ads); anything that needs an outside provider says so ("Awaiting provider activation"). */
-import { db as adb, isOwner, nowIso, randId, sendMail } from "./accounts.js";
+import { db as adb, isOwner, nowIso, randId, sendMail, migrateOnce } from "./accounts.js";
 
 export const PRO_ROLES = ["Director of Photography", "Cinematographer", "Photographer", "Videographer", "Video Editor", "Motion Designer", "Graphic Designer", "Brand Designer", "UI/UX Designer", "Web Designer", "Web Developer", "Shopify Specialist",
   "Copywriter", "Scriptwriter", "Content Writer", "Content Strategist", "Social Media Manager", "Performance Marketer", "Media Buyer", "SEO Specialist", "PPC Specialist", "Marketing Strategist", "Brand Strategist", "Creative Director",
@@ -59,12 +59,13 @@ const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT",   // v40.1
   "CREATE TABLE IF NOT EXISTS biz_time (id TEXT PRIMARY KEY, project_id TEXT, pro_id TEXT, day TEXT, minutes INTEGER, note TEXT, status TEXT, milestone_id TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_refunds (id TEXT PRIMARY KEY, project_id TEXT, milestone_id TEXT, amount INTEGER, reason TEXT, status TEXT, by_id TEXT, provider TEXT, provider_ref TEXT, note TEXT, created_at TEXT, done_at TEXT)"];
 const ready = new WeakSet();
-export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } ready.add(d); } return d; }
+export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); await migrateOnce(d, MIG); ready.add(d); } return d; }
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
 export async function auditLog(env, actor, action, target, detail) { try { await run(await bdb(env), "INSERT INTO biz_audit (actor, action, target, detail, created_at) VALUES (?1,?2,?3,?4,?5)", actor || "", action, target || "", clip(detail, 400), nowIso()); } catch (e) {} }
-export async function notify(env, userId, kind, text, link) { if (!userId) return; await run(await bdb(env), "INSERT INTO biz_notes (user_id, kind, text, link, created_at) VALUES (?1,?2,?3,?4,?5)", userId, kind, clip(text, 300), clip(link, 200), nowIso()); }
+export async function notify(env, userId, kind, text, link) { if (!userId) return; await run(await bdb(env), "INSERT INTO biz_notes (user_id, kind, text, link, created_at) VALUES (?1,?2,?3,?4,?5)", userId, kind, clip(text, 300), clip(link, 200), nowIso());
+  try { await (await import("./alerts.js")).deliver(env, userId, kind, clip(text, 300), clip(link, 200)); } catch (e) {} }   // v46.1: email per the person's notification settings
 
 /* ---------- roles (server-side only) ---------- */
 export async function rolesOf(env, u) {
@@ -84,7 +85,7 @@ export async function setStaff(env, u, email, role) {
   await auditLog(env, u.email, "staff:" + (role || "remove"), e); return { ok: true };
 }
 const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["studio", "AI Studio", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
-  ["projects", "Projects", ["client"]], ["leads", "CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
+  ["projects", "Projects", ["client"]], ["leads", "CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["settings", "Settings & privacy", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
 export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
 
 /* ---------- settings (commission etc.) ---------- */

@@ -4,7 +4,7 @@
    site already resolved by sites.siteFor() (owner of the site, or a FODO owner). Public checkout trusts NOTHING from the browser
    except the product ids, variant index and quantity: prices, stock, discounts, shipping and tax are computed here.
    The merchant's payment secret is encrypted (AES-GCM, key from SITES_SECRET_KEY) and never returned to any browser. */
-import { db as accountsDb, nowIso, randId, sha256, sendMail } from "./accounts.js";
+import { db as accountsDb, nowIso, randId, sha256, sendMail, migrateOnce } from "./accounts.js";
 const same = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 
 const DDL = [
@@ -20,7 +20,7 @@ const MIGRATE = ["ALTER TABLE site_orders ADD COLUMN code_state TEXT", "ALTER TA
   "CREATE UNIQUE INDEX IF NOT EXISTS site_orders_num ON site_orders(site_id, number)", "CREATE UNIQUE INDEX IF NOT EXISTS site_orders_idem ON site_orders(site_id, idem)"];
 export const SHOP_SCHEMA = 34;
 const made = new WeakSet();
-export async function shopDb(env) { const d = await accountsDb(env); if (!d) return null; if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); for (const q of MIGRATE) { try { await d.prepare(q).run(); } catch (e) { /* column/index already there */ } } made.add(d); } return d; }
+export async function shopDb(env) { const d = await accountsDb(env); if (!d) return null; if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); await migrateOnce(d, MIGRATE); made.add(d); } return d; }
 const err = (m, s) => Object.assign(new Error(m), { status: s || 400 });
 const clip = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) : s; };
 const paise = (x) => { const n = Math.round(Number(String(x == null ? "" : x).replace(/[^\d.]/g, "")) * 100); return isFinite(n) && n >= 0 && n < 1e11 ? n : 0; };

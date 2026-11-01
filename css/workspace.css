@@ -114,3 +114,10 @@ html:has(.ws-body){background:var(--bg)}
 .ws-pipe .ws-col.on{outline:2px dashed #7B61FF;outline-offset:2px}.ws-pipe .ws-item{display:grid;gap:4px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg,transparent);cursor:grab}.ws-pipe .ws-item small{color:var(--muted)}.ws-pipe .ws-item select{font-size:12.5px;padding:4px 8px}
 .ws-acts{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:8px;overflow:auto;max-height:520px}.ws-acts li{padding:8px 12px;border:1px solid var(--line);border-radius:12px}.ws-acts li.due{border-color:#d97706}.ws-acts li p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ws-acts small{color:var(--muted)}
 .ws-draft{border:1px solid var(--line);border-radius:14px;padding:12px 14px}.ws-draft h3 small{font-weight:500;color:var(--muted);font-size:12px}.ws-scenes{padding-left:18px;display:grid;gap:6px}.ws-scenes small{color:var(--muted)}
+/* v46.1 settings, privacy, analytics */
+.ws-ntab{width:100%;border-collapse:collapse;margin:8px 0 14px}.ws-ntab th,.ws-ntab td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:center;font-size:13px}.ws-ntab th[scope=row]{text-align:left;font-weight:400}.ws-ntab th[scope=row] small{display:block;color:var(--muted);font-size:12px}.ws-ntab input{width:18px;height:18px}
+.ws-danger{border:1px solid color-mix(in srgb,#dc2626 45%,transparent);border-radius:14px;padding:4px 14px 10px}
+.ws-h3{margin:22px 0 8px;font-size:15px}.ws-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:14px 0}
+.ws-chart{margin:0;border:1px solid var(--line);border-radius:14px;padding:12px}.ws-chart small{color:var(--muted)}.ws-bars{display:flex;align-items:flex-end;gap:2px;height:90px;margin-top:10px}.ws-bars i{flex:1;background:#7B61FF;border-radius:2px 2px 0 0;min-width:2px;opacity:.85}
+.ws-funnel{display:flex;flex-wrap:wrap;gap:10px;list-style:none;padding:0}.ws-funnel li{border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+@media (max-width:640px){.ws-ntab th,.ws-ntab td{padding:8px 4px;font-size:12px}}

@@ -4,7 +4,7 @@
    A site id from the browser is only a lookup key; a stranger's id answers "not found" (no hint that it exists).
    The client AI only ever sees ONE website's document and can only return edits to it. */
 import { PW_RE } from "../../sites/lib/protect.js";
-import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail, builderInfo } from "./accounts.js";
+import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail, builderInfo, migrateOnce } from "./accounts.js";
 import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS, COLLECTIONS, cleanEl } from "../../sites/lib/render.js";
 import { TEMPLATES, templateById, searchTemplates, why, clientAllowed, SOURCES, FODO_LICENSE, isFreeTemplate, FREE_TEMPLATES } from "../../sites/lib/templates.js";
 import { brainAI, parseJson } from "./brain/models.js";
@@ -32,7 +32,7 @@ const DDL = [
 ];
 const MIGRATE = ["ALTER TABLE sites ADD COLUMN archived_at TEXT", "ALTER TABLE sites ADD COLUMN review TEXT", "ALTER TABLE sites ADD COLUMN industry TEXT"];
 const made = new WeakSet();
-export async function sdb(env) { const d = await accountsDb(env); if (!d) return null; if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); for (const m of MIGRATE) { try { await d.prepare(m).run(); } catch (e) { /* column exists */ } } made.add(d); } return d; }
+export async function sdb(env) { const d = await accountsDb(env); if (!d) return null; if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); await migrateOnce(d, MIGRATE); made.add(d); } return d; }
 const clip = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) : s; };
 const err = (msg, status) => Object.assign(new Error(msg), { status: status || 400 });
 

@@ -8,6 +8,7 @@
    DELETE content/<id> · pro/packages/<id> · pro/portfolio/<id> · files/<id>
    v45 CRM: GET crm/contacts?q&tag · crm/contacts/<id> · crm/pipeline · crm/followups · crm/duplicates · crm/export?what=contacts|deals (CSV)
         POST crm/contacts · crm/contacts/<id>/delete · crm/merge · crm/import-forms · crm/import-csv {csv} · crm/deals · crm/deals/<id>/delete · crm/activities · crm/activities/<id> {done} · crm/activities/<id>/delete
+   v46.1: GET settings/notify · POST settings/notify · GET privacy (log + what blocks a deletion) · POST privacy/export (JSON file) · POST privacy/delete {confirm:"DELETE"} · GET admin/analytics
    v45 Studio: GET studio/usage · POST studio/caption · studio/script · studio/ads · studio/utm · studio/save
    v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
         POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
@@ -17,6 +18,9 @@ import * as W from "../../_lib/sites.js";
 import * as FL from "../../_lib/files.js";
 import * as CRM from "../../_lib/crm.js";
 import * as ST from "../../_lib/studio.js";
+import * as PV from "../../_lib/privacy.js";
+import * as AL from "../../_lib/alerts.js";
+import * as AN from "../../_lib/analytics.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -81,6 +85,12 @@ export async function onRequest(ctx) {
     if (p0 === "projects" && !p1 && m === "POST") return ok({ project: await B.createProject(env, u, body) });
     if (p0 === "projects" && p1 && !p2 && m === "GET") return ok({ project: await B.getProject(env, u, p1, R) });
     if (p0 === "projects" && p1 && p2 && m === "POST") return ok({ project: await B.projectAction(env, u, p1, p2, body, R) });
+    /* v46.1 settings & privacy */
+    if (p0 === "settings" && p1 === "notify" && m === "GET") return ok(await AL.getPrefs(env, u));
+    if (p0 === "settings" && p1 === "notify" && m === "POST") return ok(await AL.savePrefs(env, u, body));
+    if (p0 === "privacy" && !p1 && m === "GET") return ok({ log: await PV.history(env, u), blockers: await PV.blockers(env, u) });
+    if (p0 === "privacy" && p1 === "export" && m === "POST") return new Response(JSON.stringify(await PV.exportData(env, u), null, 2), { headers: { "content-type": "application/json; charset=utf-8", "content-disposition": "attachment; filename=\"fodo-my-data-" + new Date().toISOString().slice(0, 10) + ".json\"", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    if (p0 === "privacy" && p1 === "delete" && m === "POST") return json(await PV.deleteAccount(env, u, body), 200, { "set-cookie": "fodo_s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" });
     /* v45 CRM (every row is the user's own) */
     if (p0 === "crm") {
       if (p1 === "contacts" && !p2 && m === "GET") return ok(await CRM.listContacts(env, u, q));
@@ -125,6 +135,7 @@ export async function onRequest(ctx) {
       if (p1 === "pros" && p2 && m === "POST") return ok(await B.moderatePro(env, u, R, p2, body.action, body.note));
       if (p1 === "payouts" && !p2 && m === "GET") return ok({ items: await B.adminPayouts(env, R), automatic: B.payoutsOn(env) });
       if (p1 === "payouts" && p2 && m === "POST") return ok(await B.markPaid(env, u, R, p2, body.ref));
+      if (p1 === "analytics" && m === "GET") return ok(await AN.analytics(env, R));   // v46.1
       if (p1 === "refunds" && m === "GET") return ok({ items: await B.adminRefunds(env, R) });   // v44
       if (p1 === "disputes" && !p2 && m === "GET") return ok({ items: await B.adminDisputes(env, R) });
       if (p1 === "disputes" && p2 && m === "POST") return ok(await B.resolveDispute(env, u, R, p2, body));
@@ -138,6 +149,6 @@ export async function onRequest(ctx) {
     }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
-    return json(Object.assign({ ok: false, reason: e.status ? e.message : "Something went wrong, please try again." }, e.missing ? { missing: e.missing } : {}, e.dup ? { dup: e.dup } : {}), e.status || 500);
+    return json(Object.assign({ ok: false, reason: e.status ? e.message : "Something went wrong, please try again." }, e.missing ? { missing: e.missing } : {}, e.dup ? { dup: e.dup } : {}, e.blockers ? { blockers: e.blockers } : {}), e.status || 500);
   }
 }

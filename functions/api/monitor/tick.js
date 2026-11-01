@@ -26,5 +26,7 @@ export async function onRequest({ request, env }) {
   const left = await d.prepare("SELECT COUNT(*) AS n FROM mon_targets WHERE next_check <= ?1").bind(now).first();
   // v21: when the day's monitoring is finished, the FODO Brain writes the owner's daily briefing + alert scan (once a day)
   const brain = left && left.n ? null : await brainDaily(env, request);
-  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain });
+  // v46.1: once a day, the notification digest emails (people who chose "daily")
+  let digest = null; if (!(left && left.n)) { try { digest = await (await import("../../_lib/alerts.js")).digest(env); } catch (e) { digest = { error: true }; } }
+  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest });
 }

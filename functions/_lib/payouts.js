@@ -66,11 +66,11 @@ const DONE = { cashfree: ["SUCCESS", "COMPLETED"], razorpayx: ["processed"] }, F
 export async function send(env, u, R, id) {
   if (!can(R, ["admin", "finance"])) throw err("Only FODO finance or admins.", 403); const pv = provider(env); if (!pv) throw err("Automatic payouts aren't set up (Cashfree Payouts or RazorpayX). Pay by bank / UPI and record the reference.", 409);
   const d = await pdb(env), po = await d.prepare("SELECT po.*, p.name AS pro_name, p.user_id FROM biz_payouts po JOIN biz_pros p ON p.id=po.pro_id WHERE po.id=?1").bind(String(id || "").slice(0, 40)).first(); if (!po) throw err("Payout not found.", 404);
-  if (["paid", "processing"].indexOf(po.status) > -1) throw err("This payout is already " + po.status + ".", 409); if (!(po.net >= 1)) throw err("Nothing to pay.", 409);
+  if (["paid", "processing"].indexOf(po.status) > -1) throw err("This payout is already " + po.status + ".", 409); if (po.status === "via_split") throw err("This share is paid by Cashfree Easy Split from the client's order. It can't be sent again.", 409); if (!(po.net >= 1)) throw err("Nothing to pay.", 409);
   const mrow = await d.prepare("SELECT * FROM biz_payout_methods WHERE pro_id=?1").bind(po.pro_id).first(); if (!mrow) throw err(po.pro_name + " hasn't added payout details yet. Ask them to add UPI or bank details in Earnings & payouts.", 409);
   const m = await unseal(env, mrow.enc), attempt = (po.attempts || 0) + 1, tid = (po.id + "_" + attempt).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40), usr = await (await adb(env)).prepare("SELECT email FROM acct_users WHERE id=?1").bind(po.user_id).first();
   /* claim it first (no double send from two clicks / two admins) */
-  const claim = await d.prepare("UPDATE biz_payouts SET status='processing', attempts=?2, provider=?3, sent_at=?4, fail_reason=NULL WHERE id=?1 AND status NOT IN ('paid','processing')").bind(po.id, attempt, pv, nowIso()).run(); if (!claim.meta.changes) throw err("This payout changed meanwhile, reload.", 409);
+  const claim = await d.prepare("UPDATE biz_payouts SET status='processing', attempts=?2, provider=?3, sent_at=?4, fail_reason=NULL WHERE id=?1 AND status NOT IN ('paid','processing','via_split')").bind(po.id, attempt, pv, nowIso()).run(); if (!claim.meta.changes) throw err("This payout changed meanwhile, reload.", 409);
   try {
     let ref, st;
     if (pv === "cashfree") {
@@ -93,7 +93,7 @@ export async function send(env, u, R, id) {
 }
 /* write what the provider said */
 async function settle(env, d, po, pv, ref, st, reason) {
-  if (DONE[pv].indexOf(st) > -1) { await d.prepare("UPDATE biz_payouts SET status='paid', provider_ref=?2, ref=COALESCE(ref, ?2), paid_at=?3 WHERE id=?1").bind(po.id, ref, nowIso()).run(); await notify(env, po.user_id, "payout", "Payout sent: ₹" + po.net.toLocaleString("en-IN") + " (" + pv + " ref " + ref + ").", "#pro-earn"); return "paid"; }
+  if (DONE[pv].indexOf(st) > -1) { await d.prepare("UPDATE biz_payouts SET status='paid', provider_ref=?2, ref=COALESCE(ref, ?2), paid_at=?3 WHERE id=?1").bind(po.id, ref, nowIso()).run(); await notify(env, po.user_id, "payout", "Payout sent: ₹" + po.net.toLocaleString("en-IN") + " (" + pv + " ref " + ref + ").", "#pro-earn"); try { const F = await import("./finance.js"), mm = await d.prepare("SELECT project_id FROM biz_milestones WHERE id=COALESCE(?1, ?2)").bind(po.source_milestone || null, po.milestone_id).first(); await F.ledger(env, "payout", "payouts_paid", "payout", po.id, mm && mm.project_id, po.net, pv + " " + ref); } catch (e) {} return "paid"; }
   if (FAILED[pv].indexOf(st) > -1) { await d.prepare("UPDATE biz_payouts SET status='failed', provider_ref=?2, fail_reason=?3 WHERE id=?1").bind(po.id, ref, clip(reason || "Provider status: " + st, 200)).run(); return "failed"; }
   await d.prepare("UPDATE biz_payouts SET status='processing', provider_ref=?2 WHERE id=?1").bind(po.id, ref).run(); return "processing";
 }
@@ -108,4 +108,4 @@ export async function check(env, id) {
 }
 export async function checkAll(env, limit) { if (!provider(env)) return { checked: 0 }; const d = await pdb(env), L = ((await d.prepare("SELECT id FROM biz_payouts WHERE status='processing' ORDER BY sent_at LIMIT ?1").bind(limit || 20).all()).results) || []; let n = 0; for (const x of L) { try { await check(env, x.id); n++; } catch (e) {} } return { checked: n }; }
 export async function adminList(env, R) { if (!can(R, ["admin", "finance", "viewer"])) throw err("Not allowed.", 403); const d = await pdb(env);
-  return ((await d.prepare("SELECT po.id, po.milestone_id, po.pro_id, po.gross, po.commission, po.net, po.status, po.ref, po.created_at, po.paid_at, po.provider, po.provider_ref, po.fail_reason, m.title, p.name AS pro_name, pm.masked AS method FROM biz_payouts po JOIN biz_milestones m ON m.id=po.milestone_id JOIN biz_pros p ON p.id=po.pro_id LEFT JOIN biz_payout_methods pm ON pm.pro_id=po.pro_id ORDER BY po.status='paid', po.created_at DESC LIMIT 300").all()).results) || []; }
+  return ((await d.prepare("SELECT po.id, po.milestone_id, po.pro_id, po.gross, po.commission, po.net, po.status, po.ref, po.created_at, po.paid_at, po.provider, po.provider_ref, po.fail_reason, COALESCE(po.label, m.title) AS title, p.name AS pro_name, pm.masked AS method FROM biz_payouts po LEFT JOIN biz_milestones m ON m.id=COALESCE(po.source_milestone, po.milestone_id) JOIN biz_pros p ON p.id=po.pro_id LEFT JOIN biz_payout_methods pm ON pm.pro_id=po.pro_id ORDER BY po.status='paid', po.created_at DESC LIMIT 300").all()).results) || []; }

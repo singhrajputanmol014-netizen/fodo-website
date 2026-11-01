@@ -1,8 +1,6 @@
-FODO v47.2
+FODO v47.3
 Date: 2026-11-02
-Features: v47.1 (Build a Team, catalog, pricing engine, versioned quotes, refund fix) + v47.2 team staffing from accepted quotes (invitations, acceptance, decline, expiry, replacement, locking, date changes), availability engine, database-level double-booking protection, equipment reservations + maintenance, Brain team tools.
-Migrations (additive, migrateOnce): v47.1 tables + biz_teams, biz_team_members (partial unique indexes), biz_team_events, biz_equipment_holds, biz_equipment_days; biz_pros.tz, hours_start, hours_end, horizon_days, max_week, travel_buffer, overrides.
-API: /api/biz/builder/*, quotes/*, quotes/<id>/team, pro/teams/*, pro/availability, admin/catalog/*, admin/pricing, admin/price-history, admin/quotes/*, admin/teams/*, admin/equipment/*.
-Environment: no new variables.
-Rollback: GitHub Desktop → History → revert the commit → Push. New tables are additive and unused by older code.
-Details: docs/FODO-V47.1-REPORT.md, docs/FODO-V47.2-REPORT.md
+Features: v47.1 Build a Team, catalog, pricing engine, versioned quotes, refund fix · v47.2 team staffing, availability engine, database-level double booking, equipment reservations · v47.3 contracts (sign, amendments, cancellation calculator), project from contract with payment plan, team settlement, per-professional payouts, Cashfree Easy Split adapter, append-only ledger, invoices + credit notes, reconciliation.
+Migrations (additive, migrateOnce): see docs/FODO-V47.1/2/3-REPORT.md (v47.3: biz_contracts, biz_contract_versions, biz_contract_events, biz_settlements, biz_settlement_lines, biz_ledger + append-only triggers, biz_invoices; biz_payouts.source_milestone/label, biz_pros.cf_vendor_id).
+Environment: optional CASHFREE_SPLIT_ON=1 (Cashfree Easy Split); FODO_GSTIN decides tax invoices.
+Rollback: GitHub Desktop → History → revert the commit → Push. Tables are additive; the ledger keeps its rows.

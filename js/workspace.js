@@ -49,10 +49,11 @@
     var h = location.hash.slice(1) || (MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview"), parts = h.split("?"), v = parts[0], q = new URLSearchParams(parts[1] || "");
     if (/^project=/.test(v)) { q.set("id", v.split("=")[1]); v = "project"; }
     if (/^quote=/.test(v)) { q.set("id", v.split("=")[1]); v = "quote"; }   // v47.1
-    var allowed = ME.nav.map(function (n) { return n.id; }).concat(MODE === "pro" ? (ME.pro ? ["project"] : []) : ["project", "ads", "quote"]); if (allowed.indexOf(v) < 0) v = MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview";
+    if (/^contract=/.test(v)) { q.set("id", v.split("=")[1]); v = "contract"; }   // v47.3
+    var allowed = ME.nav.map(function (n) { return n.id; }).concat(MODE === "pro" ? (ME.pro ? ["project"] : []) : ["project", "ads", "quote", "contract"]); if (allowed.indexOf(v) < 0) v = MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview";
     $$(".ws-modal").forEach(function (x) { x.remove(); });   // a page change closes any open dialog
     document.body.classList.remove("ws-navopen"); var bg = $("#ws-burger"); if (bg) bg.setAttribute("aria-expanded", "false");
-    VIEW = v; $$("#ws-side nav a").forEach(function (a) { a.toggleAttribute("aria-current", a.dataset.nav === v || (v === "ads" && a.dataset.nav === "content") || (v === "project" && (a.dataset.nav === "projects" || a.dataset.nav === "pro-work")) || (v === "quote" && a.dataset.nav === "quotes")); });
+    VIEW = v; $$("#ws-side nav a").forEach(function (a) { a.toggleAttribute("aria-current", a.dataset.nav === v || (v === "ads" && a.dataset.nav === "content") || (v === "project" && (a.dataset.nav === "projects" || a.dataset.nav === "pro-work")) || ((v === "quote" || v === "contract") && a.dataset.nav === "quotes")); });
     var main = $("#ws-main"); main.innerHTML = '<div class="ws-skel" aria-busy="true"><i></i><i></i><i></i></div>';
     (VIEWS[v] || VIEWS.overview)(main, q); main.focus({ preventScroll: true }); scrollTo(0, 0);
   }
@@ -299,7 +300,7 @@
       h += '<section class="ws-p2"><h2>Team</h2><ul class="ws-team">' + team.map(function (t) { return "<li><b>" + esc(t.name) + "</b><small>" + esc(t.role || "") + " · " + esc({ lead: "lead", accepted: "on the team", invited: "invited", declined: "declined" }[t.status]) + "</small>" +
         (me === "client" && prop[t.id] ? '<span class="ws-row"><button type="button" class="ws-btn sm pri" data-tma="' + esc(t.id) + '">Accept their ' + prop[t.id].length + " milestone" + (prop[t.id].length > 1 ? "s" : "") + " (" + inr(prop[t.id].reduce(function (a, m) { return a + m.amount; }, 0)) + ')</button><button type="button" class="ws-btn sm" data-tmd="' + esc(t.id) + '">Decline</button></span>' : "") +
         (me === "client" && t.status !== "lead" && t.status !== "declined" ? '<button type="button" class="ws-btn sm danger" data-tmr="' + esc(t.id) + '">Remove</button>' : "") + "</li>"; }).join("") + "</ul>" +
-        (me === "client" && ["completed", "cancelled", "disputed"].indexOf(P.status) < 0 ? '<button type="button" class="ws-btn sm" id="tm-add">+ Add a professional</button>' : "") + "</section>";
+        (me === "client" && P.kind !== "contract" && ["completed", "cancelled", "disputed"].indexOf(P.status) < 0 ? '<button type="button" class="ws-btn sm" id="tm-add">+ Add a professional</button>' : "") + "</section>";
     }
     /* hourly */
     if (P.mode === "hourly") { var T = P.time || [], open = T.filter(function (t) { return t.status === "open"; }), mins = function (L) { return L.reduce(function (a, t) { return a + t.minutes; }, 0); }, hrs = function (n) { return Math.round(n / 6) / 10 + " h"; };
@@ -563,7 +564,7 @@
     api("admin/overview").then(function (o) { if (!o.ok) return fail(el, o, function () { VIEWS.admin(el, q); });
       el.innerHTML = head("Marketplace admin", "Your role: " + o.roles.filter(function (r) { return r !== "client"; }).join(", ")) +
         '<div class="ws-cards">' + [["Pending profiles", o.pros.pending], ["Live professionals", o.pros.live], ["Active projects", o.projects.active], ["Disputes", o.projects.disputed], ["Funded (held)", inr(o.money.funded)], ["Commission (" + o.commission + "%)", inr(o.money.commission)], ["Owed to pros", inr(o.money.owed)], ["Automatic payouts", o.automaticPayouts ? "On" : "Awaiting provider"]].map(function (k) { return '<div class="ws-card"><small>' + k[0] + "</small><b>" + k[1] + "</b></div>"; }).join("") + "</div>" +
-        '<div class="ws-tabs" role="tablist">' + [["analytics", "Analytics"], ["quotes", "Quotes"], ["teams", "Teams"], ["catalog", "Catalog & pricing"], ["pros", "Professionals"], ["invites", "Invite links"], ["payouts", "Payouts"], ["disputes", "Disputes"], ["settings", "Settings"]].map(function (t) { return '<a role="tab" aria-selected="' + (tab === t[0]) + '" href="#admin?tab=' + t[0] + '">' + t[1] + "</a>"; }).join("") + '</div><div id="ad-b"><div class="ws-skel"><i></i></div></div>';
+        '<div class="ws-tabs" role="tablist">' + [["analytics", "Analytics"], ["quotes", "Quotes"], ["teams", "Teams"], ["finance", "Contracts & money"], ["catalog", "Catalog & pricing"], ["pros", "Professionals"], ["invites", "Invite links"], ["payouts", "Payouts"], ["disputes", "Disputes"], ["settings", "Settings"]].map(function (t) { return '<a role="tab" aria-selected="' + (tab === t[0]) + '" href="#admin?tab=' + t[0] + '">' + t[1] + "</a>"; }).join("") + '</div><div id="ad-b"><div class="ws-skel"><i></i></div></div>';
       var B = $("#ad-b");
       if (tab === "analytics") api("admin/analytics").then(function (a) { if (!a.ok) return fail(B, a, function () {});   // v46.1, real tables only
         var card = function (t, v, sub) { return '<div class="ws-card"><small>' + esc(t) + "</small><b>" + v + "</b>" + (sub ? "<small>" + esc(sub) + "</small>" : "") + "</div>"; }, pct = function (x, y) { return y ? Math.round(x / y * 100) + "%" : "–"; };
@@ -598,6 +599,7 @@
         $$("[data-paid]", B).forEach(function (b) { b.onclick = function () { var r = prompt("Bank / UPI transfer reference"); if (r) act(b, "admin/payouts/" + b.dataset.paid, { ref: r }, function () { VIEWS.admin(el, q); }); }; });
         $$("[data-send]", B).forEach(function (b) { b.onclick = function () { if (confirm("Send " + inr(+b.dataset.amt) + " to " + b.dataset.to + " now?")) act(b, "admin/payouts/" + b.dataset.send + "/send", {}, function (r) { toast(r.payout.status === "paid" ? "Paid." : "Sent to the provider. It shows as Paid when they confirm."); VIEWS.admin(el, q); }); }; });
         $$("[data-chk]", B).forEach(function (b) { b.onclick = function () { act(b, "admin/payouts/" + b.dataset.chk + "/check", {}, function (r) { toast("Status: " + (PST[r.status] || r.status)); VIEWS.admin(el, q); }); }; }); });
+      if (tab === "finance") lazy("/js/ws-finance.js").then(function () { window.FODO_WS_FINANCE.admin(B, q); }, function () { B.innerHTML = empty("Couldn't load this tab", "Check your connection and try again."); });   // v47.3
       if (tab === "teams") lazy("/js/ws-teams.js").then(function () { window.FODO_WS_TEAMS.admin(B, q); }, function () { B.innerHTML = empty("Couldn't load this tab", "Check your connection and try again."); });   // v47.2
       if (tab === "quotes" || tab === "catalog") lazy("/js/ws-market-admin.js").then(function () { window.FODO_WS_MADMIN[tab](B, q); }, function () { B.innerHTML = empty("Couldn't load this tab", "Check your connection and try again."); });   // v47.1
       if (tab === "disputes") api("admin/disputes").then(function (j) { if (!j.ok) return fail(B, j, function () {});
@@ -684,6 +686,7 @@
   var LAZY = {};
   function lazy(src) { if (!LAZY[src]) LAZY[src] = new Promise(function (ok, no) { var me = document.querySelector('script[src*="/js/workspace.js"]'), v = me && me.src.indexOf("v=") > -1 ? me.src.split("v=")[1] : ""; var sc = document.createElement("script"); sc.src = src + (v ? "?v=" + v : ""); sc.onload = ok; sc.onerror = function () { delete LAZY[src]; no(); }; document.head.appendChild(sc); }); return LAZY[src]; }
   window.FODO_WS = { api: api, act: act, esc: esc, inr: inr, day: day, toast: toast, modal: modal, fd: fd, empty: empty, head: head, fail: fail, $: $, $$: $$, me: function () { return ME; } };
+  VIEWS.contract = function (el, q) { lazy("/js/ws-finance.js").then(function () { window.FODO_WS_FINANCE.contract(el, q); }, function () { fail(el, { reason: "Couldn't load this page." }, function () { VIEWS.contract(el, q); }); }); };   // v47.3
   ["pro-teams"].forEach(function (v) { VIEWS[v] = function (el, q) { lazy("/js/ws-teams.js").then(function () { window.FODO_WS_TEAMS[v](el, q); }, function () { fail(el, { reason: "Couldn't load this page. Check your connection." }, function () { VIEWS[v](el, q); }); }); }; });   // v47.2
   window.FODO_WS.lazy = lazy;
   ["project-builder", "quotes", "quote"].forEach(function (v) { VIEWS[v] = function (el, q) { lazy("/js/ws-builder.js").then(function () { window.FODO_WS_BUILDER[v](el, q); }, function () { fail(el, { reason: "Couldn't load this page. Check your connection." }, function () { VIEWS[v](el, q); }); }); }; });

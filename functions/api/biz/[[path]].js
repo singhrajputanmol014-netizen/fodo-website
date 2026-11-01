@@ -26,6 +26,7 @@ import * as PR from "../../_lib/production.js";
 import * as QT from "../../_lib/quotes.js";
 import * as TM from "../../_lib/teams.js";
 import * as AV from "../../_lib/availability.js";
+import * as FN from "../../_lib/finance.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -161,9 +162,16 @@ export async function onRequest(ctx) {
         const jj = Object.assign({}, qq); return new Response(JSON.stringify(jj, null, 2), { headers: Object.assign({ "content-type": "application/json; charset=utf-8", "content-disposition": 'attachment; filename="' + nm + '.json"' }, H) });
       }
       if (p1 && ["accept", "decline", "changes"].indexOf(p2) > -1 && m === "POST") return ok({ quote: await QT.answer(env, u, R, p1, p2, body, request) });
+      if (p1 && p2 === "contract" && m === "GET") { await QT.getQuote(env, u, R, p1, { noView: true }); return ok({ contract: await FN.contractForQuote(env, u, R, p1) }); }   // v47.3
       if (p1 && p2 === "team" && m === "GET") { await QT.getQuote(env, u, R, p1, { noView: true }); return ok({ team: await TM.clientTeam(env, u, R, p1) }); }   // v47.2
       return json({ ok: false, reason: "Not found." }, 404);
     }
+    /* v47.3 contracts + invoices (client side; staff see everything through the same calls) */
+    if (p0 === "contracts" && p1 && !p2 && m === "GET") return ok({ contract: await FN.getContract(env, u, R, p1, q.version) });
+    if (p0 === "contracts" && p1 && p2 === "print" && m === "GET") return new Response(FN.contractHtml(await FN.getContract(env, u, R, p1, q.version)), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
+    if (p0 === "contracts" && p1 && p2 === "sign" && m === "POST") return ok({ contract: await FN.signContract(env, u, R, p1, body, request) });
+    if (p0 === "invoices" && !p1 && m === "GET") return ok({ items: await FN.invoices(env, u, R, q) });
+    if (p0 === "invoices" && p1 && p2 === "print" && m === "GET") return new Response(await FN.invoiceHtml(env, u, R, p1), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
     /* v47.2 FODO Pro side: team invitations + availability rules */
     if (p0 === "pro" && p1 === "teams" && !p2 && m === "GET") return ok({ items: await TM.proTeams(env, u) });
     if (p0 === "pro" && p1 === "teams" && p2 && ["accept", "decline"].indexOf(path[3]) > -1 && m === "POST") return ok({ items: await TM.proAnswer(env, u, p2, path[3] === "accept", body) });
@@ -179,6 +187,20 @@ export async function onRequest(ctx) {
       if (p1 === "catalog" && p2 === "templates" && m === "POST") return ok({ template: await PR.saveTemplate(env, u, R, body) });
       if (p1 === "pricing" && m === "POST") return ok({ pricing: await PR.savePricingConfig(env, u, body) });
       if (p1 === "price-history" && m === "GET") return ok({ items: await PR.priceHistory(env, R, q) });
+      /* v47.3 contracts, settlements, ledger, reconciliation */
+      if (p1 === "contracts" && !p2 && m === "GET") return ok({ items: await FN.adminContracts(env, R, q) });
+      if (p1 === "contracts" && p2 && !path[3] && m === "GET") return ok({ contract: await FN.getContract(env, u, R, p2, q.version) });
+      if (p1 === "contracts" && p2 && path[3] === "cancellation" && m === "GET") return ok(await FN.cancellationQuote(env, R, p2));
+      if (p1 === "contracts" && p2 && path[3] === "send" && m === "POST") return ok({ contract: await FN.sendContract(env, u, R, p2) });
+      if (p1 === "contracts" && p2 && path[3] === "amend" && m === "POST") return ok({ contract: await FN.amend(env, u, R, p2, body) });
+      if (p1 === "contracts" && p2 && path[3] === "cancel" && m === "POST") return ok({ contract: await FN.cancelContract(env, u, R, p2, body) });
+      if (p1 === "teams" && p2 && path[3] === "contract" && m === "POST") return ok({ contract: await FN.generate(env, u, R, p2) });
+      if (p1 === "settlements" && !p2 && m === "GET") return ok(await FN.settlements(env, R, q));
+      if (p1 === "settlements" && p2 && path[3] === "release" && m === "POST") return ok(await FN.releaseSettlement(env, u, R, p2, body));
+      if (p1 === "ledger" && m === "GET") return ok(await FN.ledgerList(env, R, q));
+      if (p1 === "reconciliation" && m === "GET") return ok(await FN.reconcile(env, R, q));
+      if (p1 === "invoices" && m === "GET") { if (!B.can(R, ["admin", "finance", "viewer"])) return json({ ok: false, reason: "Not allowed." }, 403); return ok({ items: await FN.invoices(env, u, R, Object.assign({}, q, { all: "1" })) }); }
+      if (p1 === "vendors" && p2 && m === "POST") return ok(await FN.setVendor(env, u, R, p2, body));
       /* v47.2 teams + equipment holds */
       if (p1 === "teams" && !p2 && m === "GET") return ok({ items: await TM.adminTeams(env, R, q) });
       if (p1 === "teams" && p2 && !path[3] && m === "GET") return ok(await TM.adminTeam(env, R, p2));

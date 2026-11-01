@@ -170,3 +170,5 @@ html:has(.ws-body){background:var(--bg)}
 .ws-rows li.pt-i>div:first-child,.ws-rows li.tm-slot>div:first-child{display:grid;gap:3px;flex:1 1 260px;min-width:0}.ws-rows li.pt-i.open{border-color:var(--signal)}
 .pb-okmsg{border:1px solid color-mix(in srgb,var(--ok,#2ecc71) 55%,var(--line));background:color-mix(in srgb,var(--ok,#2ecc71) 8%,transparent);border-radius:12px;padding:10px 14px;margin:12px 0}
 #tm-add{min-height:40px;max-width:100%}
+/* ===== v47.3 contracts & money ===== */
+.fn-bad{color:var(--err,#ff6b6b)}.ws-rows li.fn-st>div:first-child{flex:1 1 420px;min-width:0;display:grid;gap:4px}.ws-rows li.fn-st .pb-t{margin:6px 0 0}

@@ -300,7 +300,7 @@ export async function availability(env, R, b) {
 export async function saveBuild(env, u, R, b) {
   const d = await pdb(env), est = await estimate(env, R, b), tier = b.tier && est.tiers[b.tier] ? b.tier : est.recommended, T = est.tiers[tier]; if (!T) throw err("Pick a team option.");
   if (await (await import("./accounts.js")).count(env, "build:" + u.id, 120, 3600)) throw err("Too many saves this hour, slow down a little.", 429);
-  const now = nowIso(), title = clip(b.title, 120) || (est.template.name + (est.answers.promote ? ": " + String(est.answers.promote).slice(0, 60) : ""));
+  const now = nowIso(), title = clip(b.title, 120) || (est.template.id === "custom" && est.answers.promote ? String(est.answers.promote).slice(0, 80) : est.template.name + (est.answers.promote ? ": " + String(est.answers.promote).slice(0, 60) : ""));
   let id = clip(b.buildId, 40); if (id) { const o = await one(d, "SELECT * FROM biz_builds WHERE id=?1 AND user_id=?2", id, u.id); if (!o) throw err("Draft not found.", 404); if (o.status !== "draft") throw err("This draft already became a quote. Start a new one or ask FODO to revise the quote.", 409); }
   else id = "bd" + randId(14);
   await run(d, "INSERT INTO biz_builds (id, user_id, template_id, title, answers, tier, custom, estimate, total, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'draft',?10,?10) ON CONFLICT(id) DO UPDATE SET title=?4, answers=?5, tier=?6, custom=?7, estimate=?8, total=?9, updated_at=?10",

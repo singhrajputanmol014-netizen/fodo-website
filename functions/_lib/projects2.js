@@ -95,7 +95,7 @@ export async function action(env, u, act, b, C) {
     await note(await proUser(), "completed", "Project completed: " + pj.title); return; }
 
   /* ----- team: the client adds more professionals; each sends and is paid for their own milestones ----- */
-  if (act === "add_pro") { if (side !== "client") throw err("The client builds the team.", 403); if (["completed", "cancelled", "disputed"].indexOf(pj.status) > -1) throw err("This project is " + pj.status + ".", 409);
+  if (act === "add_pro") { if (side !== "client") throw err("The client builds the team.", 403); if (pj.kind === "contract") throw err("This team comes from your contract. Ask FODO for an amendment to add someone.", 409); if (["completed", "cancelled", "disputed"].indexOf(pj.status) > -1) throw err("This project is " + pj.status + ".", 409);
     const p = await one(d, "SELECT * FROM biz_pros WHERE id=?1", clip(b.proId, 40)); if (!p || ["approved", "published"].indexOf(p.status) < 0) throw err("This professional isn't available.", 404);
     if (p.id === pj.pro_id || p.user_id === u.id) throw err("Already on this project.", 409); const ex = await one(d, "SELECT status FROM biz_project_pros WHERE project_id=?1 AND pro_id=?2", pj.id, p.id); if (ex && ["invited", "accepted"].indexOf(ex.status) > -1) throw err("Already invited.", 409);
     if ((((await one(d, "SELECT count(*) n FROM biz_project_pros WHERE project_id=?1 AND status IN ('invited','accepted')", pj.id)) || {}).n || 0) >= 8) throw err("Up to 8 more professionals per project.");
@@ -165,7 +165,9 @@ export async function finalizeRefund(env, d, refundId, ref, actor, C) {
   const x = await run(d, "UPDATE biz_refunds SET status='refunded', provider_ref=COALESCE(?2, provider_ref), done_at=?3 WHERE id=?1 AND status IN ('processing','needs_manual')", refundId, ref || null, now); if (!x.meta.changes) return false;
   const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1", r.milestone_id), pj = await one(d, "SELECT * FROM biz_projects WHERE id=?1", r.project_id);
   await run(d, "UPDATE biz_milestones SET status='refunded', refunded=?2 WHERE id=?1 AND status='refund_processing'", r.milestone_id, r.amount);
-  if (m && r.amount < m.amount) { const c = (await settings(env)).commission, rest = m.amount - r.amount, com = Math.round(rest * c / 100);   // partial refund: the rest becomes payable to the professional only now
+  try { const F = await import("./finance.js"); await F.ledger(env, "refund", "client_refunds", "refund", r.id, r.project_id, r.amount, "Refund confirmed" + (ref ? " · " + ref : "")); await F.creditNote(env, r.id); } catch (e) {}   // v47.3 ledger + credit note
+  if (m && m.kind === "contract" && r.amount < m.amount) { try { await (await import("./finance.js")).settle(env, m.id, m.amount - r.amount, actor); } catch (e) {} }   // v47.3: the rest is split across the whole team
+  else if (m && r.amount < m.amount) { const c = (await settings(env)).commission, rest = m.amount - r.amount, com = Math.round(rest * c / 100);   // partial refund: the rest becomes payable to the professional only now
     await run(d, "INSERT OR IGNORE INTO biz_payouts (id, milestone_id, pro_id, gross, commission, net, status, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", "po" + randId(12), m.id, m.pro_id || (pj && pj.pro_id), rest, com, rest - com, payoutsOn(env) ? "queued" : "awaiting_provider", now); }
   await C.auditLog(env, actor || "system", "refund:refunded", refundId, (m ? m.id : "") + " ₹" + r.amount + (ref ? " · " + ref : ""));
   if (pj) { await C.notify(env, pj.client_id, "refund", "Your refund of ₹" + (+r.amount).toLocaleString("en-IN") + " for “" + (m ? m.title : "a milestone") + "” is confirmed" + (ref ? " (reference " + ref + ")" : "") + ".", "#project=" + pj.id);

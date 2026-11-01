@@ -6,12 +6,17 @@
         pro/portfolio · shortlist · projects · projects/<id>/<message|propose|accept|submit|approve|changes|cancel|dispute|review> + v44 (tasks, change requests, time, retainer, team, refunds: see _lib/projects2.js)
         notes/read · admin/pros/<id> {action,note} · admin/payouts/<id> {ref} · admin/disputes/<id> · admin/staff · admin/settings
    DELETE content/<id> · pro/packages/<id> · pro/portfolio/<id> · files/<id>
+   v45 CRM: GET crm/contacts?q&tag · crm/contacts/<id> · crm/pipeline · crm/followups · crm/duplicates · crm/export?what=contacts|deals (CSV)
+        POST crm/contacts · crm/contacts/<id>/delete · crm/merge · crm/import-forms · crm/import-csv {csv} · crm/deals · crm/deals/<id>/delete · crm/activities · crm/activities/<id> {done} · crm/activities/<id>/delete
+   v45 Studio: GET studio/usage · POST studio/caption · studio/script · studio/ads · studio/utm · studio/save
    v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
         POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
 import { json, accountsOn, sessionUser, sameOrigin, count, isOwner } from "../../_lib/accounts.js";
 import * as B from "../../_lib/biz.js";
 import * as W from "../../_lib/sites.js";
 import * as FL from "../../_lib/files.js";
+import * as CRM from "../../_lib/crm.js";
+import * as ST from "../../_lib/studio.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -76,6 +81,36 @@ export async function onRequest(ctx) {
     if (p0 === "projects" && !p1 && m === "POST") return ok({ project: await B.createProject(env, u, body) });
     if (p0 === "projects" && p1 && !p2 && m === "GET") return ok({ project: await B.getProject(env, u, p1, R) });
     if (p0 === "projects" && p1 && p2 && m === "POST") return ok({ project: await B.projectAction(env, u, p1, p2, body, R) });
+    /* v45 CRM (every row is the user's own) */
+    if (p0 === "crm") {
+      if (p1 === "contacts" && !p2 && m === "GET") return ok(await CRM.listContacts(env, u, q));
+      if (p1 === "contacts" && !p2 && m === "POST") return ok(await CRM.saveContact(env, u, body));
+      if (p1 === "contacts" && p2 && m === "GET") return ok(await CRM.getContact(env, u, p2));
+      if (p1 === "contacts" && p2 && path[3] === "delete" && m === "POST") return ok(await CRM.delContact(env, u, p2));
+      if (p1 === "merge" && m === "POST") return ok(await CRM.merge(env, u, body));
+      if (p1 === "duplicates" && m === "GET") return ok(await CRM.duplicates(env, u));
+      if (p1 === "import-forms" && m === "POST") return ok(await CRM.importForms(env, u, body.ids));
+      if (p1 === "import-csv" && m === "POST") return ok(await CRM.importCsv(env, u, body.csv));
+      if (p1 === "export" && m === "GET") { const what = q.what === "deals" ? "deals" : "contacts"; return new Response("\uFEFF" + await CRM.exportCsv(env, u, what), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=\"fodo-" + what + "-" + new Date().toISOString().slice(0, 10) + ".csv\"", "cache-control": "no-store", "x-content-type-options": "nosniff" } }); }
+      if (p1 === "pipeline" && m === "GET") return ok(await CRM.pipeline(env, u));
+      if (p1 === "deals" && !p2 && m === "POST") return ok(await CRM.saveDeal(env, u, body));
+      if (p1 === "deals" && p2 && path[3] === "delete" && m === "POST") return ok(await CRM.delDeal(env, u, p2));
+      if (p1 === "activities" && !p2 && m === "POST") return ok(await CRM.addActivity(env, u, body));
+      if (p1 === "activities" && p2 && path[3] === "delete" && m === "POST") return ok(await CRM.delActivity(env, u, p2));
+      if (p1 === "activities" && p2 && m === "POST") return ok(await CRM.setActivity(env, u, p2, body));
+      if (p1 === "followups" && m === "GET") return ok({ items: await CRM.followUps(env, u, 7) });
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
+    /* v45 Content & Ad Studio */
+    if (p0 === "studio") {
+      if (p1 === "usage" && m === "GET") return ok(await ST.usage(env, u));
+      if (p1 === "caption" && m === "POST") return ok(await ST.caption(env, u, body));
+      if (p1 === "script" && m === "POST") return ok(await ST.script(env, u, body));
+      if (p1 === "ads" && m === "POST") return ok(await ST.ads(env, u, body));
+      if (p1 === "utm" && m === "POST") return ok(ST.utm(body));
+      if (p1 === "save" && m === "POST") return ok(await ST.save(env, u, body));
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
     /* v43 private files */
     if (p0 === "files" && !p1 && m === "GET") return ok(await FL.list(env, u, R, q));
     if (p0 === "files" && p1 === "storage" && m === "GET") return ok({ storage: await FL.storage(env, u) });
@@ -103,6 +138,6 @@ export async function onRequest(ctx) {
     }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
-    return json(Object.assign({ ok: false, reason: e.status ? e.message : "Something went wrong, please try again." }, e.missing ? { missing: e.missing } : {}), e.status || 500);
+    return json(Object.assign({ ok: false, reason: e.status ? e.message : "Something went wrong, please try again." }, e.missing ? { missing: e.missing } : {}, e.dup ? { dup: e.dup } : {}), e.status || 500);
   }
 }

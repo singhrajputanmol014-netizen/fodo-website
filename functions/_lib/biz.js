@@ -83,8 +83,8 @@ export async function setStaff(env, u, email, role) {
   else { if (["moderator", "finance", "viewer"].indexOf(role) < 0) throw err("Role must be moderator, finance or viewer."); await run(d, "INSERT OR REPLACE INTO biz_staff (email, role, added_by, added_at) VALUES (?1,?2,?3,?4)", e, role, u.email, nowIso()); }
   await auditLog(env, u.email, "staff:" + (role || "remove"), e); return { ok: true };
 }
-const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
-  ["projects", "Projects", ["client"]], ["leads", "Leads / CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
+const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["studio", "AI Studio", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
+  ["projects", "Projects", ["client"]], ["leads", "CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
 export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
 
 /* ---------- settings (commission etc.) ---------- */
@@ -108,13 +108,14 @@ export function brandFromSite(s) {
 }
 
 /* ---------- Content & Ads ---------- */
-export async function listContent(env, u) { return all(await bdb(env), "SELECT * FROM biz_content WHERE user_id=?1 ORDER BY COALESCE(due,'9999'), created_at LIMIT 500", u.id); }
+const noUid = (r) => { if (r) delete r.user_id; return r; };   // v45: the browser never needs internal user ids
+export async function listContent(env, u) { return (await all(await bdb(env), "SELECT * FROM biz_content WHERE user_id=?1 ORDER BY COALESCE(due,'9999'), created_at LIMIT 500", u.id)).map(noUid); }
 export async function saveContent(env, u, b) {
   const d = await bdb(env), id = b.id ? clip(b.id, 40) : "ct" + randId(14), title = clip(b.title, 140); if (title.length < 2) throw err("Give the content a title.");
   const st = CONTENT_STATES.indexOf(b.status) > -1 ? b.status : "idea", due = /^\d{4}-\d{2}-\d{2}$/.test(b.due || "") ? b.due : null, now = nowIso();
   if (b.id) { const r = await run(d, "UPDATE biz_content SET title=?3, platform=?4, format=?5, status=?6, due=?7, brief=COALESCE(?8, brief), updated_at=?9 WHERE id=?1 AND user_id=?2", id, u.id, title, clip(b.platform, 30), clip(b.format, 30), st, due, b.brief ? JSON.stringify(b.brief).slice(0, 8000) : null, now); if (!r.meta.changes) throw err("Not found.", 404); }
   else await run(d, "INSERT INTO biz_content (id, user_id, title, platform, format, status, due, brief, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)", id, u.id, title, clip(b.platform, 30), clip(b.format, 30), st, due, b.brief ? JSON.stringify(b.brief).slice(0, 8000) : null, now);
-  return one(d, "SELECT * FROM biz_content WHERE id=?1", id);
+  return noUid(await one(d, "SELECT * FROM biz_content WHERE id=?1", id));
 }
 export async function delContent(env, u, id) { await run(await bdb(env), "DELETE FROM biz_content WHERE id=?1 AND user_id=?2", id, u.id); return { ok: true }; }
 /* a creative brief from the inputs + the Brand Kit. Rules-based (always works); the professionals it suggests are roles, never invented people */
@@ -126,7 +127,7 @@ export function buildBrief(b, brand) {
     offer: clip(b.offer, 200), cta: clip(b.cta, 80) || "Not set yet", tone: clip(b.tone, 120) || (brand && brand.tone) || "Not set yet", deadline: /^\d{4}-\d{2}-\d{2}$/.test(b.deadline || "") ? b.deadline : null, budget: int(b.budget, 0, 1e8),
     references: arr(b.references, 5, 300).filter((x) => /^https:\/\//.test(x)), brand: brand ? { name: brand.name, colors: brand.colors, fonts: brand.fonts } : null, suggestedRoles: FORMAT_ROLES[key], recommendedFormat: { reel: "Short vertical video performs best for reach on Instagram/YouTube Shorts", blog: "Long-form article for search traffic", ad: "Test 3 creatives against one audience before scaling" }[key] || null };
 }
-export async function listCampaigns(env, u) { return all(await bdb(env), "SELECT * FROM biz_campaigns WHERE user_id=?1 ORDER BY updated_at DESC LIMIT 200", u.id); }
+export async function listCampaigns(env, u) { return (await all(await bdb(env), "SELECT * FROM biz_campaigns WHERE user_id=?1 ORDER BY updated_at DESC LIMIT 200", u.id)).map(noUid); }
 export async function saveCampaign(env, u, b) {
   const d = await bdb(env), id = b.id ? clip(b.id, 40) : "cp" + randId(14), name = clip(b.name, 120); if (name.length < 2) throw err("Name the campaign.");
   const plat = AD_PLATFORMS.indexOf(b.platform) > -1 ? b.platform : "Meta", budget = int(b.budget, 0, 1e9) || 0, days = int(b.days, 1, 365) || 30, now = nowIso();
@@ -134,7 +135,7 @@ export async function saveCampaign(env, u, b) {
   const vals = [id, u.id, name, plat, clip(b.objective, 60), budget, days, clip(b.audience, 400), clip(b.kpi, 120), url(b.landing), JSON.stringify(arr(b.creatives, 10, 200)), st, now];
   if (b.id) { const r = await run(d, "UPDATE biz_campaigns SET name=?3, platform=?4, objective=?5, budget=?6, days=?7, audience=?8, kpi=?9, landing=?10, creatives=?11, status=?12, updated_at=?13 WHERE id=?1 AND user_id=?2", ...vals); if (!r.meta.changes) throw err("Not found.", 404); }
   else await run(d, "INSERT INTO biz_campaigns (id, user_id, name, platform, objective, budget, days, audience, kpi, landing, creatives, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13)", ...vals);
-  const c = await one(d, "SELECT * FROM biz_campaigns WHERE id=?1", id); return Object.assign(c, { daily: Math.round(budget / days), publishing: "Not connected: FODO plans the campaign; publishing to " + plat + " needs that ad account connected (not live)." });
+  const c = await one(d, "SELECT * FROM biz_campaigns WHERE id=?1", id); return Object.assign(noUid(c), { daily: Math.round(budget / days), publishing: "Not connected: FODO plans the campaign; publishing to " + plat + " needs that ad account connected (not live)." });
 }
 
 /* ---------- FODO Pros: profile, packages, portfolio ---------- */
@@ -383,6 +384,7 @@ export async function dashboard(env, u) {
   const A = [], add = (pri, text, why, href) => A.push({ pri, text, why, href });
   msWait.filter((m) => m.status === "submitted").forEach((m) => add(1, "Review submitted work: " + m.title, "A professional is waiting for your approval.", "#project=" + m.pid));
   msWait.filter((m) => m.status === "pending").forEach((m) => add(2, "Fund milestone: " + m.title, "The project starts when the first milestone is paid to FODO.", "#project=" + m.pid));
+  try { (await (await import("./crm.js")).followUps(env, u, 0)).forEach((f) => add(f.overdue ? 1 : 2, "Follow up: " + f.name, (f.overdue ? "Overdue since " + f.due + ": " : "Today: ") + f.body.slice(0, 120), "#leads?tab=followups")); } catch (e) {}   // v45 CRM
   projects.filter((p) => p.side === "client" && p.status === "proposed").forEach((p) => add(2, "Review proposal: " + p.title, "The professional sent milestones and prices.", "#project=" + p.id));
   projects.filter((p) => p.side === "pro" && p.status === "requested").forEach((p) => add(1, "Reply to request: " + p.title, "Send a proposal so the client can accept.", "#project=" + p.id));
   if (!run0) add(3, "Run your first Business X-Ray", "See what is holding your website and visibility back, with evidence.", "/business-x-ray/");
@@ -479,6 +481,7 @@ export async function search(env, u, q) {
   const add = (name, list) => { if (list.length) G.push({ name, items: list.slice(0, 6) }); };
   add("Websites", (await safe(() => all(d, "SELECT id, name, status FROM sites WHERE owner_user_id=?1 AND deleted_at IS NULL AND (lower(name) LIKE ?2 OR lower(slug) LIKE ?2) LIMIT 6", u.id, like))).map((x) => ({ label: x.name, hint: x.status === "live" ? "Live website" : "Draft website", href: "/website-builder/#site=" + x.id })));
   add("Projects", (await all(d, "SELECT j.id, j.title, j.status FROM biz_projects j LEFT JOIN biz_pros p ON p.id=j.pro_id WHERE (j.client_id=?1 OR p.user_id=?1) AND lower(j.title) LIKE ?2 LIMIT 6", u.id, like)).map((x) => ({ label: x.title, hint: "Project · " + x.status.replace("_", " "), href: "#project=" + x.id })));
+  add("Contacts", (await safe(() => all(d, "SELECT id, name, company, email FROM crm_contacts WHERE user_id=?1 AND (lower(name) LIKE ?2 OR lower(email) LIKE ?2 OR lower(company) LIKE ?2 OR phone LIKE ?2) LIMIT 6", u.id, like))).map((x) => ({ label: x.name, hint: "Contact" + (x.company ? " · " + x.company : ""), href: "#leads?tab=contacts&id=" + x.id })));   // v45
   add("Content", (await all(d, "SELECT title, status FROM biz_content WHERE user_id=?1 AND lower(title) LIKE ?2 LIMIT 6", u.id, like)).map((x) => ({ label: x.title, hint: "Content · " + x.status, href: "#content" })));
   add("Campaigns", (await all(d, "SELECT name, platform FROM biz_campaigns WHERE user_id=?1 AND lower(name) LIKE ?2 LIMIT 6", u.id, like)).map((x) => ({ label: x.name, hint: x.platform + " campaign plan", href: "#ads" })));
   add("FODO Pros", (await all(d, "SELECT id, name, role, city FROM biz_pros WHERE status IN ('approved','published') AND (lower(name) LIKE ?1 OR lower(role) LIKE ?1 OR lower(skills) LIKE ?1 OR lower(city) LIKE ?1) LIMIT 6", like)).map((x) => ({ label: x.name, hint: x.role + (x.city ? " · " + x.city : ""), href: "#pros?q=" + encodeURIComponent(x.name), pro: x.id })));

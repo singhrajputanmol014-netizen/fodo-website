@@ -7,7 +7,7 @@
   var root = document.getElementById("ws"); if (!root) return;
   var ME = null, VIEW = "", ROLES = null, MODE = document.body.getAttribute("data-mode") === "pro" ? "pro" : "client";
   var INVITE = (function () { var i = new URLSearchParams(location.search).get("i") || ""; try { if (i) sessionStorage.setItem("fodo-pro-invite", i); else i = sessionStorage.getItem("fodo-pro-invite") || ""; } catch (e) {} return /^[a-z0-9]{24}$/.test(i) ? i : ""; })();
-  var PRO_NAV = [["pro-home", "Dashboard"], ["pro", "My profile"], ["pro-work", "Requests & projects"], ["pro-cal", "Calendar"], ["pro-earn", "Earnings & payouts"], ["pro-reviews", "Reviews"], ["notifications", "Notifications"]];
+  var PRO_NAV = [["pro-home", "Dashboard"], ["pro", "My profile"], ["pro-work", "Requests & projects"], ["pro-cal", "Calendar"], ["pro-earn", "Earnings & payouts"], ["pro-reviews", "Reviews"], ["files", "Files"], ["notifications", "Notifications"]];
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var inr = function (n) { return n == null ? "–" : "₹" + Math.round(+n).toLocaleString("en-IN"); };
   var day = function (s) { try { return new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return s || ""; } };
@@ -31,7 +31,7 @@
   var ROLE_LIST = [];
 
   /* ---------- shell ---------- */
-  var ICON = { overview: "◎", builder: "▣", xray: "✚", growth: "◆", content: "✎", pros: "★", projects: "▤", leads: "☎", brand: "◐", pro: "☺", billing: "₹", notifications: "🔔", admin: "⚙", "pro-home": "◎", "pro-work": "▤", "pro-cal": "▦", "pro-earn": "₹", "pro-reviews": "★" };
+  var ICON = { overview: "◎", builder: "▣", xray: "✚", growth: "◆", content: "✎", pros: "★", projects: "▤", leads: "☎", brand: "◐", pro: "☺", billing: "₹", notifications: "🔔", admin: "⚙", "pro-home": "◎", "pro-work": "▤", "pro-cal": "▦", "pro-earn": "₹", "pro-reviews": "★", files: "🗂" };
   var OUT = { builder: "/website-builder/", xray: "/business-x-ray/", growth: "/growth-lab/" };
   function shell() {
     if (MODE === "pro") ME.nav = ME.pro ? PRO_NAV.map(function (n) { return { id: n[0], label: n[1] }; }) : [{ id: "pro", label: "Create your profile" }];
@@ -234,7 +234,9 @@
           if (me === "client" && m.status === "pending" && ["accepted", "in_progress", "delivered"].indexOf(P.status) > -1) b = '<button type="button" class="ws-btn sm pri" data-pay="' + esc(m.id) + '">Pay ' + inr(m.amount) + " to FODO</button>";
           if (me === "pro" && m.status === "funded") b = '<button type="button" class="ws-btn sm pri" data-sub="' + esc(m.id) + '">Submit work</button>';
           if (me === "client" && m.status === "submitted") b = '<button type="button" class="ws-btn sm pri" data-ok="' + esc(m.id) + '">Approve</button><button type="button" class="ws-btn sm" data-chg="' + esc(m.id) + '">Request changes</button>';
-          return "<li><b>" + esc(m.title) + "</b><span>" + inr(m.amount) + (m.due ? " · due " + day(m.due) : "") + '</span><span class="ws-pill ms-' + m.status + '">' + MS[m.status] + "</span>" + (m.note ? "<small>" + esc(m.note) + "</small>" : "") + b + "</li>"; }).join("") + "</ul>" : '<p class="ws-sub">' + (me === "pro" ? "Send the client your milestones and prices." : "Waiting for the professional's proposal.") + "</p>") +
+          var mf = (P.files || []).filter(function (f) { return f.milestone_id === m.id; });
+          return "<li><b>" + esc(m.title) + "</b><span>" + inr(m.amount) + (m.due ? " · due " + day(m.due) : "") + '</span><span class="ws-pill ms-' + m.status + '">' + MS[m.status] + "</span>" + (m.note ? "<small>" + esc(m.note) + "</small>" : "") + (mf.length ? '<small class="ws-msf">📎 ' + mf.map(function (f) { return '<a href="/api/biz/files/' + esc(f.id) + '/download">' + esc(f.name) + (f.ver > 1 ? " (v" + f.ver + ")" : "") + "</a>"; }).join(", ") + "</small>" : "") + b + "</li>"; }).join("") + "</ul>" : '<p class="ws-sub">' + (me === "pro" ? "Send the client your milestones and prices." : "Waiting for the professional's proposal.") + "</p>") +
+        '<div id="pj-files" class="ws-files"></div>' +
         (me === "pro" && ["requested", "proposed"].indexOf(P.status) > -1 ? '<form class="ws-form" id="pp-f"><h3>' + (ms.length ? "Update proposal" : "Send proposal") + '</h3><div id="pp-rows"></div><div class="ws-row"><button type="button" class="ws-btn sm" id="pp-add">+ Milestone</button><button class="ws-btn pri" type="submit">Send proposal</button></div></form>' : "") +
         '<div class="ws-row">' + (me === "client" && P.status === "proposed" ? '<button type="button" class="ws-btn pri" id="pj-acc">Accept proposal</button>' : "") + (me !== "staff" && ["requested", "proposed", "accepted"].indexOf(P.status) > -1 ? '<button type="button" class="ws-btn danger" id="pj-can">Cancel project</button>' : "") + (me !== "staff" && ["accepted", "in_progress", "delivered"].indexOf(P.status) > -1 ? '<button type="button" class="ws-btn" id="pj-dis">Open a dispute</button>' : "") + "</div>" +
         (P.status === "completed" ? (P.review ? '<p class="ws-sub">Review: ' + "★".repeat(P.review.rating) + " " + esc(P.review.text || "") + "</p>" : me === "client" ? '<form class="ws-form ws-inline" id="rv-f"><select name="rating" aria-label="Rating"><option value="5">★★★★★</option><option value="4">★★★★</option><option value="3">★★★</option><option value="2">★★</option><option value="1">★</option></select><input name="text" maxlength="1500" placeholder="How was it working together?" aria-label="Review"><button class="ws-btn pri" type="submit">Post review</button></form>' : "") : "") +
@@ -246,7 +248,14 @@
       if ($("#pj-can")) $("#pj-can").onclick = function () { if (confirm("Cancel this project?")) doAct(this, "cancel"); };
       if ($("#pj-dis")) $("#pj-dis").onclick = function () { var r = prompt("What went wrong? FODO will review both sides."); if (r) doAct(this, "dispute", { reason: r }); };
       if ($("#rv-f")) $("#rv-f").onsubmit = function (e) { e.preventDefault(); doAct(e.submitter, "review", fd(this)); };
-      $$("[data-sub]", el).forEach(function (b) { b.onclick = function () { var n = prompt("Link to the delivered work + a short note"); if (n !== null) doAct(b, "submit", { milestoneId: b.dataset.sub, note: n }); }; });
+      filesBox($("#pj-files"), { project: P.id, title: "Files", onChange: function () { api("projects/" + encodeURIComponent(P.id)).then(function (j) { if (j.ok) P.files = j.project.files; }); } });
+      /* v43: submit work = a note + private files (uploaded here or already in Files) */
+      $$("[data-sub]", el).forEach(function (b) { b.onclick = function () { var mine = (P.files || []).filter(function (f) { return !f.milestone_id || f.milestone_id === b.dataset.sub; });
+        modal('<h2>Submit work</h2><p class="ws-sub">The client reviews it, then approves (FODO releases the payment) or asks for changes.</p><form class="ws-form" id="sw-f"><label>Note for the client<textarea name="note" rows="3" maxlength="1000" placeholder="What is delivered, links, how to review"></textarea></label>' +
+          '<fieldset><legend>Delivered files <small>(private, only this client and FODO can open them)</small></legend><div id="sw-l">' + (mine.length ? mine.map(function (f) { return '<label class="ws-ck"><input type="checkbox" name="f" value="' + esc(f.id) + '"' + (f.milestone_id === b.dataset.sub ? " checked" : "") + "> " + esc(f.name) + (f.ver > 1 ? " · v" + f.ver : "") + "</label>"; }).join("") : '<p class="ws-sub">No files yet.</p>') + '</div><label class="ws-btn sm ws-up">+ Upload files<input type="file" multiple id="sw-up" hidden></label><div id="sw-prog"></div></fieldset>' +
+          '<div class="ws-row"><button type="button" class="ws-btn" data-x>Cancel</button><button class="ws-btn pri" type="submit">Submit for review</button></div></form>', function (m, close) {
+          $("#sw-up", m).onchange = function () { var fl = Array.prototype.slice.call(this.files); this.value = ""; uploadAll(fl, { project: P.id, milestone: b.dataset.sub, kind: "deliverable" }, $("#sw-prog", m), function (f) { if (!f) return; var l = document.createElement("label"); l.className = "ws-ck"; l.innerHTML = '<input type="checkbox" name="f" value="' + esc(f.id) + '" checked> ' + esc(f.name); var w = $("#sw-l", m), em = $(".ws-sub", w); if (em) em.remove(); w.appendChild(l); }); };
+          $("#sw-f", m).onsubmit = function (e) { e.preventDefault(); var ids = $$('input[name=f]:checked', m).map(function (c) { return c.value; }), note = this.note.value.trim(); if (!ids.length && !note) return toast("Add a note or at least one file.", true); doAct(e.submitter, "submit", { milestoneId: b.dataset.sub, note: note, files: ids }).then(function (j) { if (j && j.ok) { close(); toast("Submitted for review."); } }); }; }); }; });
       $$("[data-ok]", el).forEach(function (b) { b.onclick = function () { if (confirm("Approve this work? FODO then releases the payment to the professional.")) doAct(b, "approve", { milestoneId: b.dataset.ok }); }; });
       $$("[data-chg]", el).forEach(function (b) { b.onclick = function () { var n = prompt("What should change?"); if (n) doAct(b, "changes", { milestoneId: b.dataset.chg, note: n }); }; });
       $$("[data-pay]", el).forEach(function (b) { b.onclick = function () { if (!A()) return; b.disabled = true; A().checkout("milestone", b.dataset.pay, {}).catch(function (e2) { b.disabled = false; if (!e2 || !e2.cancelled) toast((e2 && e2.message) || "Could not start the payment.", true); }); }; });
@@ -256,6 +265,51 @@
       var box = $("#pj-msgs"); if (box) box.scrollTop = box.scrollHeight;
     }
   };
+
+  /* ---------- v43 private files ---------- */
+  var size = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(n >= 10485760 ? 0 : 1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; };
+  var FICON = { Image: "🖼", PDF: "📄", Video: "🎬", Audio: "🎵", ZIP: "🗜", Word: "📝", Excel: "📊", PowerPoint: "📽", Text: "🗒", CSV: "📊", Photoshop: "🎨", "Illustrator (PDF)": "🎨", Subtitles: "🗒" };
+  /* one file → POST raw bytes (progress bar); the server decides the type from the bytes */
+  function uploadOne(file, params, bar) {
+    return new Promise(function (res) { var qs = Object.keys(params).filter(function (k) { return params[k]; }).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).concat(["name=" + encodeURIComponent(file.name)]).join("&");
+      var x = new XMLHttpRequest(); x.open("POST", "/api/biz/files/upload?" + qs); x.setRequestHeader("x-fodo-upload", "1"); x.setRequestHeader("content-type", "application/octet-stream");
+      x.upload.onprogress = function (e) { if (bar && e.lengthComputable) bar.value = Math.round(e.loaded / e.total * 100); };
+      x.onload = function () { var j; try { j = JSON.parse(x.responseText); } catch (e) { j = { ok: false, reason: "Upload failed (" + x.status + ")." }; } res(j); };
+      x.onerror = function () { res({ ok: false, reason: "You seem to be offline. The file wasn't uploaded." }); }; x.send(file); });
+  }
+  function uploadAll(files, params, prog, each) {
+    var i = 0; (function next() { if (i >= files.length) { if (prog) prog.innerHTML = ""; return each && each(null, true); } var f = files[i++];
+      if (prog) prog.innerHTML = '<label class="ws-prog">' + esc(f.name) + ' <progress max="100" value="0"></progress></label>';
+      uploadOne(f, params, prog && $("progress", prog)).then(function (j) { if (!j.ok) toast(f.name + ": " + (j.reason || "upload failed"), true); else if (each) each(j.file); next(); }); })();
+  }
+  function fileRow(f, opts) {
+    var dl = "/api/biz/files/" + encodeURIComponent(f.id) + "/download";
+    return '<li><span class="ws-fi" aria-hidden="true">' + (FICON[f.type] || "📁") + '</span><div><a href="' + dl + '"><b>' + esc(f.name) + "</b></a><small>" + esc(f.type) + " · " + size(f.size) + (f.ver > 1 ? " · version " + f.ver : "") + " · " + day(f.created_at) + (f.who ? " · " + (f.who === "client" ? "client" : "professional") : "") + (f.kind === "deliverable" ? " · deliverable" : "") + (f.projectTitle ? ' · <a href="#project=' + esc(f.projectId) + '">' + esc(f.projectTitle) + "</a>" : "") + "</small></div>" +
+      '<span class="ws-fa">' + (f.inline ? '<a class="ws-btn sm" href="' + dl + '?inline=1" target="_blank" rel="noopener noreferrer">Open</a>' : "") + '<a class="ws-btn sm" href="' + dl + '" download>Download</a>' + (opts.up && f.mine ? '<button type="button" class="ws-btn sm" data-fv="' + esc(f.id) + '" title="Upload a new version">New version</button>' : "") + (f.mine ? '<button type="button" class="ws-btn sm danger" data-fd="' + esc(f.id) + '" aria-label="Delete ' + esc(f.name) + '">Delete</button>' : "") + "</span></li>";
+  }
+  /* the Files box: used in a project and on the Files page (personal files) */
+  function filesBox(el, o) {
+    if (!el) return; api("files" + (o.project ? "?project=" + encodeURIComponent(o.project) : "")).then(function (j) {
+      if (!j.ok) { el.innerHTML = '<p class="ws-sub">' + esc(j.reason || "Files couldn't be loaded.") + "</p>"; return; }
+      var st = j.storage || {}, up = o.project ? j.canUpload : !!st.store, L = j.files || [], latest = {}, old = {};
+      L.forEach(function (f) { if (!latest[f.grp] || latest[f.grp].ver < f.ver) { if (latest[f.grp]) (old[f.grp] = old[f.grp] || []).push(latest[f.grp]); latest[f.grp] = f; } else (old[f.grp] = old[f.grp] || []).push(f); });
+      var top = Object.keys(latest).map(function (k) { return latest[k]; }).sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; });
+      el.innerHTML = "<h2>" + esc(o.title || "Files") + ' <small>🔒 private</small></h2><p class="ws-sub">' + (o.project ? "Only this client, the professional and FODO can open these files." : "Only you can open these files.") + (st.store ? " Up to " + size(st.maxFile) + " each · " + size(st.used) + " of " + size(st.quota) + " used." : "") + (st.store === "kv" ? " " + esc(st.note) : "") + "</p>" +
+        (up ? '<div class="ws-drop" id="fb-drop" tabindex="0" role="button" aria-label="Upload files: drop them here or press Enter to choose">Drop files here or <b>choose files</b><input type="file" multiple hidden id="fb-in"></div><div id="fb-prog"></div>' : (!st.store ? '<p class="ws-sub">File storage isn\'t connected yet.</p>' : "")) +
+        (top.length ? '<ul class="ws-files-l">' + top.map(function (f) { var h = old[f.grp] || []; return fileRow(f, { up: up }) + (h.length ? '<li class="ws-fold"><details><summary>' + h.length + " earlier version" + (h.length > 1 ? "s" : "") + '</summary><ul class="ws-files-l">' + h.sort(function (a, b) { return b.ver - a.ver; }).map(function (x) { return fileRow(x, { up: false }); }).join("") + "</ul></details></li>" : ""); }).join("") + "</ul>" : '<p class="ws-sub">No files yet.</p>') +
+        (j.projectFiles && j.projectFiles.length ? '<h2>Files in your projects</h2><ul class="ws-files-l">' + j.projectFiles.map(function (f) { return fileRow(f, { up: false }); }).join("") + "</ul>" : "");
+      var reload = function () { filesBox(el, o); if (o.onChange) o.onChange(); }, params = { project: o.project || "", kind: o.kind || "" };
+      var go = function (fl, extra) { uploadAll(fl, Object.assign({}, params, extra || {}), $("#fb-prog", el), function (f, done) { if (done) { reload(); } }); };
+      var dz = $("#fb-drop", el), inp = $("#fb-in", el);
+      if (dz) { dz.onclick = function () { inp.click(); }; dz.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inp.click(); } };
+        inp.onchange = function () { var fl = Array.prototype.slice.call(this.files); this.value = ""; if (fl.length) go(fl); };
+        dz.ondragover = function (e) { e.preventDefault(); dz.classList.add("on"); }; dz.ondragleave = function () { dz.classList.remove("on"); };
+        dz.ondrop = function (e) { e.preventDefault(); dz.classList.remove("on"); var fl = Array.prototype.slice.call(e.dataTransfer.files || []); if (fl.length) go(fl); }; }
+      $$("[data-fv]", el).forEach(function (b) { b.onclick = function () { var i = document.createElement("input"); i.type = "file"; i.onchange = function () { if (i.files[0]) go([i.files[0]], { replaces: b.dataset.fv }); }; i.click(); }; });
+      $$("[data-fd]", el).forEach(function (b) { b.onclick = function () { if (confirm("Delete this file? It can't be restored.")) act(b, "files/" + encodeURIComponent(b.dataset.fd), null, function () { toast("Deleted."); reload(); }, "DELETE"); }; });
+    });
+  }
+  VIEWS.files = function (el) { el.innerHTML = head("Files", "Your private files: brand assets, contracts, briefs. Project files live in each project.") + '<div id="fl-box" class="ws-files"></div>'; filesBox($("#fl-box"), { title: "My files" }); };
 
   /* ---------- v40.2 Leads / CRM ---------- */
   var LS = { new: "New", contacted: "Contacted", qualified: "Qualified", won: "Won", lost: "Lost" };

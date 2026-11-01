@@ -26,3 +26,11 @@ database_id = "8672c9a1-7d55-4789-8160-0f69875922c2"
 # [[r2_buckets]]
 # binding = "MEDIA"
 # bucket_name = "fodo-media"
+
+# v43 private Workspace files (project files, deliverables, personal files). Until this is connected, files are kept in CHAT_KV
+# with smaller limits (10 MB per file, 100 MB per person). With R2: 95 MB per file, 2 GB per person. The bucket must stay PRIVATE
+# (no public access, no r2.dev URL): every download goes through /api/biz/files/<id>/download, which checks the login each time.
+# R2 → Create bucket "fodo-files" FIRST, then remove the "# " below.
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "fodo-files"

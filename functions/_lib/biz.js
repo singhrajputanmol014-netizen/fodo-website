@@ -76,7 +76,7 @@ export async function setStaff(env, u, email, role) {
   await auditLog(env, u.email, "staff:" + (role || "remove"), e); return { ok: true };
 }
 const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
-  ["projects", "Projects", ["client"]], ["leads", "Leads / CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
+  ["projects", "Projects", ["client"]], ["leads", "Leads / CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["files", "Files", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
 export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
 
 /* ---------- settings (commission etc.) ---------- */
@@ -219,7 +219,7 @@ export async function shortlist(env, u, b) {
 }
 
 /* ---------- projects ---------- */
-async function projectFor(env, u, id, R) {
+export async function projectFor(env, u, id, R) {
   const d = await bdb(env), pj = await one(d, "SELECT * FROM biz_projects WHERE id=?1", id); if (!pj) throw err("Not found.", 404);
   const pro = await one(d, "SELECT * FROM biz_pros WHERE id=?1", pj.pro_id), side = pj.client_id === u.id ? "client" : pro && pro.user_id === u.id ? "pro" : can(R, ["admin", "moderator", "finance"]) ? "staff" : null;
   if (!side) throw err("Not found.", 404); return { d, pj, pro, side };
@@ -246,7 +246,7 @@ export async function listProjects(env, u) {
 export async function getProject(env, u, id, R) {
   const { d, pj, pro, side } = await projectFor(env, u, id, R);
   return Object.assign({}, pj, { side, pro: pro ? proOut(pro) : null, milestones: await all(d, "SELECT * FROM biz_milestones WHERE project_id=?1 ORDER BY idx", id), messages: await all(d, "SELECT m.id, m.body, m.created_at, CASE WHEN m.user_id=?2 THEN 'client' ELSE 'pro' END AS who FROM biz_messages m WHERE project_id=?1 ORDER BY m.id LIMIT 500", id, pj.client_id),
-    review: await one(d, "SELECT rating, text, created_at FROM biz_reviews WHERE project_id=?1", id), dispute: await one(d, "SELECT id, reason, status, resolution, created_at FROM biz_disputes WHERE project_id=?1 ORDER BY created_at DESC LIMIT 1", id), next: PROJECT_STATES[pj.status] || [] });
+    files: await (await import("./files.js")).projectFiles(env, id), review: await one(d, "SELECT rating, text, created_at FROM biz_reviews WHERE project_id=?1", id), dispute: await one(d, "SELECT id, reason, status, resolution, created_at FROM biz_disputes WHERE project_id=?1 ORDER BY created_at DESC LIMIT 1", id), next: PROJECT_STATES[pj.status] || [] });
 }
 async function move(env, d, pj, to, actor) { if ((PROJECT_STATES[pj.status] || []).indexOf(to) < 0) throw err("A " + pj.status.replace("_", " ") + " project can't become " + to.replace("_", " ") + ".", 409); const r = await run(d, "UPDATE biz_projects SET status=?3, updated_at=?4 WHERE id=?1 AND status=?2", pj.id, pj.status, to, nowIso()); if (!r.meta.changes) throw err("The project changed meanwhile, reload.", 409); await auditLog(env, actor, "project:" + to, pj.id); pj.status = to; }
 export async function projectAction(env, u, id, act, b, R) {
@@ -261,6 +261,7 @@ export async function projectAction(env, u, id, act, b, R) {
     if (pj.day) { try { await run(d, "INSERT INTO biz_bookings (id, pro_id, project_id, day, created_at) VALUES (?1,?2,?3,?4,?5)", "bk" + randId(12), pro.id, id, pj.day, nowIso()); } catch (e) { throw err(pj.day + " was just booked by someone else. Pick another date with the professional.", 409); } }
     await move(env, d, pj, "accepted", u.email); await notify(env, other, "accepted", "Your proposal was accepted: " + pj.title, link); }
   else if (act === "submit") { if (side !== "pro") throw err("Only the professional submits work.", 403); const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1 AND project_id=?2", b.milestoneId, id); if (!m || m.status !== "funded") throw err("Only a funded milestone can be submitted.", 409);
+    if (Array.isArray(b.files) && b.files.length) await (await import("./files.js")).attach(env, u, id, m.id, b.files);   // v43 private deliverables
     await run(d, "UPDATE biz_milestones SET status='submitted', submitted_at=?2, note=?3 WHERE id=?1 AND status='funded'", m.id, nowIso(), clip(b.note, 1000)); if (pj.status === "accepted" || pj.status === "in_progress") { if (pj.status === "accepted") await move(env, d, pj, "in_progress", u.email); }
     if (!(await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status IN ('pending','funded')", id)) && pj.status === "in_progress") await move(env, d, pj, "delivered", u.email); await notify(env, other, "submitted", "Work submitted for review: " + m.title, link); }
   else if (act === "approve" || act === "changes") { if (side !== "client") throw err("Only the client approves work.", 403); const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1 AND project_id=?2", b.milestoneId, id); if (!m || m.status !== "submitted") throw err("Only submitted work can be reviewed.", 409);

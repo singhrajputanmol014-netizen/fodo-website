@@ -5,10 +5,13 @@
    POST brand · brand/extract {siteId} · brand/apply {siteId} · content · content/brief · campaigns · pro · pro/submit · pro/packages
         pro/portfolio · shortlist · projects · projects/<id>/<message|propose|accept|submit|approve|changes|cancel|dispute|review>
         notes/read · admin/pros/<id> {action,note} · admin/payouts/<id> {ref} · admin/disputes/<id> · admin/staff · admin/settings
-   DELETE content/<id> · pro/packages/<id> · pro/portfolio/<id> */
+   DELETE content/<id> · pro/packages/<id> · pro/portfolio/<id> · files/<id>
+   v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
+        POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
 import { json, accountsOn, sessionUser, sameOrigin, count, isOwner } from "../../_lib/accounts.js";
 import * as B from "../../_lib/biz.js";
 import * as W from "../../_lib/sites.js";
+import * as FL from "../../_lib/files.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -17,6 +20,14 @@ export async function onRequest(ctx) {
     if (p0 === "roles" && m === "GET") return json({ ok: true, roles: B.PRO_ROLES, categories: B.PRO_CATS, platforms: B.AD_PLATFORMS, contentStates: B.CONTENT_STATES });
     if (p0 === "invite" && m === "GET") return json(Object.assign({ ok: true }, await B.inviteStatus(env, new URL(request.url).searchParams.get("i"))), 200, { "cache-control": "no-store" });   // valid or not, nothing else
     const u = await sessionUser(env, request); if (!u) return json({ ok: false, reason: "Log in to use your FODO workspace.", login: true }, 401);
+    /* v43 private files: the upload body is the raw file (not JSON); same-origin + a custom header (a cross-site form can't send it) */
+    if (p0 === "files" && p1 === "upload" && m === "POST") {
+      if (!sameOrigin(request) || request.headers.get("x-fodo-upload") !== "1") return json({ ok: false, reason: "Bad request." }, 403);
+      if (await count(env, "bizup:" + u.id, 120, 3600)) return json({ ok: false, reason: "Too many uploads this hour, slow down a little." }, 429);
+      const st = FL.storeKind(env), max = st ? FL.LIMITS[st].file : 0, len = +(request.headers.get("content-length") || 0); if (len && len > max) return json({ ok: false, reason: "Files can be up to " + Math.round(max / 1048576) + " MB" + (st === "kv" ? " until private R2 storage is connected." : ".") }, 413);
+      const q0 = Object.fromEntries(new URL(request.url).searchParams); return json(Object.assign({ ok: true }, await FL.upload(env, u, await B.rolesOf(env, u), q0, await request.arrayBuffer())));
+    }
+    if (p0 === "files" && p1 && p2 === "download" && (m === "GET" || m === "HEAD")) return await FL.download(env, request, u, await B.rolesOf(env, u), p1, new URL(request.url).searchParams.get("inline") === "1");
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !/json/.test(request.headers.get("content-type") || "")))) return json({ ok: false, reason: "Bad request." }, 403);
     if (m !== "GET" && (await count(env, "biz:" + u.id, 400, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
     const body = m === "POST" || m === "PUT" ? (await request.json().catch(() => null)) || {} : {}, q = Object.fromEntries(new URL(request.url).searchParams), R = await B.rolesOf(env, u), ok = (o) => json(Object.assign({ ok: true }, o));
@@ -64,6 +75,10 @@ export async function onRequest(ctx) {
     if (p0 === "projects" && !p1 && m === "POST") return ok({ project: await B.createProject(env, u, body) });
     if (p0 === "projects" && p1 && !p2 && m === "GET") return ok({ project: await B.getProject(env, u, p1, R) });
     if (p0 === "projects" && p1 && p2 && m === "POST") return ok({ project: await B.projectAction(env, u, p1, p2, body, R) });
+    /* v43 private files */
+    if (p0 === "files" && !p1 && m === "GET") return ok(await FL.list(env, u, R, q));
+    if (p0 === "files" && p1 === "storage" && m === "GET") return ok({ storage: await FL.storage(env, u) });
+    if (p0 === "files" && p1 && m === "DELETE") return ok(await FL.remove(env, u, R, p1));
     /* notifications */
     if (p0 === "notes" && !p1 && m === "GET") return ok(await B.notes(env, u));
     if (p0 === "notes" && p1 === "read" && m === "POST") return ok(await B.readNotes(env, u));

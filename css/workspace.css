@@ -92,3 +92,13 @@ html:has(.ws-body){background:var(--bg)}
 .ws-ri{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:10px;color:inherit;text-decoration:none}.ws-ri small{color:var(--muted)}.ws-ri[aria-selected=true],.ws-ri:hover{background:color-mix(in srgb,var(--signal) 16%,transparent)}
 .ws-lead{align-items:flex-start!important}.ws-lead>div:first-child{flex:1 1 320px;display:grid;gap:4px;min-width:0}.ws-lead p{margin:4px 0;font-size:14px}.ws-lact{display:grid;gap:6px;flex:0 1 240px}.ws-lact select,.ws-lact input{min-height:38px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:15px inherit;font-family:inherit}
 .ws-meta a.ws-pill{text-decoration:none}
+/* v43 private files */
+.ws-files{margin:18px 0}.ws-files h2 small{font-size:12px;font-weight:600;color:var(--muted);margin-left:6px}
+.ws-drop{border:1.5px dashed var(--line);border-radius:14px;padding:18px;text-align:center;color:var(--muted);cursor:pointer;margin:10px 0;transition:border-color .2s,background .2s}.ws-drop b{color:var(--text,inherit)}.ws-drop:hover,.ws-drop:focus-visible,.ws-drop.on{border-color:#7B61FF;background:color-mix(in srgb,#7B61FF 8%,transparent);outline:none}
+.ws-files-l{list-style:none;padding:0;margin:8px 0;display:grid;gap:8px}.ws-files-l>li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.ws-files-l>li.ws-fold{display:block;padding:0 12px;border:0}.ws-fold summary{cursor:pointer;font-size:12.5px;color:var(--muted);padding:2px 0}
+.ws-fi{font-size:22px}.ws-files-l a b{overflow-wrap:anywhere}.ws-files-l small{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.ws-fa{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.ws-prog{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)}.ws-prog progress{flex:1;max-width:240px}
+.ws-msf{display:block;width:100%}.ws-msf a{color:inherit}.ws-up{cursor:pointer;display:inline-block;margin:8px 0}
+#sw-l .ws-ck{display:flex}
+@media (max-width:640px){.ws-files-l>li{grid-template-columns:auto minmax(0,1fr)}.ws-fa{grid-column:1/-1;justify-content:flex-start}}

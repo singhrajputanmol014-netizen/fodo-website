@@ -115,7 +115,14 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
       ok(await mp.$eval(".wb-ed", (e) => e.classList.contains("sh-right")) && /Title|Small label/.test(await mp.textContent(".wb-right")), "v39: tap a section → Edit chip → its settings open in a sheet");
       await mp.keyboard.press("Escape"); await mp.waitForTimeout(300); await mp.click('.wb-mnav [data-m="more"]'); await mp.click('[data-mm="design"]'); await mp.waitForTimeout(400); ok(await mp.$eval(".wb-ed", (e) => e.classList.contains("sh-left")) && /Design/.test(await mp.textContent(".wb-left .wb-sheetbar")), "v39: More → Design opens the design panel");
       await mc.close();
-      await p.goto(BASE + "/website-builder/#site=" + sid); await p.waitForSelector("#wb-if", { timeout: 20000 }); ok(await p.$eval(".wb-mnav", (e) => getComputedStyle(e).display === "none") && await p.$eval(".wb-left", (e) => getComputedStyle(e).visibility === "visible"), "v39: desktop editor unchanged (no phone navigation)"); await p.goto(BASE + "/"); }
+      await p.goto(BASE + "/website-builder/#site=" + sid); await p.waitForSelector("#wb-if", { timeout: 20000 }); ok(await p.$eval(".wb-mnav", (e) => getComputedStyle(e).display === "none") && await p.$eval(".wb-left", (e) => getComputedStyle(e).visibility === "visible"), "v39: desktop editor unchanged (no phone navigation)");
+      // v41 element-level design: click a heading → element panel → style it → Shift+click adds → Esc back to the section
+      await p.click("text=Skip tutorial").catch(() => {}); const efr = p.frameLocator("#wb-if"); await efr.locator('[data-x="1-h1-0"]').click(); await p.waitForSelector(".wb-elp");
+      await p.fill('.wb-elp input[data-p="fs"]', "77"); await p.dispatchEvent('.wb-elp input[data-p="fs"]', "change"); await p.waitForTimeout(900);
+      ok((await efr.locator('[data-x="1-h1-0"]').evaluate((e) => getComputedStyle(e).fontSize)) === "77px" && /Main heading/.test(await p.textContent(".wb-crumbs")), "v41: select a heading on the canvas and restyle just that element");
+      await efr.locator('[data-x="1-p-0"]').click({ modifiers: ["Shift"] }); await p.waitForTimeout(400); ok(/2 elements/.test(await p.textContent(".wb-crumbs")), "v41: Shift+click multi-select");
+      await p.keyboard.press("Escape"); await p.waitForTimeout(400); ok(!(await p.$(".wb-elp")) && !!(await p.$(".wb-el-layers")), "v41: Esc goes back to the section, which lists its element layers"); await shot(p, "builder-elements");
+      await p.goto(BASE + "/"); }
     // v40 FODO Workspace (Business OS): loads for a signed-in owner with real data, admin nav, Content brief builder, phone menu
     await p.goto(BASE + "/workspace/"); await p.waitForSelector(".ws-next", { timeout: 20000 });
     ok(!!(await p.$('#ws-side [data-nav="admin"]')) && (await p.$$(".ws-card")).length >= 8 && !(await p.evaluate(() => document.body.innerText)).match(/undefined|NaN/), "v40: workspace overview: real cards, Next best actions, owner admin nav, no undefined/NaN"); await shot(p, "workspace-overview");

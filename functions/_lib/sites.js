@@ -5,7 +5,7 @@
    The client AI only ever sees ONE website's document and can only return edits to it. */
 import { PW_RE } from "../../sites/lib/protect.js";
 import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail, builderInfo } from "./accounts.js";
-import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS, COLLECTIONS } from "../../sites/lib/render.js";
+import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS, COLLECTIONS, cleanEl } from "../../sites/lib/render.js";
 import { TEMPLATES, templateById, searchTemplates, why, clientAllowed, SOURCES, FODO_LICENSE, isFreeTemplate, FREE_TEMPLATES } from "../../sites/lib/templates.js";
 import { brainAI, parseJson } from "./brain/models.js";
 import { safeUrl as netSafe, safeFetch } from "./xray-core.js";
@@ -43,7 +43,7 @@ export const limitsFor = (u) => { if (isOwner(u)) return { sites: 9999, pages: 2
   const b = builderInfo(u || {}); return Object.assign({}, b.limits, { allTemplates: b.allTemplates, tier: b.tier, tierName: b.name }); };
 export const builderPlan = (u) => Object.assign(builderInfo(u || {}), { freeTemplates: FREE_TEMPLATES.length, totalTemplates: TEMPLATES.filter((t) => clientAllowed(t.license)).length });
 /* v39 Builder System Health: what the server really has, so a stale page / old deploy / cached file is visible, never guessed */
-export const API_VERSION = "v40";
+export const API_VERSION = "v41";
 export function registryInfo() {
   const L = TEMPLATES.filter((t) => clientAllowed(t.license)), ids = L.map((t) => t.id).join(",");
   let h = 0; for (let i = 0; i < ids.length; i++) h = (h * 31 + ids.charCodeAt(i)) >>> 0;
@@ -128,7 +128,7 @@ export function validateDoc(doc, lim) {
     if (Object.keys(cl).length) out.collections = cl; }
   for (const p of pages) {
     const slug = String(p.slug || "").toLowerCase(); if (!SLUG.test(slug) || seen.has(slug)) throw err("Page address “" + clip(slug, 40) + "” is invalid or used twice."); if (/^(p|cart|checkout|order|blog|thank-you|search)$/.test(slug)) throw err("“" + slug + "” is reserved (store, blog, search, thank-you), use another page address."); seen.add(slug);
-    const secs = (Array.isArray(p.sections) ? p.sections : []).slice(0, 40).filter((s) => s && SECTION_TYPES.indexOf(s.type) > -1).map((s) => Object.assign({ type: s.type, props: cleanVal(s.props || {}, 0) || {} }, s.style && typeof s.style === "object" ? { style: cleanVal(s.style, 0) } : {}, s.ref && comps.some((k) => k.id === s.ref) ? { ref: s.ref } : {}));
+    const secs = (Array.isArray(p.sections) ? p.sections : []).slice(0, 40).filter((s) => s && SECTION_TYPES.indexOf(s.type) > -1).map((s) => Object.assign({ type: s.type, props: cleanVal(s.props || {}, 0) || {} }, s.style && typeof s.style === "object" ? { style: cleanVal(s.style, 0) } : {}, s.ref && comps.some((k) => k.id === s.ref) ? { ref: s.ref } : {}, cleanEl(s.el) ? { el: cleanEl(s.el) } : {}));
     out.pages.push({ slug, title: clip(p.title || slug, 80), navLabel: p.navLabel ? clip(p.navLabel, 40) : undefined, nav: p.nav === false ? false : undefined, hidden: !!p.hidden || undefined, noindex: !!p.noindex || undefined, password: p.password && PW_RE.test(p.password) ? p.password : undefined, seo: cleanVal(p.seo || {}, 0) || {}, sections: secs });
   }
   const size = JSON.stringify(out).length; if (size > 600000) throw err("The website is too large (" + Math.round(size / 1000) + " KB).");

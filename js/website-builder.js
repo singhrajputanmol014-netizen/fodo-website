@@ -13,6 +13,7 @@ import * as CL from "/js/wb-collections.js";
 import * as H from "/js/wb-home.js";
 import { openPalette, track } from "/js/wb-palette.js";
 import * as MB from "/js/wb-mobile.js";
+import * as EL from "/js/wb-elements.js";
 import { legalText as legalTextFor } from "/sites/lib/industry.js";
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
@@ -61,7 +62,7 @@ async function editor(id, hello) {
   $("#wb-undo").onclick = undo; $("#wb-redo").onclick = redo; $("#wb-prev").onclick = () => preview(); $("#wb-pub").onclick = publishFlow; $("#wb-ai-open").onclick = openCmd;
   $("#wb-audit").onclick = () => PN.auditPanel(); $("#wb-share").onclick = () => PN.sharePanel(); $("#wb-set").onclick = () => PN.settingsPage("general"); $("#wb-help").onclick = () => PN.helpPanel();
   $("#wb-adv").onchange = function () { ED.adv = this.checked; ls.set("wb-adv", this.checked ? "1" : "0"); $(".wb-left .wb-tabs").innerHTML = TABS().map(tabBtn).join(""); $$("[data-tab]").forEach((b) => { b.onclick = () => { ED.tab = b.dataset.tab; left(); }; }); if (!TABS().some((x) => x[0] === ED.tab)) ED.tab = "add"; left(); right(); };
-  PN.bind(panelX()); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); CL.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
+  PN.bind(panelX()); EL.bind(Object.assign(panelX(), { SECTION_LABELS })); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); CL.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
   $("#wb-cf").onsubmit = (e) => { e.preventDefault(); askAI($("#wb-ci").value); };
   window.onmessage = onFrame; document.onkeydown = keys; window.onbeforeunload = () => (ED && ED.dirty ? "You have unsaved changes." : undefined);
   MB.mount({ ED: () => ED, setTab: (t) => { ED.tab = t; left(); }, openCmd, preview: () => preview(), audit: () => PN.auditPanel(), share: () => PN.sharePanel(), settings: () => PN.settingsPage("general") });   // v39 phone editor
@@ -82,21 +83,22 @@ function savedTick() { if (!ED || ED.dirty || ED.saving) return; const el = $("#
 function liveState() { const el = $("#wb-live"); if (!el) return; const R = { ready: "👀 In review", changes: "✏️ Changes requested", approved: "✅ Approved" }; el.textContent = (ED.s.status === "live" ? "🟢 Live" : "🟡 Draft") + (R[ED.s.review] ? " · " + R[ED.s.review] : ""); }
 function pausedBanner() { const b = document.createElement("div"); b.className = "wb-banner"; b.innerHTML = "<b>Generation paused, your current work is safe.</b> The AI didn't finish writing your copy. <button class=\"wb-btn sm pri\" id=\"wb-cont\">Continue generation</button> <button class=\"wb-ib sm\" data-x>✕</button>"; $(".wb-ed").prepend(b); b.querySelector("[data-x]").onclick = () => b.remove();
   $("#wb-cont").onclick = async () => { const bt = $("#wb-cont"); bt.disabled = true; bt.textContent = "Writing…"; const r = await api(ED.id + "/generate", "POST", {}); bt.disabled = false; bt.textContent = "Continue generation"; if (!r.ok) return toast(r.reason, true); change(() => { ED.doc = r.doc; }); save("AI copy (continued)"); b.remove(); toast("Copy written: Undo if you prefer the previous text."); }; }
-function select(i) { ED.sel = i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); const f = $("#wb-if"); if (f && f.contentWindow) f.contentWindow.postMessage({ fodo: "mark", i, scroll: true }, "*");  MB.onSelect(); }
+function select(i) { ED.elSel = []; ED.sel = i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); const f = $("#wb-if"); if (f && f.contentWindow) f.contentWindow.postMessage({ fodo: "mark", i, scroll: true }, "*");  MB.onSelect(); }
 /* v34: devices + breakpoint layer (desktop/laptop edit the base design, tablet/mobile edit their own overrides) */
 function setDevice(dev) { if (!ED) return; ED.dev = dev; $$(".wb-bar [data-dev]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.dev === dev)); const fw = $("#wb-fw"); if (fw) fw.className = "wb-frame " + dev + (fw.classList.contains("wb-gridon") ? " wb-gridon" : ""); V.bpChip(); if (ED.rtab === "style") right(); }
 function openHistory() { ED.tab = "more"; left(); const d = $("#wb-vers"); if (d) { d.parentNode.open = true; versionsPanel(); d.scrollIntoView({ block: "nearest" }); } }
-function goPage(slug) { ED.page = slug; ED.sel = null; paint(); left(); right(); }
+function goPage(slug) { ED.page = slug; ED.sel = null; ED.elSel = []; paint(); left(); right(); }
 function panelX() { return { ED: () => ED, site: () => Object.assign({}, ED.s, { urls: ED.urls || ED.s.urls }), api, toast, change, paint, left, right, upload, askAI, openCmd, curPage, select, goPage, DEFAULTS, BRIDGE, isOwner: () => !!(CFG && CFG.owner) || !!(ED && ED.limits && ED.limits.owner), save: (note) => save(note), preview: (anim) => preview(anim), panels: { domain: domainPanel, stats: statsPanel } }; }
 function paint(keepScroll) {
   const f = $("#wb-if"); let y = 0; try { y = keepScroll ? 0 : 0; } catch (e) {}
-  f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE, data: ED.data });
+  f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE + EL.BRIDGE, data: ED.data });
   f.onload = () => { if (ED.sel != null) f.contentWindow.postMessage({ fodo: "mark", i: ED.sel }, "*"); };
 }
 const propsOf = (sec) => (sec.ref ? ((ED.doc.components || []).find((k) => k.id === sec.ref) || { props: sec.props }).props : sec.props);
 function onFrame(e) {
   if (!ED || e.source !== $("#wb-if").contentWindow && !(e.data && e.data.fodo === "checked")) return; const d = e.data || {};
-  if (d.fodo === "sel") { ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); MB.onSelect(true, (SECTION_LABELS[(curPage().sections[d.i] || {}).type] || "section")); }
+  if (EL.onFrame(d)) return;   // v41 element selection + layer list
+  if (d.fodo === "sel") { if (d.i !== ED.sel) ED.elSel = []; ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); MB.onSelect(true, (SECTION_LABELS[(curPage().sections[d.i] || {}).type] || "section")); }
   if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; if (sec.style && sec.style.lock) { paint(); return toast("This section is locked, unlock it to edit.", true); } const P0 = propsOf(sec), cur = P0[d.f]; if (cur === d.t) return; change(() => { P0[d.f] = String(d.t).trim(); }); }
   if (d.fodo === "ctx") PN.contextMenu(d.i, d.x, d.y);
   if (d.fodo === "drop" && d.type) PN.addSection(d.type, d.at);
@@ -105,7 +107,7 @@ function onFrame(e) {
   if (d.fodo === "key" && /^[kszy]$/.test(d.k)) keys({ key: d.k, ctrlKey: true, metaKey: false, shiftKey: !!d.shift, target: document.body, preventDefault() {} });   // v38: shortcuts work while the canvas has focus
 }
 function keys(e) {
-  if (!ED) return; const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  if (!ED) return; if (EL.key(e)) return; const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (mod && k === "k") { e.preventDefault(); editorPalette(); }
   else if (mod && k === "z" && !e.shiftKey && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); undo(); }
   else if (mod && ((k === "z" && e.shiftKey) || k === "y") && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); redo(); }
@@ -219,7 +221,8 @@ function legalPages() {
 function uniq(s) { s = s.replace(/[^a-z0-9-]+/g, "-").slice(0, 36) || "page"; if (/^(p|cart|checkout|order|blog)$/.test(s)) s += "-page"; let x = s, n = 2; while (ED.doc.pages.some((p) => p.slug === x)) x = s + "-" + n++; return x; }
 
 /* right panel: properties of the selected section, generated from its data */
-function right() {
+function right() { const rp = $("#wb-rp"); if (EL.panel(rp)) return; rightBase(); EL.after(rp); }   // v41: element panel first
+function rightBase() {
   const el = $("#wb-rp"), P = curPage(), sec = ED.sel != null ? P.sections[ED.sel] : null;
   if (!sec) { el.innerHTML = '<div class="wb-hint"><b>Click any part of your website</b> to change it.<br>Double-click text to type directly.<br><br>Or press <kbd>Ctrl</kbd> + <kbd>K</kbd> and tell the AI what you want.</div>'; return; }
   const comp = sec.ref ? (ED.doc.components || []).find((k) => k.id === sec.ref) : null, p = comp ? comp.props : (sec.props = sec.props || {}), locked = !!(sec.style && sec.style.lock);

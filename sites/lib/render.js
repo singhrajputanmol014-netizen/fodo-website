@@ -270,9 +270,10 @@ export function renderPage(site, slug, o) {
   const S = site.settings || {}, biz = S.business || {}, name = biz.name || site.name || "Website", seo = page.seo || {};
   let h1 = false; const c = { data: o.data || null, virtual: !!o.virtual, name, edit: !!o.edit, home: base, nav: navOf(site, base, page.slug), legal: (site.pages || []).filter((x) => x.nav === false && !x.hidden && /^(privacy|terms|shipping|returns|refund|cookies?)/.test(x.slug)).map((x) => ({ label: x.title, href: base + x.slug + "/" })), search: !!S.search, formAction: o.formAction || "#", badge: o.badge !== false, si: 0, h1: (close) => { if (close) return c._t; c._t = h1 ? "h2" : "h1"; h1 = true; return c._t; } };
   const comps = {}; (site.components || []).forEach((k) => { if (k && k.id) comps[k.id] = k; });
+  const elCss = [];   // v41 element styles for this page
   const body = (page.sections || []).map((s, i) => { const f = R[s.type]; if (!f) return ""; c.si = i; const props = fromCollection(site, s.type, s.ref && comps[s.ref] && comps[s.ref].type === s.type ? comps[s.ref].props || {} : s.props || {});
     let html = f(props, c); if (!html) return o.edit ? '<section data-sec="' + i + '" class="ed-empty"><div class="wrap"><p class="sub">' + esc(SECTION_LABELS[s.type] || s.type) + ", add details in the panel</p></div></section>" : "";
-    html = wrapStyle(html, s.style || props._s, s.type); return o.edit ? html.replace(/^<(header|section|footer)/, '<$1 data-sec="' + i + '"') : html; }).join("\n");
+    html = wrapStyle(html, s.style || props._s, s.type); html = applyElements(html, s, i, !!o.edit, elCss); return o.edit ? html.replace(/^<(header|section|footer)/, '<$1 data-sec="' + i + '"') : html; }).join("\n");
   let body2 = body; if (!/<h1[\s>]/.test(body2)) { const k = body2.indexOf("<h2"); if (k > -1) { const e = body2.indexOf("</h2>", k); body2 = body2.slice(0, k) + "<h1" + body2.slice(k + 3, e) + "</h1>" + body2.slice(e + 5); } }   // every page gets exactly one H1
   const title = seo.title || (page.slug === "home" ? name + (biz.tagline ? ": " + biz.tagline : "") : page.title + ": " + name), desc = seo.description || biz.description || "";
   const canon = o.origin ? o.origin + base + (page.slug === "home" ? "" : page.slug + "/") : "";
@@ -281,7 +282,7 @@ export function renderPage(site, slug, o) {
   return "<!doctype html><html lang=\"" + esc(S.lang || "en") + "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + esc(title) + "</title>" + (desc ? '<meta name="description" content="' + esc(desc) + '">' : "") +
     (canon ? '<link rel="canonical" href="' + esc(canon) + '">' : "") + '<meta property="og:title" content="' + esc(seo.ogTitle || title) + '">' + (desc ? '<meta property="og:description" content="' + esc(desc) + '">' : "") + (safeUrl(seo.ogImage) ? '<meta property="og:image" content="' + esc(safeUrl(seo.ogImage)) + '">' : "") + '<meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">' +
     (page.noindex || o.noindex ? '<meta name="robots" content="noindex">' : "") + verifyMeta(S.verify) + (safeUrl(S.favicon) ? '<link rel="icon" href="' + esc(safeUrl(S.favicon)) + '">' : "") + (fonts.length ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?' + fonts.map((f) => "family=" + f).join("&") + '&display=swap">' : "") +
-    "<style>" + themeCss(site.theme) + (S.customCss ? "\n/* custom */\n" + sanitizeCss(S.customCss) : "") + "</style>" + (page.slug === "home" ? '<script type="application/ld+json">' + JSON.stringify(schema).replace(/</g, "\\u003c") + "</script>" : "") + (o.allowCode && S.customHead ? String(S.customHead).slice(0, 20000) : "") + (o.headExtra || "") + "</head><body>" + body2 + extras(S, biz, o) + (o.bodyExtra || "") + (o.noMotion || o.edit ? "" : motionScript((site.theme || {}).motion)) + (o.edit ? "" : siteScript()) + (o.allowCode && S.customBody ? String(S.customBody).slice(0, 20000) : "") + "</body></html>";
+    "<style>" + themeCss(site.theme) + (elCss.length || o.edit ? "\n/* elements */\n" + EL_BASE_CSS + elCss.join("") : "") + (S.customCss ? "\n/* custom */\n" + sanitizeCss(S.customCss) : "") + "</style>" + (page.slug === "home" ? '<script type="application/ld+json">' + JSON.stringify(schema).replace(/</g, "\\u003c") + "</script>" : "") + (o.allowCode && S.customHead ? String(S.customHead).slice(0, 20000) : "") + (o.headExtra || "") + "</head><body>" + body2 + extras(S, biz, o) + (o.bodyExtra || "") + (o.noMotion || o.edit ? "" : motionScript((site.theme || {}).motion)) + (o.edit ? "" : siteScript()) + (o.allowCode && S.customBody ? String(S.customBody).slice(0, 20000) : "") + "</body></html>";
 }
 /* v36: shared collections (team, reviews, portfolio). One list in doc.collections, shown by any number of sections:
    a section with { from: "collection", limit, category } renders the shared items instead of its own. */
@@ -338,3 +339,58 @@ export function checkSite(site) {
   }
   return { ok: !out.some((x) => x.level === "critical"), issues: out };
 }
+
+/* ---------- v41 element-level design (backward compatible). A section may carry `el`: { "<tag>-<n>": { name, lock, hide:{d,t,m},
+   st:{…}, t:{…}, m:{…}, anim, hover, aria } } keyed by the n-th <tag> inside that section's rendered HTML. Sections without `el`
+   render byte-for-byte as before. Every value is validated here (shared by the editor, the server and the published site):
+   only known properties, numbers in range, hex colours and listed keywords, so no CSS or HTML can be injected. ---------- */
+export const EL_TAGS = ["h1", "h2", "h3", "h4", "p", "a", "button", "img", "li", "blockquote"];
+const EL_RE = /<(h1|h2|h3|h4|p|a|button|img|li|blockquote)(?=[\s>\/])/g;
+const HEXC = /^#[0-9a-f]{6}$/i, elNum = (v, lo, hi) => { const n = +v; return v !== "" && v != null && isFinite(n) && n >= lo && n <= hi ? n : null; };
+const elBox = (v, lo, hi) => { const a = String(v == null ? "" : v).trim().split(/\s+/).filter(Boolean); if (!a.length || a.length > 4) return null; const n = a.map((x) => elNum(x, lo, hi)); return n.some((x) => x == null) ? null : n.map((x) => x + "px").join(" "); };
+export const EL_ANIMS = ["fade", "fade-up", "fade-down", "slide-left", "slide-right", "scale", "blur", "reveal"];
+export const EL_SHADOWS = { sm: "0 2px 8px rgba(0,0,0,.12)", md: "0 10px 30px rgba(0,0,0,.18)", lg: "0 24px 60px rgba(0,0,0,.28)", glow: "0 0 0 1px rgba(123,97,255,.4),0 10px 40px rgba(123,97,255,.35)" };
+function cleanSt(s) {
+  if (!s || typeof s !== "object") return null; const o = {};
+  const n = (k, lo, hi) => { const v = elNum(s[k], lo, hi); if (v != null) o[k] = v; }, e = (k, list) => { if (list.indexOf(s[k]) > -1) o[k] = s[k]; }, c = (k) => { if (HEXC.test(s[k] || "")) o[k] = String(s[k]).toLowerCase(); };
+  n("fs", 8, 200); n("fw", 100, 900); n("lh", 0.8, 3); n("ls", -5, 30); n("op", 0, 1); n("bw", 0, 20); n("br", 0, 999); n("w", 20, 2400); n("rot", -180, 180); n("sc", 0.2, 3);
+  e("ta", ["left", "center", "right", "justify"]); e("tt", ["none", "uppercase", "lowercase", "capitalize"]); e("fst", ["normal", "italic"]); e("deco", ["none", "underline"]); e("sh", ["none", "sm", "md", "lg", "glow"]);
+  c("c"); c("bg"); c("bc"); if (s.ff && FONTS[s.ff]) o.ff = s.ff;
+  const p = elBox(s.p, 0, 300), m = elBox(s.m, -300, 300); if (p) o.p = s.p.trim(); if (m) o.m = s.m.trim();
+  return Object.keys(o).length ? o : null;
+}
+export function cleanEl(el) {
+  if (!el || typeof el !== "object") return null; const out = {};
+  Object.keys(el).slice(0, 200).forEach((k) => { if (!/^(h1|h2|h3|h4|p|a|button|img|li|blockquote)-\d{1,3}$/.test(k)) return; const x = el[k] || {}, r = {};
+    if (typeof x.name === "string" && x.name.trim()) r.name = x.name.replace(/[<>"]/g, "").trim().slice(0, 40); if (x.lock) r.lock = true;
+    if (x.hide && typeof x.hide === "object") { const h = {}; ["d", "t", "m"].forEach((b) => { if (x.hide[b]) h[b] = true; }); if (Object.keys(h).length) r.hide = h; }
+    ["st", "t", "m"].forEach((b) => { const v = cleanSt(x[b]); if (v) r[b] = v; });
+    if (EL_ANIMS.indexOf(x.anim) > -1) r.anim = x.anim; if (["lift", "grow", "glow"].indexOf(x.hover) > -1) r.hover = x.hover;
+    if (typeof x.aria === "string" && x.aria.trim()) r.aria = x.aria.replace(/[<>"]/g, "").trim().slice(0, 120);
+    if (Object.keys(r).length) out[k] = r; });
+  return Object.keys(out).length ? out : null;
+}
+function stCss(o) {
+  if (!o) return ""; const r = [];
+  if (o.fs != null) r.push("font-size:" + o.fs + "px"); if (o.fw != null) r.push("font-weight:" + Math.round(o.fw / 100) * 100); if (o.lh != null) r.push("line-height:" + o.lh); if (o.ls != null) r.push("letter-spacing:" + o.ls + "px");
+  if (o.ta) r.push("text-align:" + o.ta); if (o.tt) r.push("text-transform:" + o.tt); if (o.fst) r.push("font-style:" + o.fst); if (o.deco) r.push("text-decoration:" + o.deco); if (o.ff) r.push("font-family:" + FONTS[o.ff]);
+  if (o.c) r.push("color:" + o.c); if (o.bg) r.push("background:" + o.bg); if (o.op != null) r.push("opacity:" + o.op);
+  if (o.p) r.push("padding:" + elBox(o.p, 0, 300)); if (o.m) r.push("margin:" + elBox(o.m, -300, 300));
+  if (o.bw != null) r.push("border:" + o.bw + "px solid " + (o.bc || "currentColor")); else if (o.bc) r.push("border-color:" + o.bc); if (o.br != null) r.push("border-radius:" + o.br + "px");
+  if (o.sh) r.push("box-shadow:" + (o.sh === "none" ? "none" : EL_SHADOWS[o.sh])); if (o.w != null) r.push("max-width:" + o.w + "px");
+  if (o.rot != null || o.sc != null) r.push("transform:" + (o.rot != null ? "rotate(" + o.rot + "deg) " : "") + (o.sc != null ? "scale(" + o.sc + ")" : ""));
+  return r.map((x) => x + "!important").join(";");
+}
+/* add data-x markers (editor: every element; live site: only styled ones) + collect the CSS for this section */
+export function applyElements(html, s, i, edit, css) {
+  const el = cleanEl(s.el); if (!el && !edit) return html; if (el) css.push("");
+  const cnt = {}; html = html.replace(EL_RE, (m, tag) => { const n = cnt[tag] = (cnt[tag] == null ? 0 : cnt[tag] + 1), key = tag + "-" + n, x = el && el[key];
+    if (!edit && !x) return m; let a = '<' + tag + ' data-x="' + i + "-" + key + '"'; if (x && x.aria) a += ' aria-label="' + esc(x.aria) + '"'; if (x && x.anim) a += ' data-ea="' + x.anim + '"'; if (x && x.hover) a += ' data-eh="' + x.hover + '"'; return a; });
+  if (el) Object.keys(el).forEach((k) => { const x = el[k], sel = '[data-x="' + i + "-" + k + '"]';
+    const d = stCss(x.st), t = stCss(x.t), mo = stCss(x.m); if (d) css.push(sel + "{" + d + "}"); if (t) css.push("@media (max-width:1024px){" + sel + "{" + t + "}}"); if (mo) css.push("@media (max-width:767px){" + sel + "{" + mo + "}}");
+    if (x.hide) { if (x.hide.d) css.push("@media (min-width:1025px){" + sel + "{display:none!important}}"); if (x.hide.t) css.push("@media (min-width:768px) and (max-width:1024px){" + sel + "{display:none!important}}"); if (x.hide.m) css.push("@media (max-width:767px){" + sel + "{display:none!important}}"); } });
+  return html;
+}
+export const EL_BASE_CSS = "[data-eh]{transition:transform .25s ease,box-shadow .25s ease,filter .25s ease}[data-eh=lift]:hover{transform:translateY(-4px)}[data-eh=grow]:hover{transform:scale(1.04)}[data-eh=glow]:hover{box-shadow:0 0 0 1px rgba(123,97,255,.5),0 12px 40px rgba(123,97,255,.4)}" +
+  "@keyframes fe-fade{from{opacity:0}}@keyframes fe-fade-up{from{opacity:0;transform:translateY(28px)}}@keyframes fe-fade-down{from{opacity:0;transform:translateY(-28px)}}@keyframes fe-slide-left{from{opacity:0;transform:translateX(40px)}}@keyframes fe-slide-right{from{opacity:0;transform:translateX(-40px)}}@keyframes fe-scale{from{opacity:0;transform:scale(.9)}}@keyframes fe-blur{from{opacity:0;filter:blur(10px)}}@keyframes fe-reveal{from{clip-path:inset(0 0 100% 0)}}" +
+  "@supports (animation-timeline: view()){" + EL_ANIMS.map((a) => "[data-ea=" + a + "]{animation:fe-" + a + " linear both;animation-timeline:view();animation-range:entry 0% cover 30%}").join("") + "}@media (prefers-reduced-motion:reduce){[data-ea]{animation:none!important}[data-eh]{transition:none!important}}";

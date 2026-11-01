@@ -18,3 +18,15 @@ jobs:
         run: |
           if [ -z "$KEY" ]; then echo "FODO_CRON_KEY secret is not set — skipping."; exit 0; fi
           curl -s -m 90 -X POST "$SITE/api/owner-brain/tick" -H "x-cron-key: $KEY" -H "content-type: application/json" -d '{}' || true
+      - name: Background jobs (v47.6)
+        env:
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+        run: |
+          if [ -z "$KEY" ]; then exit 0; fi
+          for i in 1 2 3 4; do
+            R=$(curl -s -m 60 -X POST "$SITE/api/monitor/jobs" -H "x-cron-key: $KEY" -H "content-type: application/json" -d '{}' || echo '{}')
+            echo "$R"
+            LEFT=$(echo "$R" | sed -n 's/.*"remaining":\([0-9]*\).*/\1/p')
+            if [ -z "$LEFT" ] || [ "$LEFT" = "0" ]; then break; fi
+          done

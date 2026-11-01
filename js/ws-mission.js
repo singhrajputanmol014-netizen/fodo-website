@@ -8,8 +8,10 @@
   var KIND = { urgent: "Urgent", soon: "Expiring soon", wait: "Waiting on someone else", work: "To do" };
   function admin(B, q) {
     var sub = q.get("sub") || "today";
-    B.innerHTML = '<div class="ws-tabs sm">' + [["today", "Today"], ["hiring", "Hiring intelligence"], ["exports", "Exports"]].map(function (t) { return '<a aria-selected="' + (sub === t[0]) + '" href="#admin?tab=mission&sub=' + t[0] + '">' + t[1] + "</a>"; }).join("") + '</div><div id="mc-b"><div class="ws-skel"><i></i><i></i></div></div>';
-    var X = $("#mc-b", B); if (sub === "hiring") return hiring(X, q); if (sub === "exports") return exportsView(X, q); today(X, q);
+    B.innerHTML = '<div class="ws-tabs sm">' + [["today", "Today"], ["hiring", "Hiring intelligence"], ["exports", "Exports"], ["jobs", "Jobs"], ["calendar", "Calendar"]].map(function (t) { return '<a aria-selected="' + (sub === t[0]) + '" href="#admin?tab=mission&sub=' + t[0] + '">' + t[1] + "</a>"; }).join("") + '</div><div id="mc-b"><div class="ws-skel"><i></i><i></i></div></div>';
+    var X = $("#mc-b", B); if (sub === "hiring") return hiring(X, q); if (sub === "exports") return exportsView(X, q);
+    if (sub === "jobs" || sub === "calendar") return W.lazy("/js/ws-sync.js").then(function () { if (sub === "jobs") window.FODO_WS_SYNC.jobs(X, q); else window.FODO_WS_SYNC.calendar(X, "staff"); }, function () { X.innerHTML = empty("Couldn't load this section."); });   /* v47.6 */
+    today(X, q);
   }
   function today(X, q) {
     api("admin/mission").then(function (j) { if (!X.isConnected) return; if (!j.ok) return fail(X, j, function () { today(X, q); });

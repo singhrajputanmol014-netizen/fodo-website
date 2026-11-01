@@ -195,3 +195,5 @@ html:has(.ws-body){background:var(--bg)}
 .mc-urgent{border-color:color-mix(in srgb,#ff6b6b 60%,var(--line))}.mc-urgent h4{color:#ff8787}.mc-soon{border-color:color-mix(in srgb,var(--warn,#f5a524) 60%,var(--line))}.mc-wait li a{opacity:.85}
 .mc-cols{align-items:start}.mc-log{list-style:none;margin:0;padding:0;display:grid;gap:6px}.mc-log li{display:grid;gap:2px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;font-size:13px}.mc-log small{color:var(--muted)}.mc-log span{color:var(--muted);overflow-wrap:anywhere}
 .ws-tw{overflow:auto;margin:0 0 14px}.ws-table{width:100%;border-collapse:collapse;font-size:13px}.ws-table th,.ws-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.ws-table th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+/* v47.6 sync: calendar link row */
+.sy-link{align-items:center}.sy-link input{flex:1 1 260px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--muted);font:inherit;font-size:13px}

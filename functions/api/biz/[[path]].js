@@ -13,6 +13,8 @@
    v47.4: GET apply · POST apply · apply/submit · GET pro/case-studies · POST pro/case-studies · pro/case-studies/<id>/submit|delete
         GET admin/applications[?status&q] · admin/applications/<id> · admin/case-studies?status · admin/badges · POST admin/applications/<id> {action} · admin/case-studies/<id> · admin/badges · admin/pros/<id>/recommend
    v47.5: GET admin/mission · admin/search?q · admin/hiring?days&role · admin/export/<what> (CSV, audited)
+   v47.6: multipart uploads (POST files/multipart · PUT files/multipart/<id>/part?n · POST …/complete|abort · GET files/multipart) · calendar (GET calendar/<token>.ics, no session · GET/POST calendar/link?kind · POST calendar/revoke)
+        org (GET org · POST org · org/settings · org/invite · org/answer · org/member · org/transfer · org/leave · GET org/shared) · admin/jobs · admin/jobs/run · admin/jobs/<id>/retry
    v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
         POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
 import { json, accountsOn, sessionUser, sameOrigin, count, isOwner } from "../../_lib/accounts.js";
@@ -32,6 +34,9 @@ import * as AV from "../../_lib/availability.js";
 import * as FN from "../../_lib/finance.js";
 import * as PA from "../../_lib/proapps.js";
 import * as MC from "../../_lib/mission.js";
+import * as JB from "../../_lib/jobs.js";
+import * as CAL from "../../_lib/calendar.js";
+import * as ORG from "../../_lib/orgs.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -39,6 +44,8 @@ export async function onRequest(ctx) {
     if (!accountsOn(env)) return json({ ok: false, reason: "FODO accounts are not switched on." }, 503);
     if (p0 === "roles" && m === "GET") return json({ ok: true, roles: B.PRO_ROLES, categories: B.PRO_CATS, platforms: B.AD_PLATFORMS, contentStates: B.CONTENT_STATES });
     if (p0 === "invite" && m === "GET") return json(Object.assign({ ok: true }, await B.inviteStatus(env, new URL(request.url).searchParams.get("i"))), 200, { "cache-control": "no-store" });   // valid or not, nothing else
+    /* v47.6 private calendar feeds: the token is the only credential (no session, so calendar apps can subscribe) */
+    if (p0 === "calendar" && p1 && /\.ics$/.test(p1) && m === "GET") { if (await count(env, "cal:" + (request.headers.get("cf-connecting-ip") || "anon"), 120, 3600)) return json({ ok: false, reason: "Too many requests." }, 429); const body0 = await CAL.serve(env, p1, new URL(request.url).origin); if (!body0) return json({ ok: false, reason: "Not found." }, 404); return new Response(body0, { headers: { "content-type": "text/calendar; charset=utf-8", "cache-control": "private, max-age=300", "x-robots-tag": "noindex", "content-disposition": "inline; filename=\"fodo.ics\"" } }); }
     const u = await sessionUser(env, request); if (!u) return json({ ok: false, reason: "Log in to use your FODO workspace.", login: true }, 401);
     /* v43 private files: the upload body is the raw file (not JSON); same-origin + a custom header (a cross-site form can't send it) */
     if (p0 === "files" && p1 === "upload" && m === "POST") {
@@ -47,6 +54,8 @@ export async function onRequest(ctx) {
       const st = FL.storeKind(env), max = st ? FL.LIMITS[st].file : 0, len = +(request.headers.get("content-length") || 0); if (len && len > max) return json({ ok: false, reason: "Files can be up to " + Math.round(max / 1048576) + " MB" + (st === "kv" ? " until private R2 storage is connected." : ".") }, 413);
       const q0 = Object.fromEntries(new URL(request.url).searchParams); return json(Object.assign({ ok: true }, await FL.upload(env, u, await B.rolesOf(env, u), q0, await request.arrayBuffer())));
     }
+    /* v47.6 multipart upload (R2): raw part bytes with the same upload header */
+    if (p0 === "files" && p1 === "multipart" && p2 && path[3] === "part" && m === "PUT") { if (!sameOrigin(request) || request.headers.get("x-fodo-upload") !== "1") return json({ ok: false, reason: "Bad request." }, 403); if (await count(env, "bizmp:" + u.id, 2000, 3600)) return json({ ok: false, reason: "Too many parts this hour." }, 429); return json(Object.assign({ ok: true }, await FL.mpPart(env, u, p2, new URL(request.url).searchParams.get("n"), await request.arrayBuffer()))); }
     if (p0 === "files" && p1 && p2 === "download" && (m === "GET" || m === "HEAD")) return await FL.download(env, request, u, await B.rolesOf(env, u), p1, new URL(request.url).searchParams.get("inline") === "1");
     if (m !== "GET" && (!sameOrigin(request) || (m !== "DELETE" && !/json/.test(request.headers.get("content-type") || "")))) return json({ ok: false, reason: "Bad request." }, 403);
     if (m !== "GET" && (await count(env, "biz:" + u.id, 400, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
@@ -104,7 +113,7 @@ export async function onRequest(ctx) {
     /* projects */
     if (p0 === "projects" && !p1 && m === "GET") return ok({ items: await B.listProjects(env, u) });
     if (p0 === "projects" && !p1 && m === "POST") return ok({ project: await B.createProject(env, u, body) });
-    if (p0 === "projects" && p1 && !p2 && m === "GET") return ok({ project: await B.getProject(env, u, p1, R) });
+    if (p0 === "projects" && p1 && !p2 && m === "GET") return ok({ project: await B.getProject(env, u, p1, Object.assign({}, R, { orgRead: true })) });   /* v47.6 org colleagues: read */
     if (p0 === "projects" && p1 && p2 && m === "POST") return ok({ project: await B.projectAction(env, u, p1, p2, body, R) });
     /* v46.1 settings & privacy */
     if (p0 === "settings" && p1 === "notify" && m === "GET") return ok(await AL.getPrefs(env, u));
@@ -144,7 +153,27 @@ export async function onRequest(ctx) {
     }
     /* v43 private files */
     if (p0 === "files" && !p1 && m === "GET") return ok(await FL.list(env, u, R, q));
-    if (p0 === "files" && p1 === "storage" && m === "GET") return ok({ storage: await FL.storage(env, u) });
+    if (p0 === "files" && p1 === "storage" && m === "GET") return ok(Object.assign({ storage: await FL.storage(env, u) }, FL.storeKind(env) === "r2" ? { multipart: { partSize: FL.MP.part, maxFile: FL.MP.file } } : {}));
+    if (p0 === "files" && p1 === "multipart" && !p2 && m === "GET") return ok({ items: await FL.mpList(env, u) });
+    if (p0 === "files" && p1 === "multipart" && !p2 && m === "POST") return ok(await FL.mpStart(env, u, R, body));
+    if (p0 === "files" && p1 === "multipart" && p2 && path[3] === "complete" && m === "POST") return ok(await FL.mpComplete(env, u, R, p2));
+    if (p0 === "files" && p1 === "multipart" && p2 && path[3] === "abort" && m === "POST") return ok(await FL.mpAbort(env, u, p2));
+    /* v47.6 calendar links + organization */
+    if (p0 === "calendar" && p1 === "link" && m === "GET") return ok({ feed: await CAL.feedFor(env, u, R, q.kind || "client", new URL(request.url).origin, false) });
+    if (p0 === "calendar" && p1 === "link" && m === "POST") return ok({ feed: await CAL.feedFor(env, u, R, body.kind || "client", new URL(request.url).origin, true) });
+    if (p0 === "calendar" && p1 === "revoke" && m === "POST") return ok(await CAL.revoke(env, u, body.kind || "client"));
+    if (p0 === "org") {
+      if (!p1 && m === "GET") return ok(await ORG.myOrg(env, u));
+      if (!p1 && m === "POST") return ok(await ORG.createOrg(env, u, body));
+      if (p1 === "settings" && m === "POST") return ok(await ORG.saveOrg(env, u, body));
+      if (p1 === "invite" && m === "POST") return ok(await ORG.invite(env, u, body, new URL(request.url).origin));
+      if (p1 === "answer" && m === "POST") return ok(await ORG.answer(env, u, body.orgId, body.accept === true));
+      if (p1 === "member" && m === "POST") return ok(await ORG.setMember(env, u, body));
+      if (p1 === "transfer" && m === "POST") return ok(await ORG.transfer(env, u, body));
+      if (p1 === "leave" && m === "POST") return ok(await ORG.leave(env, u));
+      if (p1 === "shared" && m === "GET") return ok(await ORG.shared(env, u));
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
     if (p0 === "files" && p1 && m === "DELETE") return ok(await FL.remove(env, u, R, p1));
     /* notifications */
     if (p0 === "notes" && !p1 && m === "GET") return ok(await B.notes(env, u));
@@ -229,6 +258,10 @@ export async function onRequest(ctx) {
       if (p1 === "quotes" && p2 && path[3] === "send" && m === "POST") return ok({ quote: await QT.send(env, u, R, p2) });
       if (p1 === "quotes" && p2 && path[3] === "cancel" && m === "POST") return ok({ quote: await QT.cancel(env, u, R, p2, body) });
       if (p1 === "quotes" && p2 && path[3] === "clone" && m === "POST") return ok({ quote: await QT.clone(env, u, R, p2) });
+      /* v47.6 background jobs */
+      if (p1 === "jobs" && !p2 && m === "GET") return ok(await JB.adminJobs(env, R, q));
+      if (p1 === "jobs" && p2 === "run" && m === "POST") return ok(await JB.runNow(env, u, R, +body.n || 10));
+      if (p1 === "jobs" && p2 && path[3] === "retry" && m === "POST") return ok(await JB.retryJob(env, u, R, p2));
       /* v47.5 Mission Control: attention list, staff search, hiring intelligence, CSV exports */
       if (p1 === "mission" && m === "GET") return ok(Object.assign(await MC.mission(env, R), { exports: MC.exportList(R) }));
       if (p1 === "search" && m === "GET") return ok(await MC.adminSearch(env, R, q.q));

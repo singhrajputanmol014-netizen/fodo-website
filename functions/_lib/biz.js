@@ -268,6 +268,7 @@ export async function projectFor(env, u, id, R) {
   else { const m = await one(d, "SELECT p.*, x.status AS mstatus, x.role AS mrole FROM biz_project_pros x JOIN biz_pros p ON p.id=x.pro_id WHERE x.project_id=?1 AND p.user_id=?2", id, u.id);   // v44 team member
     if (m && m.mstatus === "accepted") { side = "pro"; mine = m; } else if (m && m.mstatus === "invited") { side = "invited"; mine = m; } }
   if (!side && can(R, ["admin", "moderator", "finance"])) side = "staff";
+  if (!side && R && R.orgRead) { try { if ((await (await import("./orgs.js")).peersOf(env, u)).indexOf(pj.client_id) > -1) side = "staff"; } catch (e) {} }   /* v47.6: an organization colleague reads like staff (no writes); only when the caller asked for orgRead */
   if (!side) throw err("Not found.", 404); return { d, pj, pro, side, mine, lead: !!mine && !!pro && mine.id === pro.id };
 }
 /* booking clash check: a whole day ('' slot) clashes with every slot that day, and every slot with the whole day */

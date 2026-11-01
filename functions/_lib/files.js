@@ -82,18 +82,18 @@ async function fileFor(env, u, R, id) {
 export async function storage(env, u) {
   const kind = storeKind(env), d = await fdb(env), used = ((await one(d, "SELECT COALESCE(SUM(size),0) n FROM biz_files WHERE owner_id=?1 AND deleted_at IS NULL", u.id)) || {}).n || 0;
   const L = kind ? LIMITS[kind] : { file: 0, quota: 0 }, quota = isOwner(u) ? L.quota * 5 : L.quota;
-  return { store: kind, connected: kind === "r2", maxFile: L.file, quota, used, note: kind === "r2" ? "Private Cloudflare R2 storage." : kind === "kv" ? (isOwner(u) ? "Small-file storage. Connect a private R2 bucket (binding FILES) for files up to 95 MB." : "Bigger files (up to 95 MB) will be possible once FODO switches on full storage.") : "No file storage connected." };
+  return { store: kind, connected: kind === "r2", maxFile: L.file, quota, used, multipart: kind === "r2" ? { partSize: MP.part, maxFile: MP.file } : null,   /* v47.6 */ note: kind === "r2" ? "Private Cloudflare R2 storage." : kind === "kv" ? (isOwner(u) ? "Small-file storage. Connect a private R2 bucket (binding FILES) for files up to 95 MB." : "Bigger files (up to 95 MB) will be possible once FODO switches on full storage.") : "No file storage connected." };
 }
 async function putObj(env, kind, id, bytes) { if (kind === "r2") await env.FILES.put(okey(id), bytes, { httpMetadata: { contentType: "application/octet-stream" } }); else await env.CHAT_KV.put(okey(id), bytes); }
 async function delObj(env, f) { try { if (f.store === "r2") await env.FILES.delete(okey(f.id)); else await env.CHAT_KV.delete(okey(f.id)); } catch (e) {} }
 
 /* ---------- upload: q = { project, milestone, kind, replaces, name, note } ---------- */
-export async function upload(env, u, R, q, bytes) {
+/* the permission + quota checks shared by the one-shot upload and the v47.6 multipart upload (size known, bytes not yet) */
+async function prepare(env, u, R, q, size, maxFile) {
   const kind = storeKind(env); if (!kind) throw err("File storage isn't connected yet.", 503);
-  const st = await storage(env, u); if (!bytes || !bytes.byteLength) throw err("The file is empty.");
-  if (bytes.byteLength > st.maxFile) throw err("Files can be up to " + Math.round(st.maxFile / 1048576) + " MB" + (kind === "kv" ? " until private R2 storage is connected." : "."), 413);
-  if (st.used + bytes.byteLength > st.quota) throw err("Your file storage is full (" + Math.round(st.quota / 1048576) + " MB). Delete old files first.", 413);
-  const b = new Uint8Array(bytes), t = typeOf(q.name, b); if (!t) throw err("This file type isn't allowed. Use images, PDF, video, audio, ZIP, Word, Excel, PowerPoint or plain text (no SVG, HTML or scripts).", 415);
+  const st = await storage(env, u); if (!size) throw err("The file is empty.");
+  const cap = maxFile || st.maxFile; if (size > cap) throw err("Files can be up to " + Math.round(cap / 1048576) + " MB" + (kind === "kv" ? " until private R2 storage is connected." : "."), 413);
+  if (st.used + size > st.quota) throw err("Your file storage is full (" + Math.round(st.quota / 1048576) + " MB). Delete old files first.", 413);
   const d = await fdb(env); let fk = KINDS.indexOf(q.kind) > -1 ? q.kind : "file", projectId = null, milestoneId = null, side = "owner", pj = null, grp = null, ver = 1;
   if (q.project) { const P = await projectFor(env, u, clip(q.project, 40), R); if (P.side === "invited") throw err("Accept the project invitation first.", 403); side = P.side; pj = P.pj; projectId = pj.id;
     if (side === "staff") throw err("FODO staff can read project files but not add them.", 403);
@@ -104,14 +104,66 @@ export async function upload(env, u, R, q, bytes) {
   if (q.replaces) { const o = await one(d, "SELECT * FROM biz_files WHERE id=?1 AND deleted_at IS NULL", clip(q.replaces, 40)); if (!o || (o.project_id || null) !== projectId || (!projectId && o.owner_id !== u.id)) throw err("The file to replace wasn't found.", 404);
     if (o.owner_id !== u.id) throw err("Only the person who uploaded a file can add a new version.", 403); grp = o.grp; ver = ((await one(d, "SELECT MAX(ver) v FROM biz_files WHERE grp=?1", o.grp)) || {}).v + 1 || 2; fk = o.kind; milestoneId = milestoneId || o.milestone_id; }
   const n24 = ((await one(d, "SELECT count(*) n FROM biz_files WHERE owner_id=?1 AND created_at >= ?2", u.id, new Date(Date.now() - 864e5).toISOString())) || {}).n || 0; if (n24 >= 300) throw err("Too many uploads today.", 429);
-  const id = "fl" + randId(22), sha = [...new Uint8Array(await crypto.subtle.digest("SHA-256", b))].map((x) => x.toString(16).padStart(2, "0")).join(""), name = cleanName(q.name, t.ext);
-  await putObj(env, kind, id, b);
+  return { kind, d, fk, projectId, milestoneId, side, pj, grp, ver };
+}
+async function record(env, u, P, id, t, size, sha, q) {
+  const { d, fk, projectId, milestoneId, side, pj, grp, ver, kind } = P, name = cleanName(q.name, t.ext);
   await run(d, "INSERT INTO biz_files (id, owner_id, project_id, milestone_id, name, mime, ext, size, sha256, store, kind, grp, ver, note, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
-    id, u.id, projectId, milestoneId, name, t.mime, t.ext, b.byteLength, sha, kind, fk, grp || id, ver, clip(q.note, 300) || null, nowIso());
-  await auditLog(env, u.email, "file:upload", id, (projectId || "personal") + " " + name + " " + b.byteLength);
+    id, u.id, projectId, milestoneId, name, t.mime, t.ext, size, sha, kind, fk, grp || id, ver, clip(q.note, 300) || null, nowIso());
+  await auditLog(env, u.email, "file:upload", id, (projectId || "personal") + " " + name + " " + size);
   if (pj) { const other = side === "client" ? (await one(d, "SELECT user_id FROM biz_pros WHERE id=?1", pj.pro_id) || {}).user_id : pj.client_id; await notify(env, other, "file", (fk === "deliverable" ? "Deliverable uploaded: " : ver > 1 ? "New version: " : "New file: ") + name + " · " + pj.title, "#project=" + pj.id); }
   return { file: out(await one(d, "SELECT * FROM biz_files WHERE id=?1", id), u, side) };
 }
+export async function upload(env, u, R, q, bytes) {
+  const P = await prepare(env, u, R, q, bytes ? bytes.byteLength : 0);
+  const b = new Uint8Array(bytes), t = typeOf(q.name, b); if (!t) throw err("This file type isn't allowed. Use images, PDF, video, audio, ZIP, Word, Excel, PowerPoint or plain text (no SVG, HTML or scripts).", 415);
+  const id = "fl" + randId(22), sha = [...new Uint8Array(await crypto.subtle.digest("SHA-256", b))].map((x) => x.toString(16).padStart(2, "0")).join(""), name = cleanName(q.name, t.ext);
+  await putObj(env, P.kind, id, b);
+  return record(env, u, P, id, t, b.byteLength, sha, q);
+}
+
+/* ---------- v47.6 multipart upload (R2 only): big files in parts, resumable, finished only when every part is in ----------
+   start → { uploadId, partSize }  ·  part n (raw bytes, 5 MB+ except the last)  ·  complete { parts }  ·  abort.
+   The first bytes of part 1 decide the type (same sniffing as a one-shot upload). An upload that is not completed within 24 h
+   is aborted by the scheduler, so nothing half-uploaded sits in the bucket. */
+export const MP = { part: 8 * 1048576, min: 5 * 1048576, file: 1024 * 1048576, ttlH: 24 };
+const UP_DDL = "CREATE TABLE IF NOT EXISTS biz_file_uploads (id TEXT PRIMARY KEY, owner_id TEXT, upload_id TEXT, name TEXT, size INTEGER, q TEXT, head TEXT, parts TEXT, status TEXT, created_at TEXT, expires_at TEXT)";
+async function udb(env) { const d = await fdb(env); await d.prepare(UP_DDL).run(); return d; }
+export async function mpStart(env, u, R, q) {
+  if (storeKind(env) !== "r2") throw err("Large uploads need FODO's private R2 storage, which isn't connected yet. Files up to 10 MB still upload normally.", 503);
+  const size = Math.round(+q.size || 0), name = clip(q.name, 140); if (!/\.[a-z0-9]{1,5}$/i.test(name)) throw err("Keep the file's extension in its name.");
+  await prepare(env, u, R, q, size, MP.file);
+  const d = await udb(env), open = ((await one(d, "SELECT count(*) n FROM biz_file_uploads WHERE owner_id=?1 AND status='open'", u.id)) || {}).n || 0; if (open >= 5) throw err("Finish or cancel your other uploads first (5 at a time).", 429);
+  const id = "fl" + randId(22), mp = await env.FILES.createMultipartUpload(okey(id),   /* the upload key IS the final file key: no copy at the end */ { httpMetadata: { contentType: "application/octet-stream" } });
+  await run(d, "INSERT INTO biz_file_uploads (id, owner_id, upload_id, name, size, q, head, parts, status, created_at, expires_at) VALUES (?1,?2,?3,?4,?5,?6,NULL,'[]','open',?7,?8)", id, u.id, mp.uploadId, name, size, JSON.stringify({ project: q.project || "", milestone: q.milestone || "", kind: q.kind || "", replaces: q.replaces || "", name, note: q.note || "" }), nowIso(), new Date(Date.now() + MP.ttlH * 3600e3).toISOString());
+  return { upload: { id, partSize: MP.part, parts: Math.ceil(size / MP.part), expiresAt: new Date(Date.now() + MP.ttlH * 3600e3).toISOString() } };
+}
+async function openUpload(d, u, id) { const x = await one(d, "SELECT * FROM biz_file_uploads WHERE id=?1 AND owner_id=?2", clip(id, 40), u.id); if (!x) throw err("Upload not found.", 404); if (x.status !== "open") throw err("This upload is " + x.status + ".", 409); if (x.expires_at < nowIso()) throw err("This upload expired. Start again.", 410); return x; }
+export async function mpPart(env, u, id, n, bytes) {
+  const d = await udb(env), x = await openUpload(d, u, id), k = Math.round(+n); if (!(k >= 1 && k <= 10000)) throw err("Part number must be 1 or more.");
+  if (!bytes || !bytes.byteLength) throw err("The part is empty."); const last = k === Math.ceil(x.size / MP.part); if (bytes.byteLength > MP.part) throw err("Parts are at most " + Math.round(MP.part / 1048576) + " MB.", 413);
+  if (!last && bytes.byteLength < MP.min) throw err("Every part except the last must be at least " + Math.round(MP.min / 1048576) + " MB.");
+  const P = JSON.parse(x.parts || "[]"); if (P.reduce((a, p) => a + p.size, 0) - (P.find((p) => p.n === k) || { size: 0 }).size + bytes.byteLength > x.size) throw err("More bytes than the declared size.", 413);
+  const b = new Uint8Array(bytes); if (k === 1) { const t = typeOf(x.name, b); if (!t) { await abortUpload(env, d, x, "type"); throw err("This file type isn't allowed. Use images, PDF, video, audio, ZIP, Word, Excel, PowerPoint or plain text (no SVG, HTML or scripts).", 415); } await run(d, "UPDATE biz_file_uploads SET head=?2 WHERE id=?1", x.id, JSON.stringify(t)); }
+  const mp = env.FILES.resumeMultipartUpload(okey(x.id), x.upload_id), part = await mp.uploadPart(k, b);
+  const next = P.filter((p) => p.n !== k).concat([{ n: k, etag: part.etag, size: b.byteLength }]).sort((a, c) => a.n - c.n); await run(d, "UPDATE biz_file_uploads SET parts=?2 WHERE id=?1", x.id, JSON.stringify(next));
+  return { part: k, received: next.reduce((a, p) => a + p.size, 0), of: x.size, parts: next.length };
+}
+export async function mpComplete(env, u, R, id) {
+  const d = await udb(env), x = await openUpload(d, u, id), P = JSON.parse(x.parts || "[]"), want = Math.ceil(x.size / MP.part);
+  const missing = []; for (let i = 1; i <= want; i++) if (!P.find((p) => p.n === i)) missing.push(i); if (missing.length) throw Object.assign(err("Parts still missing: " + missing.slice(0, 10).join(", ") + (missing.length > 10 ? "…" : "") + "."), { missing });
+  const got = P.reduce((a, p) => a + p.size, 0); if (got !== x.size) throw err("Received " + got + " bytes, expected " + x.size + ". Upload the parts again.", 409);
+  const t = JSON.parse(x.head || "null"); if (!t) throw err("Part 1 is missing.");
+  const q = JSON.parse(x.q), Pr = await prepare(env, u, R, q, x.size, MP.file);   /* the project / quota rules are checked again now, not only at the start */
+  const mp = env.FILES.resumeMultipartUpload(okey(x.id), x.upload_id), obj = await mp.complete(P.map((p) => ({ partNumber: p.n, etag: p.etag })));
+  await run(d, "UPDATE biz_file_uploads SET status='done' WHERE id=?1", x.id);
+  return record(env, u, Pr, x.id, t, x.size, "mp:" + String(obj && obj.etag || "").replace(/"/g, "").slice(0, 60), q);
+}
+async function abortUpload(env, d, x, why) { try { await env.FILES.resumeMultipartUpload(okey(x.id), x.upload_id).abort(); } catch (e) {} await run(d, "UPDATE biz_file_uploads SET status='aborted' WHERE id=?1", x.id); }
+export async function mpAbort(env, u, id) { const d = await udb(env), x = await openUpload(d, u, id); await abortUpload(env, d, x, "user"); return { ok: true }; }
+export async function mpList(env, u) { const d = await udb(env); return (await all(d, "SELECT id, name, size, parts, created_at, expires_at FROM biz_file_uploads WHERE owner_id=?1 AND status='open' AND expires_at > ?2 ORDER BY created_at DESC", u.id, nowIso())).map((x) => ({ id: x.id, name: x.name, size: x.size, partSize: MP.part, done: JSON.parse(x.parts || "[]").map((p) => p.n), expiresAt: x.expires_at })); }
+/* scheduler: abort uploads nobody finished (keeps the bucket clean; R2 would otherwise keep the parts) */
+export async function mpSweep(env, n) { if (storeKind(env) !== "r2") return 0; const d = await udb(env), L = await all(d, "SELECT * FROM biz_file_uploads WHERE status='open' AND expires_at <= ?1 LIMIT ?2", nowIso(), n || 20); for (const x of L) await abortUpload(env, d, x, "expired"); return L.length; }
 
 /* what the browser sees: never the storage key, the hash only shortened */
 export function out(f, u, side) {

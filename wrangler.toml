@@ -34,3 +34,10 @@ database_id = "8672c9a1-7d55-4789-8160-0f69875922c2"
 # [[r2_buckets]]
 # binding = "FILES"
 # bucket_name = "fodo-files"
+
+# v47.6 background jobs: without a queue the hourly GitHub workflow runs due jobs (emails, housekeeping, provider checks).
+# Optional, near-instant: Cloudflare → Queues → create "fodo-jobs", then remove the "# " below. A consumer Worker that calls
+# runJob() from functions/_lib/jobs.js is needed to consume it (Pages Functions can only produce). The D1 table stays the truth.
+# [[queues.producers]]
+# binding = "JOBS"
+# queue = "fodo-jobs"

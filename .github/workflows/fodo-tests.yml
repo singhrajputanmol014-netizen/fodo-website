@@ -1,0 +1,55 @@
+# FODO CI (v47.6): the whole test suite on every push and pull request to main, plus the static checks
+# (every JS file parses, no "worker" in user-facing text, no long dash, static pages rebuilt cleanly).
+# Nothing to set up: no secrets (test mode, offline fixtures). ~30 min. Results: Actions → FODO tests.
+name: FODO tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+concurrency:
+  group: fodo-tests-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Static checks
+        run: node scripts/check.mjs
+      - name: Pages rebuild is clean
+        run: |
+          python3 scripts/build_pages.py > /dev/null
+          git diff --stat -- '*.html' sitemap.xml robots.txt ':!data/' | tail -3
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install test tools
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+      - name: Unit + integration + security suites
+        env:
+          WRANGLER: ${{ github.workspace }}/tests/node_modules/.bin/wrangler
+          NODE_PATH: ${{ github.workspace }}/tests/node_modules
+        run: node tests/run.mjs integration
+      - name: Runtime end-to-end suites
+        env:
+          WRANGLER: ${{ github.workspace }}/tests/node_modules/.bin/wrangler
+          NODE_PATH: ${{ github.workspace }}/tests/node_modules
+        run: node tests/run.mjs e2e

@@ -131,6 +131,7 @@
   var QS = { requested: "Requested, FODO is preparing it", sent: "Ready for you", viewed: "Ready for you", negotiation: "Changes requested", revised: "FODO is revising it", accepted: "Accepted", rejected: "Declined", expired: "Expired", cancelled: "Cancelled" };
   function quotes(el) {
     el.innerHTML = head("Quotes", "Quotes from FODO for the projects you built. A sent quote never changes; FODO sends a new version if anything changes.", '<div class="ws-hx"><a class="ws-btn pri" href="#project-builder">Build a team</a></div>') + '<div id="qt-l"><div class="ws-skel"><i></i></div></div>';
+    W.lazy("/js/ws-sync.js").then(function () { var b = document.createElement("div"); b.id = "qt-org"; el.appendChild(b); window.FODO_WS_SYNC.shared(b); }, function () {});   /* v47.6 organization: colleagues' records */
     api("quotes").then(function (j) { if (!$("#qt-l")) return; if (!j.ok) return fail(el, j, function () { quotes(el); });
       $("#qt-l").innerHTML = j.items.length ? '<ul class="ws-rows">' + j.items.map(function (x) { return '<li><a href="#quote=' + esc(x.id) + '"><b>' + esc(x.title) + "</b></a><span>" + esc(x.number) + " · " + (x.sent_version ? inr(x.total) : "estimate " + inr(x.total)) + '</span><i class="ws-pill">' + esc(QS[x.status] || x.status) + "</i></li>"; }).join("") + "</ul>"
         : empty("No quotes yet", "Build a team for your project and ask FODO for a quote.", '<a class="ws-btn pri" href="#project-builder">Build a team</a>'); });

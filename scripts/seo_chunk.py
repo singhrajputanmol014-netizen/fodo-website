@@ -91,7 +91,7 @@ def article_page(a):
             + f'<h2 class="art-h">Related service</h2><p><a href="../../services/{svc}/">{X(SVC_NAME[svc])}</a>: {X(SENT(next(x["h"] for x in SERVICES if x["slug"] == svc)))}</p>'
             + f'<div class="btn-row">{CTA2}</div></article></div></section>')
     art = {"@context": "https://schema.org", "@type": "Article", "headline": a["title"][:110], "description": desc, "datePublished": a["date"], "dateModified": max(a["date"], ARTICLE_UPDATED),
-           "author": {"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "url": SITE + "/about/#founder"}, "publisher": {"@id": ORG_ID, "@type": "Organization", "name": "FODO", "logo": {"@type": "ImageObject", "url": SITE + "/assets/apple-touch-icon.png"}},
+           "author": {"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "url": SITE + "/about/#founder"}, "publisher": {"@id": ORG_ID, "@type": "Organization", "name": "FODO", "logo": {"@type": "ImageObject", "url": SITE + "/apple-touch-icon.png"}},
            "mainEntityOfPage": SITE + url, "image": OG_IMAGE, "articleSection": a["cat"], "wordCount": words, "inLanguage": "en"}
     return ("article", url, T(title), D_(desc), body, 2, LD(art, crumbs_ld(trail)) + f'<meta property="article:published_time" content="{a["date"]}"><meta property="article:author" content="{FOUNDER}">', ())
 for _a in ARTS:

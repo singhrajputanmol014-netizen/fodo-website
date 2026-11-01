@@ -2,16 +2,38 @@
 
 Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
-**106 HTML pages · 101 sitemap URLs · 0 errors · 0 warnings · 6 notes**
+**108 HTML pages · 101 sitemap URLs · 11 errors · 9 warnings · 8 notes**
 
 ## Issues
 
+- **ERROR** `/fodo-pros/`: indexable page is marked noindex
+- **ERROR** `/fodo-pros/`: missing meta description
+- **ERROR** `/fodo-pros/`: canonical '' ≠ 'https://www.fodo.co.in/fodo-pros/'
+- **ERROR** `/fodo-pros/`: 0 <h1> tags (need exactly 1)
+- **ERROR** `/workspace/`: indexable page is marked noindex
+- **ERROR** `/workspace/`: missing meta description
+- **ERROR** `/workspace/`: canonical '' ≠ 'https://www.fodo.co.in/workspace/'
+- **ERROR** `/workspace/`: 0 <h1> tags (need exactly 1)
+- **ERROR** `/fodo-pros/`: duplicate description shared with ['/workspace/']
+- **ERROR** `/sitemap.xml`: missing /workspace/
+- **ERROR** `/sitemap.xml`: missing /fodo-pros/
+- **WARN** `/fodo-pros/`: title length 9 (aim 30–60)
+- **WARN** `/fodo-pros/`: incomplete Open Graph tags
+- **WARN** `/fodo-pros/`: incomplete Twitter card tags
+- **WARN** `/fodo-pros/`: no BreadcrumbList schema
+- **WARN** `/workspace/`: title length 14 (aim 30–60)
+- **WARN** `/workspace/`: incomplete Open Graph tags
+- **WARN** `/workspace/`: incomplete Twitter card tags
+- **WARN** `/workspace/`: no BreadcrumbList schema
+- **WARN** `/fodo-pros/`: orphan page (no static internal links)
 - **INFO** `/contact/`: thin static text (37 words in HTML; the rest is rendered by scripts)
 - **INFO** `/fodo-challenge/`: thin static text (113 words in HTML; the rest is rendered by scripts)
+- **INFO** `/fodo-pros/`: thin static text (5 words in HTML; the rest is rendered by scripts)
 - **INFO** `/industries/`: thin static text (129 words in HTML; the rest is rendered by scripts)
 - **INFO** `/marketing-budget/`: thin static text (137 words in HTML; the rest is rendered by scripts)
 - **INFO** `/marketing-quiz/`: thin static text (27 words in HTML; the rest is rendered by scripts)
 - **INFO** `/reviews/`: thin static text (68 words in HTML; the rest is rendered by scripts)
+- **INFO** `/workspace/`: thin static text (6 words in HTML; the rest is rendered by scripts)
 
 ## Pages
 
@@ -27,8 +49,9 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/contact/` | 47 | 150 | 1 | 37 | BreadcrumbList | Contact FODO: Free Growth Audit &amp; Strategy Call |
 | `/faq/` | 48 | 154 | 1 | 602 | BreadcrumbList | FAQ: Services, Process &amp; Pricing Approach | FODO |
 | `/fodo-challenge/` | 45 | 138 | 1 | 113 | BreadcrumbList | The FODO Challenge: A 2-Minute Marketing Game |
+| `/fodo-pros/` | 9 | 0 | 0 | 5 | — | FODO Pros |
 | `/founding-programme/` | 32 | 157 | 1 | 279 | BreadcrumbList,FAQPage | Founding Clients Programme: FODO |
-| `/growth-lab/` | 57 | 133 | 1 | 1574 | BreadcrumbList,FAQPage | Growth Lab: Free Tools &amp; Pro Business Intelligence | FODO |
+| `/growth-lab/` | 57 | 133 | 1 | 1669 | BreadcrumbList,FAQPage | Growth Lab: Free Tools &amp; Pro Business Intelligence | FODO |
 | `/growth-lab/ai-visibility/` | 36 | 123 | 1 | 444 | BreadcrumbList,FAQPage,Service | AI Visibility Audit: FODO Growth Lab |
 | `/growth-lab/blueprint30/` | 40 | 129 | 1 | 434 | BreadcrumbList,FAQPage,Service | 30-Day Growth Blueprint: FODO Growth Lab |
 | `/growth-lab/brand-presence/` | 37 | 142 | 1 | 420 | BreadcrumbList,FAQPage,Service | Brand Presence Audit: FODO Growth Lab |
@@ -43,7 +66,7 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/growth-lab/website-health/` | 37 | 146 | 1 | 440 | BreadcrumbList,FAQPage,Service | Website Health Audit: FODO Growth Lab |
 | `/growth-lab/why-winning/` | 38 | 136 | 1 | 446 | BreadcrumbList,FAQPage,Service | Why Are They Winning?: FODO Growth Lab |
 | `/growth-score/` | 53 | 146 | 1 | 264 | BreadcrumbList | Free Marketing Growth Score, 10-Question Check | FODO |
-| `/help/` | 31 | 139 | 1 | 2274 | BreadcrumbList,FAQPage | Help &amp; Support: FODO Growth Lab |
+| `/help/` | 31 | 139 | 1 | 2633 | BreadcrumbList,FAQPage | Help &amp; Support: FODO Growth Lab |
 | `/industries/` | 47 | 157 | 1 | 129 | BreadcrumbList | Industries We Serve: Marketing by Sector | FODO |
 | `/industries/ecommerce/` | 59 | 156 | 1 | 286 | BreadcrumbList,FAQPage | E-commerce &amp; D2C Marketing Agency: India &amp; Worldwide | FODO |
 | `/industries/healthcare/` | 54 | 154 | 1 | 299 | BreadcrumbList,FAQPage | Healthcare &amp; Wellness Marketing Agency in India | FODO |
@@ -86,7 +109,7 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/marketing-budget/` | 42 | 134 | 1 | 137 | BreadcrumbList | Marketing Budget Planner: Free Tool | FODO |
 | `/marketing-quiz/` | 50 | 135 | 1 | 27 | BreadcrumbList | Digital Marketing Quiz: Test Your Instincts | FODO |
 | `/owner-brain/` | 4 | 0 | 0 | 2 | — | FODO |
-| `/plans/` | 47 | 148 | 1 | 521 | BreadcrumbList,FAQPage | Growth Lab Plans: Business X-Ray Pricing | FODO |
+| `/plans/` | 47 | 148 | 1 | 650 | BreadcrumbList,FAQPage | Growth Lab Plans: Business X-Ray Pricing | FODO |
 | `/pricing/` | 48 | 136 | 1 | 464 | BreadcrumbList,FAQPage | How Pricing Works: FODO Digital Marketing Agency |
 | `/resources/` | 44 | 148 | 1 | 292 | BreadcrumbList | Free Marketing Checklists &amp; Resources | FODO |
 | `/reviews/` | 38 | 147 | 1 | 68 | BreadcrumbList | FODO Reviews: Verified Client Feedback |
@@ -115,7 +138,7 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/teardowns/` | 33 | 135 | 1 | 486 | BreadcrumbList | Ad &amp; Landing Page Teardowns: FODO |
 | `/templates/` | 59 | 142 | 1 | 295 | BreadcrumbList | Free Marketing Templates: Calendar, Ad Brief, Report | FODO |
 | `/thank-you/` | 15 | 38 | 1 | 35 | — | Thank You: FODO |
-| `/website-builder/` | 57 | 143 | 1 | 244 | BreadcrumbList,FAQPage,SoftwareApplication | FODO Website Builder: Build Your Business Website with AI |
+| `/website-builder/` | 57 | 143 | 1 | 245 | BreadcrumbList,FAQPage,SoftwareApplication | FODO Website Builder: Build Your Business Website with AI |
 | `/work/` | 33 | 148 | 1 | 207 | BreadcrumbList | Work: Concept Case Studies | FODO |
 | `/work/b2b-saas-linkedin/` | 35 | 148 | 1 | 247 | BreadcrumbList | B2B SaaS: Concept Case Study | FODO |
 | `/work/clinic-local-seo/` | 48 | 145 | 1 | 239 | BreadcrumbList | Multi-location clinic: Concept Case Study | FODO |
@@ -123,6 +146,7 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/work/founder-brand-reposition/` | 45 | 153 | 1 | 241 | BreadcrumbList | Consulting founder: Concept Case Study | FODO |
 | `/work/realestate-lead-quality/` | 48 | 160 | 1 | 252 | BreadcrumbList | Real estate developer: Concept Case Study | FODO |
 | `/work/restaurant-social-reels/` | 43 | 156 | 1 | 244 | BreadcrumbList | Restaurant group: Concept Case Study | FODO |
+| `/workspace/` | 14 | 0 | 0 | 6 | — | FODO Workspace |
 
 ## NOT VERIFIED (needs the live site or account access)
 

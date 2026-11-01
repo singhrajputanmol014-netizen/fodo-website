@@ -86,6 +86,19 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     ok(/Not connected/.test(await p.textContent("#ob-view")) && /HEALTH SCORE/.test(await p.textContent("#ob-view")), "v27: Engineer command center (honest 'Not connected')"); await shot(p, "brain-engineer", true);
     for (const t of ["work", "changes", "map", "find", "setup"]) { await p.click('.eg-tabs [data-t="' + t + '"]'); await p.waitForTimeout(400); }
     ok(/GitHub connected/.test(await p.textContent("#ob-view")), "v27: Engineer tabs render (setup checklist shown)"); await shot(p, "brain-engineer-setup", true);
+    // v38 builder home: AI workspace, live preview, featured designs, categories, style pills, search palette, phone layout
+    await p.goto(BASE + "/website-builder/"); await p.waitForSelector(".wbh-hero #wbh-pt", { timeout: 20000 }); await p.waitForTimeout(900);
+    ok((await p.$$(".wbh-bento .wbh-tc")).length === 5 && !!(await p.$(".wbh-screen iframe.on")), "v38: home shows the AI workspace, a live website preview and 5 featured designs"); await shot(p, "builder-home");
+    await p.click(".wbh-ex >> text=Dental clinic"); ok(/dental clinic/i.test(await p.inputValue("#wbh-pt")), "v38: example prompt fills the AI box"); await p.click(".wbh-ex >> text=SaaS landing page"); ok(/SaaS landing page/i.test(await p.inputValue("#wbh-pt")), "v38: each example chip fills its own prompt");
+    ok((await p.$$("#g-gr [data-g]")).length >= 20 && (await p.$$("[data-sty0]")).length === 11, "v38: 20+ industry categories and 10 style filters");
+    await p.click("#g-gr [data-g='dental']"); await p.waitForTimeout(300); ok(/in Dental/.test(await p.textContent("#g-n")) && (await p.$$("#g-grid .wb-tpl")).length >= 5, "v38: category filter (Dental)");
+    await p.click("[data-sty0='luxury']"); await p.waitForTimeout(300); ok(/Luxury/.test(await p.textContent("#g-n")) && (await p.$$eval("#g-grid .wb-tpl b", (a) => a.every((x) => /Luxury|Premium|Luxe/i.test(x.textContent)))), "v38: style filter (Luxury)");
+    await p.keyboard.press("Control+k"); await p.waitForSelector(".wb-palx"); await p.keyboard.type("restaurant"); await p.waitForTimeout(250);
+    ok(/Templates/i.test(await p.textContent(".wb-palx")) && /Restaurant: Open Fire/.test(await p.textContent(".wb-palx")), "v38: Ctrl+K search palette finds templates"); await shot(p, "builder-palette");
+    await p.keyboard.press("Enter"); await p.waitForSelector(".wb-pv #pv-if", { timeout: 10000 }); ok(true, "v38: Enter opens the template preview"); await p.click(".wb-pv [data-x]");
+    { const mc = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await mc.addCookies(await p.context().cookies()); const mp = await mc.newPage(); mp.on("pageerror", (e) => errs.push(e.message));
+      await mp.goto(BASE + "/website-builder/"); await mp.waitForSelector(".wbh-hero"); await mp.waitForTimeout(600); ok(await mp.evaluate(() => document.documentElement.scrollWidth <= 391), "v38: builder home fits a 390 px phone (no sideways scroll)"); await shot(mp, "builder-home-phone");
+      await mp.goto(BASE + "/website-builder/#new=1"); await mp.waitForSelector("#w-pt"); ok(await mp.evaluate(() => document.documentElement.scrollWidth <= 391), "v38: creation screen fits a phone"); await mc.close(); }
     // v28 Website Builder: wizard → website → editor (select a section, edit, undo) → publish checks
     await p.goto(BASE + "/website-builder/#new=1"); await p.waitForSelector("#w-pt", { timeout: 20000 }); await shot(p, "builder-start");
     await p.fill("#w-pt", "Build a premium website for a dental clinic in Dwarka, Delhi focused on cosmetic dentistry."); await p.click("#w-aib");
@@ -148,6 +161,9 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
     for (const [f, v] of [["quote", "Real review from Asha at the clinic"], ["name", "Asha"], ["source", "Google review"]]) { await last.locator('[data-f="' + f + '"]').fill(v); await last.locator('[data-f="' + f + '"]').dispatchEvent("change"); }
     await shot(p, "builder-collection"); await p.click(".wb-cm [data-x]"); await p.waitForTimeout(800);
     ok(/Real review from Asha at the clinic/.test(await p.frameLocator("#wb-if").locator(".quotes").last().textContent()), "v36: the new review appears in the section on the canvas");
+    // v38 editor command palette: Ctrl+K → "faq" → Enter adds a FAQ section
+    { const n0 = await p.frameLocator("#wb-if").locator("[data-sec]").count(); await p.keyboard.press("Escape"); await p.keyboard.press("Control+k"); await p.waitForSelector(".wb-palx"); await p.keyboard.type("add faq"); await p.waitForTimeout(200); await p.keyboard.press("Enter"); await p.waitForTimeout(700);
+      ok(await p.frameLocator("#wb-if").locator("[data-sec]").count() === n0 + 1, "v38: editor palette adds a section (Ctrl+K → add faq → Enter)"); }
     // v29 Store & Blog manager
     await p.click('[data-tab="store"]'); await p.waitForSelector("[data-sto=products]"); await p.click("[data-sto=products]"); await p.waitForSelector("#np", { timeout: 10000 });
     await p.click("#np"); await p.fill('#pf [name=title]', "Whitening kit"); await p.fill('#pf [name=price]', "799"); await p.check('#pf [name=track]'); await p.fill('#pf [name=stock]', "5"); await p.click("#pf .wb-btn.pri");

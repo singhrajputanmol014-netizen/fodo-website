@@ -1,6 +1,6 @@
 # FODO: SEO audit report
 
-Generated 2026-10-31 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
+Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
 **106 HTML pages · 101 sitemap URLs · 0 errors · 0 warnings · 6 notes**
 

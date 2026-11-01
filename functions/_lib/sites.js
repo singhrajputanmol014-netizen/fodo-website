@@ -518,6 +518,8 @@ export async function toTemplate(env, u, s, b) {
   await d.prepare("INSERT INTO site_templates (id, name, category, tags, doc, by_user, active, created_at) VALUES (?1,?2,?3,?4,?5,?6,1,?7)").bind(id, clip(b.name || s.name + " template", 80), clip(b.category || biz.industry || "Business", 40), clip(b.tags || "", 300), txt, u.id, nowIso()).run();
   return { id };
 }
+/* v38: how many websites were created from each template (real counts; drives "Popular" in the gallery) */
+export async function templateUses(env) { const d = await sdb(env); const r = (await d.prepare("SELECT template_id AS id, COUNT(*) AS n FROM sites WHERE template_id IS NOT NULL AND template_id NOT LIKE 'ai:%' GROUP BY template_id").all()).results || []; const o = {}; r.forEach((x) => { if (x.id) o[x.id] = x.n; }); return o; }
 export async function customTemplates(env) { const d = await sdb(env); return ((await d.prepare("SELECT id, name, category, tags, doc, created_at FROM site_templates WHERE active=1 ORDER BY created_at DESC LIMIT 200").all()).results || []).map((r) => { const x = JSON.parse(r.doc); return { id: r.id, name: r.name, category: r.category, tags: String(r.tags || "").split(/[,\s]+/).filter(Boolean), theme: x.theme, pages: x.pages, components: x.components, license: FODO_LICENSE, custom: true, features: ["FODO owner template"] }; }); }
 async function customTemplate(env, id) { return (await customTemplates(env)).find((t) => t.id === id) || null; }
 export async function removeTemplate(env, u, id) { if (!isOwner(u)) throw err("Only FODO owners.", 403); const d = await sdb(env); await d.prepare("UPDATE site_templates SET active=0 WHERE id=?1").bind(String(id)).run(); return { removed: true }; }

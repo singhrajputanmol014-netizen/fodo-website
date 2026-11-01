@@ -3,6 +3,7 @@
    license engine (licenseFor / clientAllowed) decides what a customer is allowed to see.
    Third-party sources are kept in SOURCES with what is known about their license. A third-party template only enters the client
    library after an owner has imported it AND its license allows client work (BootstrapMade's free license, for example, does not). */
+import { familyTemplates } from "./families.js";
 export const FODO_LICENSE = { license: "FODO Original", commercial_allowed: true, client_use_allowed: true, attribution_required: false, modification_allowed: true, redistribution_allowed: false, source: "FODO", author: "FODO", last_verified: "2026-10-31" };
 export const SOURCES = [
   { source: "Start Bootstrap", url: "https://startbootstrap.com/themes", license: "MIT", commercial_allowed: true, client_use_allowed: true, attribution_required: false, redistribution_allowed: true, note: "Keep the MIT notice in the code.", last_verified: null },
@@ -174,9 +175,11 @@ TEMPLATES.push(
       svcTitle: "What I do", svc: [["Skill one", "Describe it.", "◆"], ["Skill two", "Describe it.", "◇"], ["Skill three", "Describe it.", "○"]], process: [["Experience", "Your latest role."], ["Education", "Your degree."], ["Achievements", "What you're proud of."]], processTitle: "Journey", cta: "Get in touch", aboutTitle: "About me", about: "Write a short, honest introduction.", points: [] }),
 );
 
+/* v38: the generated template families (niche briefs × styles × layouts) join the hand-made templates */
+TEMPLATES.push(...familyTemplates());
 export function searchTemplates(q, opt) {
-  const words = String(q || "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
-  const score = (t) => { const hay = (t.name + " " + t.category + " " + t.tags.join(" ") + " " + t.theme.mode + " " + (t.theme.headingFont || t.theme.font)).toLowerCase(); let s = 0; words.forEach((w) => { if (hay.indexOf(w) > -1) s += t.tags.indexOf(w) > -1 || t.category.toLowerCase().indexOf(w) > -1 ? 3 : 1; }); return s; };
+  const words = String(q || "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+  const score = (t) => { const hay = (t.name + " " + t.category + " " + t.tags.join(" ") + " " + t.theme.mode + " " + (t.theme.headingFont || t.theme.font)).toLowerCase(); let s = 0; const inTag = (w) => t.tags.some((g) => (" " + g + " ").indexOf(" " + w + " ") > -1); words.forEach((w) => { if (w.length === 2) { if (inTag(w)) s += 3; return; } if (hay.indexOf(w) > -1) s += inTag(w) || t.category.toLowerCase().indexOf(w) > -1 ? 3 : 1; }); return s && !t.family ? s + 0.5 : s; };   // v38: whole words inside multi-word tags count; 2-letter words (ai, ca) only as whole tags; curated templates win ties
   const list = TEMPLATES.filter((t) => !opt || !opt.client || clientAllowed(t.license)).map((t) => ({ t, s: score(t) })).sort((a, b) => b.s - a.s);
   return list.map((x) => x.t);
 }

@@ -4,6 +4,7 @@
    archive / delete / transfer, owner template) · right-click menu · tutorial · AI history.
    Every control changes the real website document (undo/redo + autosave) or calls a real API route. */
 import { STYLES, PALETTES, PAIRINGS, FONT_LIB, fontLabel, MOTION_LEVELS, HOVERS, applyStyle, applyPalette, applyPairing, contrast } from "/sites/lib/design.js";
+import { track } from "/js/wb-palette.js";
 import { audit, autoFix, CATS } from "/sites/lib/audit.js";
 import { legalText, sectionDefaults } from "/sites/lib/industry.js";
 import { renderPage, SECTION_LABELS, SECTION_TYPES, embedUrl } from "/sites/lib/render.js";
@@ -58,7 +59,7 @@ export function addPanel(el) {
 function icon(t) { return { hero: "▣", text: "¶", image: "▨", buttons: "⬭", spacer: "↕", video: "▶", embed: "⧉", services: "▦", features: "✦", process: "➜", pricing: "₹", faq: "?", cta: "⚑", about: "ⓘ", testimonials: "❝", stats: "#", logos: "◎", team: "☺", portfolio: "▤", contact: "✉", booking: "🗓", newsletter: "@", whatsapp: "✆", map: "⌖", hours: "◷", social: "♯", gallery: "▦", products: "🛒", blog: "✍", legal: "§", countdown: "⏱" }[t] || "+"; }
 export function newSection(type) { const d = doc(), b = (d.settings || {}).business || {}, nav = (X.curPage().sections.find((s) => s.type === "navbar") || { props: {} }).props; return { type, props: type === "legal" ? legalText("privacy", b) : Object.assign({}, sectionDefaults(type, { name: b.name, city: b.city, phone: b.phone, email: b.email, whatsapp: b.whatsapp, address: b.address, cta: (nav.cta || {}).label }), X.DEFAULTS[type] && !sectionDefaults(type, {}).title ? JSON.parse(JSON.stringify(X.DEFAULTS[type])) : {}) }; }
 function insertAt(sec, at) { const P = X.curPage(), e = ED(); at = at != null ? at : e.sel != null ? e.sel + 1 : Math.max(0, P.sections.length - (P.sections.length && P.sections[P.sections.length - 1].type === "footer" ? 1 : 0)); P.sections.splice(at, 0, sec); e.sel = at; X.left(); X.right(); }
-export function addSection(type, at) { X.change(() => insertAt(newSection(type), at)); X.toast(SECTION_LABELS[type] + " added"); }
+export function addSection(type, at) { X.change(() => insertAt(newSection(type), at)); X.toast(SECTION_LABELS[type] + " added"); track("wb_section_added", type); }
 function genPage() {
   const m = modal('<h2>Generate a page with AI</h2><p class="wb-muted">FODO builds it with your current colours, fonts and style, and suggests the SEO title, description and address.</p><div class="wb-chips">' + ["About", "Services", "Pricing", "Contact", "FAQ", "Portfolio", "Case study", "Blog", "Team", "Careers", "Location page"].map((x) => '<button type="button" class="wb-gchip" data-gp="' + x + '">' + x + "</button>").join("") + '</div><label class="wb-lab">Or describe it<input id="gp-q" placeholder="e.g. A page about our cosmetic dentistry treatments in Dwarka"></label><div class="wb-row"><button class="wb-btn pri" id="gp-go">✦ Generate page</button></div>');
   $$("[data-gp]", m).forEach((b) => { b.onclick = () => { $("#gp-q", m).value = "A " + b.dataset.gp + " page"; }; });

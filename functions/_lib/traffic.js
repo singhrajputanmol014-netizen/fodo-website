@@ -40,7 +40,8 @@ export function deviceOf(ua, w) {
   const os = /Windows/.test(ua) ? "Windows" : /iPhone|iPad|iOS/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "Other";
   return { device, browser, os };
 }
-export const EV = ["whatsapp_click", "phone_click", "email_click", "booking_click", "audit_cta_click", "cta_click", "outbound_click", "form_submit", "tool_use", "generate_lead", "xray_start", "xray_complete", "xray_export", "cf_search", "cf_export", "bot_answer", "scroll_depth", "search_open", "login_open", "tool_start", "tool_complete", "tool_login_required", "upgrade_click", "service_cta_click", "report_view", "budget_plan"];
+export const EV = ["whatsapp_click", "phone_click", "email_click", "booking_click", "audit_cta_click", "cta_click", "outbound_click", "form_submit", "tool_use", "generate_lead", "xray_start", "xray_complete", "xray_export", "cf_search", "cf_export", "bot_answer", "scroll_depth", "search_open", "login_open", "tool_start", "tool_complete", "tool_login_required", "upgrade_click", "service_cta_click", "report_view", "budget_plan",
+  /* v38 website builder */ "wb_template_previewed", "wb_template_selected", "wb_ai_generation_started", "wb_ai_generation_completed", "wb_website_created", "wb_section_added", "wb_website_previewed", "wb_website_published", "wb_palette_used", "wb_example_prompt"];
 export const CONV = ["whatsapp_click", "phone_click", "email_click", "booking_click", "audit_cta_click", "form_submit", "generate_lead", "xray_start", "service_cta_click"];
 const cleanPath = (p) => { p = String(p || "/").split(/[?#]/)[0].slice(0, 120).replace(/[^\w\-\/.~%]/g, ""); return p.charAt(0) === "/" ? p : "/" + p; };
 const clip = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>"]/g, " ").trim().slice(0, n);
@@ -82,7 +83,7 @@ export async function collect(request, env) {
       if (n === "scroll_depth" && String(e[1]) !== "75") return;
       const det = clip(e[1], 60);
       add("ev", n); add("evp", n + "|" + path);
-      if (det && /^(cta_click|tool_use|outbound_click|cf_export|xray_export|tool_start|tool_complete|tool_login_required|upgrade_click|service_cta_click)$/.test(n)) add("evd", n + "|" + det);
+      if (det && (/^wb_/.test(n) || /^(cta_click|tool_use|outbound_click|cf_export|xray_export|tool_start|tool_complete|tool_login_required|upgrade_click|service_cta_click)$/.test(n))) add("evd", n + "|" + det);
       if (CONV.indexOf(n) > -1) { add("conv", "all"); add("conv_src", src); add("conv_ch", ch); add("conv_page", path); add("conv_kind", n); }
     });
   } else if (b.t === "time") {

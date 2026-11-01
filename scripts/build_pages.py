@@ -835,7 +835,7 @@ open(os.path.join(ROOT, "website-builder", "index.html"), "w").write(f"""<!docty
 <title>FODO Website Builder: Build Your Business Website with AI</title><meta name="description" content="{_WB_D}"><link rel="canonical" href="{SITE}/website-builder/">
 <meta property="og:title" content="FODO Website Builder: Build Your Business Website with AI"><meta property="og:description" content="{_WB_D}"><meta property="og:type" content="website"><meta property="og:site_name" content="FODO"><meta property="og:url" content="{SITE}/website-builder/"><meta property="og:image" content="{OG_IMAGE}"><meta property="og:locale" content="en_IN">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="FODO Website Builder: Build Your Business Website with AI"><meta name="twitter:description" content="{_WB_D}"><meta name="twitter:image" content="{OG_IMAGE}">
-<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}">{_WB_LD}</head>
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}"><link rel="stylesheet" href="/css/wb-studio.css?v={_V}">{_WB_LD}</head>
 <body class="wb-body"><div id="wb">{_WB_SEO}</div><noscript><p style="padding:24px">The builder needs JavaScript.</p></noscript>
 <script type="importmap">{WB_IMPORTMAP}</script>
 <script src="/js/wb-guard.js?v={_V}"></script><script src="/js/account.js?v={_V}" defer></script><script type="module" src="/js/website-builder.js?v={_V}"></script></body></html>""")

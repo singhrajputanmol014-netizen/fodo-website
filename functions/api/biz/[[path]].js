@@ -3,7 +3,7 @@
    GET  me · dashboard · brand · content · campaigns · pro · pro/earnings · market?q&role&city&budget&remote · market/<proId> · shortlist
         projects · projects/<id> · notes · actions?text · admin/overview · admin/pros?status · admin/payouts · admin/disputes · admin/staff
    POST brand · brand/extract {siteId} · brand/apply {siteId} · content · content/brief · campaigns · pro · pro/submit · pro/packages
-        pro/portfolio · shortlist · projects · projects/<id>/<message|propose|accept|submit|approve|changes|cancel|dispute|review>
+        pro/portfolio · shortlist · projects · projects/<id>/<message|propose|accept|submit|approve|changes|cancel|dispute|review> + v44 (tasks, change requests, time, retainer, team, refunds: see _lib/projects2.js)
         notes/read · admin/pros/<id> {action,note} · admin/payouts/<id> {ref} · admin/disputes/<id> · admin/staff · admin/settings
    DELETE content/<id> · pro/packages/<id> · pro/portfolio/<id> · files/<id>
    v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
@@ -61,6 +61,7 @@ export async function onRequest(ctx) {
     if (p0 === "pro" && p1 === "submit" && m === "POST") return ok({ pro: await B.submitPro(env, u) });
     if (p0 === "pro" && p1 === "dashboard" && m === "GET") return ok(await B.proDashboard(env, u));
     if (p0 === "pro" && p1 === "blackout" && m === "POST") return ok(await B.setBlackout(env, u, body));
+    if (p0 === "pro" && p1 === "slots" && m === "POST") return ok(await B.setSlots(env, u, body));   // v44 time slots
     if (p0 === "pro" && p1 === "earnings" && m === "GET") return ok(await B.proEarnings(env, u));
     if (p0 === "pro" && p1 === "packages" && m === "POST") return ok({ pro: await B.savePackage(env, u, body) });
     if (p0 === "pro" && p1 === "packages" && p2 && m === "DELETE") return ok({ pro: await B.delPackage(env, u, p2) });
@@ -89,6 +90,7 @@ export async function onRequest(ctx) {
       if (p1 === "pros" && p2 && m === "POST") return ok(await B.moderatePro(env, u, R, p2, body.action, body.note));
       if (p1 === "payouts" && !p2 && m === "GET") return ok({ items: await B.adminPayouts(env, R), automatic: B.payoutsOn(env) });
       if (p1 === "payouts" && p2 && m === "POST") return ok(await B.markPaid(env, u, R, p2, body.ref));
+      if (p1 === "refunds" && m === "GET") return ok({ items: await B.adminRefunds(env, R) });   // v44
       if (p1 === "disputes" && !p2 && m === "GET") return ok({ items: await B.adminDisputes(env, R) });
       if (p1 === "disputes" && p2 && m === "POST") return ok(await B.resolveDispute(env, u, R, p2, body));
       const origin = new URL(request.url).origin;

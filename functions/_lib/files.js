@@ -70,7 +70,7 @@ const INLINE = /^(image\/(jpeg|png|gif|webp)|application\/pdf|video\/|audio\/)/;
 
 /* ---------- permissions ---------- */
 async function roleOn(env, u, R, f) {
-  if (f.project_id) { try { const { side, pj } = await projectFor(env, u, f.project_id, R); return { side, pj }; } catch (e) { return null; } }
+  if (f.project_id) { try { const { side, pj } = await projectFor(env, u, f.project_id, R); return side === "invited" ? null : { side, pj }; } catch (e) { return null; } }
   return f.owner_id === u.id ? { side: "owner" } : null;
 }
 async function fileFor(env, u, R, id) {
@@ -95,7 +95,7 @@ export async function upload(env, u, R, q, bytes) {
   if (st.used + bytes.byteLength > st.quota) throw err("Your file storage is full (" + Math.round(st.quota / 1048576) + " MB). Delete old files first.", 413);
   const b = new Uint8Array(bytes), t = typeOf(q.name, b); if (!t) throw err("This file type isn't allowed. Use images, PDF, video, audio, ZIP, Word, Excel, PowerPoint or plain text (no SVG, HTML or scripts).", 415);
   const d = await fdb(env); let fk = KINDS.indexOf(q.kind) > -1 ? q.kind : "file", projectId = null, milestoneId = null, side = "owner", pj = null, grp = null, ver = 1;
-  if (q.project) { const P = await projectFor(env, u, clip(q.project, 40), R); side = P.side; pj = P.pj; projectId = pj.id;
+  if (q.project) { const P = await projectFor(env, u, clip(q.project, 40), R); if (P.side === "invited") throw err("Accept the project invitation first.", 403); side = P.side; pj = P.pj; projectId = pj.id;
     if (side === "staff") throw err("FODO staff can read project files but not add them.", 403);
     if (["cancelled", "completed"].indexOf(pj.status) > -1) throw err("This project is " + pj.status + ", files can't be added.", 409);
     if (fk === "deliverable" && side !== "pro") throw err("Only the professional uploads deliverables.", 403);
@@ -121,7 +121,7 @@ export function out(f, u, side) {
 /* project files (all versions, newest first) or my personal files */
 export async function list(env, u, R, q) {
   const d = await fdb(env);
-  if (q.project) { const P = await projectFor(env, u, clip(q.project, 40), R); const rows = await all(d, "SELECT f.*, CASE WHEN f.owner_id=?2 THEN 'client' ELSE 'pro' END AS who FROM biz_files f WHERE project_id=?1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 500", P.pj.id, P.pj.client_id);
+  if (q.project) { const P = await projectFor(env, u, clip(q.project, 40), R); if (P.side === "invited") throw err("Accept the project invitation first.", 403); const rows = await all(d, "SELECT f.*, CASE WHEN f.owner_id=?2 THEN 'client' ELSE 'pro' END AS who FROM biz_files f WHERE project_id=?1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 500", P.pj.id, P.pj.client_id);
     return { side: P.side, files: rows.map((f) => Object.assign(out(f, u, P.side), { who: f.who })), canUpload: P.side !== "staff" && ["cancelled", "completed"].indexOf(P.pj.status) < 0, storage: await storage(env, u) }; }
   const mine = await all(d, "SELECT * FROM biz_files WHERE owner_id=?1 AND project_id IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 500", u.id);
   const pro = await one(d, "SELECT id FROM biz_pros WHERE user_id=?1", u.id);

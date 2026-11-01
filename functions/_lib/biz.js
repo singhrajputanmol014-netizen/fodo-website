@@ -39,8 +39,7 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS biz_projects_p ON biz_projects(pro_id, updated_at)",
   "CREATE TABLE IF NOT EXISTS biz_milestones (id TEXT PRIMARY KEY, project_id TEXT, idx INTEGER, title TEXT, amount INTEGER, due TEXT, status TEXT, order_id TEXT, funded_at TEXT, submitted_at TEXT, approved_at TEXT, note TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, user_id TEXT, body TEXT, created_at TEXT)",
-  "CREATE TABLE IF NOT EXISTS biz_bookings (id TEXT PRIMARY KEY, pro_id TEXT, project_id TEXT, day TEXT, created_at TEXT)",
-  "CREATE UNIQUE INDEX IF NOT EXISTS biz_bookings_day ON biz_bookings(pro_id, day)",
+  "CREATE TABLE IF NOT EXISTS biz_bookings (id TEXT PRIMARY KEY, pro_id TEXT, project_id TEXT, day TEXT, created_at TEXT, slot TEXT DEFAULT '')",
   "CREATE TABLE IF NOT EXISTS biz_reviews (project_id TEXT PRIMARY KEY, pro_id TEXT, client_id TEXT, rating INTEGER, text TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_disputes (id TEXT PRIMARY KEY, project_id TEXT, by_id TEXT, reason TEXT, status TEXT, resolution TEXT, created_at TEXT, resolved_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_payouts (id TEXT PRIMARY KEY, milestone_id TEXT UNIQUE, pro_id TEXT, gross INTEGER, commission INTEGER, net INTEGER, status TEXT, ref TEXT, created_at TEXT, paid_at TEXT)",
@@ -49,7 +48,16 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS biz_invites (token TEXT PRIMARY KEY, note TEXT, max_uses INTEGER, uses INTEGER DEFAULT 0, expires_at TEXT, revoked INTEGER DEFAULT 0, created_by TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, target TEXT, detail TEXT, created_at TEXT)",
 ];
-const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT"];   // v40.1
+const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT",   // v40.1
+  /* v44 Projects 2.0: time slots (one booking per pro + day + slot; '' = the whole day), modes, team, tasks, change requests, time, refunds */
+  "ALTER TABLE biz_bookings ADD COLUMN slot TEXT DEFAULT ''", "DROP INDEX IF EXISTS biz_bookings_day", "CREATE UNIQUE INDEX IF NOT EXISTS biz_bookings_slot ON biz_bookings(pro_id, day, slot)",
+  "ALTER TABLE biz_pros ADD COLUMN slots TEXT", "ALTER TABLE biz_projects ADD COLUMN slot TEXT", "ALTER TABLE biz_projects ADD COLUMN mode TEXT", "ALTER TABLE biz_projects ADD COLUMN rate INTEGER", "ALTER TABLE biz_projects ADD COLUMN cap INTEGER",
+  "ALTER TABLE biz_milestones ADD COLUMN pro_id TEXT", "ALTER TABLE biz_milestones ADD COLUMN kind TEXT", "ALTER TABLE biz_milestones ADD COLUMN period TEXT", "ALTER TABLE biz_milestones ADD COLUMN refunded INTEGER",
+  "CREATE TABLE IF NOT EXISTS biz_project_pros (project_id TEXT, pro_id TEXT, role TEXT, status TEXT, added_by TEXT, created_at TEXT, PRIMARY KEY (project_id, pro_id))",
+  "CREATE TABLE IF NOT EXISTS biz_tasks (id TEXT PRIMARY KEY, project_id TEXT, title TEXT, who TEXT, due TEXT, status TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS biz_changes (id TEXT PRIMARY KEY, project_id TEXT, by_side TEXT, by_id TEXT, pro_id TEXT, title TEXT, detail TEXT, amount INTEGER, days INTEGER, status TEXT, milestone_id TEXT, created_at TEXT, decided_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS biz_time (id TEXT PRIMARY KEY, project_id TEXT, pro_id TEXT, day TEXT, minutes INTEGER, note TEXT, status TEXT, milestone_id TEXT, created_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS biz_refunds (id TEXT PRIMARY KEY, project_id TEXT, milestone_id TEXT, amount INTEGER, reason TEXT, status TEXT, by_id TEXT, provider TEXT, provider_ref TEXT, note TEXT, created_at TEXT, done_at TEXT)"];
 const ready = new WeakSet();
 export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } ready.add(d); } return d; }
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
@@ -140,7 +148,7 @@ function completeness(p, c) {
 }
 export function proOut(p, mine) {
   const o = { id: p.id, name: p.name, title: p.title, role: p.role, cats: J(p.cats, []), skills: J(p.skills, []), tools: J(p.tools, []), years: p.years, city: p.city, radiusKm: p.radius_km, remote: !!p.remote, onsite: !!p.onsite, langs: J(p.langs, []), bio: p.bio, rateDay: p.rate_day, photo: p.photo,
-    days: J(p.days, []), noticeDays: p.notice_days || 0, verified: p.status === "approved" || p.status === "published", completed: p.done_n || 0, rating: p.rating_n ? Math.round(p.rating_sum / p.rating_n * 10) / 10 : null, reviews: p.rating_n || 0 };
+    days: J(p.days, []), slots: J(p.slots, []), noticeDays: p.notice_days || 0, verified: p.status === "approved" || p.status === "published", completed: p.done_n || 0, rating: p.rating_n ? Math.round(p.rating_sum / p.rating_n * 10) / 10 : null, reviews: p.rating_n || 0 };
   if (mine) Object.assign(o, { status: p.status, note: p.note, blackout: J(p.blackout, []), termsAt: p.terms_at });
   return o;
 }
@@ -211,7 +219,8 @@ export async function proPublic(env, u, id, R) {
   const visible = p.status === "approved" || p.status === "published" || p.user_id === u.id || can(R, ["admin", "moderator"]); if (!visible) throw err("Not found.", 404);
   return Object.assign(proOut(p, p.user_id === u.id || can(R, ["admin", "moderator"])), { packages: await all(d, "SELECT id, name, descr, deliverables, price, days, revisions, rights FROM biz_packages WHERE pro_id=?1 AND active=1 ORDER BY price", id),
     portfolio: await all(d, "SELECT id, kind, title, url, role, industry, descr FROM biz_portfolio WHERE pro_id=?1 ORDER BY created_at DESC", id), reviewsList: await all(d, "SELECT rating, text, created_at FROM biz_reviews WHERE pro_id=?1 ORDER BY created_at DESC LIMIT 20", id),
-    saved: !!(await one(d, "SELECT 1 x FROM biz_shortlist WHERE user_id=?1 AND pro_id=?2", u.id, id)), booked: (await all(d, "SELECT day FROM biz_bookings WHERE pro_id=?1 AND day >= ?2", id, nowIso().slice(0, 10))).map((x) => x.day) });
+    saved: !!(await one(d, "SELECT 1 x FROM biz_shortlist WHERE user_id=?1 AND pro_id=?2", u.id, id)), booked: (await all(d, "SELECT day FROM biz_bookings WHERE pro_id=?1 AND day >= ?2 AND COALESCE(slot,'')=''", id, nowIso().slice(0, 10))).map((x) => x.day),
+    bookedSlots: await all(d, "SELECT day, slot FROM biz_bookings WHERE pro_id=?1 AND day >= ?2 AND COALESCE(slot,'') != ''", id, nowIso().slice(0, 10)) });
 }
 export async function shortlist(env, u, b) {
   const d = await bdb(env); if (b && b.proId) { if (b.remove) await run(d, "DELETE FROM biz_shortlist WHERE user_id=?1 AND pro_id=?2", u.id, b.proId); else { const p = await one(d, "SELECT status FROM biz_pros WHERE id=?1", b.proId); if (!p || ["approved", "published"].indexOf(p.status) < 0) throw err("Not found.", 404); await run(d, "INSERT OR REPLACE INTO biz_shortlist (user_id, pro_id, note, tag, created_at) VALUES (?1,?2,?3,?4,?5)", u.id, b.proId, clip(b.note, 400), clip(b.tag, 30), nowIso()); } }
@@ -221,58 +230,88 @@ export async function shortlist(env, u, b) {
 /* ---------- projects ---------- */
 export async function projectFor(env, u, id, R) {
   const d = await bdb(env), pj = await one(d, "SELECT * FROM biz_projects WHERE id=?1", id); if (!pj) throw err("Not found.", 404);
-  const pro = await one(d, "SELECT * FROM biz_pros WHERE id=?1", pj.pro_id), side = pj.client_id === u.id ? "client" : pro && pro.user_id === u.id ? "pro" : can(R, ["admin", "moderator", "finance"]) ? "staff" : null;
-  if (!side) throw err("Not found.", 404); return { d, pj, pro, side };
+  const pro = await one(d, "SELECT * FROM biz_pros WHERE id=?1", pj.pro_id); let side = null, mine = null;
+  if (pj.client_id === u.id) side = "client"; else if (pro && pro.user_id === u.id) { side = "pro"; mine = pro; }
+  else { const m = await one(d, "SELECT p.*, x.status AS mstatus, x.role AS mrole FROM biz_project_pros x JOIN biz_pros p ON p.id=x.pro_id WHERE x.project_id=?1 AND p.user_id=?2", id, u.id);   // v44 team member
+    if (m && m.mstatus === "accepted") { side = "pro"; mine = m; } else if (m && m.mstatus === "invited") { side = "invited"; mine = m; } }
+  if (!side && can(R, ["admin", "moderator", "finance"])) side = "staff";
+  if (!side) throw err("Not found.", 404); return { d, pj, pro, side, mine, lead: !!mine && !!pro && mine.id === pro.id };
 }
+/* booking clash check: a whole day ('' slot) clashes with every slot that day, and every slot with the whole day */
+export async function slotFree(d, proId, day, slot, exceptProject) { return !(await one(d, "SELECT 1 x FROM biz_bookings WHERE pro_id=?1 AND day=?2 AND (slot=?3 OR slot='' OR ?3='') AND project_id != ?4", proId, day, slot || "", exceptProject || "-")); }
+export const cleanSlots = (L) => { const out = arr(L, 8, 11).filter((x) => /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/.test(x) && x.slice(0, 5) < x.slice(6)).sort(); const keep = []; out.forEach((x) => { if (!keep.length || keep[keep.length - 1].slice(6) <= x.slice(0, 5)) keep.push(x); }); return keep; };   // non-overlapping (first one wins)
 const dayOk = (pro, day) => { const dow = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(day + "T00:00:00Z").getUTCDay()], days = J(pro.days, []); if (days.length && days.indexOf(dow) < 0) return "isn't a working day for this professional"; if (J(pro.blackout, []).indexOf(day) > -1) return "is blocked by the professional"; const min = new Date(Date.now() + (pro.notice_days || 0) * 864e5).toISOString().slice(0, 10); if (day < min) return "is too soon (needs " + (pro.notice_days || 0) + " days' notice)"; if (day > new Date(Date.now() + 365 * 864e5).toISOString().slice(0, 10)) return "is more than a year away"; return null; };
 export async function createProject(env, u, b) {
   const d = await bdb(env), pro = await one(d, "SELECT * FROM biz_pros WHERE id=?1", b.proId); if (!pro || ["approved", "published"].indexOf(pro.status) < 0) throw err("This professional isn't available.", 404);
   if (pro.user_id === u.id) throw err("You can't hire yourself.");
   const title = clip(b.title, 140), brief = clip(b.brief, 4000); if (title.length < 3 || brief.length < 10) throw err("Add a title and describe what you need (10+ characters).");
   let pkg = null; if (b.packageId) { pkg = await one(d, "SELECT * FROM biz_packages WHERE id=?1 AND pro_id=?2 AND active=1", b.packageId, pro.id); if (!pkg) throw err("That package isn't available."); }
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(b.day || "") ? b.day : null; if (day) { const why = dayOk(pro, day); if (why) throw err(day + " " + why + "."); if (await one(d, "SELECT 1 x FROM biz_bookings WHERE pro_id=?1 AND day=?2", pro.id, day)) throw err(day + " is already booked.", 409); }
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(b.day || "") ? b.day : null; const slots = J(pro.slots, []), slot = day && b.slot && slots.indexOf(b.slot) > -1 ? b.slot : "";   // v44 time slot ('' = the whole day)
+  if (day && b.slot && !slot) throw err("Pick one of the professional's time slots.");
+  if (day) { const why = dayOk(pro, day); if (why) throw err(day + " " + why + "."); if (!(await slotFree(d, pro.id, day, slot))) throw err(day + (slot ? " " + slot : "") + " is already booked.", 409); }
   if (await (async () => (((await one(d, "SELECT count(*) n FROM biz_projects WHERE client_id=?1 AND created_at >= ?2", u.id, new Date(Date.now() - 864e5).toISOString())) || {}).n || 0) >= 20)()) throw err("Too many requests today.", 429);
   const id = "pj" + randId(14), now = nowIso(), budget = pkg ? pkg.price : int(b.budget, 0, 1e9);
-  await run(d, "INSERT INTO biz_projects (id, client_id, pro_id, title, brief, kind, budget, package_id, day, status, content_id, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'requested',?10,?11,?11)", id, u.id, pro.id, title, brief, pkg ? "package" : clip(b.kind, 20) || "fixed", budget, pkg ? pkg.id : null, day, b.contentId ? clip(b.contentId, 40) : null, now);
+  await run(d, "INSERT INTO biz_projects (id, client_id, pro_id, title, brief, kind, budget, package_id, day, status, content_id, created_at, updated_at, slot, mode) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'requested',?10,?11,?11,?12,'fixed')", id, u.id, pro.id, title, brief, pkg ? "package" : clip(b.kind, 20) || "fixed", budget, pkg ? pkg.id : null, day, b.contentId ? clip(b.contentId, 40) : null, now, slot);
   if (b.contentId) await run(d, "UPDATE biz_content SET project_id=?3, status='assigned', updated_at=?4 WHERE id=?1 AND user_id=?2", b.contentId, u.id, id, now);
   await notify(env, pro.user_id, "request", "New project request: " + title, "#project=" + id); await auditLog(env, u.email, "project:create", id);
   return getProject(env, u, id, { roles: ["client"] });
 }
 export async function listProjects(env, u) {
   const d = await bdb(env), me = await one(d, "SELECT id FROM biz_pros WHERE user_id=?1", u.id);
-  const rows = await all(d, "SELECT j.*, p.name AS pro_name, p.role AS pro_role FROM biz_projects j LEFT JOIN biz_pros p ON p.id=j.pro_id WHERE j.client_id=?1 OR j.pro_id=?2 ORDER BY j.updated_at DESC LIMIT 200", u.id, me ? me.id : "-");
+  const rows = await all(d, "SELECT j.*, p.name AS pro_name, p.role AS pro_role FROM biz_projects j LEFT JOIN biz_pros p ON p.id=j.pro_id WHERE j.client_id=?1 OR j.pro_id=?2 OR j.id IN (SELECT project_id FROM biz_project_pros WHERE pro_id=?2 AND status IN ('accepted','invited')) ORDER BY j.updated_at DESC LIMIT 200", u.id, me ? me.id : "-");
   return rows.map((r) => Object.assign(r, { side: r.client_id === u.id ? "client" : "pro" }));
 }
 export async function getProject(env, u, id, R) {
-  const { d, pj, pro, side } = await projectFor(env, u, id, R);
-  return Object.assign({}, pj, { side, pro: pro ? proOut(pro) : null, milestones: await all(d, "SELECT * FROM biz_milestones WHERE project_id=?1 ORDER BY idx", id), messages: await all(d, "SELECT m.id, m.body, m.created_at, CASE WHEN m.user_id=?2 THEN 'client' ELSE 'pro' END AS who FROM biz_messages m WHERE project_id=?1 ORDER BY m.id LIMIT 500", id, pj.client_id),
+  const { d, pj, pro, side, mine, lead } = await projectFor(env, u, id, R);
+  if (side === "invited") return { id: pj.id, title: pj.title, brief: pj.brief, status: pj.status, side, invitedRole: mine.mrole || "", pro: pro ? proOut(pro) : null, milestones: [], messages: [], files: [], team: [], tasks: [], changes: [], time: [], refunds: [], next: [] };   // an invited pro sees the brief, then accepts or declines
+  const ms = await all(d, "SELECT m.*, COALESCE(m.pro_id, ?2) AS mpro, p.name AS pro_name FROM biz_milestones m LEFT JOIN biz_pros p ON p.id=COALESCE(m.pro_id, ?2) WHERE m.project_id=?1 ORDER BY CASE WHEN m.status='proposed' THEN 1 ELSE 0 END, m.idx, m.funded_at", id, pj.pro_id);
+  const X = await import("./projects2.js");
+  return Object.assign({}, pj, { side, lead, myPro: mine ? mine.id : null, pro: pro ? proOut(pro) : null, milestones: ms.map((m) => Object.assign(m, { order_id: undefined, mine: !!mine && m.mpro === mine.id })),
+    messages: (await all(d, "SELECT m.id, m.body, m.created_at, m.user_id, p.name AS pro_name FROM biz_messages m LEFT JOIN biz_pros p ON p.user_id=m.user_id WHERE project_id=?1 ORDER BY m.id LIMIT 500", id)).map((m) => ({ id: m.id, body: m.body, created_at: m.created_at, who: m.user_id === pj.client_id ? "client" : "pro", name: m.user_id === pj.client_id ? "Client" : m.pro_name || "Professional", mine: m.user_id === u.id })),
+    team: await X.team(d, pj), tasks: await X.tasks(d, id), changes: await X.changes(d, id), time: await X.time(d, id), refunds: await X.refunds(d, id),
     files: await (await import("./files.js")).projectFiles(env, id), review: await one(d, "SELECT rating, text, created_at FROM biz_reviews WHERE project_id=?1", id), dispute: await one(d, "SELECT id, reason, status, resolution, created_at FROM biz_disputes WHERE project_id=?1 ORDER BY created_at DESC LIMIT 1", id), next: PROJECT_STATES[pj.status] || [] });
 }
 async function move(env, d, pj, to, actor) { if ((PROJECT_STATES[pj.status] || []).indexOf(to) < 0) throw err("A " + pj.status.replace("_", " ") + " project can't become " + to.replace("_", " ") + ".", 409); const r = await run(d, "UPDATE biz_projects SET status=?3, updated_at=?4 WHERE id=?1 AND status=?2", pj.id, pj.status, to, nowIso()); if (!r.meta.changes) throw err("The project changed meanwhile, reload.", 409); await auditLog(env, actor, "project:" + to, pj.id); pj.status = to; }
 export async function projectAction(env, u, id, act, b, R) {
-  const { d, pj, pro, side } = await projectFor(env, u, id, R), other = side === "client" ? pro.user_id : pj.client_id, link = "#project=" + id;
-  if (act === "message") { const t = clip(b.body, 4000); if (!t) throw err("Write a message."); if (side === "staff") throw err("Staff can't post in project chats.", 403); await run(d, "INSERT INTO biz_messages (project_id, user_id, body, created_at) VALUES (?1,?2,?3,?4)", id, u.id, t, nowIso()); await run(d, "UPDATE biz_projects SET updated_at=?2 WHERE id=?1", id, nowIso()); await notify(env, other, "message", "New message on " + pj.title, link); }
+  const { d, pj, pro, side, mine, lead } = await projectFor(env, u, id, R), other = side === "client" ? pro.user_id : pj.client_id, link = "#project=" + id;
+  if (side === "invited" && act !== "member_answer") throw err("Accept the invitation first.", 403);
+  if (act === "message") { const t = clip(b.body, 4000); if (!t) throw err("Write a message."); if (side === "staff" || side === "invited") throw err(side === "staff" ? "Staff can't post in project chats." : "Accept the invitation first.", 403); await run(d, "INSERT INTO biz_messages (project_id, user_id, body, created_at) VALUES (?1,?2,?3,?4)", id, u.id, t, nowIso()); await run(d, "UPDATE biz_projects SET updated_at=?2 WHERE id=?1", id, nowIso()); await notify(env, other, "message", "New message on " + pj.title, link); }
   else if (act === "propose") { if (side !== "pro") throw err("Only the professional sends the proposal.", 403); const ms = (Array.isArray(b.milestones) ? b.milestones : []).slice(0, 12).map((m, i) => ({ title: clip(m.title, 120), amount: int(m.amount, 100, 1e8), due: /^\d{4}-\d{2}-\d{2}$/.test(m.due || "") ? m.due : null, i }));
-    if (!ms.length || ms.some((m) => !m.title || m.amount == null)) throw err("Each milestone needs a title and an amount of at least ₹100.");
-    if (["requested", "proposed"].indexOf(pj.status) < 0) throw err("The proposal can only change before the client accepts.", 409);
-    await run(d, "DELETE FROM biz_milestones WHERE project_id=?1", id); for (const m of ms) await run(d, "INSERT INTO biz_milestones (id, project_id, idx, title, amount, due, status) VALUES (?1,?2,?3,?4,?5,?6,'pending')", "ms" + randId(14), id, m.i, m.title, m.amount, m.due);
-    await run(d, "UPDATE biz_projects SET budget=?2 WHERE id=?1", id, ms.reduce((a, m) => a + m.amount, 0)); if (pj.status === "requested") await move(env, d, pj, "proposed", u.email); await notify(env, other, "proposal", "Proposal received for " + pj.title, link); }
-  else if (act === "accept") { if (side !== "client") throw err("Only the client accepts.", 403); if (!(await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1", id))) throw err("Wait for the professional's proposal.", 409);
-    if (pj.day) { try { await run(d, "INSERT INTO biz_bookings (id, pro_id, project_id, day, created_at) VALUES (?1,?2,?3,?4,?5)", "bk" + randId(12), pro.id, id, pj.day, nowIso()); } catch (e) { throw err(pj.day + " was just booked by someone else. Pick another date with the professional.", 409); } }
+    const mode = lead && ["hourly", "retainer"].indexOf(b.mode) > -1 ? b.mode : "fixed", rate = mode === "fixed" ? null : int(b.rate, 100, 1e7), cap = mode === "fixed" ? null : int(b.cap, 1, mode === "hourly" ? 2000 : 36);   // v44 modes
+    if (mode !== "fixed" && rate == null) throw err(mode === "hourly" ? "Set your hourly rate (₹100 or more)." : "Set the monthly retainer (₹100 or more).");
+    if ((mode === "fixed" && !ms.length) || ms.some((m) => !m.title || m.amount == null)) throw err("Each milestone needs a title and an amount of at least ₹100.");
+    if (!lead) {   // v44 team member: adds their own milestones, the client accepts them separately
+      if (["cancelled", "completed", "disputed"].indexOf(pj.status) > -1) throw err("This project is " + pj.status + ".", 409); if (!ms.length) throw err("Add at least one milestone.");
+      await run(d, "DELETE FROM biz_milestones WHERE project_id=?1 AND pro_id=?2 AND status='proposed'", id, mine.id); const base = ((await one(d, "SELECT MAX(idx) n FROM biz_milestones WHERE project_id=?1", id)) || {}).n || 0;
+      for (const m of ms) await run(d, "INSERT INTO biz_milestones (id, project_id, idx, title, amount, due, status, pro_id, kind) VALUES (?1,?2,?3,?4,?5,?6,'proposed',?7,'fixed')", "ms" + randId(14), id, base + 1 + m.i, m.title, m.amount, m.due, mine.id);
+      await notify(env, pj.client_id, "proposal", mine.name + " sent milestones for " + pj.title, link); return getProject(env, u, id, R); }
+    if (["requested", "proposed"].indexOf(pj.status) < 0) throw err("The proposal can only change before the client accepts. Use a change request.", 409);
+    await run(d, "DELETE FROM biz_milestones WHERE project_id=?1 AND (pro_id IS NULL OR pro_id=?2)", id, pro.id); for (const m of ms) await run(d, "INSERT INTO biz_milestones (id, project_id, idx, title, amount, due, status, kind) VALUES (?1,?2,?3,?4,?5,?6,'pending','fixed')", "ms" + randId(14), id, m.i, m.title, m.amount, m.due);
+    if (mode === "retainer") { const per = nowIso().slice(0, 7); await run(d, "INSERT INTO biz_milestones (id, project_id, idx, title, amount, status, kind, period) VALUES (?1,?2,?3,?4,?5,'pending','retainer',?6)", "ms" + randId(14), id, ms.length, "Retainer: " + monthName(per), rate, per); }
+    await run(d, "UPDATE biz_projects SET budget=?2, mode=?3, rate=?4, cap=?5 WHERE id=?1", id, ms.reduce((a, m) => a + m.amount, 0) + (mode === "retainer" ? rate : mode === "hourly" && cap ? rate * cap : 0), mode, rate, cap);
+    if (pj.status === "requested") await move(env, d, pj, "proposed", u.email); await notify(env, other, "proposal", "Proposal received for " + pj.title, link); }
+  else if (act === "accept") { if (side !== "client") throw err("Only the client accepts.", 403); if (pj.status !== "proposed" || (!(await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1", id)) && pj.mode !== "hourly")) throw err("Wait for the professional's proposal.", 409);
+    if (pj.day) { const sl = pj.slot || "", gone = () => err(pj.day + (sl ? " " + sl : "") + " was just booked by someone else. Pick another date with the professional.", 409); if (!(await slotFree(d, pro.id, pj.day, sl))) throw gone();
+      const bk = "bk" + randId(12); try { await run(d, "INSERT INTO biz_bookings (id, pro_id, project_id, day, created_at, slot) VALUES (?1,?2,?3,?4,?5,?6)", bk, pro.id, id, pj.day, nowIso(), sl); } catch (e) { throw gone(); }
+      if (!(await slotFree(d, pro.id, pj.day, sl, id))) { await run(d, "DELETE FROM biz_bookings WHERE id=?1", bk); throw gone(); } }   // re-check after insert: a whole day vs a slot booked at the same moment
     await move(env, d, pj, "accepted", u.email); await notify(env, other, "accepted", "Your proposal was accepted: " + pj.title, link); }
   else if (act === "submit") { if (side !== "pro") throw err("Only the professional submits work.", 403); const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1 AND project_id=?2", b.milestoneId, id); if (!m || m.status !== "funded") throw err("Only a funded milestone can be submitted.", 409);
+    if ((m.pro_id || pj.pro_id) !== mine.id) throw err("This milestone belongs to another professional on the team.", 403);
     if (Array.isArray(b.files) && b.files.length) await (await import("./files.js")).attach(env, u, id, m.id, b.files);   // v43 private deliverables
     await run(d, "UPDATE biz_milestones SET status='submitted', submitted_at=?2, note=?3 WHERE id=?1 AND status='funded'", m.id, nowIso(), clip(b.note, 1000)); if (pj.status === "accepted" || pj.status === "in_progress") { if (pj.status === "accepted") await move(env, d, pj, "in_progress", u.email); }
-    if (!(await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status IN ('pending','funded')", id)) && pj.status === "in_progress") await move(env, d, pj, "delivered", u.email); await notify(env, other, "submitted", "Work submitted for review: " + m.title, link); }
+    if (!(await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status IN ('pending','funded')", id)) && pj.status === "in_progress") await move(env, d, pj, "delivered", u.email); await notify(env, pj.client_id, "submitted", "Work submitted for review: " + m.title, link); }
   else if (act === "approve" || act === "changes") { if (side !== "client") throw err("Only the client approves work.", 403); const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1 AND project_id=?2", b.milestoneId, id); if (!m || m.status !== "submitted") throw err("Only submitted work can be reviewed.", 409);
-    if (act === "changes") { await run(d, "UPDATE biz_milestones SET status='funded', note=?2 WHERE id=?1", m.id, clip(b.note, 1000)); if (pj.status === "delivered") await move(env, d, pj, "in_progress", u.email); await notify(env, other, "changes", "Changes requested on " + m.title, link); }
-    else { await run(d, "UPDATE biz_milestones SET status='approved', approved_at=?2 WHERE id=?1 AND status='submitted'", m.id, nowIso()); await createPayout(env, d, m, pro);
-      const left = await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status != 'approved'", id); if (!left) { if (pj.status === "in_progress") await move(env, d, pj, "delivered", u.email); await move(env, d, pj, "completed", u.email); await run(d, "UPDATE biz_pros SET done_n=done_n+1 WHERE id=?1", pro.id); }
-      await notify(env, other, "approved", "Milestone approved: " + m.title, link); } }
-  else if (act === "cancel") { if (side === "staff") throw err("Use the dispute tools.", 403); if (await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status IN ('funded','submitted','approved')", id)) throw err("Money is already in this project. Open a dispute instead, FODO will help.", 409); await move(env, d, pj, "cancelled", u.email); await run(d, "DELETE FROM biz_bookings WHERE project_id=?1", id); await notify(env, other, "cancelled", "Project cancelled: " + pj.title, link); }
+    const mp = await one(d, "SELECT id, user_id FROM biz_pros WHERE id=?1", m.pro_id || pj.pro_id);   // v44: the milestone's own professional
+    if (act === "changes") { await run(d, "UPDATE biz_milestones SET status='funded', note=?2 WHERE id=?1", m.id, clip(b.note, 1000)); if (pj.status === "delivered") await move(env, d, pj, "in_progress", u.email); await notify(env, mp.user_id, "changes", "Changes requested on " + m.title, link); }
+    else { await run(d, "UPDATE biz_milestones SET status='approved', approved_at=?2 WHERE id=?1 AND status='submitted'", m.id, nowIso()); await createPayout(env, d, m, mp);
+      const left = await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status NOT IN ('approved','refunded')", id); if (!left && pj.mode !== "retainer" && pj.mode !== "hourly") { if (pj.status === "in_progress" || pj.status === "accepted") { if (pj.status === "accepted") await move(env, d, pj, "in_progress", u.email); await move(env, d, pj, "delivered", u.email); } await move(env, d, pj, "completed", u.email);
+        for (const x of await all(d, "SELECT DISTINCT COALESCE(pro_id, ?2) p FROM biz_milestones WHERE project_id=?1 AND status='approved'", id, pj.pro_id)) await run(d, "UPDATE biz_pros SET done_n=done_n+1 WHERE id=?1", x.p); }
+      await notify(env, mp.user_id, "approved", "Milestone approved: " + m.title, link); } }
+  else if (act === "cancel") { if (side === "staff") throw err("Use the dispute tools.", 403); if (await one(d, "SELECT 1 x FROM biz_milestones WHERE project_id=?1 AND status IN ('funded','submitted','approved')", id)) throw err("Money is already in this project. Ask for a refund or open a dispute, FODO will help.", 409); await move(env, d, pj, "cancelled", u.email); await run(d, "DELETE FROM biz_bookings WHERE project_id=?1", id); await notify(env, other, "cancelled", "Project cancelled: " + pj.title, link); }
   else if (act === "dispute") { if (side === "staff") throw err("Staff resolve disputes from the admin view.", 403); const reason = clip(b.reason, 2000); if (reason.length < 10) throw err("Explain the problem (10+ characters)."); await move(env, d, pj, "disputed", u.email); await run(d, "INSERT INTO biz_disputes (id, project_id, by_id, reason, status, created_at) VALUES (?1,?2,?3,?4,'open',?5)", "dp" + randId(12), id, u.id, reason, nowIso()); await notify(env, other, "dispute", "A dispute was opened on " + pj.title, link); }
   else if (act === "review") { if (side !== "client") throw err("Only the client reviews.", 403); if (pj.status !== "completed") throw err("You can review after the project is completed.", 409); const r = int(b.rating, 1, 5); if (r == null) throw err("Rate 1 to 5.");
     const ins = await run(d, "INSERT OR IGNORE INTO biz_reviews (project_id, pro_id, client_id, rating, text, created_at) VALUES (?1,?2,?3,?4,?5,?6)", id, pro.id, u.id, r, clip(b.text, 1500), nowIso()); if (!ins.meta.changes) throw err("You already reviewed this project.", 409); await run(d, "UPDATE biz_pros SET rating_sum=rating_sum+?2, rating_n=rating_n+1 WHERE id=?1", pro.id, r); await notify(env, other, "review", "You got a " + r + "★ review", link); }
+  else if ((await import("./projects2.js")).ACTS.indexOf(act) > -1) await (await import("./projects2.js")).action(env, u, act, b, { d, pj, pro, side, mine, lead, other, link, R, move: (to) => move(env, d, pj, to, u.email), notify, auditLog, getProject });   // v44
   else throw err("Unknown action.");
   return getProject(env, u, id, R);
 }
@@ -284,7 +323,9 @@ export async function milestoneForCheckout(env, u, msId) {
 }
 export async function fundMilestone(env, msId, orderId) {
   const d = await bdb(env), r = await run(d, "UPDATE biz_milestones SET status='funded', funded_at=?2, order_id=?3 WHERE id=?1 AND status='pending'", msId, nowIso(), orderId); if (!r.meta.changes) return false;
-  const m = await one(d, "SELECT m.title, j.id pid, p.user_id FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id JOIN biz_pros p ON p.id=j.pro_id WHERE m.id=?1", msId); if (m) await notify(env, m.user_id, "funded", "Payment received by FODO for “" + m.title + "”. You can start.", "#project=" + m.pid); return true;
+  const m = await one(d, "SELECT m.title, m.kind, j.id pid, j.status pstatus, p.user_id FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id JOIN biz_pros p ON p.id=COALESCE(m.pro_id, j.pro_id) WHERE m.id=?1", msId);
+  if (m && m.kind === "hours") { await run(d, "UPDATE biz_milestones SET status='submitted', submitted_at=?2 WHERE id=?1 AND status='funded'", msId, nowIso()); await notify(env, m.user_id, "funded", "Your billed hours “" + m.title + "” were paid to FODO. The client approves them to release the payout.", "#project=" + m.pid); return true; }   // v44: hours are already worked
+  if (m) await notify(env, m.user_id, "funded", "Payment received by FODO for “" + m.title + "”. You can start.", "#project=" + m.pid); return true;
 }
 async function createPayout(env, d, m, pro) {
   const c = (await settings(env)).commission, com = Math.round(m.amount * c / 100);
@@ -314,6 +355,7 @@ export async function moderatePro(env, u, R, id, action, note) {
 export async function adminPayouts(env, R) { if (!can(R, ["admin", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT po.*, m.title, p.name AS pro_name FROM biz_payouts po JOIN biz_milestones m ON m.id=po.milestone_id JOIN biz_pros p ON p.id=po.pro_id ORDER BY po.status='paid', po.created_at DESC LIMIT 300"); }
 export async function markPaid(env, u, R, id, ref) { if (!can(R, ["admin", "finance"])) throw err("Only finance or admins.", 403); const r = clip(ref, 80); if (r.length < 4) throw err("Enter the bank / UPI transfer reference.");
   const x = await run(await bdb(env), "UPDATE biz_payouts SET status='paid', ref=?2, paid_at=?3 WHERE id=?1 AND status != 'paid'", id, r, nowIso()); if (!x.meta.changes) throw err("Already paid or not found.", 409); await auditLog(env, u.email, "payout:paid", id, r); return { ok: true }; }
+export async function adminRefunds(env, R) { if (!can(R, ["admin", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT r.id, r.project_id, r.amount, r.reason, r.status, r.provider, r.provider_ref, r.note, r.created_at, r.done_at, m.title, j.title AS ptitle FROM biz_refunds r JOIN biz_milestones m ON m.id=r.milestone_id JOIN biz_projects j ON j.id=r.project_id ORDER BY r.status='refunded', r.created_at DESC LIMIT 300"); }
 export async function adminDisputes(env, R) { if (!can(R, ["admin", "moderator", "finance", "viewer"])) throw err("Not allowed.", 403); return all(await bdb(env), "SELECT x.*, j.title, j.status AS pstatus FROM biz_disputes x JOIN biz_projects j ON j.id=x.project_id ORDER BY x.status='resolved', x.created_at DESC LIMIT 200"); }
 export async function resolveDispute(env, u, R, id, b) {
   if (!can(R, ["admin", "moderator"])) throw err("Only admins and moderators.", 403); const d = await bdb(env), x = await one(d, "SELECT * FROM biz_disputes WHERE id=?1", id); if (!x || x.status !== "open") throw err("Not found or already resolved.", 409);
@@ -337,7 +379,7 @@ export async function dashboard(env, u) {
   const content = await all(d, "SELECT status, due, title FROM biz_content WHERE user_id=?1", u.id), camps = await all(d, "SELECT status FROM biz_campaigns WHERE user_id=?1", u.id);
   const projects = await listProjects(env, u), brand = await getBrand(env, u), pro = await one(d, "SELECT status FROM biz_pros WHERE user_id=?1", u.id), N = await notes(env, u);
   const msWait = await all(d, "SELECT m.title, m.status, j.id pid, j.client_id FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id WHERE (j.client_id=?1 AND m.status IN ('submitted')) OR (j.client_id=?1 AND m.status='pending' AND j.status='accepted')", u.id);
-  const today = nowIso().slice(0, 10), bookings = await all(d, "SELECT b.day, j.title, j.id FROM biz_bookings b JOIN biz_projects j ON j.id=b.project_id WHERE (j.client_id=?1 OR b.pro_id=(SELECT id FROM biz_pros WHERE user_id=?1)) AND b.day >= ?2 ORDER BY b.day LIMIT 5", u.id, today);
+  const today = nowIso().slice(0, 10), bookings = await all(d, "SELECT b.day, b.slot, j.title, j.id FROM biz_bookings b JOIN biz_projects j ON j.id=b.project_id WHERE (j.client_id=?1 OR b.pro_id=(SELECT id FROM biz_pros WHERE user_id=?1)) AND b.day >= ?2 ORDER BY b.day LIMIT 5", u.id, today);
   const A = [], add = (pri, text, why, href) => A.push({ pri, text, why, href });
   msWait.filter((m) => m.status === "submitted").forEach((m) => add(1, "Review submitted work: " + m.title, "A professional is waiting for your approval.", "#project=" + m.pid));
   msWait.filter((m) => m.status === "pending").forEach((m) => add(2, "Fund milestone: " + m.title, "The project starts when the first milestone is paid to FODO.", "#project=" + m.pid));
@@ -385,19 +427,24 @@ export async function revokeInvite(env, u, R, token) { if (!can(R, ["admin", "mo
 /* ---------- v40.1 professional dashboard (real data only) ---------- */
 export async function proDashboard(env, u) {
   const d = await bdb(env), me = await myPro(env, u); if (!me) throw err("Create your FODO Pro profile first.", 404);
-  const P = await all(d, "SELECT j.id, j.title, j.status, j.budget, j.day, j.created_at, j.updated_at FROM biz_projects j WHERE j.pro_id=?1 ORDER BY j.updated_at DESC LIMIT 300", me.id);
+  const P = await all(d, "SELECT j.id, j.title, j.status, j.budget, j.day, j.created_at, j.updated_at FROM biz_projects j WHERE j.pro_id=?1 OR j.id IN (SELECT project_id FROM biz_project_pros WHERE pro_id=?1 AND status='accepted') ORDER BY j.updated_at DESC LIMIT 300", me.id);
   const replied = P.filter((p) => p.status !== "requested").length, today = nowIso().slice(0, 10), E = await proEarnings(env, u);
-  const work = await all(d, "SELECT m.title, m.status, j.id pid, j.title ptitle FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id WHERE j.pro_id=?1 AND m.status IN ('funded') ORDER BY m.funded_at", me.id);
+  const work = await all(d, "SELECT m.title, m.status, j.id pid, j.title ptitle FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id WHERE COALESCE(m.pro_id, j.pro_id)=?1 AND m.status IN ('funded') ORDER BY m.funded_at", me.id);
+  const invites = await all(d, "SELECT j.id, j.title FROM biz_project_pros x JOIN biz_projects j ON j.id=x.project_id WHERE x.pro_id=?1 AND x.status='invited'", me.id);
   const A = []; P.filter((p) => p.status === "requested").forEach((p) => A.push({ text: "Send a proposal: " + p.title, why: "A client is waiting for your milestones and price.", href: "#project=" + p.id }));
+  invites.forEach((p) => A.push({ text: "Team invitation: " + p.title, why: "A client wants you on their project team. Accept or decline.", href: "#project=" + p.id }));
   work.forEach((m) => A.push({ text: "Deliver: " + m.title, why: "The client has paid FODO for this milestone (" + m.ptitle + ").", href: "#project=" + m.pid }));
   if (me.completeness.missing.length) A.push({ text: "Complete your profile (" + me.completeness.pct + "%)", why: "Missing: " + me.completeness.missing.join(", "), href: "#pro" });
   if (me.status === "draft" && !me.completeness.missing.length) A.push({ text: "Submit your profile for approval", why: "Clients can see you only after FODO approves it.", href: "#pro" });
   return { pro: { id: me.id, name: me.name, status: me.status, note: me.note, completeness: me.completeness, rating: me.rating, reviews: me.reviews, completed: me.completed, days: me.days, blackout: me.blackout },
-    counts: { requests: P.filter((p) => p.status === "requested").length, proposed: P.filter((p) => p.status === "proposed").length, active: P.filter((p) => ["accepted", "in_progress", "delivered"].indexOf(p.status) > -1).length, completed: P.filter((p) => p.status === "completed").length, disputed: P.filter((p) => p.status === "disputed").length },
+    counts: { invites: invites.length, requests: P.filter((p) => p.status === "requested").length, proposed: P.filter((p) => p.status === "proposed").length, active: P.filter((p) => ["accepted", "in_progress", "delivered"].indexOf(p.status) > -1).length, completed: P.filter((p) => p.status === "completed").length, disputed: P.filter((p) => p.status === "disputed").length },
     replyRate: P.length ? Math.round(replied / P.length * 100) : null, earnings: E.totals, pendingPayout: E.items.filter((x) => x.status !== "paid").reduce((a, x) => a + x.net, 0), automaticPayouts: E.automatic,
-    bookings: await all(d, "SELECT b.day, j.title, j.id FROM biz_bookings b JOIN biz_projects j ON j.id=b.project_id WHERE b.pro_id=?1 AND b.day >= ?2 ORDER BY b.day LIMIT 60", me.id, today),
+    bookings: await all(d, "SELECT b.day, b.slot, j.title, j.id FROM biz_bookings b JOIN biz_projects j ON j.id=b.project_id WHERE b.pro_id=?1 AND b.day >= ?2 ORDER BY b.day, b.slot LIMIT 60", me.id, today), slots: me.slots,
     reviews: await all(d, "SELECT rating, text, created_at FROM biz_reviews WHERE pro_id=?1 ORDER BY created_at DESC LIMIT 50", me.id), next: A.slice(0, 6) };
 }
+/* v44: time slots a client can book (e.g. 09:00-13:00), saved without sending the profile back to review */
+export async function setSlots(env, u, b) { const p = await proOf(env, u), L = cleanSlots(b.slots); await run(await bdb(env), "UPDATE biz_pros SET slots=?2, updated_at=?3 WHERE id=?1", p.id, JSON.stringify(L), nowIso()); return { slots: L }; }
+export const monthName = (per) => { const [y, m] = per.split("-"); return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+m - 1] + " " + y; };
 /* toggle one blackout date from the calendar (does not send the profile back to review) */
 export async function setBlackout(env, u, b) {
   const p = await proOf(env, u), day = String(b.day || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw err("Pick a date.");

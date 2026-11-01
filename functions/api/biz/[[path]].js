@@ -23,6 +23,9 @@ export async function onRequest(ctx) {
 
     if (p0 === "me" && m === "GET") return ok({ user: { id: u.id, email: u.email, name: u.name || "" }, roles: R.roles, nav: B.navFor(R), pro: R.pro, unread: (await B.notes(env, u)).unread });
     if (p0 === "dashboard" && m === "GET") return ok(await B.dashboard(env, u));
+    if (p0 === "search" && m === "GET") return ok(await B.search(env, u, q.q));
+    if (p0 === "leads" && !p1 && m === "GET") return ok(await B.leads(env, u, q));
+    if (p0 === "leads" && p1 && m === "POST") return ok(await B.setLead(env, u, p1, body));
     if (p0 === "actions" && m === "GET") return ok({ actions: B.actionsFor(q.text) });
     /* brand kit */
     if (p0 === "brand" && !p1 && m === "GET") return ok({ brand: await B.getBrand(env, u) });

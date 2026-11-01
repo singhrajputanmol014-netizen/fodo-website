@@ -31,15 +31,16 @@
   var ROLE_LIST = [];
 
   /* ---------- shell ---------- */
-  var ICON = { overview: "◎", builder: "▣", xray: "✚", growth: "◆", content: "✎", pros: "★", projects: "▤", brand: "◐", pro: "☺", billing: "₹", notifications: "🔔", admin: "⚙", "pro-home": "◎", "pro-work": "▤", "pro-cal": "▦", "pro-earn": "₹", "pro-reviews": "★" };
+  var ICON = { overview: "◎", builder: "▣", xray: "✚", growth: "◆", content: "✎", pros: "★", projects: "▤", leads: "☎", brand: "◐", pro: "☺", billing: "₹", notifications: "🔔", admin: "⚙", "pro-home": "◎", "pro-work": "▤", "pro-cal": "▦", "pro-earn": "₹", "pro-reviews": "★" };
   var OUT = { builder: "/website-builder/", xray: "/business-x-ray/", growth: "/growth-lab/" };
   function shell() {
     if (MODE === "pro") ME.nav = ME.pro ? PRO_NAV.map(function (n) { return { id: n[0], label: n[1] }; }) : [{ id: "pro", label: "Create your profile" }];
-    root.innerHTML = '<a class="ws-skip" href="#ws-main">Skip to content</a><aside class="ws-side" id="ws-side"><a class="ws-brand" href="' + (MODE === "pro" ? "#pro-home" : "/") + '" aria-label="FODO"><b>FODO</b><span>' + (MODE === "pro" ? "Pros" : "Workspace") + '</span></a><nav aria-label="' + (MODE === "pro" ? "FODO Pros" : "Workspace") + '">' +
+    root.innerHTML = '<a class="ws-skip" href="#ws-main">Skip to content</a><aside class="ws-side" id="ws-side"><a class="ws-brand" href="' + (MODE === "pro" ? "#pro-home" : "/") + '" aria-label="FODO"><b>FODO</b><span>' + (MODE === "pro" ? "Pros" : "Workspace") + '</span></a>' + (MODE === "pro" ? "" : '<button type="button" class="ws-sbtn" id="ws-srch"><span aria-hidden="true">⌕</span> Search <kbd>Ctrl K</kbd></button>') + '<nav aria-label="' + (MODE === "pro" ? "FODO Pros" : "Workspace") + '">' +
       ME.nav.map(function (n) { return OUT[n.id] ? '<a href="' + OUT[n.id] + '" data-nav="' + n.id + '"><span aria-hidden="true">' + ICON[n.id] + "</span>" + esc(n.label) + ' <small aria-hidden="true">↗</small></a>' : '<a href="#' + n.id + '" data-nav="' + n.id + '"><span aria-hidden="true">' + ICON[n.id] + "</span>" + esc(n.label) + (n.id === "notifications" && ME.unread ? ' <em class="ws-badge">' + ME.unread + "</em>" : "") + "</a>"; }).join("") +
       '</nav><div class="ws-me"><b>' + esc(ME.user.name || ME.user.email) + "</b><small>" + esc(ME.roles.filter(function (r) { return r !== "client"; }).join(" · ") || "Client") + '</small><button type="button" class="ws-link" id="ws-out">Log out</button></div></aside>' +
-      '<div class="ws-top"><button type="button" class="ws-burger" id="ws-burger" aria-label="Menu" aria-expanded="false">☰</button><b>' + (MODE === "pro" ? "FODO Pros" : "FODO Workspace") + '</b><a href="#notifications" class="ws-bell" aria-label="Notifications">🔔' + (ME.unread ? '<em class="ws-badge">' + ME.unread + "</em>" : "") + "</a></div>" +
+      '<div class="ws-top"><button type="button" class="ws-burger" id="ws-burger" aria-label="Menu" aria-expanded="false">☰</button><b>' + (MODE === "pro" ? "FODO Pros" : "FODO Workspace") + '</b>' + (MODE === "pro" ? "" : '<button type="button" class="ws-bell" id="ws-srch2" aria-label="Search (Ctrl+K)">⌕</button>') + '<a href="#notifications" class="ws-bell" aria-label="Notifications">🔔' + (ME.unread ? '<em class="ws-badge">' + ME.unread + "</em>" : "") + "</a></div>" +
       '<main class="ws-main" id="ws-main" tabindex="-1"></main>';
+    if ($("#ws-srch")) { $("#ws-srch").onclick = searchBox; $("#ws-srch2").onclick = searchBox; }
     $("#ws-out").onclick = function () { A().logout().then(function () { location.href = "/"; }); };
     $("#ws-burger").onclick = function () { var o = document.body.classList.toggle("ws-navopen"); this.setAttribute("aria-expanded", String(o)); };
     $$("#ws-side nav a").forEach(function (a) { a.addEventListener("click", function () { document.body.classList.remove("ws-navopen"); }); });
@@ -48,6 +49,7 @@
     var h = location.hash.slice(1) || (MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview"), parts = h.split("?"), v = parts[0], q = new URLSearchParams(parts[1] || "");
     if (/^project=/.test(v)) { q.set("id", v.split("=")[1]); v = "project"; }
     var allowed = ME.nav.map(function (n) { return n.id; }).concat(MODE === "pro" ? (ME.pro ? ["project"] : []) : ["project", "ads"]); if (allowed.indexOf(v) < 0) v = MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview";
+    $$(".ws-modal").forEach(function (x) { x.remove(); });   // a page change closes any open dialog
     document.body.classList.remove("ws-navopen"); var bg = $("#ws-burger"); if (bg) bg.setAttribute("aria-expanded", "false");
     VIEW = v; $$("#ws-side nav a").forEach(function (a) { a.toggleAttribute("aria-current", a.dataset.nav === v || (v === "ads" && a.dataset.nav === "content") || (v === "project" && (a.dataset.nav === "projects" || a.dataset.nav === "pro-work"))); });
     var main = $("#ws-main"); main.innerHTML = '<div class="ws-skel" aria-busy="true"><i></i><i></i><i></i></div>';
@@ -255,6 +257,37 @@
     }
   };
 
+  /* ---------- v40.2 Leads / CRM ---------- */
+  var LS = { new: "New", contacted: "Contacted", qualified: "Qualified", won: "Won", lost: "Lost" };
+  VIEWS.leads = function (el, q) {
+    var st = q.get("status") || "", text = q.get("q") || "";
+    api("leads?status=" + encodeURIComponent(st) + "&q=" + encodeURIComponent(text)).then(function (j) { if (!j.ok) return fail(el, j, function () { VIEWS.leads(el, q); });
+      el.innerHTML = head("Leads / CRM", "Every enquiry from your FODO websites' forms. Move each one through your pipeline and keep notes.") +
+        '<div class="ws-tabs" role="tablist"><a role="tab" aria-selected="' + (!st) + '" href="#leads">All <small>' + j.total + "</small></a>" + Object.keys(LS).map(function (k) { return '<a role="tab" aria-selected="' + (st === k) + '" href="#leads?status=' + k + '">' + LS[k] + " <small>" + j.counts[k] + "</small></a>"; }).join("") + "</div>" +
+        '<form class="ws-inline" id="ld-f" role="search"><input name="q" maxlength="60" placeholder="Search name, email, phone, message" aria-label="Search leads" value="' + esc(text) + '"><button class="ws-btn" type="submit">Search</button></form>' +
+        (j.items.length ? '<ul class="ws-rows">' + j.items.map(function (x) { return '<li class="ws-lead"><div><b>' + esc(x.name || x.email || x.phone || "Enquiry") + "</b><small>" + esc(x.site) + " · " + day(x.at) + "</small>" + (x.message ? '<p class="ws-pre">' + esc(x.message) + "</p>" : "") + '<span class="ws-meta">' + (x.phone ? '<a class="ws-pill" href="tel:' + esc(x.phone.replace(/[^\d+]/g, "")) + '">☎ ' + esc(x.phone) + '</a><a class="ws-pill" href="https://wa.me/' + esc(x.phone.replace(/\D/g, "").replace(/^(\d{10})$/, "91$1")) + '" target="_blank" rel="noopener">WhatsApp</a>' : "") + (x.email ? '<a class="ws-pill" href="mailto:' + esc(x.email) + '">✉ ' + esc(x.email) + "</a>" : "") + "</span></div>" +
+          '<div class="ws-lact"><select data-ls="' + esc(x.id) + '" aria-label="Status">' + Object.keys(LS).map(function (k) { return '<option value="' + k + '"' + (x.status === k ? " selected" : "") + ">" + LS[k] + "</option>"; }).join("") + '</select><input data-ln="' + esc(x.id) + '" maxlength="1000" placeholder="Note" aria-label="Note" value="' + esc(x.note) + '"></div></li>'; }).join("") + "</ul>" : empty(j.total ? "No leads match." : "No leads yet.", j.total ? "" : "Enquiries from the contact and booking forms on your published FODO websites appear here.", j.total ? "" : '<a class="ws-btn" href="/website-builder/">Open the Website Builder</a>'));
+      $("#ld-f").onsubmit = function (e) { e.preventDefault(); location.hash = "leads?" + (st ? "status=" + st + "&" : "") + "q=" + encodeURIComponent(this.q.value); };
+      var save = function (id) { var sel = $('[data-ls="' + id + '"]', el), note = $('[data-ln="' + id + '"]', el); api("leads/" + encodeURIComponent(id), { status: sel.value, note: note.value }).then(function (r) { toast(r.ok ? "Saved." : r.reason, !r.ok); }); };
+      $$("[data-ls]", el).forEach(function (s2) { s2.onchange = function () { save(s2.dataset.ls); }; }); $$("[data-ln]", el).forEach(function (n) { n.onchange = function () { save(n.dataset.ln); }; });
+    });
+  };
+  /* ---------- v40.2 global search (Ctrl+K) ---------- */
+  var JUMP = [["Overview", "#overview"], ["Brand Kit", "#brand"], ["Content calendar", "#content?view=month"], ["Brief builder", "#content"], ["Ad campaigns", "#ads"], ["Hire FODO Pros", "#pros"], ["Projects", "#projects"], ["Leads / CRM", "#leads"], ["Billing & receipts", "#billing"], ["Notifications", "#notifications"], ["Website Builder", "/website-builder/"], ["New website", "/website-builder/#new=1"], ["Business X-Ray", "/business-x-ray/"], ["Growth Lab", "/growth-lab/"], ["Plans & prices", "/plans/"]];
+  function searchBox() {
+    if ($(".ws-pal")) return; var t;
+    modal('<div class="ws-pal"><label class="sr" for="ws-q">Search</label><input id="ws-q" autocomplete="off" placeholder="Search websites, projects, content, campaigns, professionals…"><div id="ws-res" role="listbox"></div></div>', function (m, close) {
+      var inp = $("#ws-q", m), res = $("#ws-res", m), sel = 0;
+      var draw = function (groups) { var html = "", n = 0; groups.forEach(function (g) { html += "<h4>" + esc(g.name) + "</h4>" + g.items.map(function (x) { return '<a role="option" class="ws-ri" data-i="' + (n++) + '" href="' + esc(x.href) + '"><b>' + esc(x.label) + "</b><small>" + esc(x.hint || "") + "</small></a>"; }).join(""); }); res.innerHTML = html || '<p class="ws-sub">Nothing found.</p>'; sel = 0; mark(); $$("a", res).forEach(function (a) { a.addEventListener("click", function () { close(); }); }); };
+      var mark = function () { $$(".ws-ri", res).forEach(function (a, i) { a.setAttribute("aria-selected", String(i === sel)); }); };
+      var local = function (q) { return [{ name: "Go to", items: JUMP.filter(function (x) { return !q || x[0].toLowerCase().indexOf(q) > -1; }).slice(0, 8).map(function (x) { return { label: x[0], href: x[1] }; }) }].filter(function (g) { return g.items.length; }); };
+      draw(local(""));
+      inp.oninput = function () { var q = inp.value.trim().toLowerCase(); clearTimeout(t); draw(local(q)); if (q.length < 2) return; t = setTimeout(function () { api("search?q=" + encodeURIComponent(q)).then(function (j) { if (inp.value.trim().toLowerCase() === q && j.ok) draw(local(q).concat(j.groups)); }); }, 220); };
+      inp.onkeydown = function (e) { var L = $$(".ws-ri", res); if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(L.length - 1, sel + 1); mark(); } if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(0, sel - 1); mark(); } if (e.key === "Enter" && L[sel]) { e.preventDefault(); L[sel].click(); location.href = L[sel].getAttribute("href").charAt(0) === "#" ? location.pathname + L[sel].getAttribute("href") : L[sel].getAttribute("href"); } };
+    });
+  }
+  document.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K") && ME && MODE !== "pro") { e.preventDefault(); searchBox(); } });
+
   /* ---------- billing + notifications ---------- */
   VIEWS.billing = function (el) {
     var u = A() && A().current ? A().current() : null;
@@ -262,7 +295,9 @@
       el.innerHTML = head("Billing", "Growth Lab plans, Website Builder, X-Ray packs and FODO Pros projects. One payment system, one ledger.") +
         '<div class="ws-cards">' + (u ? '<a class="ws-card" href="/account/"><small>Growth Lab plan</small><b>' + esc(u.planName) + "</b><span>" + (u.planUntil ? "Until " + day(u.planUntil) : "X-Rays left: " + esc(u.credits && u.credits.total)) + "</span></a>" + (u.builder ? '<a class="ws-card" href="/plans/#builder"><small>Website Builder</small><b>' + esc(u.builder.name) + "</b><span>" + (u.builder.until ? "Until " + day(u.builder.until) : u.builder.via === "plan" ? "Included in your plan" : "Free") + "</span></a>" : "") : "") +
         '<a class="ws-card" href="/account/#ac-ledger"><small>Receipts & credit history</small><b>Account</b><span>Every payment, refund and credit</span></a><a class="ws-card" href="/plans/"><small>Plans & prices</small><b>Upgrade</b><span>X-Ray plans, packs, Builder plans</span></a></div>' +
-        "<h2>Project payments</h2>" + (j.ok && j.items.length ? '<ul class="ws-rows">' + j.items.filter(function (p) { return p.side === "client"; }).map(function (p) { return '<li><a href="#project=' + esc(p.id) + '">' + esc(p.title) + "</a><span>" + inr(p.budget) + '</span><span class="ws-pill st-' + p.status + '">' + PS[p.status] + "</span></li>"; }).join("") + "</ul>" : empty("No project payments yet.")) + '<p class="ws-sub">Refunds follow the <a href="/legal/#refunds">refund policy</a>. Payments are processed by Razorpay / Cashfree; FODO never sees your card.</p>';
+        "<h2>Receipts</h2><div id=\"bl-orders\"><div class=\"ws-skel\"><i></i></div></div><h2>Project payments</h2>" + (j.ok && j.items.length ? '<ul class="ws-rows">' + j.items.filter(function (p) { return p.side === "client"; }).map(function (p) { return '<li><a href="#project=' + esc(p.id) + '">' + esc(p.title) + "</a><span>" + inr(p.budget) + '</span><span class="ws-pill st-' + p.status + '">' + PS[p.status] + "</span></li>"; }).join("") + "</ul>" : empty("No project payments yet.")) + '<p class="ws-sub">Refunds follow the <a href="/legal/#refunds">refund policy</a>. Payments are processed by Razorpay / Cashfree; FODO never sees your card.</p>';
+      A().api("orders").then(function (o) { var L = (o.items || []).filter(function (x) { return x.status === "PAID"; }); var box = $("#bl-orders", el); if (!box) return;
+        box.innerHTML = L.length ? '<ul class="ws-rows">' + L.map(function (x) { return "<li><b>" + esc(x.kind === "milestone" ? "Project milestone" : x.kind === "builder" ? "Website Builder" : x.kind === "pack" ? "X-Ray pack" : x.kind === "tool" ? "Pro tool run" : "Growth Lab plan") + "</b><span>" + inr(x.amount) + " · " + day(x.paid_at || x.created_at) + '</span><a class="ws-btn sm" href="/api/account/receipt/' + esc(x.order_id) + '" target="_blank" rel="noopener">Receipt (PDF)</a></li>'; }).join("") + "</ul>" : empty("No payments yet."); });
     });
   };
   VIEWS.notifications = function (el) {

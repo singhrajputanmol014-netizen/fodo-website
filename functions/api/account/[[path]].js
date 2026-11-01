@@ -51,6 +51,9 @@ export async function onRequest(ctx) {
     const b = await billingUser(env, u), body = m === "POST" ? await request.json().catch(() => ({})) : null;
     if (path === "profile" && m === "POST") return await profile(env, u, body);
     if (path === "history" && m === "GET") return await history(env, u, b, new URL(request.url).searchParams);
+    // v40.2: paid orders + a printable payment receipt (Print → Save as PDF). Never a "tax invoice" unless FODO_GSTIN is set.
+    if (path === "orders" && m === "GET") { const r = await (await db(env)).prepare("SELECT order_id, kind, item, amount, status, created_at, paid_at FROM acct_orders WHERE user_id=?1 ORDER BY created_at DESC LIMIT 200").bind(b.id).all(); return json({ ok: true, items: r.results || [] }); }
+    if (/^receipt\/fo_[A-Za-z0-9]{10,40}$/.test(path) && m === "GET") return await receipt(env, b, path.split("/")[1]);
     if (path === "ledger" && m === "GET") { const r = await (await db(env)).prepare("SELECT kind, delta, note, created_at FROM acct_ledger WHERE user_id=?1 ORDER BY id DESC LIMIT 100").bind(b.id).all(); return json({ ok: true, items: r.results || [] }); }
     if (path === "checkout" && m === "POST") { const r = await checkout(request, env, u, b, body); if (r.status === 200) await logEvent(env, u.id, "checkout", (body.kind || "") + ":" + (body.item || "")); return r; }
     // v15: the page reports feature use that happens in the browser (downloads, copies), only known kinds, rate-limited
@@ -361,3 +364,18 @@ async function brand(env, b, body) {
   return json({ ok: true });
 }
 export { refundCredit };
+
+/* v40.2 printable receipt for one PAID order of this account */
+async function receipt(env, b, oid) {
+  const o = await (await db(env)).prepare("SELECT * FROM acct_orders WHERE order_id=?1 AND user_id=?2").bind(oid, b.id).first();
+  if (!o || o.status !== "PAID") return new Response("Receipt not available (order not found or not paid).", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
+  const e = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const what = o.kind === "plan" ? (PLANS[o.item] ? PLANS[o.item].name + " plan, 1 month" : o.item) : o.kind === "pack" ? (PACKS[o.item] ? PACKS[o.item].name + " pack" : o.item) : o.kind === "builder" ? (BUILDER[o.item] ? BUILDER[o.item].name + ", 1 month" : o.item) : o.kind === "tool" ? (PRODUCTS[o.item] ? PRODUCTS[o.item].name + ", 1 run" : o.item) : o.kind === "milestone" ? "FODO Pros project milestone (" + o.item + ")" : o.item;
+  const gst = env.FODO_GSTIN || "", title = gst ? "Tax invoice" : "Payment receipt", amt = "₹" + Number(o.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>' + title + " " + e(o.order_id) + '</title><style>body{font:15px/1.5 system-ui,sans-serif;color:#111;max-width:720px;margin:32px auto;padding:0 20px}h1{font-size:24px;margin:0}table{width:100%;border-collapse:collapse;margin:20px 0}td,th{border-bottom:1px solid #ddd;padding:10px;text-align:left}th{background:#f6f6f6}.r{text-align:right}.top{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}.m{color:#555;font-size:13px}button{padding:10px 18px;border-radius:10px;border:0;background:#6d5cff;color:#fff;font-weight:600;cursor:pointer}@media print{button{display:none}}</style></head><body>' +
+    '<div class="top"><div><h1>FODO</h1><div class="m">FEAR OF DIGITALLY OUT ?<br>65 M Block, New Roshanpura, Najafgarh, New Delhi 110043, India<br>anmol@fodo.co.in' + (gst ? "<br>GSTIN: " + e(gst) : "") + "</div></div><div><h2 style=\"margin:0\">" + title + '</h2><div class="m">No. ' + e(o.order_id) + "<br>Paid: " + e(String(o.paid_at || "").slice(0, 10)) + "<br>Payment ref: " + e(o.cf_order_id || "") + "</div></div></div>" +
+    '<p><b>Billed to:</b> ' + e(b.name || "") + " " + e(b.email || "") + (b.phone ? " · " + e(b.phone) : "") + "</p>" +
+    '<table><thead><tr><th>Item</th><th class="r">Amount</th></tr></thead><tbody><tr><td>' + e(what) + '</td><td class="r">' + amt + '</td></tr></tbody><tfoot><tr><th>Total paid</th><th class="r">' + amt + "</th></tr></tfoot></table>" +
+    '<p class="m">' + (gst ? "Prices include GST where applicable." : "This is a payment receipt. A GST tax invoice is issued once FODO's GSTIN is added (set FODO_GSTIN).") + " Payment processed by Razorpay / Cashfree. Refund policy: https://www.fodo.co.in/legal/#refunds</p><button onclick=\"print()\">Print / Save as PDF</button></body></html>";
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
+}

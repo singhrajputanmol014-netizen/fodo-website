@@ -76,7 +76,7 @@ export async function setStaff(env, u, email, role) {
   await auditLog(env, u.email, "staff:" + (role || "remove"), e); return { ok: true };
 }
 const NAV = [["overview", "Overview", ["client"]], ["builder", "Website Builder", ["client"]], ["xray", "Business X-Ray", ["client"]], ["growth", "Growth Lab", ["client"]], ["content", "Content & Ads", ["client"]], ["pros", "Hire FODO Pros", ["client"]],
-  ["projects", "Projects", ["client"]], ["brand", "Brand Kit", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
+  ["projects", "Projects", ["client"]], ["leads", "Leads / CRM", ["client"]], ["brand", "Brand Kit", ["client"]], ["pro", "My Pro profile", ["client"]], ["billing", "Billing", ["client"]], ["notifications", "Notifications", ["client"]], ["admin", "Marketplace admin", ["admin", "moderator", "finance", "viewer"]]];
 export const navFor = (R) => NAV.filter((n) => can(R, n[2]) && (n[0] !== "pro" || !!R.pro)).map((n) => ({ id: n[0], label: n[1] }));   // the Pro area is invite-only: no link for clients
 
 /* ---------- settings (commission etc.) ---------- */
@@ -403,4 +403,37 @@ export async function setBlackout(env, u, b) {
   const d = await bdb(env); if (b.on && await one(d, "SELECT 1 x FROM biz_bookings WHERE pro_id=?1 AND day=?2", p.id, day)) throw err("You have a booking that day.", 409);
   let L = J(p.blackout, []).filter((x) => x !== day); if (b.on) L.push(day); L = L.filter((x) => x >= nowIso().slice(0, 10)).sort().slice(0, 120);
   await run(d, "UPDATE biz_pros SET blackout=?2, updated_at=?3 WHERE id=?1", p.id, JSON.stringify(L), nowIso()); return { blackout: L };
+}
+
+/* ---------- v40.2 Leads / CRM: every form submission from YOUR websites, with a pipeline status and notes ---------- */
+export const LEAD_STATES = ["new", "contacted", "qualified", "won", "lost"];
+export async function leads(env, u, q) {
+  const d = await bdb(env); await run(d, "CREATE TABLE IF NOT EXISTS biz_leads (form_id TEXT PRIMARY KEY, user_id TEXT, status TEXT, note TEXT, updated_at TEXT)");
+  let rows = []; try { rows = await all(d, "SELECT f.id, f.page, f.data, f.created_at, s.id AS site_id, s.name AS site, l.status, l.note, l.updated_at FROM site_forms f JOIN sites s ON s.id=f.site_id LEFT JOIN biz_leads l ON l.form_id=f.id WHERE s.owner_user_id=?1 AND s.deleted_at IS NULL ORDER BY f.created_at DESC LIMIT 1000", u.id); } catch (e) { rows = []; }
+  const st = LEAD_STATES.indexOf(q && q.status) > -1 ? q.status : "", text = String((q && q.q) || "").toLowerCase().trim();
+  const items = rows.map((r) => { const f = J(r.data, {}), pick = (re) => { const k = Object.keys(f).find((x) => re.test(x)); return k ? clip(f[k], 200) : ""; };
+    return { id: r.id, site: r.site, siteId: r.site_id, page: r.page, at: r.created_at, status: r.status || "new", note: r.note || "", name: pick(/name/i), email: pick(/mail/i), phone: pick(/phone|mobile|whatsapp/i), message: pick(/message|msg|enquiry|query|details|comment/i), fields: Object.keys(f).slice(0, 12).map((k) => [clip(k, 40), clip(f[k], 300)]) }; })
+    .filter((x) => (!st || x.status === st) && (!text || JSON.stringify([x.name, x.email, x.phone, x.message, x.site]).toLowerCase().indexOf(text) > -1));
+  const counts = {}; LEAD_STATES.forEach((s) => { counts[s] = 0; }); rows.forEach((r) => { counts[r.status || "new"]++; });
+  return { items: items.slice(0, 300), counts, total: rows.length };
+}
+export async function setLead(env, u, id, b) {
+  const d = await bdb(env), st = LEAD_STATES.indexOf(b.status) > -1 ? b.status : null; if (!st) throw err("Unknown status.");
+  const own = await one(d, "SELECT f.id FROM site_forms f JOIN sites s ON s.id=f.site_id WHERE f.id=?1 AND s.owner_user_id=?2", clip(id, 60), u.id).catch(() => null); if (!own) throw err("Not found.", 404);
+  await run(d, "CREATE TABLE IF NOT EXISTS biz_leads (form_id TEXT PRIMARY KEY, user_id TEXT, status TEXT, note TEXT, updated_at TEXT)");
+  await run(d, "INSERT OR REPLACE INTO biz_leads (form_id, user_id, status, note, updated_at) VALUES (?1,?2,?3,?4,?5)", own.id, u.id, st, clip(b.note, 1000), nowIso()); return { ok: true };
+}
+
+/* ---------- v40.2 global search across the workspace (only YOUR data + approved professionals) ---------- */
+export async function search(env, u, q) {
+  const s = String(q || "").trim().toLowerCase().slice(0, 60); if (s.length < 2) return { groups: [] };
+  const d = await bdb(env), like = "%" + s.replace(/[%_]/g, "") + "%", safe = async (f) => { try { return await f(); } catch (e) { return []; } }, G = [];
+  const add = (name, list) => { if (list.length) G.push({ name, items: list.slice(0, 6) }); };
+  add("Websites", (await safe(() => all(d, "SELECT id, name, status FROM sites WHERE owner_user_id=?1 AND deleted_at IS NULL AND (lower(name) LIKE ?2 OR lower(slug) LIKE ?2) LIMIT 6", u.id, like))).map((x) => ({ label: x.name, hint: x.status === "live" ? "Live website" : "Draft website", href: "/website-builder/#site=" + x.id })));
+  add("Projects", (await all(d, "SELECT j.id, j.title, j.status FROM biz_projects j LEFT JOIN biz_pros p ON p.id=j.pro_id WHERE (j.client_id=?1 OR p.user_id=?1) AND lower(j.title) LIKE ?2 LIMIT 6", u.id, like)).map((x) => ({ label: x.title, hint: "Project · " + x.status.replace("_", " "), href: "#project=" + x.id })));
+  add("Content", (await all(d, "SELECT title, status FROM biz_content WHERE user_id=?1 AND lower(title) LIKE ?2 LIMIT 6", u.id, like)).map((x) => ({ label: x.title, hint: "Content · " + x.status, href: "#content" })));
+  add("Campaigns", (await all(d, "SELECT name, platform FROM biz_campaigns WHERE user_id=?1 AND lower(name) LIKE ?2 LIMIT 6", u.id, like)).map((x) => ({ label: x.name, hint: x.platform + " campaign plan", href: "#ads" })));
+  add("FODO Pros", (await all(d, "SELECT id, name, role, city FROM biz_pros WHERE status IN ('approved','published') AND (lower(name) LIKE ?1 OR lower(role) LIKE ?1 OR lower(skills) LIKE ?1 OR lower(city) LIKE ?1) LIMIT 6", like)).map((x) => ({ label: x.name, hint: x.role + (x.city ? " · " + x.city : ""), href: "#pros?q=" + encodeURIComponent(x.name), pro: x.id })));
+  const role = PRO_ROLES.filter((r) => r.toLowerCase().indexOf(s) > -1).slice(0, 4); if (role.length) add("Hire", role.map((r) => ({ label: "Find a " + r, hint: "FODO Pros", href: "#pros?role=" + encodeURIComponent(r) })));
+  return { groups: G };
 }

@@ -173,3 +173,31 @@ The approval email links to `/fodo-pros/`.
 
 **Tests:** `v40.test.mjs` now has 99 checks: invite-only signup, one-use / revoked / fake links, client nav, the pro dashboard, blackout dates, and the unlisted-page checks.
 - **Full suite after v40.1:** 57 suites, **3,540 checks, 0 failing**.
+
+## v40.2: builder loading fix, Workspace link, Leads / CRM, global search, receipts
+
+**Builder loading:**
+- Before the builder started, the page showed its plain SEO text ("FODO Website Builder: build a business website…").
+- It now shows a **branded loader** (FODO + spinner + "Loading FODO Website Builder…"). The SEO copy stays in the HTML for search engines and appears only if JavaScript is off.
+- All ~25 builder modules are **preloaded in parallel** (`<link rel="modulepreload">` with the same versioned URLs as the import map), so the builder opens directly instead of loading files one after another. Local test: ready in about 1.1–1.8 s.
+- The load guard no longer shows an error on a slow connection. It says "Still loading, slow connection…" and waits up to about 25 s. A real failure (missing file, script error) still shows the reason and a Reload button.
+
+**Workspace link:** signed-in people get a **Workspace** button next to their account in the header (wide screens) and in the mobile menu.
+
+**Leads / CRM** (`/workspace/#leads`):
+- Every form enquiry from your FODO websites, with name, email, phone and message picked out.
+- Tap to call, WhatsApp, or email.
+- Pipeline: New → Contacted → Qualified → Won / Lost, with notes, filters and search.
+- Strictly your own websites only.
+
+**Global search:** Ctrl+K (or ⌕) in the Workspace searches your websites, projects, content, campaigns and approved FODO Pros, plus "Find a <role>" and quick jumps to every page.
+
+**Receipts:**
+- Workspace → Billing lists every paid order with a **Receipt (PDF)** link: a printable page, "Print / Save as PDF".
+- It is titled "Payment receipt". It becomes a "Tax invoice" with your GSTIN only when the Cloudflare variable `FODO_GSTIN` is set; FODO never invents a GST number.
+- Only the payer can open it.
+
+**Small fix:** changing page closes any open dialog in the Workspace.
+
+**Tests:** `v40.test.mjs` now has 115 checks (leads, search isolation, receipts, loader, header link).
+- **Full suite after v40.2:** 57 suites, **3,556 checks, 0 failing**.

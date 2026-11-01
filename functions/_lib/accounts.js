@@ -3,7 +3,7 @@
    in the old anonymous mode. Secrets stay on the server: GOOGLE_CLIENT_ID (public id), RESEND_API_KEY, MAIL_FROM,
    CASHFREE_APP_ID, CASHFREE_SECRET_KEY, CASHFREE_ENV (sandbox|production), CASHFREE_SUBSCRIPTIONS ("1" = auto-renew on). */
 import { PRODUCTS, addTool } from "./products.js";
-import { PLANS, PACKS, rank, limitsFor } from "./plans.js";
+import { PLANS, PACKS, rank, limitsFor, BUILDER, BUILDER_SELL, BUILDER_IN_PLAN, builderRank } from "./plans.js";
 import { outbound, log } from "./xray-core.js";
 
 export const json = (b, s, h) => new Response(JSON.stringify(b), { status: s || 200, headers: Object.assign({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }, h || {}) });
@@ -37,7 +37,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS acct_wa (code TEXT PRIMARY KEY, poll_hash TEXT, phone TEXT, created INTEGER, expires INTEGER, used INTEGER DEFAULT 0)",
 ];
 // columns added after v13 went live (ALTER fails harmlessly when the column already exists)
-const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT"];
+const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT", "ALTER TABLE acct_users ADD COLUMN builder_plan TEXT", "ALTER TABLE acct_users ADD COLUMN builder_until TEXT"];
 /* Table setup runs once per worker instance. It is NOT shared as a promise between requests: on Cloudflare Workers a request
    that awaits a promise created by ANOTHER request can hang forever (that was the Brain's "Loading…" / "timeout at session").
    Each request awaits its own (idempotent) setup until one has finished; then everyone skips it. */
@@ -102,14 +102,36 @@ export const isUnlimited = (u) => isOwner(u) || !!(u && u.unlimited);
 export const extraFeatures = (u) => { try { const a = JSON.parse((u && u.extra_features) || "[]"); return Array.isArray(a) ? a.map(String) : []; } catch (e) { return []; } };
 /* plan limits + any features an owner gave this account for free */
 export function limitsForUser(tier, b) { const L = limitsFor(tier), x = extraFeatures(b); x.forEach((f) => { if (L.features.indexOf(f) < 0) L.features.push(f); }); if (L.features.indexOf("externalLinks") > -1 && !L.LINKCHECK) L.LINKCHECK = 80; return L; }
+/* v39 Website Builder level: the bigger of a bought Builder plan (still running) and the level the Growth Lab plan includes */
+export function builderTier(u) {
+  if (isOwner(u)) return { tier: "agency", via: "owner", until: null };
+  if (u && u.unlimited) return { tier: "agency", via: "gift", until: null };
+  const own = u && BUILDER[u.builder_plan] && u.builder_until && Date.parse(u.builder_until) > Date.now() ? u.builder_plan : "free", inc = BUILDER_IN_PLAN[activePlan(u)] || "free";
+  return builderRank(own) >= builderRank(inc) && own !== "free" ? { tier: own, via: "builder", until: u.builder_until } : inc !== "free" ? { tier: inc, via: "plan", until: u.plan_until, plan: activePlan(u) } : { tier: "free", via: "free", until: null };
+}
+export function builderInfo(u) {
+  const t = builderTier(u), b = BUILDER[t.tier];
+  return { tier: t.tier, name: t.via === "owner" ? "Owner (everything free)" : b.name, via: t.via, until: t.until || null, plan: t.plan ? PLANS[t.plan].name : null, allTemplates: b.templates === "all",
+    limits: { sites: b.sites, pages: b.pages, media: b.media, domains: b.domains, ai: b.ai } };
+}
+/* one bought month of a Builder plan (idempotent by ref). Same plan renewing → adds 30 days to the end date; upgrade → a fresh 30 days. */
+export async function grantBuilder(env, userId, tierId, ref) {
+  const d = await db(env), b = BUILDER[tierId]; if (!b || BUILDER_SELL.indexOf(tierId) < 0) return false;
+  const ins = await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,'builder',0,?2,?3,?4)").bind(userId, ref, b.name + ", 1 month", nowIso()).run();
+  if (!ins.meta || ins.meta.changes === 0) return false;
+  const u = await d.prepare("SELECT * FROM acct_users WHERE id=?1").bind(userId).first();
+  const same = u && u.builder_plan === tierId && Date.parse(u.builder_until) > Date.now(), base = same ? Date.parse(u.builder_until) : Date.now();
+  await d.prepare("UPDATE acct_users SET builder_plan=?2, builder_until=?3 WHERE id=?1").bind(userId, tierId, new Date(base + 30 * 864e5).toISOString()).run();
+  return true;
+}
 export const activePlan = (u) => isOwner(u) ? "agency" : u && u.plan && u.plan !== "free" && u.plan_until && Date.parse(u.plan_until) > Date.now() ? u.plan : "free";
 export function publicUser(u, owner) {
   const b = owner || u, plan = activePlan(b);
   if (isOwner(b)) return { id: u.id, email: u.email, name: u.name, picture: u.picture, phone: u.phone || "", plan, planName: "Owner", planUntil: null, unlimited: true,
-    credits: { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" }, team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsFor("agency"), admin: true, brand: b.brand ? JSON.parse(b.brand) : null };
+    credits: { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" }, team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsFor("agency"), admin: true, brand: b.brand ? JSON.parse(b.brand) : null, builder: builderInfo(b) };
   return { id: u.id, email: u.email || "", name: u.name || (u.email ? "" : u.phone || ""), picture: u.picture, phone: u.phone || "", plan, planName: PLANS[plan].name, planUntil: plan === "free" ? null : b.plan_until,
     credits: b.unlimited ? { monthly: "∞", packs: b.pack_left, free: 0, total: "∞" } : { monthly: plan === "free" ? 0 : b.monthly_left, packs: b.pack_left, free: b.free_left, total: (plan === "free" ? 0 : b.monthly_left) + b.pack_left + (plan === "free" ? b.free_left : 0) },
-    team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsForUser(spendTier(b, plan), b), unlimited: !!b.unlimited || undefined, brand: b.brand ? JSON.parse(b.brand) : null };
+    team: owner && owner.id !== u.id ? { owner: owner.email } : null, limits: limitsForUser(spendTier(b, plan), b), unlimited: !!b.unlimited || undefined, brand: b.brand ? JSON.parse(b.brand) : null, builder: builderInfo(owner && owner.id !== u.id ? u : b) };
 }
 const spendTier = (b, plan) => plan !== "free" ? plan : b.pack_left > 0 ? "starter" : "free";
 
@@ -322,6 +344,6 @@ export async function settleOrder(env, orderId) {
 async function finishPaid(env, d, o, orderId, providerId) {
   const upd = await d.prepare("UPDATE acct_orders SET status='PAID', paid_at=?2, cf_order_id=?3 WHERE order_id=?1 AND status != 'PAID'").bind(orderId, nowIso(), providerId).run();
   if (upd.meta && upd.meta.changes) await logEvent(env, o.user_id, "paid", o.kind + ":" + o.item + ":" + o.amount);
-  if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "tool") await grantTool(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
+  if (upd.meta && upd.meta.changes) { if (o.kind === "pack") await grantPack(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "builder") await grantBuilder(env, o.user_id, o.item, "order:" + orderId); else if (o.kind === "tool") await grantTool(env, o.user_id, o.item, "order:" + orderId); else await grantPlan(env, o.user_id, o.item, "order:" + orderId); }
   return { ok: true, order: Object.assign(o, { status: "PAID" }) };
 }

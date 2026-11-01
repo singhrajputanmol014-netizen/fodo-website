@@ -12,6 +12,7 @@ import * as AS from "/js/wb-assets.js";
 import * as CL from "/js/wb-collections.js";
 import * as H from "/js/wb-home.js";
 import { openPalette, track } from "/js/wb-palette.js";
+import * as MB from "/js/wb-mobile.js";
 import { legalText as legalTextFor } from "/sites/lib/industry.js";
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
@@ -31,8 +32,9 @@ async function boot() {
   for (let i = 0; i < 40 && !A(); i++) await new Promise((r) => setTimeout(r, 100));
   if (!A()) { root.innerHTML = "<p class='wb-pad'>Couldn't load. Refresh the page.</p>"; return; }
   ME = await A().me().catch(() => null);
-  CR.bindCreate({ api, toast, login: (m) => A().login(m), me: () => ME, setCfg: (j) => { CFG = j; }, setLogo });
-  await CR.loadTemplates();
+  CR.bindCreate({ api, toast, login: (m) => A().login(m), me: () => ME, setCfg: (j) => { CFG = j; if (j && j.limits && CR.plan()) CR.setPlan(Object.assign({}, CR.plan(), { limits: j.limits })); }, setLogo });
+  await Promise.all([CR.loadTemplates(), CR.loadPlan()]);
+  H.versionCheck();   // v39: stale page / old deploy detection (never a wrong template count)   // v39: templates + this account's Builder plan (badges, upgrade sheet)
   const h = new URLSearchParams(location.hash.slice(1));
   if (!ME) return H.home(root, {});
   if (h.get("site")) return editor(h.get("site"), h.get("paused") ? "paused" : null);
@@ -62,6 +64,7 @@ async function editor(id, hello) {
   PN.bind(panelX()); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); CL.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
   $("#wb-cf").onsubmit = (e) => { e.preventDefault(); askAI($("#wb-ci").value); };
   window.onmessage = onFrame; document.onkeydown = keys; window.onbeforeunload = () => (ED && ED.dirty ? "You have unsaved changes." : undefined);
+  MB.mount({ ED: () => ED, setTab: (t) => { ED.tab = t; left(); }, openCmd, preview: () => preview(), audit: () => PN.auditPanel(), share: () => PN.sharePanel(), settings: () => PN.settingsPage("general") });   // v39 phone editor
   paint(); left(); right(); if (hello && hello !== "paused") toast(hello); if (ED.dirty) queueSave();
   if (hello === "paused") pausedBanner();
   const hq = new URLSearchParams(location.hash.slice(1)); if (hq.get("settings")) PN.settingsPage(hq.get("settings")); else if (hq.get("preview")) preview(); else PN.tutorial();
@@ -79,7 +82,7 @@ function savedTick() { if (!ED || ED.dirty || ED.saving) return; const el = $("#
 function liveState() { const el = $("#wb-live"); if (!el) return; const R = { ready: "👀 In review", changes: "✏️ Changes requested", approved: "✅ Approved" }; el.textContent = (ED.s.status === "live" ? "🟢 Live" : "🟡 Draft") + (R[ED.s.review] ? " · " + R[ED.s.review] : ""); }
 function pausedBanner() { const b = document.createElement("div"); b.className = "wb-banner"; b.innerHTML = "<b>Generation paused, your current work is safe.</b> The AI didn't finish writing your copy. <button class=\"wb-btn sm pri\" id=\"wb-cont\">Continue generation</button> <button class=\"wb-ib sm\" data-x>✕</button>"; $(".wb-ed").prepend(b); b.querySelector("[data-x]").onclick = () => b.remove();
   $("#wb-cont").onclick = async () => { const bt = $("#wb-cont"); bt.disabled = true; bt.textContent = "Writing…"; const r = await api(ED.id + "/generate", "POST", {}); bt.disabled = false; bt.textContent = "Continue generation"; if (!r.ok) return toast(r.reason, true); change(() => { ED.doc = r.doc; }); save("AI copy (continued)"); b.remove(); toast("Copy written: Undo if you prefer the previous text."); }; }
-function select(i) { ED.sel = i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); const f = $("#wb-if"); if (f && f.contentWindow) f.contentWindow.postMessage({ fodo: "mark", i, scroll: true }, "*"); }
+function select(i) { ED.sel = i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); const f = $("#wb-if"); if (f && f.contentWindow) f.contentWindow.postMessage({ fodo: "mark", i, scroll: true }, "*");  MB.onSelect(); }
 /* v34: devices + breakpoint layer (desktop/laptop edit the base design, tablet/mobile edit their own overrides) */
 function setDevice(dev) { if (!ED) return; ED.dev = dev; $$(".wb-bar [data-dev]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.dev === dev)); const fw = $("#wb-fw"); if (fw) fw.className = "wb-frame " + dev + (fw.classList.contains("wb-gridon") ? " wb-gridon" : ""); V.bpChip(); if (ED.rtab === "style") right(); }
 function openHistory() { ED.tab = "more"; left(); const d = $("#wb-vers"); if (d) { d.parentNode.open = true; versionsPanel(); d.scrollIntoView({ block: "nearest" }); } }
@@ -93,7 +96,7 @@ function paint(keepScroll) {
 const propsOf = (sec) => (sec.ref ? ((ED.doc.components || []).find((k) => k.id === sec.ref) || { props: sec.props }).props : sec.props);
 function onFrame(e) {
   if (!ED || e.source !== $("#wb-if").contentWindow && !(e.data && e.data.fodo === "checked")) return; const d = e.data || {};
-  if (d.fodo === "sel") { ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); }
+  if (d.fodo === "sel") { ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); MB.onSelect(true, (SECTION_LABELS[(curPage().sections[d.i] || {}).type] || "section")); }
   if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; if (sec.style && sec.style.lock) { paint(); return toast("This section is locked, unlock it to edit.", true); } const P0 = propsOf(sec), cur = P0[d.f]; if (cur === d.t) return; change(() => { P0[d.f] = String(d.t).trim(); }); }
   if (d.fodo === "ctx") PN.contextMenu(d.i, d.x, d.y);
   if (d.fodo === "drop" && d.type) PN.addSection(d.type, d.at);

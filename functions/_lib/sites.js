@@ -4,9 +4,9 @@
    A site id from the browser is only a lookup key; a stranger's id answers "not found" (no hint that it exists).
    The client AI only ever sees ONE website's document and can only return edits to it. */
 import { PW_RE } from "../../sites/lib/protect.js";
-import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail } from "./accounts.js";
+import { db as accountsDb, isOwner, activePlan, nowIso, randId, sha256, sendMail, builderInfo } from "./accounts.js";
 import { SECTION_TYPES, renderPage, checkSite, themeCss, sitemap, sanitizeCss, PLACEHOLDER, FONTS, COLLECTIONS } from "../../sites/lib/render.js";
-import { TEMPLATES, templateById, searchTemplates, why, clientAllowed, SOURCES, FODO_LICENSE } from "../../sites/lib/templates.js";
+import { TEMPLATES, templateById, searchTemplates, why, clientAllowed, SOURCES, FODO_LICENSE, isFreeTemplate, FREE_TEMPLATES } from "../../sites/lib/templates.js";
 import { brainAI, parseJson } from "./brain/models.js";
 import { safeUrl as netSafe, safeFetch } from "./xray-core.js";
 import { planSitemap, buildDoc, designFor, parsePrompt, findIndustry, PROFILES, sectionDefaults } from "../../sites/lib/industry.js";
@@ -36,9 +36,35 @@ export async function sdb(env) { const d = await accountsDb(env); if (!d) return
 const clip = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) : s; };
 const err = (msg, status) => Object.assign(new Error(msg), { status: status || 400 });
 
-/* plan limits, architecture only (billing lives in accounts/plans; the editor never checks plans itself) */
-export const LIMITS = { free: { sites: 1, pages: 6, media: 30, domains: 0, ai: 40 }, starter: { sites: 3, pages: 15, media: 150, domains: 1, ai: 200 }, pro: { sites: 10, pages: 40, media: 600, domains: 5, ai: 800 }, agency: { sites: 50, pages: 100, media: 3000, domains: 50, ai: 4000 } };
-export const limitsFor = (u) => (isOwner(u) ? { sites: 9999, pages: 200, media: 99999, domains: 999, ai: 99999, owner: true } : LIMITS[activePlan(u)] || LIMITS.free);
+/* plan limits (v39): the Website Builder level comes from accounts.builderInfo (a bought Builder plan, or the level a Growth Lab
+   plan includes; owners get everything). The editor never decides limits itself, the server checks every one. */
+export const LIMITS = { free: { sites: 1, pages: 6, media: 30, domains: 0, ai: 40 } };   // kept for older imports
+export const limitsFor = (u) => { if (isOwner(u)) return { sites: 9999, pages: 200, media: 99999, domains: 999, ai: 99999, owner: true, allTemplates: true, tier: "owner", tierName: "Owner" };
+  const b = builderInfo(u || {}); return Object.assign({}, b.limits, { allTemplates: b.allTemplates, tier: b.tier, tierName: b.name }); };
+export const builderPlan = (u) => Object.assign(builderInfo(u || {}), { freeTemplates: FREE_TEMPLATES.length, totalTemplates: TEMPLATES.filter((t) => clientAllowed(t.license)).length });
+/* v39 Builder System Health: what the server really has, so a stale page / old deploy / cached file is visible, never guessed */
+export const API_VERSION = "v39";
+export function registryInfo() {
+  const L = TEMPLATES.filter((t) => clientAllowed(t.license)), ids = L.map((t) => t.id).join(",");
+  let h = 0; for (let i = 0; i < ids.length; i++) h = (h * 31 + ids.charCodeAt(i)) >>> 0;
+  return { api: API_VERSION, templates: L.length, freeTemplates: FREE_TEMPLATES.length, registry: h.toString(36) };
+}
+export async function systemHealth(env, request) {
+  const d = await sdb(env), out = Object.assign(registryInfo(), { environment: env.XRAY_TEST_MODE === "1" ? "test" : (new URL(request.url).hostname.indexOf("fodo.co.in") > -1 ? "production" : "preview"), checks: [] });
+  const add = (name, ok, detail) => out.checks.push({ name, ok: !!ok, detail: detail || "" });
+  const has = async (sql) => { try { await d.prepare(sql).first(); return true; } catch (e) { return false; } };
+  add("Websites table", await has("SELECT id, doc, rev, template_id FROM sites LIMIT 1"));
+  add("Custom templates table", await has("SELECT id FROM site_templates LIMIT 1"));
+  add("Builder plan columns (v39)", await has("SELECT builder_plan, builder_until FROM acct_users LIMIT 1"), "added on first account use");
+  add("Published-sites host", !!env.SITES_HOST, env.SITES_HOST || "SITES_HOST not set: websites are served from /api/sites/view/");
+  add("Sites secret key", !!env.SITES_SECRET_KEY, env.SITES_SECRET_KEY ? "set" : "SITES_SECRET_KEY not set");
+  add("Custom domains API", !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID), env.CF_API_TOKEN ? "Cloudflare token set" : "CF_API_TOKEN not set: domains can be verified but not attached automatically");
+  add("AI", !!env.AI || !!env.GROQ_API_KEY, env.AI ? "Workers AI" : env.GROQ_API_KEY ? "Groq" : "No AI binding");
+  try { if (env.ASSETS) { const r = await env.ASSETS.fetch(new Request(new URL("/data/build.json", request.url))); if (r.ok) out.deploy = await r.json(); } } catch (e) {}
+  out.deploy = out.deploy || null; add("Deployed build stamp", !!out.deploy, out.deploy ? "build " + out.deploy.build + " · " + out.deploy.builtAt : "data/build.json not readable here");
+  return out;
+}
+const lockedErr = (t) => Object.assign(err("“" + (t.name || "This template") + "” is part of the Website Builder plan. Your free plan includes " + FREE_TEMPLATES.length + " free templates, the AI builder and a blank start.", 402), { upgrade: true });
 
 /* ---------- tenant resolution ---------- */
 /* roles: owner (created it) · admin · editor · viewer (site_members, by the member's login email) · FODO owners: admin, audited */
@@ -140,7 +166,10 @@ export async function createSite(env, u, body) {
   const mode = ["ai", "template", "blank", "import"].indexOf(body.mode) > -1 ? body.mode : body.prompt || body.plan ? "ai" : "template", stages = [];
   let doc, tid = null, tname = "";
   if (mode === "template") {
-    const t = (/^ct_/.test(String(body.templateId)) ? await customTemplate(env, body.templateId) : templateById(body.templateId)) || searchTemplates(biz.industry + " " + biz.style + " " + biz.goal, { client: true })[0];
+    const custom = /^ct_/.test(String(body.templateId)), picked = custom ? await customTemplate(env, body.templateId) : templateById(body.templateId);
+    // v39: free accounts may only use the free templates (a FODO custom template counts as a paid one)
+    if (picked && !lim.allTemplates && (custom || !isFreeTemplate(picked.id))) throw lockedErr(picked);
+    const t = picked || searchTemplates(biz.industry + " " + biz.style + " " + biz.goal, { client: true }).filter((x) => lim.allTemplates || isFreeTemplate(x.id))[0] || templateById(FREE_TEMPLATES[0]);
     if (!clientAllowed(t.license)) throw err("That template's license doesn't allow client websites.");
     tid = t.id; tname = t.name;
     doc = JSON.parse(JSON.stringify({ theme: t.theme, settings: { business: { name: biz.name, tagline: biz.tagline, phone: biz.phone, email: biz.email, whatsapp: biz.whatsapp, address: biz.location, city: biz.city, description: biz.description, industry: biz.industry }, notifyEmail: biz.email || u.email, lang: biz.lang, whatsappFloat: !!biz.whatsapp }, pages: t.pages }).replace(/\{\{business_name\}\}/g, biz.name.replace(/"/g, "")).replace(/\{\{(phone|email|location)\}\}/g, (m, k) => String(biz[k === "location" ? "location" : k] || "").replace(/"/g, "")));
@@ -524,5 +553,5 @@ export async function customTemplates(env) { const d = await sdb(env); return ((
 async function customTemplate(env, id) { return (await customTemplates(env)).find((t) => t.id === id) || null; }
 export async function removeTemplate(env, u, id) { if (!isOwner(u)) throw err("Only FODO owners.", 403); const d = await sdb(env); await d.prepare("UPDATE site_templates SET active=0 WHERE id=?1").bind(String(id)).run(); return { removed: true }; }
 export async function aiHistory(env, s) { const d = await sdb(env); return ((await d.prepare("SELECT kind, prompt, result, created_at FROM site_ai WHERE site_id=?1 ORDER BY created_at DESC LIMIT 60").bind(s.id).all()).results || []); }
-export { audit, autoFix, planSitemap, parsePrompt, esc };
+export { audit, autoFix, planSitemap, parsePrompt, esc, FREE_TEMPLATES };
 export { TEMPLATES, SOURCES, FODO_LICENSE, clientAllowed, renderPage, checkSite, themeCss };

@@ -56,7 +56,7 @@ const AI = { run: async (model, x) => { const sys = x.messages[0].content, user 
   return { response: "ok" }; } };
 const KV = new Map(), CHAT_KV = { get: async (k) => KV.get(k) || null, put: async (k, v, o) => { KV.set(k, v); KV.set(k + "#m", o && o.metadata); }, getWithMetadata: async (k) => ({ value: KV.get(k) || null, metadata: KV.get(k + "#m") }), delete: async (k) => KV.delete(k) };
 const env = { XRAY_DB: d1(), CHAT_KV, AI, ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", RESEND_API_KEY: "re_SECRETresendKEY12345", MAIL_FROM: "FODO <hello@fodo.co.in>", SITES_HOST: "sites.fodo.co.in", SITES_PROJECT: "fodo-sites", SITES_SECRET_KEY: "test-sites-secret-key-0123456789abcdef" };
-await login("priya@smiledental.in", "starter", "a"); await login("rahul@otherbiz.in", null, "b"); await login("anmol@fodo.co.in", null, "own");
+await login("priya@smiledental.in", "growth", "a"); await login("rahul@otherbiz.in", null, "b"); await login("anmol@fodo.co.in", null, "own");
 const S = (p, body, who, o) => call("sites/" + p, body, Object.assign({ as: who || "a" }, o || {}));
 
 import { quote } from "../functions/_lib/shop.js";
@@ -92,8 +92,9 @@ ok(templateById("saas-modern") && templateById("dental-advanced-luxury").theme.s
 let r = await S("create", { mode: "template", templateId: "saas-modern", name: "Taskly", ai: false }, "a"); const tid1 = r.j && r.j.id;
 ok(r.j && r.j.ok && /^ws_/.test(tid1), "create a website from a generated template");
 r = await S(tid1, undefined, "a"); ok(r.j.ok && r.j.site.doc.pages.some((p) => p.slug === "pricing") && /Less busywork/.test(JSON.stringify(r.j.site.doc)), "the new website has the template's pages and copy");
-await S("create", { mode: "template", templateId: "saas-modern", name: "Taskly two", ai: false }, "b"); await S("create", { mode: "template", templateId: "cafe-minimal", name: "Bean", ai: false }, "own");
-r = await S("templates", undefined, "a"); ok(r.j.ok && r.j.uses && r.j.uses["saas-modern"] === 2 && r.j.uses["cafe-minimal"] === 1 && !Object.keys(r.j.uses).some((k) => /^ai:/.test(k)), "“Most used” comes from real counts of websites created from each template");
+r = await S("create", { mode: "template", templateId: "saas-modern", name: "Taskly two", ai: false }, "b"); ok(r.status === 402 && r.j.upgrade, "v39: a free account can't use a paid template (upgrade shown)");
+await S("create", { mode: "template", templateId: "cafe-cozy", name: "Taskly two", ai: false }, "b"); await S("create", { mode: "template", templateId: "cafe-minimal", name: "Bean", ai: false }, "own");
+r = await S("templates", undefined, "a"); ok(r.j.ok && r.j.uses && r.j.uses["saas-modern"] === 1 && r.j.uses["cafe-cozy"] === 1 && r.j.uses["cafe-minimal"] === 1 && !Object.keys(r.j.uses).some((k) => /^ai:/.test(k)), "“Most used” comes from real counts of websites created from each template");
 ok(!/priya@|rahul@|Taskly|ws_/.test(JSON.stringify(r.j.uses)), "usage counts reveal no names, owners or website ids");
 
 /* ---------- builder analytics (first-party, cookieless) ---------- */

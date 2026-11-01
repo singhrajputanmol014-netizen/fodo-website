@@ -23,7 +23,8 @@ export async function onRequest(ctx) {
     if (!accountsOn(env)) return json({ ok: false, reason: "Website Builder is not switched on." }, 503);
     /* ---- public ---- */
     if (m === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-    if (p0 === "templates" && m === "GET") { const custom = await W.customTemplates(env).catch(() => []), uses = await W.templateUses(env).catch(() => ({})); return json({ ok: true, uses, templates: W.TEMPLATES.filter((t) => W.clientAllowed(t.license)).map((t) => ({ id: t.id, name: t.name, category: t.category, tags: t.tags, theme: t.theme, pages: t.pages.map((p) => p.title), license: t.license, tech: t.tech, features: t.features })), custom, sources: W.SOURCES }, 200, { "cache-control": "public, max-age=120" }); }
+    if (p0 === "version" && m === "GET") return json(Object.assign({ ok: true }, W.registryInfo()), 200, { "cache-control": "no-store" });   // v39: public, no account data
+    if (p0 === "templates" && m === "GET") { const custom = await W.customTemplates(env).catch(() => []), uses = await W.templateUses(env).catch(() => ({})); return json({ ok: true, uses, templates: W.TEMPLATES.filter((t) => W.clientAllowed(t.license)).map((t) => ({ id: t.id, name: t.name, category: t.category, tags: t.tags, theme: t.theme, pages: t.pages.map((p) => p.title), license: t.license, tech: t.tech, features: t.features, free: !!t.free })), freeTemplates: W.FREE_TEMPLATES, custom, sources: W.SOURCES }, 200, { "cache-control": "public, max-age=120" }); }
     if (p0 === "preview" && path[1]) {   // v32 client review link: the CURRENT draft, sandboxed, noindex, with an approval bar
       const sh = await W.shareSite(env, path[1]);
       if (path[2] === "review" && m === "POST") { if (await count(env, "site-rv:" + (request.headers.get("cf-connecting-ip") || ""), 20, 3600)) return json({ ok: false, reason: "Too many." }, 429, CORS); let b = {}; try { b = JSON.parse((await request.text()).slice(0, 5000)); } catch (e) {} try { return json(await W.review(env, path[1], b), 200, CORS); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400, CORS); } }
@@ -63,6 +64,8 @@ export async function onRequest(ctx) {
     if (m !== "GET" && (await count(env, "sites:" + u.id, 600, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
     const body = m === "POST" || m === "PUT" ? (path[1] === "media" && !path[2] ? null : (await request.json().catch(() => null)) || {}) : null, q = new URL(request.url).searchParams;
     if (p0 === "list" && m === "GET") return json({ ok: true, sites: await W.listSites(env, u, q.get("all") === "1", q.get("archived") === "1"), limits: W.limitsFor(u), owner: isOwner(u), hosting: W.hostingOn(env), sitesHost: env.SITES_HOST || null });
+    if (p0 === "system-health" && m === "GET") { if (!isOwner(u)) return json({ ok: false, reason: "Only FODO owners." }, 403); return json(Object.assign({ ok: true }, await W.systemHealth(env, request)), 200, { "cache-control": "no-store" }); }
+    if (p0 === "plan" && m === "GET") return json({ ok: true, builder: W.builderPlan(u) });   // v39: this account's Builder level
     if (p0 === "recommend" && m === "GET") return json({ ok: true, templates: W.recommend(q.get("q") || "") });
     if (p0 === "create" && m === "POST") { if (await count(env, "sites-ai:" + u.id, W.limitsFor(u).ai, 86400)) return json({ ok: false, reason: "Daily AI limit reached." }, 429); return json(Object.assign({ ok: true }, await W.createSite(env, u, body))); }
     if (p0 === "import" && path[1] === "analyze" && m === "POST") { if (await count(env, "sites-imp:" + u.id, 30, 3600)) return json({ ok: false, reason: "Too many imports this hour." }, 429); const a = await W.analyzeSite(env, body.url); return json({ ok: true, analysis: a, plan: W.importPlan(a) }); }
@@ -148,6 +151,6 @@ export async function onRequest(ctx) {
     if (p1 === "export" && m === "GET") { const z = await W.exportZip(env, s, s.status === "live" ? (W.urlsFor(env, s).sites || "").replace(/\/[^/]+\/$/, "") : ""); return new Response(z, { headers: { "content-type": "application/zip", "content-disposition": "attachment; filename=\"" + s.slug + "-website.zip\"", "cache-control": "no-store" } }); }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
-    return json({ ok: false, reason: e.status ? e.message : "The Website Builder hit an error. Please try again." }, e.status || 500);
+    return json(Object.assign({ ok: false, reason: e.status ? e.message : "The Website Builder hit an error. Please try again." }, e.upgrade ? { upgrade: true, plans: "/plans/#builder" } : {}), e.status || 500);
   }
 }

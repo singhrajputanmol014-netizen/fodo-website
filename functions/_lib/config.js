@@ -2,7 +2,7 @@
    and tool switches (on / maintenance). Stored in D1 table lab_config; plans.js keeps the defaults.
    applyConfig() copies the saved values onto PLANS / PACKS in memory (refreshed every 60 s per server instance), so the
    checkout, the credits and the plans page all use the admin's numbers. Payments still re-check the amount with Cashfree. */
-import { PLANS, PACKS, ORDER } from "./plans.js";
+import { PLANS, PACKS, ORDER, BUILDER, BUILDER_SELL } from "./plans.js";
 import { PRODUCTS, PRODUCT_IDS, defaultPrice } from "./products.js";
 
 export const TOOLS = {
@@ -13,10 +13,11 @@ export const TOOLS = {
   aiGroq: { name: "AI visibility: Groq (Llama) engine", default: true },
   aiGemini: { name: "AI visibility: Gemini + Google Search engine", default: true },
 };
-const DEF = { plans: {}, packs: {}, products: {} };
+const DEF = { plans: {}, packs: {}, products: {}, builder: {} };
 ORDER.forEach((id) => { DEF.plans[id] = { price: PLANS[id].price, xrays: PLANS[id].xrays, monitors: PLANS[id].monitors }; });
 Object.keys(PACKS).forEach((id) => { DEF.packs[id] = { price: PACKS[id].price, xrays: PACKS[id].xrays }; });
-PRODUCT_IDS.forEach((id) => { DEF.products[id] = { price: defaultPrice(id), on: true }; });   // v18: one price per standalone tool
+PRODUCT_IDS.forEach((id) => { DEF.products[id] = { price: defaultPrice(id), on: true }; });
+BUILDER_SELL.forEach((id) => { DEF.builder[id] = { price: BUILDER[id].price }; });   // v39: Website Builder plans sold on their own   // v18: one price per standalone tool
 
 const DDL = "CREATE TABLE IF NOT EXISTS lab_config (k TEXT PRIMARY KEY, v TEXT, updated_by TEXT, updated_at TEXT)";
 let at = 0, cur = { pricing: null, tools: {} }, lastDb = null; const made = new WeakSet();
@@ -26,6 +27,7 @@ function apply(p) {
   ORDER.forEach((id) => { const s = (p && p.plans && p.plans[id]) || {}, dft = DEF.plans[id];
     PLANS[id].price = id === "free" ? 0 : s.price != null ? s.price : dft.price; PLANS[id].xrays = s.xrays != null ? s.xrays : dft.xrays; PLANS[id].monitors = s.monitors != null ? s.monitors : dft.monitors; });
   Object.keys(PACKS).forEach((id) => { const s = (p && p.packs && p.packs[id]) || {}, dft = DEF.packs[id]; PACKS[id].price = s.price != null ? s.price : dft.price; PACKS[id].xrays = s.xrays != null ? s.xrays : dft.xrays; PACKS[id].name = PACKS[id].xrays + " X-Rays"; });
+  BUILDER_SELL.forEach((id) => { const s = (p && p.builder && p.builder[id]) || {}; BUILDER[id].price = s.price != null ? s.price : DEF.builder[id].price; });
   PRODUCT_IDS.forEach((id) => { const s = (p && p.products && p.products[id]) || {}; PRODUCTS[id].price = s.price != null ? s.price : defaultPrice(id); PRODUCTS[id].on = s.on != null ? !!s.on : true; });
 }
 export async function applyConfig(env, force) {
@@ -42,7 +44,8 @@ export async function applyConfig(env, force) {
 export const toolOn = (k) => (cur.tools && cur.tools[k] != null ? !!cur.tools[k] : TOOLS[k] ? TOOLS[k].default : true);
 export const defaults = () => JSON.parse(JSON.stringify(DEF));
 export function current() {
-  const out = { plans: {}, packs: {}, tools: {}, products: {} };
+  const out = { plans: {}, packs: {}, tools: {}, products: {}, builder: {} };
+  BUILDER_SELL.forEach((id) => { out.builder[id] = { name: BUILDER[id].name, price: BUILDER[id].price, sites: BUILDER[id].sites }; });
   PRODUCT_IDS.forEach((id) => { out.products[id] = { name: PRODUCTS[id].name, price: PRODUCTS[id].price, on: PRODUCTS[id].on !== false, cat: PRODUCTS[id].cat }; });
   ORDER.forEach((id) => { out.plans[id] = { name: PLANS[id].name, price: PLANS[id].price, xrays: PLANS[id].xrays, monitors: PLANS[id].monitors, period: PLANS[id].period }; });
   Object.keys(PACKS).forEach((id) => { out.packs[id] = { name: PACKS[id].name, price: PACKS[id].price, xrays: PACKS[id].xrays }; });
@@ -63,6 +66,10 @@ export async function saveConfig(env, body, by) {
   Object.keys(K).forEach((id) => { if (!PACKS[id]) return errors.push("Unknown pack " + id); const s = K[id] || {}, o = pricing.packs[id] = Object.assign({}, pricing.packs[id] || {});
     if (s.price != null) { const v = int(s.price, 1, 1000000); v == null ? errors.push("Pack " + id + ": price must be 1 – 10,00,000.") : (o.price = v); }
     if (s.xrays != null) { const v = int(s.xrays, 1, 100000); v == null ? errors.push("Pack " + id + ": X-Rays must be 1 – 1,00,000.") : (o.xrays = v); } });
+  pricing.builder = pricing.builder || {};
+  const B = (body && body.builder) || {};
+  Object.keys(B).forEach((id) => { if (BUILDER_SELL.indexOf(id) < 0) return errors.push("Unknown builder plan " + id); const s = B[id] || {}, o = pricing.builder[id] = Object.assign({}, pricing.builder[id] || {});
+    if (s.price != null) { const v = int(s.price, 1, 1000000); v == null ? errors.push(BUILDER[id].name + ": price must be a whole number of rupees (1 – 10,00,000).") : (o.price = v); } });
   pricing.products = pricing.products || {};
   const R = (body && body.products) || {};
   Object.keys(R).forEach((id) => { if (!PRODUCTS[id]) return errors.push("Unknown tool " + id); const s = R[id] || {}, o = pricing.products[id] = Object.assign({}, pricing.products[id] || {});

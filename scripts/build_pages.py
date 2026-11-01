@@ -617,6 +617,25 @@ pages["xray"] = ("xray", "/business-x-ray/", T("Business X-Ray: Free Website & C
 #      LAB_PLANS below is the no-JS copy for search engines and is checked against plans.js by tests/v13-plans.test.js. ----
 LAB_PLANS = [("free", "Free", 0, 2, 15, 2), ("starter", "Starter", 499, 10, 50, 5), ("growth", "Growth", 1499, 30, 150, 8), ("pro", "Pro", 3999, 80, 300, 10), ("agency", "Agency", 9999, 250, 500, 10)]
 LAB_PACKS = [("5 X-Rays", 299), ("20 X-Rays", 999), ("60 X-Rays", 2499)]
+import re
+# v39 Website Builder plans, read from functions/_lib/plans.js (BUILDER) so the static copy can never drift from what is charged
+_PLJS = open(os.path.join(ROOT, "functions", "_lib", "plans.js")).read().split("export const BUILDER = {")[1].split("\n};")[0]
+LAB_BUILDER = [dict(id=m.group(1), name=m.group(2), price=int(m.group(3)), sites=int(m.group(4)), pages=int(m.group(5)), domains=int(m.group(6)))
+  for m in re.finditer(r'(\w+):\s*\{ id: "\w+",\s*name: "([^"]+)",\s*price: (\d+),\s*sites: (\d+),\s*pages: (\d+),\s*media: \d+,\s*domains: (\d+)', _PLJS)]
+assert [b["id"] for b in LAB_BUILDER] == ["free", "builder", "business", "agency"], "could not read BUILDER from plans.js"
+_B = dict((b["id"], b) for b in LAB_BUILDER)
+import json as _json2
+_TPLJS = open(os.path.join(ROOT, "sites", "lib", "templates.js")).read()
+WB_FREE_COUNT = len(_json2.loads(re.search(r"export const FREE_TEMPLATES = (\[[^\]]*\])", _TPLJS).group(1).replace("\n", " ")))
+def _wb_card(b):
+    feats = {"free": [f"{b['sites']} website", f"Up to {b['pages']} pages", f"{WB_FREE_COUNT} free templates + AI builder", "Free sites.fodo.co.in address"],
+             "builder": [f"{b['sites']} websites", f"Up to {b['pages']} pages each", "Every template (200+ designs)", f"{b['domains']} custom domain"],
+             "business": [f"{b['sites']} websites", f"Up to {b['pages']} pages each", "Every template (200+ designs)", f"{b['domains']} custom domains"],
+             "agency": [f"{b['sites']} websites", f"Up to {b['pages']} pages each", "Every template", f"{b['domains']} custom domains"]}[b["id"]]
+    price = "₹0" if b["id"] == "free" else ("With Agency plan" if b["id"] == "agency" else _inr(b["price"]))
+    per = "free with login" if b["id"] == "free" else ("included" if b["id"] == "agency" else "/ month")
+    return (f'<article class="panel hud pl-card pl-wb" data-bid="{b["id"]}"><h3>{b["name"]}</h3><p class="pl-price"><b>{price}</b><span>{per}</span></p>'
+            '<ul class="pl-keys">' + "".join(f"<li>{x}</li>" for x in feats) + '</ul></article>')
 _inr = lambda n: "₹" + f"{n:,}"
 LAB_FAQ = [("What do I get for free?", "Log in with Google or your email and run 2 Business X-Rays free: the score, the biggest problem, the top 3 fixes, the 30-day plan and the evidence behind them. No card needed."),
   ("How do I pay?", "Payments go through Razorpay, an RBI-authorised payment gateway: UPI, cards, net banking and wallets. FODO never sees your card or bank details."),
@@ -642,6 +661,10 @@ pages["plans"] = ("plans", "/plans/", T("Growth Lab Plans: Business X-Ray Pricin
  + '<label class="pl-auto" id="pl-auto" hidden><input type="checkbox"> Renew automatically every month (cancel any time)</label>'
  + '<div class="pl-grid" id="pl-grid">' + "".join(f'<article class="panel hud pl-card"><h3>{n}</h3><p class="pl-price"><b>{_inr(pr)}</b><span>{"/ month" if pr else "forever"}</span></p><ul class="pl-keys"><li><b>{x}</b> Business X-Rays{" (one-time)" if not pr else " / month"}</li><li>Up to <b>{pg}</b> pages per site</li><li><b>{c}</b> competitors compared</li></ul></article>' for i, n, pr, x, pg, c in LAB_PLANS) + '</div>'
  + '<h2 class="pl-h">X-Ray packs</h2><p class="muted">Need a few more? Packs never expire and stack on top of any plan.</p><div class="pl-packs" id="pl-packs">' + "".join(f'<div class="panel pl-pack"><b>{n}</b><span>{_inr(p)} · never expire</span></div>' for n, p in LAB_PACKS) + '</div>'
+
+ + '<h2 class="pl-h" id="builder">Website Builder plans</h2><p class="muted">Build your business website, online store or blog with AI. Free to start with a login; Growth, Pro and Agency plans include a Builder plan at no extra cost.</p>'
+ + '<div class="pl-wbgrid" id="pl-builder">' + "".join(_wb_card(b) for b in LAB_BUILDER) + '</div>'
+ + f'<p class="muted pl-wbinc">Included free: <b>Growth</b> → {_B["builder"]["name"]} · <b>Pro</b> → {_B["business"]["name"]} · <b>Agency</b> → {_B["agency"]["name"]}. <a href="../website-builder/">Open the Website Builder</a></p>'
 
  + '<h2 class="pl-h">Just one Pro tool? Pay per run</h2><p class="muted">No plan needed. Each Pro tool is priced by how much work it does, and one run never costs more than a month of Starter.</p><div class="pl-levels">' + "".join(f'<div class="panel pl-level"><small>Level {lv}</small><b>{LEVEL_NAME[lv]}</b><span class="pl-lp">{_inr(min(x["price"] for x in PRODUCTS if x["level"] == lv))} a run</span><p class="muted">' + ", ".join(x["name"] for x in PRODUCTS if x["level"] == lv) + '</p></div>' for lv in (1, 2, 3, 4)) + '</div>'
  + '<p class="muted pl-fine">Prices in Indian rupees (INR). Payments are processed by Razorpay. One-month plans do not renew on their own. See <a href="../legal/#refunds">cancellation &amp; refunds</a>.</p></div></section>'
@@ -705,15 +728,21 @@ GL_FAQ = [("Which tools are free?", "Growth Score, ROI Calculator, Competitor Fi
 pages["growth-lab"] = ("lab", "/growth-lab/", T("Growth Lab: Free Tools & Pro Business Intelligence | FODO"),
  D_("Free marketing tools plus evidence-backed Pro intelligence: Business X-Ray, competitor war room, AI and local visibility, monitoring."),
  hero("FODO Growth Lab", "Know where your business stands. Know what to fix next.", "Evidence-backed intelligence for your website, market, competitors and growth. Free tools to start, FODO Pro intelligence when you need the complete picture.",
-      '<a class="btn" href="../business-x-ray/">Run a Business X-Ray</a><a class="btn ghost" href="#gl-pro">See Pro intelligence</a>',
+      '<a class="btn" href="../business-x-ray/">Run a Business X-Ray</a><a class="btn ghost" href="#gl-pro">See Pro intelligence</a><a class="btn ghost" href="#gl-builder">Website Builder</a>',
       visual=ASIDE("Every Pro tool shows", [("Where each number came from", None), ("OBSERVED / INFERRED / ESTIMATED labels", None), ("“Data unavailable” instead of guesses", None), ("What to do first", None)]))
  + '<section class="cf-sec gl-sec" id="gl-free"><div class="container"><div class="section-head reveal"><h2>Free tools</h2><span class="section-num">01</span></div><div class="grid g3 gl-grid">' + "".join(_glcard(t, True) for t in GL_FREE) + '</div>'
  + '<div class="panel hud gl-cta"><div><h3>Want the complete picture?</h3><p class="muted">The Business X-Ray reads your website, your market and your real competitors, and shows what is wrong, what you are missing and what to do first, with evidence.</p></div><div class="btn-row"><a class="btn" href="../business-x-ray/">Run your free X-Ray</a><a class="btn ghost" href="../business-x-ray/?r=sample">See a sample report (demo data)</a></div></div></div></section>'
- + '<section class="cf-sec gl-sec" id="gl-pro"><div class="container"><div class="section-head reveal"><h2>FODO Pro Intelligence</h2><span class="section-num">02</span></div><p class="lead gl-lead">Twenty tools on one research engine, every finding traceable to a page, a search result or a report. <span class="gl-live" id="gl-live"></span></p>'
+ + '<section class="cf-sec gl-sec" id="gl-builder"><div class="container"><div class="section-head reveal"><h2>Website Builder</h2><span class="section-num">02</span></div>'
+ + '<div class="panel hud gl-wb" data-tool="website-builder"><div class="gl-wb-copy"><p class="gl-wb-tags"><span class="tag gl-free">FREE TO START</span><span class="tag hot">NEW IN GROWTH LAB</span></p>'
+ + '<h3>Build your business website with AI</h3><p class="muted">Describe your business and FODO plans the pages, picks a design and writes the first draft. Edit anything visually, add a store or blog, then publish with SEO, forms and your own domain.</p>'
+ + f'<ul class="gl-wb-pts"><li><b>Free with login:</b> {WB_FREE_COUNT} free templates, the AI builder and 1 website</li><li><b data-bprice="builder">{_B["builder"]["name"]} {_inr(_B["builder"]["price"])}/month</b>: every template, {_B["builder"]["sites"]} websites, a custom domain</li><li><b>Included free</b> in the Growth, Pro and Agency plans</li></ul>'
+ + '<div class="btn-row"><a class="btn" href="../website-builder/">Open Website Builder</a><a class="btn ghost" href="../plans/#builder">Builder plans</a></div></div>'
+ + '<div class="gl-wb-vis" aria-hidden="true"><div class="gl-wb-win"><i></i><i></i><i></i><span>sites.fodo.co.in/your-business</span></div><div class="gl-wb-page"><b class="w60"></b><b class="w90"></b><b class="w40"></b><div class="gl-wb-row"><em></em><em></em><em></em></div></div><span class="gl-wb-chip">✦ AI first draft</span></div></div></div></section>'
+ + '<section class="cf-sec gl-sec" id="gl-pro"><div class="container"><div class="section-head reveal"><h2>FODO Pro Intelligence</h2><span class="section-num">03</span></div><p class="lead gl-lead">Twenty tools on one research engine, every finding traceable to a page, a search result or a report. <span class="gl-live" id="gl-live"></span></p>'
  + "".join(f'<div class="gl-cat" id="gl-{cid}"><p class="eyebrow">{cn}</p><div class="grid g4 gl-grid">' + "".join(_glcard(t) for t in tools) + '</div></div>' for cn, cid, tools in GL_PRO)
  + '<p class="muted gl-fine">Prices in INR. Buy one run of any Pro tool, or use a plan, its X-Rays include the tools they cover, and a tool reuses your recent X-Ray of the same site. <a href="../plans/">Plans &amp; packs</a> · <a href="../legal/#refunds">refunds</a></p></div></section>'
- + sec("03", "How FODO gets the data", '<div class="grid g3 reveal gl-src">' + "".join(f'<div class="panel"><h3>{a}</h3><p class="muted">{b}</p></div>' for a, b in [("Your website", "FODO's own reader crawls your public pages (respects robots.txt, never logs in) and runs deterministic checks."), ("Google Search & Maps", "Real results for the searches buyers use, and local listings with ratings and review counts (via Serper)."), ("Google PageSpeed", "Lab tests plus real-user Chrome data when Google has it, shown separately, never blended."), ("Your Search Console (optional)", "Connect it read-only to add your real clicks and impressions. Only you see it."), ("AI assistants", "The same buyer questions to the AI engines listed in each report: FODO's own AI Visibility Score, clearly not an official one."), ("Your competitors", "Found from those searches and listings, then read side by side with your pages.")]) + '</div>')
- + sec("04", "Questions", '<div class="reveal">' + faq_block(GL_FAQ, "glf") + '</div>'),
+ + sec("04", "How FODO gets the data", '<div class="grid g3 reveal gl-src">' + "".join(f'<div class="panel"><h3>{a}</h3><p class="muted">{b}</p></div>' for a, b in [("Your website", "FODO's own reader crawls your public pages (respects robots.txt, never logs in) and runs deterministic checks."), ("Google Search & Maps", "Real results for the searches buyers use, and local listings with ratings and review counts (via Serper)."), ("Google PageSpeed", "Lab tests plus real-user Chrome data when Google has it, shown separately, never blended."), ("Your Search Console (optional)", "Connect it read-only to add your real clicks and impressions. Only you see it."), ("AI assistants", "The same buyer questions to the AI engines listed in each report: FODO's own AI Visibility Score, clearly not an official one."), ("Your competitors", "Found from those searches and listings, then read side by side with your pages.")]) + '</div>')
+ + sec("05", "Questions", '<div class="reveal">' + faq_block(GL_FAQ, "glf") + '</div>'),
  1, LD(crumbs_ld([("Home", "/"), ("Growth Lab", "/growth-lab/")]), faq_ld(GL_FAQ)), ("account", "growth-lab"))
 CAT_NAME = {"diagnose": "Diagnose", "compete": "Compete", "visibility": "Visibility", "strategy": "Strategy"}
 def _tool_faq(t):
@@ -819,6 +848,9 @@ open(os.path.join(ROOT, "owner-brain", "index.html"), "w").write(f"""<!doctype h
 WB_IMPORTMAP = json.dumps({"imports": dict(("/" + f, "/" + f + "?v=" + _V) for f in sorted(
     ["js/website-builder.js", "js/website-store.js"] + ["js/" + x for x in os.listdir(os.path.join(ROOT, "js")) if x.startswith("wb-") and x.endswith(".js") and x != "wb-guard.js"]
     + ["sites/lib/" + x for x in os.listdir(os.path.join(ROOT, "sites", "lib")) if x.endswith(".js")]))})
+# v39 Builder System Health: the build stamp the page was generated with, so a stale cached page or a half-finished deploy is detected
+import datetime as _dtb
+json.dump({"build": _V, "builtAt": _dtb.datetime.now(_dtb.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "app": "v39", "modules": len(json.loads(WB_IMPORTMAP)["imports"])}, open(os.path.join(ROOT, "data", "build.json"), "w"))
 os.makedirs(os.path.join(ROOT, "website-builder"), exist_ok=True)
 from seo_config import OG_IMAGE
 _WB_D = "Build a professional, mobile-ready business website in minutes. AI writes it, you change anything by clicking, connect your domain and publish."
@@ -835,7 +867,7 @@ open(os.path.join(ROOT, "website-builder", "index.html"), "w").write(f"""<!docty
 <title>FODO Website Builder: Build Your Business Website with AI</title><meta name="description" content="{_WB_D}"><link rel="canonical" href="{SITE}/website-builder/">
 <meta property="og:title" content="FODO Website Builder: Build Your Business Website with AI"><meta property="og:description" content="{_WB_D}"><meta property="og:type" content="website"><meta property="og:site_name" content="FODO"><meta property="og:url" content="{SITE}/website-builder/"><meta property="og:image" content="{OG_IMAGE}"><meta property="og:locale" content="en_IN">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="FODO Website Builder: Build Your Business Website with AI"><meta name="twitter:description" content="{_WB_D}"><meta name="twitter:image" content="{OG_IMAGE}">
-<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}"><link rel="stylesheet" href="/css/wb-studio.css?v={_V}">{_WB_LD}</head>
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">{THEMEJS}<link rel="stylesheet" href="/css/website-builder.css?v={_V}"><link rel="stylesheet" href="/css/wb-studio.css?v={_V}">{_WB_LD}<meta name="fodo-build" content="{_V}"></head>
 <body class="wb-body"><div id="wb">{_WB_SEO}</div><noscript><p style="padding:24px">The builder needs JavaScript.</p></noscript>
 <script type="importmap">{WB_IMPORTMAP}</script>
 <script src="/js/wb-guard.js?v={_V}"></script><script src="/js/account.js?v={_V}" defer></script><script type="module" src="/js/website-builder.js?v={_V}"></script></body></html>""")

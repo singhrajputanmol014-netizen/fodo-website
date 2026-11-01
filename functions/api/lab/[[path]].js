@@ -10,7 +10,7 @@
  *     → reuses your recent full X-Ray of that site (no new research) or opens a fresh scan · GET tool/runs · GET tool/run?id=
  * Everything here is per user: nobody can read another user's actions, Search Console or monitoring. */
 import { json, accountsOn, db, sessionUser, billingUser, sameOrigin, activePlan, isUnlimited, logEvent, count, randId, nowIso, sendMail } from "../../_lib/accounts.js";
-import { PLANS, PACKS, ORDER } from "../../_lib/plans.js";
+import { PLANS, PACKS, ORDER, publicBuilder } from "../../_lib/plans.js";
 import { safeUrl, regDomain, providers } from "../../_lib/xray-core.js";
 import { applyConfig, toolOn, current as cfgCurrent } from "../../_lib/config.js";
 import { gscOn, gdb, makeState, checkState, authUrl, exchange, seal, unseal, revoke, refresh, listSites } from "../../_lib/gsc.js";
@@ -77,6 +77,7 @@ const CATALOG = [
   T("offer-strength", "strategy", "Offer Strength Analyzer", "Does your homepage say who it is for, the problem, the outcome and why you?", "Your homepage", "Offer score, what is missing, how to fix it", "business-x-ray/?focus=offer", "live", { inXray: "Offer & Positioning", time: "2–5 min" }),
   T("blueprint30", "strategy", "30-Day Growth Blueprint", "Your verified findings turned into four weeks of work, with a tracker.", "Your X-Ray findings", "Week-by-week tasks with reason, evidence, priority, mark To do / Doing / Done", "business-x-ray/?focus=plan", "live", { inXray: "30-Day Action Plan", time: "2–5 min" }),
   T("roadmap90", "strategy", "90-Day Growth Roadmap", "Foundation → acquisition → optimisation, with KPIs for each month.", "Your X-Ray findings", "Month-by-month tasks, KPIs, dependencies", "business-x-ray/?focus=roadmap", "live", { inXray: "90-Day Roadmap", plan: "growth", time: "2–5 min" }),
+  T("website-builder", "build", "Website Builder", "Build your business website, store or blog with AI, then edit it visually and publish.", "Your business details + FODO's templates and AI writer", "A live website with SEO, forms, mobile layout and your own domain", "website-builder/", "live", { builder: true, time: "10 min" }),
   T("growth-score-track", "monitor", "Growth Score history", "Your X-Ray score over time, area by area.", "Your saved X-Rays", "Score trend and what changed between scans", "account/#history", "live", { plan: "starter" }),
   T("competitor-monitoring", "monitor", "Competitor Monitoring", "Keep watching your competitors without opening their sites.", "Scheduled snapshots", "Alerts only when something meaningful changes", "account/#monitoring", "live", { monitor: true }),
   T("visibility-monitoring", "monitor", "Visibility Monitoring", "Watch your own site for downtime, noindex, title and content changes.", "Scheduled snapshots of your homepage + sitemap", "Alerts for problems that cost traffic", "account/#monitoring", "live", { monitor: true }),
@@ -89,6 +90,7 @@ export function catalog(env) {
     tools: CATALOG.map((t) => { const pr = PRODUCTS[t.id]; return Object.assign({}, t, { on: t.id === "business-xray" ? toolOn("xray") : t.monitor ? toolOn("monitoring") : pr ? pr.on !== false && toolOn("xray") : true, planName: t.plan ? PLANS[t.plan].name : null },
       // v18: every PRO tool has its own page, its own one-run price (admin-controlled) and the plans whose X-Rays already include it
       pr ? { where: "growth-lab/" + t.id + "/", price: pr.price, level: pr.level || 2, levelName: (LEVELS[pr.level] || LEVELS[2]).name, buy: true, time: pr.time, view: pr.view, focus: pr.focus || null, includedIn: plansIncluding(t.id).map((p) => PLANS[p].name) } : {}); }),
+    builder: publicBuilder(),
     sources: { search: P.searchName || null, places: P.places || (env.SERPER_API_KEY && toolOn("places") ? "Google Maps results via Serper" : null), ai: eng, searchConsole: gscOn(env) && toolOn("gsc"), seoVolumes: !!P.seo } };
 }
 

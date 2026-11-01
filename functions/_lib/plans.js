@@ -64,3 +64,28 @@ export function publicPlans(providers) {
   return { plans: ORDER.map((id) => { const p = PLANS[id]; return { id, name: p.name, price: p.price, xrays: p.xrays, period: p.period, pages: p.pages, competitors: p.competitors, seats: p.seats, monitors: p.monitors,
     features: p.features.filter(ok).map((f) => ({ id: f, label: FEATURE_INFO[f].label })), pending: p.features.filter((f) => !ok(f)).map((f) => ({ id: f, label: FEATURE_INFO[f].label })) }; }), packs: Object.values(PACKS).filter((k) => !k.hidden || (providers && providers.payTest)) };
 }
+
+/* ---------- v39 Website Builder plans (part of the Growth Lab). Prices in INR / month, server-enforced limits.
+   free = any logged-in account (the builder always needs a login). "templates": "free" = only the templates marked free in
+   sites/lib/templates.js (FREE_TEMPLATES); "all" = every template + FODO's own custom templates.
+   The bigger Growth Lab plans include a Builder level at no extra cost (BUILDER_IN_PLAN). ---------- */
+export const BUILDER = {
+  free:     { id: "free",     name: "Builder Free",     price: 0,   sites: 1,  pages: 6,   media: 30,   domains: 0,  ai: 40,   templates: "free" },
+  builder:  { id: "builder",  name: "Website Builder",  price: 299, sites: 3,  pages: 25,  media: 300,  domains: 1,  ai: 300,  templates: "all" },
+  business: { id: "business", name: "Builder Business", price: 799, sites: 10, pages: 60,  media: 1000, domains: 5,  ai: 1000, templates: "all" },
+  agency:   { id: "agency",   name: "Builder Agency",   price: 0,   sites: 50, pages: 100, media: 3000, domains: 50, ai: 4000, templates: "all", planOnly: true },
+};
+export const BUILDER_ORDER = ["free", "builder", "business", "agency"];
+export const BUILDER_SELL = ["builder", "business"];   // what can be bought on its own (Agency comes only with the Agency plan)
+export const BUILDER_IN_PLAN = { free: "free", starter: "free", growth: "builder", pro: "business", agency: "agency" };
+export const builderRank = (t) => Math.max(0, BUILDER_ORDER.indexOf(t));
+export const BUILDER_FEATURES = {
+  free: ["1 website", "Up to 6 pages", "Free templates + AI website builder + blank start", "Forms, SEO settings, mobile preview", "Publish free on sites.fodo.co.in/your-name"],
+  builder: ["3 websites", "Up to 25 pages each", "Every template (200+ designs)", "1 custom domain", "300 AI actions a day"],
+  business: ["10 websites", "Up to 60 pages each", "Every template (200+ designs)", "5 custom domains", "1,000 AI actions a day"],
+  agency: ["50 websites", "Up to 100 pages each", "Every template", "50 custom domains", "4,000 AI actions a day"],
+};
+export function publicBuilder() {
+  return { plans: BUILDER_ORDER.map((id) => { const b = BUILDER[id]; return { id, name: b.name, price: b.price, sites: b.sites, pages: b.pages, domains: b.domains, ai: b.ai, media: b.media, allTemplates: b.templates === "all", buyable: BUILDER_SELL.indexOf(id) > -1, features: BUILDER_FEATURES[id].slice() }; }),
+    includedIn: Object.keys(BUILDER_IN_PLAN).filter((p) => BUILDER_IN_PLAN[p] !== "free").map((p) => ({ plan: p, planName: PLANS[p].name, builder: BUILDER_IN_PLAN[p], builderName: BUILDER[BUILDER_IN_PLAN[p]].name })) };
+}

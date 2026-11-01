@@ -35,11 +35,30 @@
             '<ul class="pl-keys"><li><b>' + p.xrays + "</b> Business X-Ray" + (p.xrays === 1 ? "" : "s") + (p.period === "lifetime" ? " (one-time)" : " / month") + "</li><li>Up to <b>" + p.pages + "</b> pages read per site</li><li><b>" + p.competitors + "</b> competitors compared</li>" + (p.seats > 1 ? "<li><b>" + p.seats + "</b> team seats</li>" : "") + "</ul>" +
             (prev && prev.features.length ? '<p class="pl-plus">Everything in ' + esc(prev.name) + ", plus:</p>" : "") + '<ul class="pl-feats">' + (p.features.length ? p.features.filter(function (f) { return !prev || !prev.features.some(function (q) { return q.id === f.id; }); }).map(function (f) { return "<li>" + esc(f.label) + "</li>"; }).join("") : "<li>Score, biggest problem, top 3 fixes and the 30-day plan, with evidence</li>") + "</ul>" + btn + "</article>";
         }).join("");
+        drawBuilder();
         $("pl-packs").innerHTML = c.packs.map(function (k) { return '<div class="panel pl-pack"><b>' + esc(k.name) + "</b><span>" + inr(k.price) + ' · never expire</span><button class="btn sm ghost" type="button" data-buy="pack" data-item="' + k.id + '"' + (c.payments ? "" : " disabled") + ">Buy</button></div>"; }).join("");
       }
+      /* v39 Website Builder plans: free with login, buy Builder / Builder Business, or included in Growth / Pro / Agency */
+      function drawBuilder() {
+        var el = $("pl-builder"), B = c.builder; if (!el || !B) return;
+        var my = u && u.builder, BR = ["free", "builder", "business", "agency"], mine = my ? my.tier : null;
+        var inc = {}; (B.includedIn || []).forEach(function (x) { inc[x.builder] = (inc[x.builder] ? inc[x.builder] + ", " : "") + x.planName; });
+        el.innerHTML = B.plans.map(function (p) {
+          var have = mine === p.id, below = mine && BR.indexOf(p.id) < BR.indexOf(mine), btn;
+          if (p.id === "free") btn = u ? '<a class="btn ghost" href="' + ROOT + 'website-builder/">' + (have ? "Open the builder" : "Included") + "</a>" : '<button class="btn ghost" type="button" data-wblogin>Start free</button>';
+          else if (!p.buyable) btn = have ? '<a class="btn" href="' + ROOT + 'website-builder/">Open the builder</a>' : '<a class="btn ghost" href="#pl-grid">With the Agency plan</a>';
+          else if (have && my.via === "builder") btn = '<button class="btn ghost" type="button" data-buy="builder" data-item="' + p.id + '"' + (c.payments ? "" : " disabled") + ">Renew " + esc(p.name) + "</button>";
+          else if (have || below) btn = '<span class="btn ghost sm" aria-disabled="true">' + (have ? (my.via === "plan" ? "Included in your " + esc(my.plan || "plan") : "Your plan") : "Below your level") + "</span>";
+          else btn = '<button class="btn" type="button" data-buy="builder" data-item="' + p.id + '"' + (c.payments ? "" : " disabled") + ">Choose " + esc(p.name) + "</button>";
+          return '<article class="panel hud pl-card pl-wb' + (p.id === "builder" ? " pl-pop" : "") + (have ? " pl-mine" : "") + '" data-bid="' + p.id + '">' + (p.id === "builder" ? '<span class="tag hot">BEST VALUE</span>' : "") + "<h3>" + esc(p.name) + '</h3><p class="pl-price"><b>' + (p.price ? inr(p.price) : p.buyable || p.id === "free" ? "₹0" : "Included") + "</b><span>" + (p.price ? "/ month" : p.id === "free" ? "free with login" : "with Agency") + "</span></p>" +
+            '<ul class="pl-keys">' + p.features.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" + (inc[p.id] ? '<p class="muted pl-plus">Free with the ' + esc(inc[p.id]) + " plan</p>" : "") + btn + "</article>";
+        }).join("");
+      }
       draw();
+      if (location.hash === "#builder") setTimeout(function () { var h = $("builder"); if (h) h.scrollIntoView(); }, 60);
       document.addEventListener("click", function (e) {
-        var b = e.target.closest("[data-buy]"); if (b && grid.contains(b) || b && $("pl-packs").contains(b)) { e.preventDefault(); msg(st, "Opening the secure payment page…", "busy"); A.checkout(b.dataset.buy, b.dataset.item, { autoRenew: auto && b.dataset.buy === "plan" }).catch(buyErr(st)); return; }
+        if (e.target.closest("[data-wblogin]")) { A.login("Log in to start your free website.").then(function () { location.href = ROOT + "website-builder/#new=1"; }, function () {}); return; }
+        var b = e.target.closest("[data-buy]"); if (b && grid.contains(b) || b && $("pl-packs").contains(b) || b && $("pl-builder") && $("pl-builder").contains(b)) { e.preventDefault(); msg(st, "Opening the secure payment page…", "busy"); A.checkout(b.dataset.buy, b.dataset.item, { autoRenew: auto && b.dataset.buy === "plan" }).catch(buyErr(st)); return; }
         if (e.target.closest("[data-login]")) A.login().then(function () { location.href = ROOT + "business-x-ray/"; }, function () {});
       });
       A.onChange(function (nu) { u = nu; draw(); });
@@ -75,6 +94,7 @@
       (u.autoRenew && u.owner !== false ? '<p><button type="button" class="xr-why" id="ac-cancel">Stop auto-renew</button> <small class="muted">Your plan stays until its end date.</small></p>' : "") + "</div>" +
       '<div class="panel"><p class="eyebrow">ACCOUNT</p><dl class="xr-dl sm"><div><dt>Email</dt><dd>' + esc(u.email) + "</dd></div><div><dt>Each X-Ray reads</dt><dd>up to " + u.limits.MAX_PAGES + " pages · " + u.limits.MAX_COMPETITORS + " competitors</dd></div></dl>" +
       '<form id="ac-prof" class="acct-f"><label for="ac-name">Name</label><input id="ac-name" maxlength="80" value="' + esc(u.name || "") + '"><label for="ac-phone">Mobile (for payment receipts)</label><input id="ac-phone" inputmode="tel" maxlength="14" value="' + esc(u.phone || "") + '"><div class="btn-row"><button class="btn sm ghost" type="submit">Save</button><button class="btn sm ghost" type="button" id="ac-out">Log out</button></div></form></div></div>' +
+      (u.builder ? '<div class="panel hud ac-wb" id="ac-wb"><div><p class="eyebrow">WEBSITE BUILDER</p><h3>' + esc(u.builder.name) + '</h3><p class="muted">' + (u.builder.via === "plan" ? "Included in your " + esc(u.builder.plan) + " plan · " : u.builder.via === "builder" ? "Active until <b>" + esc(date(u.builder.until)) + "</b> · " : "") + u.builder.limits.sites + " website" + (u.builder.limits.sites === 1 ? "" : "s") + " · " + u.builder.limits.pages + " pages each · " + (u.builder.allTemplates ? "every template" : "free templates") + " · " + u.builder.limits.domains + " custom domain" + (u.builder.limits.domains === 1 ? "" : "s") + '</p></div><div class="btn-row"><a class="btn" href="' + ROOT + 'website-builder/">Open the builder</a>' + (u.builder.tier === "free" || u.builder.tier === "builder" ? '<a class="btn ghost" href="' + ROOT + 'plans/#builder">' + (u.builder.tier === "free" ? "Get every template" : "More websites") + "</a>" : "") + "</div></div>" : "") +
       '<section class="xr-sec"><div class="xr-sec-h"><span class="section-num">01</span><h2>Your X-Rays</h2></div><div id="ac-hist">' + (hasF("history") ? '<p class="muted">Loading…</p>' : '<p class="muted">Saved history comes with Starter and above. <a href="' + ROOT + 'plans/">See plans</a>.</p>') + "</div></section>" +
       '<section class="xr-sec"><div class="xr-sec-h"><span class="section-num">02</span><h2>Credit activity</h2></div><div id="ac-ledger"><p class="muted">Loading…</p></div></section>' +
       (hasF("team") && u.owner !== false ? '<section class="xr-sec"><div class="xr-sec-h"><span class="section-num">03</span><h2>Agency tools</h2></div><div class="grid g3 ac-agency"><div class="panel"><h3>Team</h3><div id="ac-team"></div><form id="ac-teamf" class="acct-f"><input type="email" id="ac-tm" placeholder="colleague@agency.com" aria-label="Team member email"><button class="btn sm" type="submit">Add</button></form></div>' +
@@ -86,7 +106,7 @@
     if (hasF("history")) A.history().then(function (j) {
       var it = j.items || []; $("ac-hist").innerHTML = it.length ? '<table class="xr-t"><thead><tr><th>Website</th><th>Date</th><th>Plan level</th><th>Score</th><th>Status</th><th></th></tr></thead><tbody>' + it.map(function (r) { return "<tr><td>" + esc(r.domain) + "</td><td>" + esc(date(r.created_at)) + "</td><td>" + esc(r.tier) + "</td><td>" + (r.score == null ? "—" : r.score) + "</td><td>" + esc({ COMPLETE: "Done", running: "Not finished", refunded: "Refunded (credit back)" }[r.status] || r.status) + "</td><td>" + (r.status === "COMPLETE" ? '<a href="' + ROOT + "business-x-ray/?r=" + encodeURIComponent(r.job_id) + '">Open</a>' : "") + "</td></tr>"; }).join("") + "</tbody></table>" : '<p class="muted">No X-Rays yet.</p>';
     });
-    A.api("ledger").then(function (j) { var it = j.items || []; $("ac-ledger").innerHTML = it.length ? '<ul class="ac-led">' + it.slice(0, 30).map(function (l) { return "<li><b class=\"" + (l.delta > 0 ? "plus" : "minus") + '">' + (l.delta > 0 ? "+" : "") + l.delta + "</b> " + esc(l.note || l.kind) + ' <small class="muted">' + esc(date(l.created_at)) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">Nothing yet.</p>'; });
+    A.api("ledger").then(function (j) { var it = j.items || []; $("ac-ledger").innerHTML = it.length ? '<ul class="ac-led">' + it.slice(0, 30).map(function (l) { return "<li><b class=\"" + (l.delta > 0 || l.kind === "builder" ? "plus" : "minus") + '">' + (l.kind === "builder" ? "✓" : (l.delta > 0 ? "+" : "") + l.delta) + "</b> " + esc(l.note || l.kind) + ' <small class="muted">' + esc(date(l.created_at)) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">Nothing yet.</p>'; });
     if ($("ac-team")) agency();
     if (window.FODO_LAB17) window.FODO_LAB17(u, acc);   // v17 My Growth Lab: score history, actions, monitoring, Search Console, monthly report
   }

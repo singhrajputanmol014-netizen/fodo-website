@@ -50,10 +50,10 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
 
   /* ---------- plans page ---------- */
   await p.goto(BASE + "/plans/"); await p.waitForSelector(".pl-card .btn", { timeout: 15000 });
-  const cards = await p.$$eval(".pl-card", (c) => c.map((x) => [x.querySelector("h3").textContent, x.querySelector(".pl-price b").textContent]));
+  const cards = await p.$$eval("#pl-grid .pl-card", (c) => c.map((x) => [x.querySelector("h3").textContent, x.querySelector(".pl-price b").textContent]));
   ok(cards.map((c) => c.join(" ")).join(" | ") === "Free ₹0 | Starter ₹499 | Growth ₹1,499 | Pro ₹3,999 | Agency ₹9,999", "plans page: 5 levels with prices from the server (" + cards.map((c) => c.join(" ")).join(", ") + ")");
   const packs = await p.$$eval(".pl-pack", (c) => c.map((x) => x.textContent)); ok(packs.length === 3 && /299/.test(packs[0]) && /2,499/.test(packs[2]), "3 X-Ray packs listed");
-  const proFeats = await p.$$eval(".pl-card", (c) => c[3].textContent + c[2].textContent);
+  const proFeats = await p.$$eval("#pl-grid .pl-card", (c) => c[3].textContent + c[2].textContent);
   ok(/Technology stack/.test(proFeats) && /Domain authority/.test(proFeats) && !/Search volume/.test(proFeats), "features need their data source: authority listed (OPR key set), search volume hidden (no SEO provider)");
   const html = fs.readFileSync(path.join(__dirname, "../plans/index.html"), "utf8");
   ok(/₹1,499/.test(html) && /₹9,999/.test(html) && /FAQPage/.test(html), "plans page has prices + FAQ in the HTML itself (search engines)");

@@ -9,6 +9,8 @@
     var P = c.plans, txt = { pro: "PRO · " + c.freeXrays + " X-Rays free with login, then from " + inr(P.starter.price) + " for " + P.starter.xrays, growth: "PRO · Growth plan (" + inr(P.growth.price) + "/month) and above",
       starter: "PRO · Starter plan (" + inr(P.starter.price) + "/month) and above", monitor: "PRO · " + P.free.monitors + " website" + (P.free.monitors === 1 ? "" : "s") + " free · up to " + P.agency.monitors + " on paid plans" };
     document.querySelectorAll("[data-price]").forEach(function (el) { if (txt[el.dataset.price]) el.textContent = txt[el.dataset.price]; });
+    // v39: Website Builder price (admin-controlled) in the Growth Lab band
+    if (c.builder) { var bp = {}; c.builder.plans.forEach(function (p) { bp[p.id] = p; }); document.querySelectorAll("[data-bprice]").forEach(function (el) { var p = bp[el.dataset.bprice]; if (p) el.textContent = p.name + " " + inr(p.price) + "/month"; }); }
     var on = {}; (c.tools || []).forEach(function (t) { on[t.id] = t.on; });
     // v18: one-run price of each standalone tool + the plans whose X-Rays include it
     (c.tools || []).forEach(function (t) { if (!t.buy) return; document.querySelectorAll('[data-pid="' + t.id + '"]').forEach(function (el) { el.textContent = (t.levelName || "PRO") + " · " + inr(t.price) + " a run" + (t.includedIn && t.includedIn.length ? " · included in " + t.includedIn.join(", ") + " X-Rays" : ""); }); });

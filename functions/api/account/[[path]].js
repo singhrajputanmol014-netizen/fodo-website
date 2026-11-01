@@ -14,9 +14,9 @@
  *   POST webhook/razorpay       → signed Razorpay webhooks (order.paid / payment.captured)
  */
 import { PRODUCTS } from "../../_lib/products.js";
-import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser,
+import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser, builderTier,
   verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, payOn, payProvider, rzp, rzpOn, rzpMode, rzpVerifyWebhook, rzpVerifyPayment, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
-import { PLANS, PACKS, rank, has, publicPlans } from "../../_lib/plans.js";
+import { PLANS, PACKS, rank, has, publicPlans, BUILDER, BUILDER_SELL, builderRank, publicBuilder } from "../../_lib/plans.js";
 import { log, providers, outbound } from "../../_lib/xray-core.js";
 import { applyConfig } from "../../_lib/config.js";
 
@@ -75,7 +75,7 @@ function config(env) {
     whatsapp: on && waOn(env),
     firebase: on && firebaseOn(env) ? { apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN || env.FIREBASE_PROJECT_ID + ".firebaseapp.com", projectId: env.FIREBASE_PROJECT_ID, providers: fbp } : null, email: on && !!env.RESEND_API_KEY, payments: on && cfOn(env),
     autoRenew: on && payProvider(env) === "cashfree" && env.CASHFREE_SUBSCRIPTIONS === "1", payments: on ? payProvider(env) : null, mode: payProvider(env) === "razorpay" ? rzpMode(env) : env.CASHFREE_ENV === "production" ? "production" : "sandbox", testMode: env.XRAY_TEST_MODE === "1" },
-    publicPlans({ seo: !!P.seo, authority: !!env.OPR_API_KEY, payTest: env.PAY_TEST === "1" })), 200, { "cache-control": "public, max-age=60" });
+    publicPlans({ seo: !!P.seo, authority: !!env.OPR_API_KEY, payTest: env.PAY_TEST === "1" }), { builder: publicBuilder() }), 200, { "cache-control": "public, max-age=60" });
 }
 
 /* ---------------- login ---------------- */
@@ -229,8 +229,13 @@ async function checkout(request, env, u, b, body) {
   if (!payOn(env)) return json({ ok: false, reason: "Payments are not switched on yet." }, 503);
   if (b.id !== u.id) return json({ ok: false, reason: "Your team owner manages payments for this plan." }, 403);
   if (isOwner(b)) return json({ ok: false, reason: "This is a FODO owner login, every feature is already free." }, 409);
-  const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : "plan", item = String(body.item || "");
-  const thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : PLANS[item];
+  const kind = body.kind === "pack" ? "pack" : body.kind === "tool" ? "tool" : body.kind === "builder" ? "builder" : "plan", item = String(body.item || "");
+  const thing = kind === "pack" ? PACKS[item] : kind === "tool" ? PRODUCTS[item] : kind === "builder" ? (BUILDER_SELL.indexOf(item) > -1 ? BUILDER[item] : null) : PLANS[item];
+  if (kind === "builder" && !thing) return json({ ok: false, reason: "Unknown Website Builder plan." }, 400);
+  if (kind === "builder") {   // v39: never sell a Builder level the account already has (from its Growth Lab plan or a running Builder plan)
+    const bt = builderTier(b);
+    if (builderRank(bt.tier) > builderRank(item) || (bt.via === "plan" && builderRank(bt.tier) >= builderRank(item))) return json({ ok: false, reason: (bt.via === "plan" ? "Your " + PLANS[bt.plan].name + " plan already includes " : "You already have ") + BUILDER[bt.tier].name + "." }, 409);
+  }
   if (thing && thing.hidden && env.PAY_TEST !== "1") return json({ ok: false, reason: "Unknown plan." }, 400);
   if (!thing || (kind === "plan" && item === "free")) return json({ ok: false, reason: kind === "tool" ? "Unknown tool." : "Unknown plan." }, 400);
   if (kind === "tool" && thing.on === false) return json({ ok: false, reason: thing.name + " is not available right now." }, 503);
@@ -242,7 +247,7 @@ async function checkout(request, env, u, b, body) {
   if (await count(env, "checkout:" + b.id, 20, 3600)) return json({ ok: false, reason: "Too many payment attempts. Try again later." }, 429);
   const d = await db(env), site = SITE(request), cust = { customer_id: b.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 50), customer_email: b.email, customer_phone: phone, customer_name: (b.name || b.email.split("@")[0]).slice(0, 100).padEnd(3, ".") };
   if (payProvider(env) === "razorpay") {   // Razorpay Standard Checkout: server creates the order, the page opens Razorpay's popup
-    const oid = "fo_" + randId(20), what = ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month")).slice(0, 200);
+    const oid = "fo_" + randId(20), what = ("FODO " + (kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200);
     const o = await rzp(env, "POST", "/orders", { amount: Math.round(thing.price * 100), currency: "INR", receipt: oid, notes: { kind, item, user: b.id.slice(0, 40) } });
     await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.id), nowIso()).run();
     return json({ ok: true, provider: "razorpay", orderId: oid, rzpOrderId: o.id, keyId: env.RAZORPAY_KEY_ID, amount: o.amount, currency: "INR", description: what, mode: rzpMode(env),
@@ -260,7 +265,7 @@ async function checkout(request, env, u, b, body) {
   }
   const oid = "fo_" + randId(20);
   const o = await cf(env, "POST", "/orders", { order_id: oid, order_amount: thing.price, order_currency: "INR", customer_details: cust,
-    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month")).slice(0, 200),
+    order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO " + (kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200),
     order_tags: { kind, item, user: b.id.slice(0, 40) } }, oid);
   await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.cf_order_id || ""), nowIso()).run();
   return json({ ok: true, paymentSessionId: o.payment_session_id, orderId: oid, mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox" });

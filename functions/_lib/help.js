@@ -6,7 +6,7 @@
 import { groqChat } from "./aivis.js";
 import { HELP_KB } from "./helpkb.js";
 import { db, sendMail, nowIso, randId, activePlan, isUnlimited } from "./accounts.js";
-import { PLANS, PACKS, ORDER } from "./plans.js";
+import { PLANS, PACKS, ORDER, BUILDER } from "./plans.js";
 import { PRODUCTS } from "./products.js";
 import { outbound, reportGet } from "./xray-core.js";
 import { productBrief } from "./sitekb.js";
@@ -107,7 +107,7 @@ export async function accountFacts(env, u, b) {
   const runs = (await d.prepare("SELECT domain, status, credit, created_at FROM acct_runs WHERE owner_id=?1 ORDER BY created_at DESC LIMIT 5").bind(owner.id).all().catch(() => ({ results: [] }))).results || [];
   const tools = (await d.prepare("SELECT tool, credits FROM lab_tool_credits WHERE user_id=?1 AND credits > 0").bind(owner.id).all().catch(() => ({ results: [] }))).results || [];
   const open = (await d.prepare("SELECT id, subject, status FROM help_tickets WHERE (user_id=?1 OR email=?2) AND status IN ('open','pending') ORDER BY updated_at DESC LIMIT 3").bind(u.id, u.email || "-").all()).results || [];
-  const itemName = (o) => o.kind === "plan" ? (PLANS[o.item] ? PLANS[o.item].name + " plan (1 month)" : o.item) : o.kind === "pack" ? (PACKS[o.item] ? PACKS[o.item].name + " pack" : o.item) : o.kind === "tool" ? (PRODUCTS[o.item] ? PRODUCTS[o.item].name + " (1 run)" : o.item) : o.item;
+  const itemName = (o) => o.kind === "plan" ? (PLANS[o.item] ? PLANS[o.item].name + " plan (1 month)" : o.item) : o.kind === "pack" ? (PACKS[o.item] ? PACKS[o.item].name + " pack" : o.item) : o.kind === "tool" ? (PRODUCTS[o.item] ? PRODUCTS[o.item].name + " (1 run)" : o.item) : o.kind === "builder" ? (BUILDER[o.item] ? BUILDER[o.item].name + " (1 month)" : o.item) : o.item;
   return {
     email: u.email, plan: PLANS[plan] ? PLANS[plan].name : plan, planUntil: plan === "free" ? null : (owner.plan_until || "").slice(0, 10),
     xraysLeft: isUnlimited(owner) ? "unlimited (FODO team / gifted access)" : { thisMonth: plan === "free" ? 0 : owner.monthly_left || 0, packs: owner.pack_left || 0, free: plan === "free" ? owner.free_left || 0 : 0 },
@@ -141,7 +141,8 @@ export async function latestReport(env, ownerId, full) {
 export function priceFacts() {
   return { plans: ORDER.map((id) => PLANS[id].name + ": " + (PLANS[id].price ? "₹" + PLANS[id].price.toLocaleString("en-IN") + "/month" : "free") + ", " + PLANS[id].xrays + " X-Rays" + (id === "free" ? " (lifetime)" : " a month")),
     packs: Object.keys(PACKS).map((k) => PACKS[k].name + ": ₹" + PACKS[k].price.toLocaleString("en-IN") + " (never expire)"),
-    tools: Object.keys(PRODUCTS).filter((k) => PRODUCTS[k].on !== false).map((k) => PRODUCTS[k].name + ": ₹" + PRODUCTS[k].price.toLocaleString("en-IN") + " a run") };
+    tools: Object.keys(PRODUCTS).filter((k) => PRODUCTS[k].on !== false).map((k) => PRODUCTS[k].name + ": ₹" + PRODUCTS[k].price.toLocaleString("en-IN") + " a run"),
+    builder: ["Website Builder Free: ₹0 with login, 1 website, the free templates and the AI builder"].concat(["builder", "business"].map((k) => BUILDER[k].name + ": ₹" + BUILDER[k].price.toLocaleString("en-IN") + "/month, " + BUILDER[k].sites + " websites, every template, " + BUILDER[k].domains + " custom domain" + (BUILDER[k].domains === 1 ? "" : "s")), ["Growth plan includes Website Builder, Pro includes Builder Business, Agency includes Builder Agency, at no extra cost"]) };
 }
 
 /* ---------- the AI help assistant ---------- */
@@ -161,7 +162,7 @@ export const SYS = "You are the FODO Help Assistant on fodo.co.in (FODO: Fear Of
 export function buildPrompt(question, facts, history) {
   const arts = kbSearch(question + " " + (history || []).slice(-2).map((m) => m.text).join(" "), 4), P = priceFacts();
   return productBrief() + "\n\nHELP ARTICLES:\n" + (arts.length ? arts : HELP_KB.slice(0, 4)).map((a) => "• " + a.q + ": " + a.a).join("\n") +
-    "\n\nPRICES (live): " + P.plans.join("; ") + ". Packs: " + P.packs.join("; ") + ". Pro tools: " + P.tools.join("; ") + "." +
+    "\n\nPRICES (live): " + P.plans.join("; ") + ". Packs: " + P.packs.join("; ") + ". Pro tools: " + P.tools.join("; ") + ". Website Builder: " + P.builder.join("; ") + "." +
     "\n\nACCOUNT FACTS: " + (facts ? JSON.stringify(facts) : "the person is not logged in, for account-specific questions ask them to log in, or open a ticket with their email.");
 }
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];

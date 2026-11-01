@@ -56,7 +56,7 @@ export function wireVisual(root) {
 const navBar = (j, mine) => '<header class="wbh-nav"><a class="wbh-brand" href="/" aria-label="FODO home"><b>FODO</b><span>Website Builder</span></a><nav aria-label="Builder"><a href="#" data-jump="wbh-gal">Templates</a>' + (j ? (mine ? '<a href="#" data-jump="wbh-mine">My websites</a>' : "") + '<a href="#archived=1">Archived</a>' : "") + '<a href="/help/">Help</a></nav>' +
   '<button type="button" class="wbh-search" id="wbh-search" aria-label="Search (Ctrl+K)"><span aria-hidden="true">⌕</span> Search templates, websites…<kbd>Ctrl K</kbd></button>' + (j ? '<button class="wb-btn pri" id="wb-new">+ New website</button>' : '<button class="wb-btn pri" id="wbh-login">Start free</button>') + "</header>";
 function bento(list) {   // 1 large + 4 small
-  return '<div class="wbh-bento">' + list.slice(0, 5).map((t, i) => '<article class="wbh-tc' + (i === 0 ? " big" : "") + '" data-id="' + esc(t.id) + '"><div class="wbh-tv"><iframe tabindex="-1" aria-hidden="true" sandbox="" loading="lazy"></iframe></div><div class="wbh-ov"><b>' + esc(t.name) + "</b><small>" + esc(t.category) + " · " + esc((STYLES[t.theme.style] || {}).name || "Original") + " · " + t.pages.length + ' pages</small><span><button type="button" class="wb-btn sm" data-pv="' + esc(t.id) + '">Preview</button><button type="button" class="wb-btn sm pri" data-use="' + esc(t.id) + '">Use template</button></span></div></article>').join("") + "</div>";
+  return '<div class="wbh-bento">' + list.slice(0, 5).map((t, i) => '<article class="wbh-tc' + (i === 0 ? " big" : "") + '" data-id="' + esc(t.id) + '"><div class="wbh-tv"><iframe tabindex="-1" aria-hidden="true" sandbox="" loading="lazy"></iframe></div><div class="wbh-ov">' + (t.free ? '<span class="wb-tier free">Free</span>' : "") + '<b>' + esc(t.name) + "</b><small>" + esc(t.category) + " · " + esc((STYLES[t.theme.style] || {}).name || "Original") + " · " + t.pages.length + ' pages</small><span><button type="button" class="wb-btn sm" data-pv="' + esc(t.id) + '">Preview</button><button type="button" class="wb-btn sm pri" data-use="' + esc(t.id) + '">Use template</button></span></div></article>').join("") + "</div>";
 }
 function fillPreviews(root) {
   const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => { if (!e.isIntersecting) return; io.unobserve(e.target); fill(e.target); }), { rootMargin: "200px" }) : null;
@@ -90,11 +90,11 @@ export async function home(root, opts) {
         (!sites.length ? '<section class="wb-pad wbh-sec"><div class="wbh-h"><h2>Popular industries</h2></div>' + industryTiles() + "</section>" : "") +
         '<section class="wb-pad wbh-sec" id="wbh-gal"><div class="wbh-h"><h2>Explore templates</h2><p class="wb-muted">Every design is a complete, editable website with real pages. Reviews and numbers stay placeholders until you add real ones.</p></div><div id="wb-gal"></div></section>' +
         (!sites.length ? '<section class="wb-pad wbh-sec"><div class="wbh-h"><h2>What FODO does for you</h2></div>' + promises() + "</section>" : "") +
-        (j.limits ? '<p class="wb-pad wb-muted wbh-lim">Plan limits: ' + j.limits.sites + " website(s) · " + j.limits.pages + " pages each · " + j.limits.domains + " custom domain(s).</p>" : "")) + "</div>";
+        (j.limits ? '<div class="wb-pad"><div class="wbh-plan"><div><small>YOUR BUILDER PLAN</small><b>' + esc(j.limits.tierName || "Builder") + "</b><span>" + (j.limits.owner ? "Everything unlocked" : j.limits.sites + " website" + (j.limits.sites === 1 ? "" : "s") + " · " + j.limits.pages + " pages each · " + (j.limits.allTemplates ? "every template" : "free templates") + " · " + j.limits.domains + " custom domain" + (j.limits.domains === 1 ? "" : "s")) + "</span></div>" + (j.limits.owner ? '<button type="button" class="wb-btn sm" id="wbh-health">Builder system health</button>' : "") + (!j.limits.owner && (j.limits.tier === "free" || j.limits.tier === "builder") ? '<a class="wb-btn sm pri" href="/plans/#builder">' + (j.limits.tier === "free" ? "Unlock every template" : "Get more websites") + "</a>" : "") + "</div></div>" : "")) + "</div>";
   // previews of your websites
   $$("[data-th]", root).forEach((f) => { const s = sites.find((x) => x.id === f.dataset.th); try { f.srcdoc = renderPage(s.thumb, (s.thumb.pages[0] || {}).slug, { base: "#", badge: false, noMotion: true }).replace(/<script(?![^>]*ld\+json)[\s\S]*?<\/script>/g, ""); } catch (e) {} });
   const start = (state) => { if (!signedIn) return X.login("Log in to build your website, it's free to start.").then(() => { try { sessionStorage.setItem("wb-start", JSON.stringify(state)); } catch (e) {} location.hash = "new=1"; }).catch(() => {}); try { sessionStorage.setItem("wb-start", JSON.stringify(state)); } catch (e) {} location.hash = "new=1"; };
-  const useTpl = (t, v) => { track("wb_template_selected", t.id); start({ templateId: t.id, variant: v || null }); };
+  const useTpl = (t, v) => CR.guardUse(t, () => { track("wb_template_selected", t.id); start({ templateId: t.id, variant: v || null }); });
   if (!arch) { wireAi(root, (o) => start({ prompt: o.prompt, goal: o.goal, style: o.style })); wireVisual(root); fillPreviews(root);
     CR.gallery($("#wb-gal", root), { onUse: useTpl, paged: true }); }
   $$("[data-jump]", root).forEach((b) => { b.onclick = (e) => { e.preventDefault(); const el = document.getElementById(b.dataset.jump); if (el) el.scrollIntoView({ behavior: RM() ? "auto" : "smooth", block: "start" }); }; });
@@ -102,10 +102,12 @@ export async function home(root, opts) {
   $$("[data-cat]", root).forEach((b) => { b.onclick = () => { CR.gallery($("#wb-gal", root), { onUse: useTpl, paged: true, filter: { group: b.dataset.cat } }); $("#wbh-gal").scrollIntoView({ behavior: RM() ? "auto" : "smooth" }); }; });
   $$(".wbh-bento [data-pv]", root).forEach((b) => { b.onclick = () => { track("wb_template_previewed", b.dataset.pv); CR.preview(CR.byId(b.dataset.pv), useTpl); }; });
   $$(".wbh-bento [data-use]", root).forEach((b) => { b.onclick = () => useTpl(CR.byId(b.dataset.use)); });
-  if ($("#wb-new", root)) $("#wb-new", root).onclick = () => { location.hash = "new=1"; };
+  const full = j.limits && !j.limits.owner && !arch && sites.length >= j.limits.sites;   // v39: say so before the wizard, not after it
+  if ($("#wb-new", root)) $("#wb-new", root).onclick = () => { if (full) return CR.upsell(null, "Your " + (j.limits.tierName || "plan") + " allows " + j.limits.sites + " website" + (j.limits.sites === 1 ? "" : "s") + ". Archive or delete one, or upgrade for more."); location.hash = "new=1"; };
   if ($("#wbh-login", root)) $("#wbh-login", root).onclick = () => start({});
   $$("[data-res]", root).forEach((b) => { b.onclick = async () => { const r = await X.api(b.dataset.res + "/archive", "POST", { on: false }); if (r.ok) { X.toast("Restored."); home(root, opts); } }; });
   CR.siteMenu(root, sites, () => home(root, opts));
+  if ($("#wbh-health", root)) $("#wbh-health", root).onclick = healthPanel;
   // search / command palette
   const pal = () => palette({ sites, signedIn, start, useTpl, root });
   $("#wbh-search", root).onclick = pal; if (window.__wbhKey) window.__wbhKey(); window.__wbhKey = bindKey(() => { if (!document.querySelector(".wb-pal-ov") && !location.hash.match(/site=/)) pal(); });
@@ -120,6 +122,30 @@ function palette(c) {
     (q) => (q ? CATEGORIES.filter((x) => x[0] !== "all").map((x) => ({ group: "Industries", icon: "◇", label: x[1] + " templates", hint: CR.all().filter((t) => catsOf(t).indexOf(x[0]) > -1).length + " designs", run: () => { CR.gallery(document.getElementById("wb-gal"), { onUse: c.useTpl, paged: true, filter: { group: x[0] } }); document.getElementById("wbh-gal").scrollIntoView(); } })) : []),
     (q) => (q ? Object.keys(STYLES).map((k) => ({ group: "Styles", icon: "◐", label: STYLES[k].name + " style", hint: STYLES[k].desc, run: () => { CR.gallery(document.getElementById("wb-gal"), { onUse: c.useTpl, paged: true, filter: { style: k } }); document.getElementById("wbh-gal").scrollIntoView(); } })) : []),
   ], { empty: "Press Enter on “Create a website with AI” to build exactly that." });
+}
+/* v39 Builder System Health. versionCheck: if this page or its template list is older than the deployed one (a cached page or a
+   half-finished deploy), say so and offer a reload, never show a wrong template count. healthPanel: owner-only diagnostics. */
+const BUILD = () => { const m = document.querySelector('meta[name="fodo-build"]'); return m ? m.content : ""; };
+export async function versionCheck() {
+  try {
+    const [b, v] = await Promise.all([fetch("/data/build.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)), fetch("/api/sites/version", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))]);
+    const staticN = CR.all().filter((t) => !t.custom && !/^ct_/.test(t.id)).length, stale = (b && BUILD() && b.build !== BUILD()) || (v && v.templates && v.templates !== staticN);
+    window.__wbVersion = { page: BUILD(), deployed: b, server: v, clientTemplates: staticN, stale: !!stale };
+    if (!stale || document.querySelector(".wb-stale")) return;
+    const d = document.createElement("div"); d.className = "wb-stale"; d.setAttribute("role", "status");
+    d.innerHTML = "<b>A newer version of the Website Builder is live.</b> <span>" + (v && v.templates ? v.templates + " templates are available" : "Reload to get the latest") + ', your work is saved on the server.</span><button type="button" class="wb-btn sm pri">Reload</button>';
+    d.querySelector("button").onclick = () => { location.reload(); }; document.body.appendChild(d);
+  } catch (e) {}
+}
+export async function healthPanel() {
+  const X = CR.ctx(), j = await X.api("system-health"); const V = window.__wbVersion || {};
+  const m = document.createElement("div"); m.className = "wb-modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-label", "Builder system health");
+  const row = (k, v, ok) => "<li" + (ok === false ? ' class="bad"' : "") + "><span>" + esc(k) + "</span><b>" + esc(String(v == null ? "unknown" : v)) + "</b></li>";
+  m.innerHTML = '<div class="wb-mc wb-health"><div class="wbh-h"><h2>Builder system health</h2><button type="button" class="wb-ib" data-x aria-label="Close">×</button></div>' + (j.ok ? '<ul class="wb-hl">' +
+    row("This page's build", V.page || "unknown") + row("Deployed build", j.deploy ? j.deploy.build + " (" + j.deploy.builtAt + ")" : "unknown", j.deploy ? j.deploy.build === V.page : null) +
+    row("API version", j.api) + row("Templates on the server", j.templates) + row("Templates in this page", V.clientTemplates, V.clientTemplates === j.templates) + row("Template registry", j.registry) + row("Free templates", j.freeTemplates) + row("Environment", j.environment) +
+    row("Cache status", V.stale ? "STALE: reload needed" : "Fresh", !V.stale) + j.checks.map((c) => row(c.name, (c.ok ? "OK" : "Not ready") + (c.detail ? " · " + c.detail : ""), c.ok)).join("") + "</ul>" : '<p class="wb-muted">' + esc(j.reason || "Could not load.") + "</p>") + "</div>";
+  document.body.appendChild(m); m.addEventListener("click", (e) => { if (e.target === m || e.target.closest("[data-x]")) m.remove(); });
 }
 /* premium error state: never a blank screen, never "Internal Server Error" */
 export function errorState(root, r, retry) {

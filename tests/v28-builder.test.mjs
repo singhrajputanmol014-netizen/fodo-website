@@ -51,7 +51,7 @@ const AI = { run: async (model, x) => { const sys = x.messages[0].content, user 
   return { response: "ok" }; } };
 const KV = new Map(), CHAT_KV = { get: async (k) => KV.get(k) || null, put: async (k, v, o) => { KV.set(k, v); KV.set(k + "#m", o && o.metadata); }, getWithMetadata: async (k) => ({ value: KV.get(k) || null, metadata: KV.get(k + "#m") }), delete: async (k) => KV.delete(k) };
 const env = { XRAY_DB: d1(), CHAT_KV, AI, ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", RESEND_API_KEY: "re_SECRETresendKEY12345", MAIL_FROM: "FODO <hello@fodo.co.in>", SITES_HOST: "sites.fodo.co.in", SITES_PROJECT: "fodo-sites" };
-await login("priya@smiledental.in", "starter", "a"); await login("rahul@otherbiz.in", null, "b"); await login("anmol@fodo.co.in", null, "own");
+await login("priya@smiledental.in", "growth", "a"); await login("rahul@otherbiz.in", null, "b"); await login("anmol@fodo.co.in", null, "own");   // v39: Growth includes the Website Builder plan (every template, 1 custom domain)
 const S = (p, body, who, o) => call("sites/" + p, body, Object.assign({ as: who || "a" }, o || {}));
 
 /* renderer safety */
@@ -136,7 +136,7 @@ env.CF_API_TOKEN = "cf_SECRET_token_1234567890"; env.CF_ACCOUNT_ID = "acc123";
 r = await S(id + "/domains/www.smiledental.in/verify", {}); ok(r.j.status === "connected" && r.j.ssl === "active" && cfCalls.some((c) => /^POST fodo-sites\/domains/.test(c)), "with the Cloudflare token → domain attached to the SITES project, SSL active");
 r = await site("https://www.smiledental.in/services/"); ok(r.status === 200 && /Smile Dental/.test(r.t), "the custom domain serves the website");
 r = await site("https://unknown-domain.com/"); ok(r.status === 404, "unknown domains get nothing");
-await login("rahul2@x.in", "starter", "c"); r = await call("sites/create", { name: "Rahul Shop" }, { as: "c" }); const id2 = r.j.id;
+await login("rahul2@x.in", "growth", "c"); r = await call("sites/create", { name: "Rahul Shop" }, { as: "c" }); const id2 = r.j.id;
 r = await call("sites/" + id2 + "/domains", { domain: "www.smiledental.in" }, { as: "c" }); ok(r.status === 409, "a domain already connected to another website can't be taken");
 
 /* media, export, misc security */

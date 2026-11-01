@@ -177,6 +177,12 @@ TEMPLATES.push(
 
 /* v38: the generated template families (niche briefs × styles × layouts) join the hand-made templates */
 TEMPLATES.push(...familyTemplates());
+/* v39: the free templates (Builder Free, any logged-in account). Every other template needs a Website Builder plan, or a
+   Growth Lab plan that includes one (Growth, Pro, Agency). One list for the gallery badges and the server check. */
+export const FREE_TEMPLATES = ["restaurant-modern", "cafe-cozy", "salon-luxe", "gym-energy", "doctor-clinic", "local-service", "boutique-store", "portfolio-minimal",
+  "coaching-clear", "consultant-pro", "journal-blog", "startup-launch", "resume-cv", "ngo-cause", "pet-care", "photographer"];
+export const isFreeTemplate = (id) => FREE_TEMPLATES.indexOf(String(id || "")) > -1;
+TEMPLATES.forEach((t) => { t.free = isFreeTemplate(t.id); });
 export function searchTemplates(q, opt) {
   const words = String(q || "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
   const score = (t) => { const hay = (t.name + " " + t.category + " " + t.tags.join(" ") + " " + t.theme.mode + " " + (t.theme.headingFont || t.theme.font)).toLowerCase(); let s = 0; const inTag = (w) => t.tags.some((g) => (" " + g + " ").indexOf(" " + w + " ") > -1); words.forEach((w) => { if (w.length === 2) { if (inTag(w)) s += 3; return; } if (hay.indexOf(w) > -1) s += inTag(w) || t.category.toLowerCase().indexOf(w) > -1 ? 3 : 1; }); return s && !t.family ? s + 0.5 : s; };   // v38: whole words inside multi-word tags count; 2-letter words (ai, ca) only as whole tags; curated templates win ties

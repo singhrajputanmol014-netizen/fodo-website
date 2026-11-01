@@ -868,7 +868,7 @@ WB_IMPORTMAP = json.dumps({"imports": dict(("/" + f, "/" + f + "?v=" + _V) for f
     + ["sites/lib/" + x for x in os.listdir(os.path.join(ROOT, "sites", "lib")) if x.endswith(".js")]))})
 # v39 Builder System Health: the build stamp the page was generated with, so a stale cached page or a half-finished deploy is detected
 import datetime as _dtb
-json.dump({"build": _V, "builtAt": _dtb.datetime.now(_dtb.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "app": "v41", "modules": len(json.loads(WB_IMPORTMAP)["imports"])}, open(os.path.join(ROOT, "data", "build.json"), "w"))
+json.dump({"build": _V, "builtAt": _dtb.datetime.now(_dtb.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "app": "v42", "modules": len(json.loads(WB_IMPORTMAP)["imports"])}, open(os.path.join(ROOT, "data", "build.json"), "w"))
 os.makedirs(os.path.join(ROOT, "website-builder"), exist_ok=True)
 from seo_config import OG_IMAGE
 _WB_D = "Build a professional, mobile-ready business website in minutes. AI writes it, you change anything by clicking, connect your domain and publish."

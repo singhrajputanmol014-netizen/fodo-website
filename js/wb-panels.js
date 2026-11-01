@@ -41,6 +41,7 @@ export function designPanel(el) {
   $$("[data-t]", el).forEach((i) => { const ev = i.type === "range" || i.type === "color" ? "input" : "change"; let tm; i.addEventListener(ev, () => { if (i.dataset.t === "radius") $("#ds-rv").textContent = i.value + "px"; clearTimeout(tm); tm = setTimeout(() => { X.change(() => { const th = doc().theme = Object.assign({}, doc().theme); if (i.value === "" ) delete th[i.dataset.t]; else th[i.dataset.t] = i.type === "range" ? +i.value : i.value; if (i.dataset.t === "mode" && th.palette && i.value !== "auto") doc().theme = applyPalette(th, th.palette, i.value); }); ct(); }, i.type === "color" ? 250 : 0); }); });
   $("#ds-anim").onclick = () => X.preview(true);
   $("#ds-fixm").onclick = () => fixMobile();
+  if (X.after && X.after.design) X.after.design(el);   // v42 design tokens
 }
 
 /* ================= ADD: sections + elements (click, or drag onto the canvas) ================= */
@@ -52,7 +53,7 @@ export function addPanel(el) {
   const comps = doc().components || [];
   $("#wb-comps").innerHTML = comps.length ? comps.map((k) => '<div class="wb-comp"><button class="wb-libi" data-cmp="' + k.id + '">⧉ ' + esc(k.name) + " <small>(" + esc(SECTION_LABELS[k.type] || k.type) + ')</small></button><button class="wb-ib sm" data-cmpx="' + k.id + '" title="Delete component (linked copies become normal sections)">✕</button></div>').join("") : '<p class="wb-muted">Right-click any section → “Save as component” to reuse it. Edit once, it updates everywhere it is used.</p>';
   $$("[data-cmp]", el).forEach((b) => { b.onclick = () => { const k = comps.find((x) => x.id === b.dataset.cmp); X.change(() => insertAt({ type: k.type, ref: k.id, props: {} })); }; });
-  $$("[data-cmpx]", el).forEach((b) => { b.onclick = () => { if (!confirm("Delete this component? Places that use it keep a normal copy.")) return; X.change(() => { const k = comps.find((x) => x.id === b.dataset.cmpx); doc().pages.forEach((p) => p.sections.forEach((s) => { if (s.ref === k.id) { s.props = JSON.parse(JSON.stringify(k.props)); delete s.ref; } })); doc().components = comps.filter((x) => x.id !== k.id); }); addPanel(el); }; });
+  $$("[data-cmpx]", el).forEach((b) => { b.onclick = () => { if (!confirm("Delete this component? Places that use it keep a normal copy.")) return; X.change(() => { const k = comps.find((x) => x.id === b.dataset.cmpx); doc().pages.forEach((p) => p.sections.forEach((s) => { if (s.ref === k.id) { s.props = JSON.parse(JSON.stringify(Object.assign({}, k.props, s.over || {}))); delete s.ref; delete s.over; } })); doc().components = comps.filter((x) => x.id !== k.id); }); addPanel(el); }; });
   $("#wb-gens").onclick = () => { const q = prompt("Describe the section (e.g. “a premium comparison section”, “a modern testimonial section”)"); if (q) X.askAI("Add a new section to the " + X.curPage().title + " page (use the website's existing colours, fonts and style): " + q); };
   $("#wb-genp").onclick = genPage;
 }
@@ -129,7 +130,7 @@ export function saveAsComponent(i) {
   if (/navbar|footer|cta/.test(s.type) && confirm("Use this " + SECTION_LABELS[s.type] + " on EVERY page (edit once, updates everywhere)?")) X.change(() => doc().pages.forEach((p) => p.sections.forEach((x) => { if (x.type === s.type && !x.ref) { x.ref = id; x.props = {}; } })));
   X.toast("Saved as component “" + name + "”, edit it once, it updates everywhere.");
 }
-export function unlink(i) { const P = X.curPage(), s = P.sections[i], k = (doc().components || []).find((x) => x.id === s.ref); if (!k) return; X.change(() => { s.props = JSON.parse(JSON.stringify(k.props)); delete s.ref; }); X.toast("Detached, this copy can now be edited on its own."); }
+export function unlink(i) { const P = X.curPage(), s = P.sections[i], k = (doc().components || []).find((x) => x.id === s.ref); if (!k) return; X.change(() => { s.props = JSON.parse(JSON.stringify(Object.assign({}, k.props, s.over || {}))); delete s.ref; delete s.over; }); X.toast("Detached, this copy can now be edited on its own."); }
 
 /* ================= RIGHT-CLICK MENU + CLIPBOARD ================= */
 const CLIP = "wb-clip";

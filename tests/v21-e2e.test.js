@@ -122,6 +122,13 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
       ok((await efr.locator('[data-x="1-h1-0"]').evaluate((e) => getComputedStyle(e).fontSize)) === "77px" && /Main heading/.test(await p.textContent(".wb-crumbs")), "v41: select a heading on the canvas and restyle just that element");
       await efr.locator('[data-x="1-p-0"]').click({ modifiers: ["Shift"] }); await p.waitForTimeout(400); ok(/2 elements/.test(await p.textContent(".wb-crumbs")), "v41: Shift+click multi-select");
       await p.keyboard.press("Escape"); await p.waitForTimeout(400); ok(!(await p.$(".wb-elp")) && !!(await p.$(".wb-el-layers")), "v41: Esc goes back to the section, which lists its element layers"); await shot(p, "builder-elements");
+      // v42: element duplicate, side by side, rulers + guide
+      await efr.locator('[data-x="1-h1-0"]').click(); await p.waitForSelector("#el-dup"); await p.click("#el-dup"); await p.waitForTimeout(800);
+      ok((await efr.locator('[data-x="1-h1-0"]').count()) === 2 && (await efr.locator("h1").count()) === 1, "v42: duplicate an element (copy right after it, still one H1)");
+      await p.keyboard.press("Escape"); await p.waitForTimeout(300); await p.click("#bb-sbs"); await p.waitForTimeout(1200);
+      ok((await p.$$eval("#wb-sbs iframe", (a) => a.map((f) => f.dataset.w).join(","))) === "1280,820,390", "v42: desktop, tablet and mobile side by side"); await shot(p, "builder-side-by-side"); await p.click("#sbs-x");
+      await p.check("#bb-rul"); await p.waitForTimeout(300); const ry = await (await p.$(".wb-ry")).boundingBox(); await p.mouse.move(ry.x + 8, ry.y + 150); await p.mouse.down(); await p.mouse.move(ry.x + 240, ry.y + 150, { steps: 4 }); await p.mouse.up(); await p.waitForTimeout(300);
+      ok((await p.$$(".wb-gl i.gv")).length === 1, "v42: rulers on, drag a guide out of the ruler"); await p.uncheck("#bb-rul");
       await p.goto(BASE + "/"); }
     // v40 FODO Workspace (Business OS): loads for a signed-in owner with real data, admin nav, Content brief builder, phone menu
     await p.goto(BASE + "/workspace/"); await p.waitForSelector(".ws-next", { timeout: 20000 });

@@ -14,6 +14,7 @@ import * as H from "/js/wb-home.js";
 import { openPalette, track } from "/js/wb-palette.js";
 import * as MB from "/js/wb-mobile.js";
 import * as EL from "/js/wb-elements.js";
+import * as N from "/js/wb-v42.js";
 import { legalText as legalTextFor } from "/sites/lib/industry.js";
 
 const A = () => window.FODO_ACCOUNT, root = document.getElementById("wb");
@@ -62,7 +63,7 @@ async function editor(id, hello) {
   $("#wb-undo").onclick = undo; $("#wb-redo").onclick = redo; $("#wb-prev").onclick = () => preview(); $("#wb-pub").onclick = publishFlow; $("#wb-ai-open").onclick = openCmd;
   $("#wb-audit").onclick = () => PN.auditPanel(); $("#wb-share").onclick = () => PN.sharePanel(); $("#wb-set").onclick = () => PN.settingsPage("general"); $("#wb-help").onclick = () => PN.helpPanel();
   $("#wb-adv").onchange = function () { ED.adv = this.checked; ls.set("wb-adv", this.checked ? "1" : "0"); $(".wb-left .wb-tabs").innerHTML = TABS().map(tabBtn).join(""); $$("[data-tab]").forEach((b) => { b.onclick = () => { ED.tab = b.dataset.tab; left(); }; }); if (!TABS().some((x) => x[0] === ED.tab)) ED.tab = "add"; left(); right(); };
-  PN.bind(panelX()); EL.bind(Object.assign(panelX(), { SECTION_LABELS })); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); CL.bind(panelX()); V.bottomBar(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
+  PN.bind(panelX()); EL.bind(Object.assign(panelX(), { SECTION_LABELS })); V.bind(Object.assign(panelX(), { setDevice, openHistory, save: (n) => save(n) })); AS.bind(panelX()); CL.bind(panelX()); N.bind(Object.assign(panelX(), { setDevice })); V.bottomBar(); N.barButtons(); liveState(); clearInterval(tickT); tickT = setInterval(savedTick, 5000);
   $("#wb-cf").onsubmit = (e) => { e.preventDefault(); askAI($("#wb-ci").value); };
   window.onmessage = onFrame; document.onkeydown = keys; window.onbeforeunload = () => (ED && ED.dirty ? "You have unsaved changes." : undefined);
   MB.mount({ ED: () => ED, setTab: (t) => { ED.tab = t; left(); }, openCmd, preview: () => preview(), audit: () => PN.auditPanel(), share: () => PN.sharePanel(), settings: () => PN.settingsPage("general") });   // v39 phone editor
@@ -88,18 +89,19 @@ function select(i) { ED.elSel = []; ED.sel = i; ED.rtab = "content"; if (ED.tab 
 function setDevice(dev) { if (!ED) return; ED.dev = dev; $$(".wb-bar [data-dev]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.dev === dev)); const fw = $("#wb-fw"); if (fw) fw.className = "wb-frame " + dev + (fw.classList.contains("wb-gridon") ? " wb-gridon" : ""); V.bpChip(); if (ED.rtab === "style") right(); }
 function openHistory() { ED.tab = "more"; left(); const d = $("#wb-vers"); if (d) { d.parentNode.open = true; versionsPanel(); d.scrollIntoView({ block: "nearest" }); } }
 function goPage(slug) { ED.page = slug; ED.sel = null; ED.elSel = []; paint(); left(); right(); }
-function panelX() { return { ED: () => ED, site: () => Object.assign({}, ED.s, { urls: ED.urls || ED.s.urls }), api, toast, change, paint, left, right, upload, askAI, openCmd, curPage, select, goPage, DEFAULTS, BRIDGE, isOwner: () => !!(CFG && CFG.owner) || !!(ED && ED.limits && ED.limits.owner), save: (note) => save(note), preview: (anim) => preview(anim), panels: { domain: domainPanel, stats: statsPanel } }; }
+function panelX() { return { ED: () => ED, site: () => Object.assign({}, ED.s, { urls: ED.urls || ED.s.urls }), api, toast, change, paint, left, right, upload, askAI, openCmd, curPage, select, goPage, DEFAULTS, BRIDGE, isOwner: () => !!(CFG && CFG.owner) || !!(ED && ED.limits && ED.limits.owner), save: (note) => save(note), preview: (anim) => preview(anim), after: { design: (el) => N.tokens(el) }, panels: { domain: domainPanel, stats: statsPanel } }; }
 function paint(keepScroll) {
   const f = $("#wb-if"); let y = 0; try { y = keepScroll ? 0 : 0; } catch (e) {}
-  f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE + EL.BRIDGE, data: ED.data });
+  f.srcdoc = renderPage(ED.doc, ED.page, { base: "#", edit: true, badge: false, bodyExtra: BRIDGE + EL.BRIDGE, data: ED.data }); N.refresh();
   f.onload = () => { if (ED.sel != null) f.contentWindow.postMessage({ fodo: "mark", i: ED.sel }, "*"); };
 }
-const propsOf = (sec) => (sec.ref ? ((ED.doc.components || []).find((k) => k.id === sec.ref) || { props: sec.props }).props : sec.props);
+const propsOf = (sec) => (sec.ref ? ((ED.doc.components || []).find((k) => k.id === sec.ref) || { props: sec.props }).props : sec.props);   // master props (copy overrides: sec.over)
 function onFrame(e) {
   if (!ED || e.source !== $("#wb-if").contentWindow && !(e.data && e.data.fodo === "checked")) return; const d = e.data || {};
   if (EL.onFrame(d)) return;   // v41 element selection + layer list
   if (d.fodo === "sel") { if (d.i !== ED.sel) ED.elSel = []; ED.sel = d.i; ED.rtab = "content"; if (ED.tab === "add") ED.tab = "sections"; left(); right(); $("#wb-if").contentWindow.postMessage({ fodo: "mark", i: d.i }, "*"); MB.onSelect(true, (SECTION_LABELS[(curPage().sections[d.i] || {}).type] || "section")); }
-  if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; if (sec.style && sec.style.lock) { paint(); return toast("This section is locked, unlock it to edit.", true); } const P0 = propsOf(sec), cur = P0[d.f]; if (cur === d.t) return; change(() => { P0[d.f] = String(d.t).trim(); }); }
+  if (d.fodo === "text") { const sec = curPage().sections[d.i]; if (!sec) return; if (sec.style && sec.style.lock) { paint(); return toast("This section is locked, unlock it to edit.", true); } if (sec.ref && (ED.copyKey === ED.page + ":" + d.i || (sec.over && d.f in sec.over))) { if (sec.over && sec.over[d.f] === d.t) return; change(() => { sec.over = sec.over || {}; sec.over[d.f] = String(d.t).trim(); }); return; }   // v42 copy override
+    const P0 = propsOf(sec), cur = P0[d.f]; if (cur === d.t) return; change(() => { P0[d.f] = String(d.t).trim(); }); }
   if (d.fodo === "ctx") PN.contextMenu(d.i, d.x, d.y);
   if (d.fodo === "drop" && d.type) PN.addSection(d.type, d.at);
   if (d.fodo === "move" && d.from !== d.to && d.to !== d.from + 1) { const P = curPage(); const sec = P.sections[d.from]; if (sec && sec.style && sec.style.lock) return toast("This section is locked.", true); change(() => { const [x] = P.sections.splice(d.from, 1); const to = d.to > d.from ? d.to - 1 : d.to; P.sections.splice(to, 0, x); ED.sel = to; }); left(); right(); }
@@ -225,12 +227,16 @@ function right() { const rp = $("#wb-rp"); if (EL.panel(rp)) return; rightBase()
 function rightBase() {
   const el = $("#wb-rp"), P = curPage(), sec = ED.sel != null ? P.sections[ED.sel] : null;
   if (!sec) { el.innerHTML = '<div class="wb-hint"><b>Click any part of your website</b> to change it.<br>Double-click text to type directly.<br><br>Or press <kbd>Ctrl</kbd> + <kbd>K</kbd> and tell the AI what you want.</div>'; return; }
-  const comp = sec.ref ? (ED.doc.components || []).find((k) => k.id === sec.ref) : null, p = comp ? comp.props : (sec.props = sec.props || {}), locked = !!(sec.style && sec.style.lock);
+  const comp = sec.ref ? (ED.doc.components || []).find((k) => k.id === sec.ref) : null, copy = !!comp && ED.copyKey === ED.page + ":" + ED.sel, p = comp ? N.editTarget(sec, comp, copy) : (sec.props = sec.props || {}), locked = !!(sec.style && sec.style.lock);
+  const ov = N.overrides(sec), chg = (fn, np) => { change(() => { fn(); if (copy) N.syncOver(sec, comp, p); }, np); if (copy && N.overrides(sec).join() !== ov.join()) setTimeout(right, 0); };   // v42: "this copy only" edits become overrides
   const head0 = '<div class="wb-rhead"><b>' + esc(SECTION_LABELS[sec.type]) + '</b><button class="wb-ib sm" id="wb-aie" title="AI edit this section (preview first)">✦</button><button class="wb-ib sm" id="wb-up" title="Move up">↑</button><button class="wb-ib sm" id="wb-dn" title="Move down">↓</button><button class="wb-ib sm" id="wb-dup2" title="Duplicate (Ctrl D)">⧉</button><button class="wb-ib sm" id="wb-del2" title="Delete">✕</button></div>' +
-    (comp ? '<p class="wb-compnote">⧉ Component “' + esc(comp.name) + '”, edits update every page that uses it. <button class="wb-btn sm" id="wb-unl">Detach</button></p>' : "") +
+    (comp ? '<div class="wb-compnote"><p>⧉ Component “' + esc(comp.name) + '” · used ' + N.compUses(comp.id) + ' time(s)</p><div class="wb-seg" role="group" aria-label="Edits apply to"><button type="button" data-cm="all" aria-pressed="' + !copy + '">All copies (master)</button><button type="button" data-cm="copy" aria-pressed="' + copy + '">This copy only</button></div>' +
+      (ov.length ? '<p class="wb-muted">This copy overrides: <b>' + ov.map((k) => esc(nice(k))).join(", ") + '</b>. Master changes to these fields don\'t reach this copy. <button type="button" class="wb-link" id="wb-cmreset">Reset to master</button></p>' : '<p class="wb-muted">' + (copy ? "Changes now apply to this copy only." : "Changes update every page that uses it.") + "</p>") + '<button class="wb-btn sm" id="wb-unl">Detach</button></div>' : "") +
     '<nav class="wb-rtabs"><button data-rt="content" aria-selected="' + (ED.rtab !== "style") + '">Content</button><button data-rt="style" aria-selected="' + (ED.rtab === "style") + '">Style &amp; animation</button></nav>';
   const wireHead = () => { $("#wb-up").onclick = () => { if (ED.sel > 0) change(() => { const [x] = P.sections.splice(ED.sel, 1); P.sections.splice(--ED.sel, 0, x); left(); }); }; $("#wb-dn").onclick = () => { if (ED.sel < P.sections.length - 1) change(() => { const [x] = P.sections.splice(ED.sel, 1); P.sections.splice(++ED.sel, 0, x); left(); }); };
     $("#wb-aie").onclick = (e) => V.aiEditMenu(e.currentTarget, ED.sel); $("#wb-dup2").onclick = () => PN.duplicateSection(ED.sel); $("#wb-del2").onclick = () => { if (confirm("Delete this " + SECTION_LABELS[sec.type] + " section?")) PN.deleteSection(ED.sel); }; if ($("#wb-unl")) $("#wb-unl").onclick = () => { PN.unlink(ED.sel); right(); };
+    $$("[data-cm]", el).forEach((b) => { b.onclick = () => { ED.copyKey = b.dataset.cm === "copy" ? ED.page + ":" + ED.sel : null; right(); }; });
+    if ($("#wb-cmreset")) $("#wb-cmreset").onclick = () => { change(() => { delete sec.over; }); right(); toast("This copy follows the master again."); };
     $$("[data-rt]", el).forEach((b) => { b.onclick = () => { ED.rtab = b.dataset.rt; right(); }; }); };
   if (ED.rtab === "style") { const layer = V.layerOf(ED.dev); el.innerHTML = head0 + '<div id="wb-stp"></div>'; wireHead();
     if (layer === "base") { PN.stylePanel($("#wb-stp"), sec); $("#wb-stp").insertAdjacentHTML("afterbegin", '<div class="wb-bp wb-bp-base"><b>Editing: Desktop (base)</b><span>Switch the device at the top to Tablet or Mobile to change them separately. <button class="wb-link" id="wb-mr">✦ Make this section responsive</button></span></div>'); $("#wb-mr").onclick = () => V.makeResponsive({ only: ED.sel }); }
@@ -260,18 +266,18 @@ function rightBase() {
   extra.forEach((k) => { if (!(k in p)) p[k] = /^(cta|cta2)$/.test(k) || (k === "button" && /hero|cta/.test(sec.type)) ? { label: "", href: "" } : /^(points|fields|services|staff|locations)$/.test(k) ? [] : /^(links|items)$/.test(k) ? [] : k === "line" ? false : ""; });
   const embedNote = sec.type === "embed" ? '<p class="wb-muted">' + (p.url ? (PN.embedUrl(p.url) ? "✓ Embeds from " + esc(new URL(PN.embedUrl(p.url)).hostname) : "⚠ This link can't be embedded, use YouTube, Vimeo, a Google Maps “Embed a map” link, Calendly, Typeform, Google Forms or Spotify.") : "Paste a YouTube, Vimeo, Google Maps embed, Calendly, Typeform, Google Forms or Spotify link.") + "</p>" : "";
   const legalNote = sec.type === "legal" && p.generated ? '<div class="wb-warnbox">⚖ Generated draft, review it for your business and jurisdiction (FODO is not a lawyer) and fill every [bracket].<label class="wb-ck"><input type="checkbox" id="wb-lrev"' + (p.reviewed ? " checked" : "") + "> I've reviewed this text</label></div>" : "";
-  el.innerHTML = head0 + '<button class="wb-btn sm wb-full" id="wb-secai">✦ Ask AI about this section</button>' + legalNote + embedNote + CL.sourceBox(sec, p) + '<form id="wb-pf">' + walk(p, []) + '</form><div id="wb-fb"></div>' + (comp ? "" : '<button class="wb-btn sm wb-full" id="wb-mkc">⧉ Save as component (reuse everywhere)</button>');
-  wireHead(); CL.wireSource(el, sec, p); if (/contact|booking/.test(sec.type)) PN.formBuilder($("#wb-fb"), sec, p);
-  if ($("#wb-lrev")) $("#wb-lrev").onchange = function () { change(() => { p.reviewed = this.checked; }, true); };
+  el.innerHTML = head0 + '<button class="wb-btn sm wb-full" id="wb-secai">✦ Ask AI about this section</button>' + legalNote + embedNote + CL.sourceBox(sec, copy ? comp.props : p) + '<form id="wb-pf">' + walk(p, []) + '</form><div id="wb-fb"></div>' + (comp ? "" : '<button class="wb-btn sm wb-full" id="wb-mkc">⧉ Save as component (reuse everywhere)</button>');
+  wireHead(); CL.wireSource(el, sec, copy ? comp.props : p); if (/contact|booking/.test(sec.type)) PN.formBuilder($("#wb-fb"), sec, copy ? comp.props : p);
+  if ($("#wb-lrev")) $("#wb-lrev").onchange = function () { chg(() => { p.reviewed = this.checked; }, true); };
   if ($("#wb-mkc")) $("#wb-mkc").onclick = () => { PN.saveAsComponent(ED.sel); right(); };
   const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), p), set = (path, val) => { const ks = path.split("."), last = ks.pop(), o = ks.reduce((a, k) => a[k], p); o[last] = val; };
-  $$("[data-p]", el).forEach((i) => { i.onchange = () => change(() => set(i.dataset.p, i.dataset.bool ? i.checked : i.value)); });
-  $$("[data-lines]", el).forEach((i) => { i.onchange = () => change(() => set(i.dataset.lines, i.value.split("\n").map((x) => x.trim()).filter(Boolean))); });
-  $$("[data-ia]", el).forEach((b) => { b.onclick = () => change(() => { const a = get(b.dataset.ia); a.push(a.length ? JSON.parse(JSON.stringify(a[a.length - 1])) : ({ links: { label: "Instagram", href: "https://instagram.com/" }, items: sec.type === "buttons" ? { label: "Button", href: "contact/" } : sec.type === "hours" ? { day: "Monday", time: "10:00 – 19:00" } : sec.type === "portfolio" ? { title: "Project", category: "", text: "", image: "", link: "" } : { title: "", text: "" } }[b.dataset.ia.split(".").pop()] || { title: "", text: "" })); right(); }); });
-  $$("[data-ix]", el).forEach((b) => { b.onclick = () => change(() => { const [pa, i] = b.dataset.ix.split("|"); get(pa).splice(+i, 1); right(); }); });
-  $$("[data-iu]", el).forEach((b) => { b.onclick = () => change(() => { const [pa, i] = b.dataset.iu.split("|"), a = get(pa); if (+i > 0) { const [x] = a.splice(+i, 1); a.splice(+i - 1, 0, x); } right(); }); });
-  $$("[data-rw]", el).forEach((s) => { s.onchange = async () => { const mode = s.value; if (!mode) return; const cur = get(s.dataset.rw); s.disabled = true; const r = await api(ED.id + "/rewrite", "POST", { text: cur, mode }); s.disabled = false; s.value = ""; if (!r.ok) return toast(r.reason, true); change(() => set(s.dataset.rw, r.text)); right(); }; });
-  $$("[data-up]", el).forEach((b) => { b.onclick = () => upload((url, item) => { change(() => { set(b.dataset.up, url); const ak = b.dataset.up.replace(/(image|img|photo|logoImg|logo)$/i, (x) => x + "Alt"); if (item && item.alt && ak !== b.dataset.up) { try { if (!get(ak)) set(ak, item.alt); } catch (e) {} } }); right(); }); });
+  $$("[data-p]", el).forEach((i) => { i.onchange = () => chg(() => set(i.dataset.p, i.dataset.bool ? i.checked : i.value)); });
+  $$("[data-lines]", el).forEach((i) => { i.onchange = () => chg(() => set(i.dataset.lines, i.value.split("\n").map((x) => x.trim()).filter(Boolean))); });
+  $$("[data-ia]", el).forEach((b) => { b.onclick = () => chg(() => { const a = get(b.dataset.ia); a.push(a.length ? JSON.parse(JSON.stringify(a[a.length - 1])) : ({ links: { label: "Instagram", href: "https://instagram.com/" }, items: sec.type === "buttons" ? { label: "Button", href: "contact/" } : sec.type === "hours" ? { day: "Monday", time: "10:00 – 19:00" } : sec.type === "portfolio" ? { title: "Project", category: "", text: "", image: "", link: "" } : { title: "", text: "" } }[b.dataset.ia.split(".").pop()] || { title: "", text: "" })); right(); }); });
+  $$("[data-ix]", el).forEach((b) => { b.onclick = () => chg(() => { const [pa, i] = b.dataset.ix.split("|"); get(pa).splice(+i, 1); right(); }); });
+  $$("[data-iu]", el).forEach((b) => { b.onclick = () => chg(() => { const [pa, i] = b.dataset.iu.split("|"), a = get(pa); if (+i > 0) { const [x] = a.splice(+i, 1); a.splice(+i - 1, 0, x); } right(); }); });
+  $$("[data-rw]", el).forEach((s) => { s.onchange = async () => { const mode = s.value; if (!mode) return; const cur = get(s.dataset.rw); s.disabled = true; const r = await api(ED.id + "/rewrite", "POST", { text: cur, mode }); s.disabled = false; s.value = ""; if (!r.ok) return toast(r.reason, true); chg(() => set(s.dataset.rw, r.text)); right(); }; });
+  $$("[data-up]", el).forEach((b) => { b.onclick = () => upload((url, item) => { chg(() => { set(b.dataset.up, url); const ak = b.dataset.up.replace(/(image|img|photo|logoImg|logo)$/i, (x) => x + "Alt"); if (item && item.alt && ak !== b.dataset.up) { try { if (!get(ak)) set(ak, item.alt); } catch (e) {} } }); right(); }); });
   $("#wb-secai").onclick = () => { openCmd(); $("#wb-ci").value = "For the selected " + SECTION_LABELS[sec.type] + " section: "; $("#wb-ci").focus(); };
 }
 /* image upload: resized in the browser (max 1600px) and re-encoded to WebP before it leaves the device */

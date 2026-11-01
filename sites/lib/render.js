@@ -149,7 +149,10 @@ const R = {
 };
 
 /* ---------- theme CSS (mobile first, no frameworks) ---------- */
-export function themeCss(t) {
+/* v42 design tokens: heading scale + base text size (appended after the base CSS so they win) */
+export const SCALES = { tight: ["clamp(1.9rem,5.2vw,3.2rem)", "clamp(1.45rem,3.4vw,2.1rem)", "1.2rem"], bold: ["clamp(2.4rem,7.6vw,5rem)", "clamp(1.8rem,5vw,3.2rem)", "1.5rem"] };
+export function themeCss(t) { t = t || {}; const sc = SCALES[t.scale], b = +t.base >= 14 && +t.base <= 19 ? Math.round(+t.base) : 0; return themeCss0(t) + (sc ? "h1{font-size:" + sc[0] + "}h2{font-size:" + sc[1] + "}h3{font-size:" + sc[2] + "}" : "") + (b ? "body{font-size:" + b + "px}" : ""); }
+function themeCss0(t) {
   t = t || {}; const dark = t.mode === "dark", P = color(t.primary, "#7B61FF"), A = color(t.accent, "#FFB547"), bg = color(t.bg, dark ? "#0b0b10" : "#ffffff"), tx = color(t.text, dark ? "#f2f1f7" : "#16141f"), rad = num(t.radius, 0, 32, 14), font = FONTS[t.font] || FONTS.Inter, hfont = FONTS[t.headingFont] || font;
   const S2 = color(t.secondary, tx), surf = color(t.surface, ""), pad = { compact: "clamp(40px,6vw,72px)", airy: "clamp(72px,11vw,140px)" }[t.density] || "clamp(56px,9vw,110px)", wrapW = t.container === "full" ? "100% - 32px" : (["1080", "1200", "1280", "1440"].indexOf(String(t.container)) > -1 ? t.container : "1160") + "px";
   const btnr = { pill: "999px", square: "0px" }[t.button] || "calc(var(--r)*3)", sh = { none: "none", strong: "0 24px 60px -24px rgba(0,0,0,.45)", glow: "0 0 0 1px color-mix(in srgb,var(--p) 30%,transparent),0 18px 50px -18px color-mix(in srgb,var(--p) 70%,transparent)", glass: "0 10px 40px -12px rgba(0,0,0,.35)" }[t.shadow] || "0 10px 30px -18px rgba(0,0,0,.25)";
@@ -271,7 +274,7 @@ export function renderPage(site, slug, o) {
   let h1 = false; const c = { data: o.data || null, virtual: !!o.virtual, name, edit: !!o.edit, home: base, nav: navOf(site, base, page.slug), legal: (site.pages || []).filter((x) => x.nav === false && !x.hidden && /^(privacy|terms|shipping|returns|refund|cookies?)/.test(x.slug)).map((x) => ({ label: x.title, href: base + x.slug + "/" })), search: !!S.search, formAction: o.formAction || "#", badge: o.badge !== false, si: 0, h1: (close) => { if (close) return c._t; c._t = h1 ? "h2" : "h1"; h1 = true; return c._t; } };
   const comps = {}; (site.components || []).forEach((k) => { if (k && k.id) comps[k.id] = k; });
   const elCss = [];   // v41 element styles for this page
-  const body = (page.sections || []).map((s, i) => { const f = R[s.type]; if (!f) return ""; c.si = i; const props = fromCollection(site, s.type, s.ref && comps[s.ref] && comps[s.ref].type === s.type ? comps[s.ref].props || {} : s.props || {});
+  const body = (page.sections || []).map((s, i) => { const f = R[s.type]; if (!f) return ""; c.si = i; const props = fromCollection(site, s.type, s.ref && comps[s.ref] && comps[s.ref].type === s.type ? compProps(comps[s.ref], s) : s.props || {});
     let html = f(props, c); if (!html) return o.edit ? '<section data-sec="' + i + '" class="ed-empty"><div class="wrap"><p class="sub">' + esc(SECTION_LABELS[s.type] || s.type) + ", add details in the panel</p></div></section>" : "";
     html = wrapStyle(html, s.style || props._s, s.type); html = applyElements(html, s, i, !!o.edit, elCss); return o.edit ? html.replace(/^<(header|section|footer)/, '<$1 data-sec="' + i + '"') : html; }).join("\n");
   let body2 = body; if (!/<h1[\s>]/.test(body2)) { const k = body2.indexOf("<h2"); if (k > -1) { const e = body2.indexOf("</h2>", k); body2 = body2.slice(0, k) + "<h1" + body2.slice(k + 3, e) + "</h1>" + body2.slice(e + 5); } }   // every page gets exactly one H1
@@ -344,15 +347,19 @@ export function checkSite(site) {
    st:{…}, t:{…}, m:{…}, anim, hover, aria } } keyed by the n-th <tag> inside that section's rendered HTML. Sections without `el`
    render byte-for-byte as before. Every value is validated here (shared by the editor, the server and the published site):
    only known properties, numbers in range, hex colours and listed keywords, so no CSS or HTML can be injected. ---------- */
+/* v42 global components: a copy shows the master's props, plus its own top-level overrides (s.over) */
+export function compProps(k, s) { const o = s && s.over && typeof s.over === "object" ? s.over : null; return o ? Object.assign({}, (k && k.props) || {}, o) : (k && k.props) || {}; }
 export const EL_TAGS = ["h1", "h2", "h3", "h4", "p", "a", "button", "img", "li", "blockquote"];
 const EL_RE = /<(h1|h2|h3|h4|p|a|button|img|li|blockquote)(?=[\s>\/])/g;
+export const EL_TOKENS = { "@p": "--p", "@a": "--a", "@s2": "--s2", "@tx": "--tx", "@bg": "--bg", "@mut": "--mut", "@card": "--card", "@line": "--line" };
+const colV = (v) => (EL_TOKENS[v] ? "var(" + EL_TOKENS[v] + ")" : v);
 const HEXC = /^#[0-9a-f]{6}$/i, elNum = (v, lo, hi) => { const n = +v; return v !== "" && v != null && isFinite(n) && n >= lo && n <= hi ? n : null; };
 const elBox = (v, lo, hi) => { const a = String(v == null ? "" : v).trim().split(/\s+/).filter(Boolean); if (!a.length || a.length > 4) return null; const n = a.map((x) => elNum(x, lo, hi)); return n.some((x) => x == null) ? null : n.map((x) => x + "px").join(" "); };
 export const EL_ANIMS = ["fade", "fade-up", "fade-down", "slide-left", "slide-right", "scale", "blur", "reveal"];
 export const EL_SHADOWS = { sm: "0 2px 8px rgba(0,0,0,.12)", md: "0 10px 30px rgba(0,0,0,.18)", lg: "0 24px 60px rgba(0,0,0,.28)", glow: "0 0 0 1px rgba(123,97,255,.4),0 10px 40px rgba(123,97,255,.35)" };
 function cleanSt(s) {
   if (!s || typeof s !== "object") return null; const o = {};
-  const n = (k, lo, hi) => { const v = elNum(s[k], lo, hi); if (v != null) o[k] = v; }, e = (k, list) => { if (list.indexOf(s[k]) > -1) o[k] = s[k]; }, c = (k) => { if (HEXC.test(s[k] || "")) o[k] = String(s[k]).toLowerCase(); };
+  const n = (k, lo, hi) => { const v = elNum(s[k], lo, hi); if (v != null) o[k] = v; }, e = (k, list) => { if (list.indexOf(s[k]) > -1) o[k] = s[k]; }, c = (k) => { if (HEXC.test(s[k] || "")) o[k] = String(s[k]).toLowerCase(); else if (EL_TOKENS[s[k]]) o[k] = s[k]; };
   n("fs", 8, 200); n("fw", 100, 900); n("lh", 0.8, 3); n("ls", -5, 30); n("op", 0, 1); n("bw", 0, 20); n("br", 0, 999); n("w", 20, 2400); n("rot", -180, 180); n("sc", 0.2, 3);
   e("ta", ["left", "center", "right", "justify"]); e("tt", ["none", "uppercase", "lowercase", "capitalize"]); e("fst", ["normal", "italic"]); e("deco", ["none", "underline"]); e("sh", ["none", "sm", "md", "lg", "glow"]);
   c("c"); c("bg"); c("bc"); if (s.ff && FONTS[s.ff]) o.ff = s.ff;
@@ -366,6 +373,7 @@ export function cleanEl(el) {
     if (x.hide && typeof x.hide === "object") { const h = {}; ["d", "t", "m"].forEach((b) => { if (x.hide[b]) h[b] = true; }); if (Object.keys(h).length) r.hide = h; }
     ["st", "t", "m"].forEach((b) => { const v = cleanSt(x[b]); if (v) r[b] = v; });
     if (EL_ANIMS.indexOf(x.anim) > -1) r.anim = x.anim; if (["lift", "grow", "glow"].indexOf(x.hover) > -1) r.hover = x.hover;
+    const dn = elNum(x.dup, 1, 6); if (dn) { r.dup = Math.round(dn); if (Array.isArray(x.dt)) { const dt = x.dt.slice(0, r.dup).map((v) => String(v == null ? "" : v).replace(/[<>]/g, "").trim().slice(0, 300)); if (dt.some(Boolean)) r.dt = dt; } }
     if (typeof x.aria === "string" && x.aria.trim()) r.aria = x.aria.replace(/[<>"]/g, "").trim().slice(0, 120);
     if (Object.keys(r).length) out[k] = r; });
   return Object.keys(out).length ? out : null;
@@ -374,9 +382,9 @@ function stCss(o) {
   if (!o) return ""; const r = [];
   if (o.fs != null) r.push("font-size:" + o.fs + "px"); if (o.fw != null) r.push("font-weight:" + Math.round(o.fw / 100) * 100); if (o.lh != null) r.push("line-height:" + o.lh); if (o.ls != null) r.push("letter-spacing:" + o.ls + "px");
   if (o.ta) r.push("text-align:" + o.ta); if (o.tt) r.push("text-transform:" + o.tt); if (o.fst) r.push("font-style:" + o.fst); if (o.deco) r.push("text-decoration:" + o.deco); if (o.ff) r.push("font-family:" + FONTS[o.ff]);
-  if (o.c) r.push("color:" + o.c); if (o.bg) r.push("background:" + o.bg); if (o.op != null) r.push("opacity:" + o.op);
+  if (o.c) r.push("color:" + colV(o.c)); if (o.bg) r.push("background:" + colV(o.bg)); if (o.op != null) r.push("opacity:" + o.op);
   if (o.p) r.push("padding:" + elBox(o.p, 0, 300)); if (o.m) r.push("margin:" + elBox(o.m, -300, 300));
-  if (o.bw != null) r.push("border:" + o.bw + "px solid " + (o.bc || "currentColor")); else if (o.bc) r.push("border-color:" + o.bc); if (o.br != null) r.push("border-radius:" + o.br + "px");
+  if (o.bw != null) r.push("border:" + o.bw + "px solid " + (o.bc ? colV(o.bc) : "currentColor")); else if (o.bc) r.push("border-color:" + colV(o.bc)); if (o.br != null) r.push("border-radius:" + o.br + "px");
   if (o.sh) r.push("box-shadow:" + (o.sh === "none" ? "none" : EL_SHADOWS[o.sh])); if (o.w != null) r.push("max-width:" + o.w + "px");
   if (o.rot != null || o.sc != null) r.push("transform:" + (o.rot != null ? "rotate(" + o.rot + "deg) " : "") + (o.sc != null ? "scale(" + o.sc + ")" : ""));
   return r.map((x) => x + "!important").join(";");
@@ -386,10 +394,23 @@ export function applyElements(html, s, i, edit, css) {
   const el = cleanEl(s.el); if (!el && !edit) return html; if (el) css.push("");
   const cnt = {}; html = html.replace(EL_RE, (m, tag) => { const n = cnt[tag] = (cnt[tag] == null ? 0 : cnt[tag] + 1), key = tag + "-" + n, x = el && el[key];
     if (!edit && !x) return m; let a = '<' + tag + ' data-x="' + i + "-" + key + '"'; if (x && x.aria) a += ' aria-label="' + esc(x.aria) + '"'; if (x && x.anim) a += ' data-ea="' + x.anim + '"'; if (x && x.hover) a += ' data-eh="' + x.hover + '"'; return a; });
+  if (el) Object.keys(el).forEach((k) => { if (el[k].dup) html = dupEl(html, i + "-" + k, k.split("-")[0], el[k]); });
   if (el) Object.keys(el).forEach((k) => { const x = el[k], sel = '[data-x="' + i + "-" + k + '"]';
     const d = stCss(x.st), t = stCss(x.t), mo = stCss(x.m); if (d) css.push(sel + "{" + d + "}"); if (t) css.push("@media (max-width:1024px){" + sel + "{" + t + "}}"); if (mo) css.push("@media (max-width:767px){" + sel + "{" + mo + "}}");
     if (x.hide) { if (x.hide.d) css.push("@media (min-width:1025px){" + sel + "{display:none!important}}"); if (x.hide.t) css.push("@media (min-width:768px) and (max-width:1024px){" + sel + "{display:none!important}}"); if (x.hide.m) css.push("@media (max-width:767px){" + sel + "{display:none!important}}"); } });
   return html;
+}
+/* v42 duplicate: repeat the element right after itself. Copies keep the style (same data-x), never the inline-edit hooks,
+   and can show their own plain text (x.dt). The element is found by its marker and its matching closing tag. */
+function dupEl(html, id, tag, x) {
+  const at = html.indexOf('<' + tag + ' data-x="' + id + '"'); if (at < 0) return html; let end;
+  if (tag === "img") end = html.indexOf(">", at) + 1;
+  else { const re = new RegExp("<(/?)" + tag + "(?=[\\s>/])", "g"); re.lastIndex = at + 1; let d = 1, m; while ((m = re.exec(html))) { d += m[1] ? -1 : 1; if (!d) break; } if (!m) return html; end = html.indexOf(">", m.index) + 1; }
+  if (end <= at) return html; const outer = html.slice(at, end), plain = outer.replace(/ data-f="[^"]*"/g, "").replace(/ contenteditable="[^"]*"/g, "");
+  const copies = []; for (let n = 0; n < x.dup; n++) { let c = plain.replace(' data-x="' + id + '"', ' data-x="' + id + '" data-xc="' + (n + 1) + '"'); const t = x.dt && x.dt[n];
+    if (t && tag !== "img") { const a = c.indexOf(">") + 1, b = c.lastIndexOf("</"); if (a > 0 && b > a && c.slice(a, b).indexOf("<") < 0) c = c.slice(0, a) + esc(t) + c.slice(b); } if (tag === "h1") c = "<h2" + c.slice(3, c.length - 5) + "</h2>";   // one H1 per page: copies of the main heading are H2
+    copies.push(c); }
+  return html.slice(0, end) + copies.join("") + html.slice(end);
 }
 export const EL_BASE_CSS = "[data-eh]{transition:transform .25s ease,box-shadow .25s ease,filter .25s ease}[data-eh=lift]:hover{transform:translateY(-4px)}[data-eh=grow]:hover{transform:scale(1.04)}[data-eh=glow]:hover{box-shadow:0 0 0 1px rgba(123,97,255,.5),0 12px 40px rgba(123,97,255,.4)}" +
   "@keyframes fe-fade{from{opacity:0}}@keyframes fe-fade-up{from{opacity:0;transform:translateY(28px)}}@keyframes fe-fade-down{from{opacity:0;transform:translateY(-28px)}}@keyframes fe-slide-left{from{opacity:0;transform:translateX(40px)}}@keyframes fe-slide-right{from{opacity:0;transform:translateX(-40px)}}@keyframes fe-scale{from{opacity:0;transform:scale(.9)}}@keyframes fe-blur{from{opacity:0;filter:blur(10px)}}@keyframes fe-reveal{from{clip-path:inset(0 0 100% 0)}}" +

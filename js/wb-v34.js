@@ -80,15 +80,23 @@ export async function makeResponsive(scope) {
       Object.keys(r).forEach((k) => { if (cur[k] == null || cur[k] === "") add[k] = r[k]; else if (k === "fs" && +cur[k] > r.fs) add[k] = r.fs; }); if (Object.keys(add).length) plan.push({ i: +i, layer, add, why: by[i].map((x) => x.msg) }); }); });
   const body = $("#mr-b", m);
   if (!plan.length) { $("#mr-s", m).textContent = ""; body.innerHTML = '<p class="wb-ok">✓ ' + (scope.only != null ? "This section fits" : "This page fits") + ' tablets and phones. Nothing to change.</p>' + (pick(mb).length + pick(tb).length ? '<p class="wb-muted">Some issues remain that need a manual change (e.g. a locked section or very long words). Open <b>Responsive health</b> to see them.</p>' : ""); return; }
-  const next = JSON.parse(JSON.stringify(ED.doc)), NP = next.pages.find((p) => p.slug === page);
-  plan.forEach((x) => { const s = NP.sections[x.i]; s.style = s.style || {}; s.style[x.layer] = Object.assign({}, s.style[x.layer] || {}, x.add); });
-  $("#mr-s", m).textContent = plan.length + " change" + (plan.length > 1 ? "s" : "") + " proposed. Desktop stays exactly as it is.";
-  body.innerHTML = '<ul class="wb-iss">' + plan.map((x) => "<li><b>" + esc(label(P.sections[x.i])) + " · " + x.layer + "</b>: " + Object.keys(x.add).map((k) => esc(RULE_TXT[k](x.add[k]))).join(", ") + '<br><small class="wb-muted">' + esc([...new Set(x.why)].slice(0, 2).join("; ")) + "</small></li>").join("") + "</ul>" +
-    '<div class="wb-ba"><figure><figcaption>Now (phone)</figcaption><iframe sandbox="allow-scripts" id="mr-a"></iframe></figure><figure><figcaption>After (phone)</figcaption><iframe sandbox="allow-scripts" id="mr-n"></iframe></figure></div>' +
-    '<div class="wb-row wb-nav"><button class="wb-btn" id="mr-no">Reject</button><button class="wb-btn pri" id="mr-ok">Accept changes</button></div>';
-  $("#mr-a", m).srcdoc = renderPage(ED.doc, page, { base: "#", badge: false, data: ED.data }); $("#mr-n", m).srcdoc = renderPage(next, page, { base: "#", badge: false, data: ED.data });
-  $("#mr-no", m).onclick = () => { m.remove(); X.toast("Nothing changed."); };
-  $("#mr-ok", m).onclick = async () => { X.change(() => { plan.forEach((x) => { const s = P.sections[x.i]; s.style = s.style || {}; s.style[x.layer] = Object.assign({}, s.style[x.layer] || {}, x.add); }); });
+  /* v42: preview first (phone + tablet, before / after), pick which changes to keep, then Apply or Discard */
+  const build = (on) => { const next = JSON.parse(JSON.stringify(ED.doc)), NP = next.pages.find((p) => p.slug === page); plan.forEach((x, n) => { if (!on[n]) return; const s = NP.sections[x.i]; s.style = s.style || {}; s.style[x.layer] = Object.assign({}, s.style[x.layer] || {}, x.add); }); return next; };
+  let on = plan.map(() => true), view = "mobile";
+  $("#mr-s", m).textContent = plan.length + " change" + (plan.length > 1 ? "s" : "") + " proposed. Nothing is applied until you press Apply. Desktop stays exactly as it is.";
+  body.innerHTML = '<ul class="wb-iss wb-mr-l">' + plan.map((x, n) => '<li><label class="wb-ck"><input type="checkbox" data-mr="' + n + '" checked> <span><b>' + esc(label(P.sections[x.i])) + " · " + (x.layer === "mobile" ? "phone" : x.layer) + "</b>: " + Object.keys(x.add).map((k) => esc(RULE_TXT[k](x.add[k]))).join(", ") + '<br><small class="wb-muted">' + esc([...new Set(x.why)].slice(0, 2).join("; ")) + "</small></span></label></li>").join("") + "</ul>" +
+    '<div class="wb-seg" role="group" aria-label="Preview device"><button type="button" data-mrv="mobile" aria-pressed="true">Phone 375px</button><button type="button" data-mrv="tablet" aria-pressed="false">Tablet ' + Math.min(820, bp.tablet) + 'px</button></div>' +
+    '<div class="wb-ba" id="mr-ba"><figure><figcaption>Now</figcaption><div class="wb-mr-v"><iframe sandbox="allow-scripts" id="mr-a" tabindex="-1"></iframe></div></figure><figure><figcaption>After (preview)</figcaption><div class="wb-mr-v"><iframe sandbox="allow-scripts" id="mr-n" tabindex="-1"></iframe></div></figure></div>' +
+    '<div class="wb-row wb-nav"><button class="wb-btn" id="mr-no">Discard</button><button class="wb-btn pri" id="mr-ok">Apply ' + plan.length + " change" + (plan.length > 1 ? "s" : "") + "</button></div>";
+  const go = '<script>addEventListener("load",function(){var s=document.querySelectorAll("body>header,body>section,body>footer")[' + plan[0].i + '];if(s)scrollTo(0,Math.max(0,s.offsetTop-12))})<\/script>', RO = { base: "#", badge: false, data: ED.data, noMotion: true, bodyExtra: go };   // previews open at the first changed section
+  const R0 = renderPage(ED.doc, page, RO);
+  const draw = () => { const W = view === "tablet" ? Math.min(820, bp.tablet) : 375; $$("#mr-ba iframe", m).forEach((f) => { const v = f.parentNode, sc = Math.min(1, v.clientWidth / W); f.style.width = W + "px"; f.style.height = Math.round(v.clientHeight / sc) + "px"; f.style.transform = "scale(" + sc + ")"; f.style.left = Math.max(0, Math.round((v.clientWidth - W * sc) / 2)) + "px"; }); };
+  const upd = () => { $("#mr-a", m).srcdoc = R0; $("#mr-n", m).srcdoc = renderPage(build(on), page, RO); const n = on.filter(Boolean).length; $("#mr-ok", m).disabled = !n; $("#mr-ok", m).textContent = n ? "Apply " + n + " change" + (n > 1 ? "s" : "") : "Nothing selected"; draw(); };
+  $$("[data-mr]", m).forEach((c) => { c.onchange = () => { on[+c.dataset.mr] = c.checked; upd(); }; });
+  $$("[data-mrv]", m).forEach((b) => { b.onclick = () => { view = b.dataset.mrv; $$("[data-mrv]", m).forEach((x) => x.setAttribute("aria-pressed", x === b)); draw(); }; });
+  upd(); requestAnimationFrame(draw);
+  $("#mr-no", m).onclick = () => { m.remove(); X.toast("Discarded. Nothing changed."); };
+  $("#mr-ok", m).onclick = async () => { const keep = plan.filter((x, n) => on[n]); if (!keep.length) return; X.change(() => { keep.forEach((x) => { const s = P.sections[x.i]; s.style = s.style || {}; s.style[x.layer] = Object.assign({}, s.style[x.layer] || {}, x.add); }); });
     m.remove(); const after = await measure(X.ED().doc, page, 375), left0 = pick(after).filter((x) => x.kind !== "btnwrap").length; X.toast(left0 ? "Applied. " + left0 + " smaller issue(s) still need a look: see Responsive health." : "Applied ✓ The page now fits phones. Undo (Ctrl+Z) if you prefer the old look."); X.right(); };
 }
 

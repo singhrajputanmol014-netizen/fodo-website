@@ -31,7 +31,7 @@
   var ROLE_LIST = [];
 
   /* ---------- shell ---------- */
-  var ICON = { overview: "◎", builder: "▣", xray: "✚", growth: "◆", content: "✎", pros: "★", projects: "▤", leads: "☎", studio: "✦", brand: "◐", pro: "☺", billing: "₹", notifications: "🔔", admin: "⚙", "pro-home": "◎", "pro-work": "▤", "pro-cal": "▦", "pro-earn": "₹", "pro-reviews": "★", files: "🗂", settings: "⚙" };
+  var ICON = { "project-builder": "✚", quotes: "₹", overview: "◎", builder: "▣", xray: "✚", growth: "◆", content: "✎", pros: "★", projects: "▤", leads: "☎", studio: "✦", brand: "◐", pro: "☺", billing: "₹", notifications: "🔔", admin: "⚙", "pro-home": "◎", "pro-work": "▤", "pro-cal": "▦", "pro-earn": "₹", "pro-reviews": "★", files: "🗂", settings: "⚙" };
   var OUT = { builder: "/website-builder/", xray: "/business-x-ray/", growth: "/growth-lab/" };
   function shell() {
     if (MODE === "pro") ME.nav = ME.pro ? PRO_NAV.map(function (n) { return { id: n[0], label: n[1] }; }) : [{ id: "pro", label: "Create your profile" }];
@@ -48,10 +48,11 @@
   function route() {
     var h = location.hash.slice(1) || (MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview"), parts = h.split("?"), v = parts[0], q = new URLSearchParams(parts[1] || "");
     if (/^project=/.test(v)) { q.set("id", v.split("=")[1]); v = "project"; }
-    var allowed = ME.nav.map(function (n) { return n.id; }).concat(MODE === "pro" ? (ME.pro ? ["project"] : []) : ["project", "ads"]); if (allowed.indexOf(v) < 0) v = MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview";
+    if (/^quote=/.test(v)) { q.set("id", v.split("=")[1]); v = "quote"; }   // v47.1
+    var allowed = ME.nav.map(function (n) { return n.id; }).concat(MODE === "pro" ? (ME.pro ? ["project"] : []) : ["project", "ads", "quote"]); if (allowed.indexOf(v) < 0) v = MODE === "pro" ? (ME.pro ? "pro-home" : "pro") : "overview";
     $$(".ws-modal").forEach(function (x) { x.remove(); });   // a page change closes any open dialog
     document.body.classList.remove("ws-navopen"); var bg = $("#ws-burger"); if (bg) bg.setAttribute("aria-expanded", "false");
-    VIEW = v; $$("#ws-side nav a").forEach(function (a) { a.toggleAttribute("aria-current", a.dataset.nav === v || (v === "ads" && a.dataset.nav === "content") || (v === "project" && (a.dataset.nav === "projects" || a.dataset.nav === "pro-work"))); });
+    VIEW = v; $$("#ws-side nav a").forEach(function (a) { a.toggleAttribute("aria-current", a.dataset.nav === v || (v === "ads" && a.dataset.nav === "content") || (v === "project" && (a.dataset.nav === "projects" || a.dataset.nav === "pro-work")) || (v === "quote" && a.dataset.nav === "quotes")); });
     var main = $("#ws-main"); main.innerHTML = '<div class="ws-skel" aria-busy="true"><i></i><i></i><i></i></div>';
     (VIEWS[v] || VIEWS.overview)(main, q); main.focus({ preventScroll: true }); scrollTo(0, 0);
   }
@@ -152,7 +153,7 @@
   /* ---------- Hire FODO Pros ---------- */
   VIEWS.pros = function (el, q) {
     var role = q.get("role") || "", content = q.get("content") || "";
-    el.innerHTML = head("Hire FODO Pros", "Verified creative and marketing professionals. Tell FODO what you need.") +
+    el.innerHTML = head("Hire FODO Pros", "Verified creative and marketing professionals. Tell FODO what you need.", '<div class="ws-hx"><a class="ws-btn pri" href="#project-builder">Build my team</a></div>') +
       '<form class="ws-search" id="mk-f" role="search"><label class="sr" for="mk-q">What do you need?</label><input id="mk-q" name="q" maxlength="300" placeholder="e.g. A cinematographer in Delhi for a one-day restaurant shoot, budget ₹20,000" value="' + esc(q.get("q") || "") + '">' +
       '<div class="ws-filters"><select name="role" aria-label="Role"><option value="">Any role</option>' + ROLE_LIST.map(function (r) { return "<option" + (r === role ? " selected" : "") + ">" + esc(r) + "</option>"; }).join("") + '</select><input name="city" placeholder="City" maxlength="40" aria-label="City" value="' + esc(q.get("city") || "") + '"><input name="budget" type="number" min="0" placeholder="Budget ₹" aria-label="Budget"><label class="ws-ck"><input type="checkbox" name="remote" value="1"> Remote OK</label><button class="ws-btn pri" type="submit">Find professionals</button><button type="button" class="ws-btn sm" id="mk-sl">♥ Shortlist</button></div></form><div id="mk-out"></div>';
     var go = function () { var o = fd($("#mk-f")), p = new URLSearchParams(); ["q", "role", "city", "budget"].forEach(function (k) { if (o[k]) p.set(k, o[k]); }); if (o.remote) p.set("remote", "1"); $("#mk-out").innerHTML = '<div class="ws-skel"><i></i><i></i></div>';
@@ -218,7 +219,7 @@
 
   /* ---------- projects ---------- */
   var PS = { requested: "Requested", proposed: "Proposal sent", accepted: "Accepted", in_progress: "In progress", delivered: "Delivered", completed: "Completed", cancelled: "Cancelled", disputed: "In dispute" };
-  var MS = { pending: "Not paid", funded: "Paid to FODO", submitted: "Work submitted", approved: "Approved", refunded: "Refunded", proposed: "Proposed, waiting for you" };
+  var MS = { pending: "Not paid", funded: "Paid to FODO", submitted: "Work submitted", approved: "Approved", refunded: "Refunded", refund_processing: "Refund in progress (held)", proposed: "Proposed, waiting for you" };
   var MODE_L = { fixed: "Fixed price", hourly: "Hourly", retainer: "Monthly retainer" };
   VIEWS.projects = function (el) {
     api("projects").then(function (j) { if (!j.ok) return fail(el, j, function () { VIEWS.projects(el); });
@@ -243,7 +244,7 @@
           if (me === "client" && m.status === "submitted") b = '<button type="button" class="ws-btn sm pri" data-ok="' + esc(m.id) + '">Approve</button><button type="button" class="ws-btn sm" data-chg="' + esc(m.id) + '">Request changes</button>';
           if (["funded", "submitted"].indexOf(m.status) > -1 && !rf) { if (me === "client") b += '<button type="button" class="ws-btn sm" data-rfq="' + esc(m.id) + '">Ask for a refund</button>'; if (me === "pro" && m.mine) b += '<button type="button" class="ws-btn sm" data-rfo="' + esc(m.id) + '">Refund the client</button>'; if (me === "staff") b += '<button type="button" class="ws-btn sm danger" data-rfs="' + esc(m.id) + '" data-amt="' + m.amount + '">Refund (FODO)</button>'; }
           if (rf && rf.status === "requested" && me === "pro" && m.mine) b += '<button type="button" class="ws-btn sm pri" data-rfa="' + esc(rf.id) + '" data-y="1">Accept refund</button><button type="button" class="ws-btn sm" data-rfa="' + esc(rf.id) + '" data-y="">Decline</button>';
-          if (rf) b += '<small>Refund ' + inr(rf.amount) + ": " + esc({ requested: "requested, waiting for the professional", processing: "started with the payment gateway", needs_manual: "approved, FODO finance sends it" }[rf.status]) + "</small>" + (me === "staff" && rf.status !== "requested" ? '<button type="button" class="ws-btn sm" data-rfm="' + esc(rf.id) + '">Mark sent (reference)</button>' : "");
+          if (rf) b += '<small>Refund ' + inr(rf.amount) + ": " + esc({ requested: "requested, waiting for the professional", processing: "started with the payment gateway", needs_manual: "approved, FODO finance sends it" }[rf.status]) + "</small>" + (me === "staff" && rf.status !== "requested" ? '<button type="button" class="ws-btn sm" data-rfm="' + esc(rf.id) + '">Mark sent (reference)</button>' + (rf.status === "processing" ? '<button type="button" class="ws-btn sm" data-rfc="' + esc(rf.id) + '">Check status</button>' : "") + '<button type="button" class="ws-btn sm" data-rff="' + esc(rf.id) + '">Mark failed</button>' : "");
           var mf = (P.files || []).filter(function (f) { return f.milestone_id === m.id; });
           return "<li><b>" + esc(m.title) + (team ? " <small>· " + esc(m.pro_name || "") + "</small>" : "") + "</b><span>" + inr(m.amount) + (m.refunded && m.refunded < m.amount ? " (" + inr(m.refunded) + " refunded)" : "") + (m.due ? " · due " + day(m.due) : "") + '</span><span class="ws-pill ms-' + m.status + '">' + MS[m.status] + "</span>" + (m.note ? "<small>" + esc(m.note) + "</small>" : "") + (mf.length ? '<small class="ws-msf">📎 ' + mf.map(function (f) { return '<a href="/api/biz/files/' + esc(f.id) + '/download">' + esc(f.name) + (f.ver > 1 ? " (v" + f.ver + ")" : "") + "</a>"; }).join(", ") + "</small>" : "") + b + "</li>"; }).join("") + "</ul>" : '<p class="ws-sub">' + (me === "pro" ? "Send the client your milestones and prices." : "Waiting for the professional's proposal.") + "</p>") +
         (me === "pro" && ((P.lead && ["requested", "proposed"].indexOf(P.status) > -1) || (!P.lead && ["cancelled", "completed", "disputed"].indexOf(P.status) < 0)) ? '<form class="ws-form" id="pp-f"><h3>' + (P.lead ? (ms.length ? "Update proposal" : "Send proposal") : "Your milestones on this team") + "</h3>" +
@@ -264,6 +265,8 @@
       $$("[data-rfo]", el).forEach(function (b) { b.onclick = function () { if (confirm("Refund this milestone to the client? You won't be paid for it.")) doAct(b, "refund_request", { milestoneId: b.dataset.rfo }); }; });
       $$("[data-rfa]", el).forEach(function (b) { b.onclick = function () { if (!b.dataset.y || confirm("Refund the client? You won't be paid for this milestone.")) doAct(b, "refund_answer", { refundId: b.dataset.rfa, accept: !!b.dataset.y }); }; });
       $$("[data-rfs]", el).forEach(function (b) { b.onclick = function () { var a = prompt("Refund amount (₹, up to " + b.dataset.amt + "). The rest goes to the professional.", b.dataset.amt); if (a) doAct(b, "refund_process", { milestoneId: b.dataset.rfs, amount: +a, reason: "FODO decision" }); }; });
+      $$("[data-rfc]", el).forEach(function (b) { b.onclick = function () { doAct(b, "refund_check", { refundId: b.dataset.rfc }); }; });
+      $$("[data-rff]", el).forEach(function (b) { b.onclick = function () { var r = prompt("Why did the refund fail? The milestone goes back to paid."); if (r) doAct(b, "refund_fail", { refundId: b.dataset.rff, reason: r }); }; });
       $$("[data-rfm]", el).forEach(function (b) { b.onclick = function () { var r = prompt("Refund reference from the bank or gateway"); if (r) doAct(b, "refund_manual", { refundId: b.dataset.rfm, ref: r }); }; });
       filesBox($("#pj-files"), { project: P.id, title: "Files", onChange: function () { api("projects/" + encodeURIComponent(P.id)).then(function (j) { if (j.ok) P.files = j.project.files; }); } });
       /* v43: submit work = a note + private files (uploaded here or already in Files) */
@@ -560,7 +563,7 @@
     api("admin/overview").then(function (o) { if (!o.ok) return fail(el, o, function () { VIEWS.admin(el, q); });
       el.innerHTML = head("Marketplace admin", "Your role: " + o.roles.filter(function (r) { return r !== "client"; }).join(", ")) +
         '<div class="ws-cards">' + [["Pending profiles", o.pros.pending], ["Live professionals", o.pros.live], ["Active projects", o.projects.active], ["Disputes", o.projects.disputed], ["Funded (held)", inr(o.money.funded)], ["Commission (" + o.commission + "%)", inr(o.money.commission)], ["Owed to pros", inr(o.money.owed)], ["Automatic payouts", o.automaticPayouts ? "On" : "Awaiting provider"]].map(function (k) { return '<div class="ws-card"><small>' + k[0] + "</small><b>" + k[1] + "</b></div>"; }).join("") + "</div>" +
-        '<div class="ws-tabs" role="tablist">' + [["analytics", "Analytics"], ["pros", "Professionals"], ["invites", "Invite links"], ["payouts", "Payouts"], ["disputes", "Disputes"], ["settings", "Settings"]].map(function (t) { return '<a role="tab" aria-selected="' + (tab === t[0]) + '" href="#admin?tab=' + t[0] + '">' + t[1] + "</a>"; }).join("") + '</div><div id="ad-b"><div class="ws-skel"><i></i></div></div>';
+        '<div class="ws-tabs" role="tablist">' + [["analytics", "Analytics"], ["quotes", "Quotes"], ["catalog", "Catalog & pricing"], ["pros", "Professionals"], ["invites", "Invite links"], ["payouts", "Payouts"], ["disputes", "Disputes"], ["settings", "Settings"]].map(function (t) { return '<a role="tab" aria-selected="' + (tab === t[0]) + '" href="#admin?tab=' + t[0] + '">' + t[1] + "</a>"; }).join("") + '</div><div id="ad-b"><div class="ws-skel"><i></i></div></div>';
       var B = $("#ad-b");
       if (tab === "analytics") api("admin/analytics").then(function (a) { if (!a.ok) return fail(B, a, function () {});   // v46.1, real tables only
         var card = function (t, v, sub) { return '<div class="ws-card"><small>' + esc(t) + "</small><b>" + v + "</b>" + (sub ? "<small>" + esc(sub) + "</small>" : "") + "</div>"; }, pct = function (x, y) { return y ? Math.round(x / y * 100) + "%" : "–"; };
@@ -595,6 +598,7 @@
         $$("[data-paid]", B).forEach(function (b) { b.onclick = function () { var r = prompt("Bank / UPI transfer reference"); if (r) act(b, "admin/payouts/" + b.dataset.paid, { ref: r }, function () { VIEWS.admin(el, q); }); }; });
         $$("[data-send]", B).forEach(function (b) { b.onclick = function () { if (confirm("Send " + inr(+b.dataset.amt) + " to " + b.dataset.to + " now?")) act(b, "admin/payouts/" + b.dataset.send + "/send", {}, function (r) { toast(r.payout.status === "paid" ? "Paid." : "Sent to the provider. It shows as Paid when they confirm."); VIEWS.admin(el, q); }); }; });
         $$("[data-chk]", B).forEach(function (b) { b.onclick = function () { act(b, "admin/payouts/" + b.dataset.chk + "/check", {}, function (r) { toast("Status: " + (PST[r.status] || r.status)); VIEWS.admin(el, q); }); }; }); });
+      if (tab === "quotes" || tab === "catalog") lazy("/js/ws-market-admin.js").then(function () { window.FODO_WS_MADMIN[tab](B, q); }, function () { B.innerHTML = empty("Couldn't load this tab", "Check your connection and try again."); });   // v47.1
       if (tab === "disputes") api("admin/disputes").then(function (j) { if (!j.ok) return fail(B, j, function () {});
         B.innerHTML = j.items.length ? '<ul class="ws-rows">' + j.items.map(function (x) { return '<li><a href="#project=' + esc(x.project_id) + '"><b>' + esc(x.title) + "</b></a><span>" + esc(x.reason) + '</span><span class="ws-pill">' + esc(x.status) + "</span>" + (x.status === "open" ? '<span class="ws-acts">' + [["in_progress", "Continue work"], ["completed", "Mark completed"], ["cancelled", "Cancel (refund)"]].map(function (o2) { return '<button type="button" class="ws-btn sm" data-res="' + esc(x.id) + '" data-out="' + o2[0] + '">' + o2[1] + "</button>"; }).join("") + "</span>" : "<small>" + esc(x.resolution || "") + "</small>") + "</li>"; }).join("") + "</ul>" : empty("No disputes.");
         $$("[data-res]", B).forEach(function (b) { b.onclick = function () { var t = prompt("Resolution (shown to both sides)"); if (t) act(b, "admin/disputes/" + b.dataset.res, { outcome: b.dataset.out, resolution: t }, function (r) { if (r.note) toast(r.note); VIEWS.admin(el, q); }); }; }); });
@@ -674,6 +678,11 @@
       shell(); route(); payReturn();
     });
   }
+  /* v47.1 lazy modules: they load only when their page is opened, so the Workspace stays light */
+  var LAZY = {};
+  function lazy(src) { if (!LAZY[src]) LAZY[src] = new Promise(function (ok, no) { var me = document.querySelector('script[src*="/js/workspace.js"]'), v = me && me.src.indexOf("v=") > -1 ? me.src.split("v=")[1] : ""; var sc = document.createElement("script"); sc.src = src + (v ? "?v=" + v : ""); sc.onload = ok; sc.onerror = function () { delete LAZY[src]; no(); }; document.head.appendChild(sc); }); return LAZY[src]; }
+  window.FODO_WS = { api: api, act: act, esc: esc, inr: inr, day: day, toast: toast, modal: modal, fd: fd, empty: empty, head: head, fail: fail, $: $, $$: $$, me: function () { return ME; } };
+  ["project-builder", "quotes", "quote"].forEach(function (v) { VIEWS[v] = function (el, q) { lazy("/js/ws-builder.js").then(function () { window.FODO_WS_BUILDER[v](el, q); }, function () { fail(el, { reason: "Couldn't load this page. Check your connection." }, function () { VIEWS[v](el, q); }); }); }; });
   window.addEventListener("hashchange", function () { if (ME) route(); });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

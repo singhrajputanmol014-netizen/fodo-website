@@ -49,7 +49,7 @@ export async function exportData(env, u) {
 export async function blockers(env, u) {
   const d = await d0(env), uid = u.id, B = [], pro = await safeOne(d, "SELECT id FROM biz_pros WHERE user_id=?1", uid), pid = pro ? pro.id : "-";
   if (isOwner(u)) B.push("FODO owner accounts can't be deleted here.");
-  const held = await safeOne(d, "SELECT count(*) n FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id WHERE m.status IN ('funded','submitted') AND (j.client_id=?1 OR COALESCE(m.pro_id, j.pro_id)=?2)", uid, pid);
+  const held = await safeOne(d, "SELECT count(*) n FROM biz_milestones m JOIN biz_projects j ON j.id=m.project_id WHERE m.status IN ('funded','submitted','refund_processing') AND (j.client_id=?1 OR COALESCE(m.pro_id, j.pro_id)=?2)", uid, pid);
   if (held && held.n) B.push(held.n + " paid milestone(s) are still in progress: finish, approve or refund them first.");
   const disp = await safeOne(d, "SELECT count(*) n FROM biz_projects WHERE status='disputed' AND (client_id=?1 OR pro_id=?2)", uid, pid); if (disp && disp.n) B.push("A project of yours is in dispute: wait for FODO's decision.");
   const owed = await safeOne(d, "SELECT count(*) n FROM biz_payouts WHERE pro_id=?1 AND status != 'paid'", pid); if (owed && owed.n) B.push("FODO still owes you " + owed.n + " payout(s): we pay them first so you get your money.");

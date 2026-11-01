@@ -139,7 +139,7 @@ r = await A(F1, "refund_request", { milestoneId: shoot.id, reason: "again please
 r = await A(F1, "refund_answer", { refundId: rf1.id, accept: true }, "p2"); ok(r.status === 403, "another team member can't accept it");
 r = await A(F1, "refund_answer", { refundId: rf1.id, accept: false }, "p"); ok(r.j.project.refunds[0].status === "declined" && r.j.project.milestones.find((m) => m.id === shoot.id).status === "funded", "the pro declines (money stays in escrow)");
 r = await A(F1, "refund_request", { milestoneId: shoot.id, reason: "Please, the date fell through" }); const rf2 = r.j.project.refunds[0];
-r = await A(F1, "refund_answer", { refundId: rf2.id, accept: true }, "p"); let rfd = r.j.project.refunds.find((x) => x.id === rf2.id); ok(rfd.status === "needs_manual" && r.j.project.milestones.find((m) => m.id === shoot.id).status === "refunded", "no gateway connected → refund approved, waiting for FODO finance (never shown as refunded)");
+r = await A(F1, "refund_answer", { refundId: rf2.id, accept: true }, "p"); let rfd = r.j.project.refunds.find((x) => x.id === rf2.id); ok(rfd.status === "needs_manual" && r.j.project.milestones.find((m) => m.id === shoot.id).status === "refund_processing", "no gateway connected → refund approved, waiting for FODO finance (never shown as refunded; v47.1: the milestone is held, not refunded)");
 r = await A(F1, "refund_manual", { refundId: rf2.id, ref: "UTR998877" }, "c"); ok(r.status === 403, "only finance marks it sent");
 r = await A(F1, "refund_manual", { refundId: rf2.id, ref: "UTR998877" }, "fin"); ok(r.j.project.refunds.find((x) => x.id === rf2.id).status === "refunded", "finance records the refund reference → Refunded");
 /* with Cashfree */
@@ -160,7 +160,8 @@ r = await Z("admin/refunds", undefined, "fin"); ok(r.j.ok && r.j.items.length ==
 /* cancel after a full refund */
 r = await Z("projects", { proId: pro1, title: "Cancel me", brief: "Plans changed for this one" }, "c"); const K1 = r.j.project.id; await A(K1, "propose", { milestones: [{ title: "Only", amount: 2000 }] }, "p"); await A(K1, "accept");
 const km = (await P(K1)).milestones[0]; await fund(km); r = await A(K1, "cancel"); ok(r.status === 409, "can't cancel with money in it");
-await A(K1, "refund_request", { milestoneId: km.id }, "p"); r = await A(K1, "cancel"); ok(r.j.project.status === "cancelled", "after the refund the project can be cancelled");
+await A(K1, "refund_request", { milestoneId: km.id }, "p"); r = await A(K1, "cancel"); ok(r.status === 409, "v47.1: while the refund isn't confirmed the project can't be cancelled");
+{ const rk = (await P(K1)).refunds[0]; await A(K1, "refund_manual", { refundId: rk.id, ref: "UTR-K1-0001" }, "fin"); } r = await A(K1, "cancel"); ok(r.j.project.status === "cancelled", "after the refund is confirmed the project can be cancelled");
 
 /* ---------- 7. old projects still work, nothing leaks ---------- */
 pj = await P(sA); ok(pj.mode === "fixed" && pj.milestones.length === 1 && !("order_id" in pj.milestones[0]), "old-style fixed projects unchanged; payment order ids are not sent to the browser");

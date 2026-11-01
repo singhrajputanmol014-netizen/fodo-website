@@ -8,7 +8,7 @@ import { nowIso, randId, db as adb, cfOn, rzp, cf } from "./accounts.js";
 import { err, can, settings, payoutsOn, monthName } from "./biz.js";
 
 export const ACTS = ["task_add", "task_set", "task_del", "change_add", "change_answer", "change_withdraw", "time_add", "time_del", "time_bill", "retainer_next", "complete",
-  "add_pro", "member_answer", "remove_pro", "accept_member", "decline_member", "refund_request", "refund_answer", "refund_process", "refund_manual"];
+  "add_pro", "member_answer", "remove_pro", "accept_member", "decline_member", "refund_request", "refund_answer", "refund_process", "refund_manual", "refund_fail", "refund_check"];
 const clip = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
 const int = (v, lo, hi) => { const n = Math.round(+v); return isFinite(n) && n >= lo && n <= hi ? n : null; };
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
@@ -125,10 +125,13 @@ export async function action(env, u, act, b, C) {
     const m = await msOf(d, pj, r.milestone_id); if ((m.pro_id || pj.pro_id) !== mine.id) throw err("This milestone belongs to another professional.", 403);
     if (!b.accept) { await run(d, "UPDATE biz_refunds SET status='declined', done_at=?2 WHERE id=?1", r.id, now); await note(pj.client_id, "refund", "Refund declined for “" + m.title + "”. You can open a dispute, FODO will review both sides."); return; }
     await process(env, d, u, pj, m, r.id, r.amount, C); return; }
-  if (act === "refund_process" || act === "refund_manual") { if (!can(C.R, ["admin", "finance"])) throw err("Only FODO finance or admins.", 403);
+  if (["refund_process", "refund_manual", "refund_fail", "refund_check"].indexOf(act) >= 0) { if (!can(C.R, ["admin", "finance"])) throw err("Only FODO finance or admins.", 403);
     if (act === "refund_manual") { const ref = clip(b.ref, 80); if (ref.length < 4) throw err("Enter the refund reference from the bank or gateway.");
-      const x = await run(d, "UPDATE biz_refunds SET status='refunded', provider_ref=?2, done_at=?3, note=COALESCE(note,'') || ' · manual' WHERE id=?1 AND project_id=?4 AND status IN ('needs_manual','processing')", clip(b.refundId, 40), ref, now, pj.id); if (!x.meta.changes) throw err("Nothing to mark.", 409);
-      await C.auditLog(env, u.email, "refund:manual", clip(b.refundId, 40), ref); await note(pj.client_id, "refund", "Your refund was sent (reference " + ref + ")."); return; }
+      const r = await one(d, "SELECT id FROM biz_refunds WHERE id=?1 AND project_id=?2 AND status IN ('needs_manual','processing')", clip(b.refundId, 40), pj.id); if (!r) throw err("Nothing to mark.", 409);
+      await C.auditLog(env, u.email, "refund:manual", r.id, ref); await finalizeRefund(env, d, r.id, ref + " (manual)", u.email, C); return; }
+    if (act === "refund_fail") { const r = await one(d, "SELECT id FROM biz_refunds WHERE id=?1 AND project_id=?2 AND status IN ('needs_manual','processing')", clip(b.refundId, 40), pj.id); if (!r) throw err("Nothing to mark.", 409);
+      await failRefund(env, d, r.id, clip(b.reason, 200) || "marked failed by FODO finance", u.email, C); return; }
+    if (act === "refund_check") { const r = await one(d, "SELECT id FROM biz_refunds WHERE id=?1 AND project_id=?2", clip(b.refundId, 40), pj.id); if (!r) throw err("Refund not found.", 404); return checkRefund(env, r.id, u.email, C); }
     const m = await msOf(d, pj, b.milestoneId); if (["funded", "submitted"].indexOf(m.status) < 0) throw err("Only a paid milestone that isn't approved yet can be refunded.", 409);
     const amt = b.amount == null || b.amount === "" ? m.amount : int(b.amount, 1, m.amount); if (amt == null) throw err("The refund can be ₹1 up to ₹" + m.amount + ".");
     let r = await one(d, "SELECT id FROM biz_refunds WHERE milestone_id=?1 AND status='requested'", m.id); const id = r ? r.id : "rf" + randId(12);
@@ -138,18 +141,61 @@ export async function action(env, u, act, b, C) {
 }
 async function msOf(d, pj, id) { const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1 AND project_id=?2", clip(id, 40), pj.id); if (!m) throw err("Milestone not found.", 404); return m; }
 
-/* take the money out of escrow for this milestone, ask the payment provider to refund it, record what really happened */
+/* v47.1 refund state machine (the critical fix): the milestone is NOT marked refunded when the refund is started.
+   funded/submitted → refund_processing (escrow held: it can't be approved, paid out or completed) → provider confirms
+   → refunded (+ the unrefunded rest of a partial refund becomes payable only now). Provider says failed → the milestone
+   goes back to what it was. No gateway / error → needs_manual (still held) until finance records the reference.
+   Every step is a guarded UPDATE (… WHERE status=…), so a double click, a retried request or a second webhook can't
+   move money twice. */
 async function process(env, d, u, pj, m, refundId, amount, C) {
-  const now = nowIso(), up = await run(d, "UPDATE biz_milestones SET status='refunded', refunded=?2 WHERE id=?1 AND status IN ('funded','submitted')", m.id, amount); if (!up.meta.changes) throw err("This milestone changed meanwhile, reload.", 409);
-  if (amount < m.amount) { const c = (await settings(env)).commission, rest = m.amount - amount, com = Math.round(rest * c / 100);   // partial refund (FODO decision): the rest goes to the professional
-    await run(d, "INSERT OR IGNORE INTO biz_payouts (id, milestone_id, pro_id, gross, commission, net, status, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", "po" + randId(12), m.id, m.pro_id || pj.pro_id, rest, com, rest - com, payoutsOn(env) ? "queued" : "awaiting_provider", now); }
-  let status = "needs_manual", provider = null, ref = null, why = "";
-  try { const r = await providerRefund(env, m.order_id, amount, refundId, pj.title + ": " + m.title); if (r) { provider = r.provider; ref = r.ref; status = r.done ? "refunded" : "processing"; } else why = "no gateway order for this payment"; }
+  const now = nowIso(), up = await run(d, "UPDATE biz_milestones SET status='refund_processing', pre_refund=status WHERE id=?1 AND status IN ('funded','submitted')", m.id); if (!up.meta.changes) throw err("This milestone changed meanwhile, reload.", 409);
+  let status = "needs_manual", provider = null, ref = null, why = "", failed = false;
+  try { const r = await providerRefund(env, m.order_id, amount, refundId, pj.title + ": " + m.title); if (r) { provider = r.provider; ref = r.ref; status = r.done ? "refunded" : r.failed ? "failed" : "processing"; failed = !!r.failed; if (r.failed) why = "the gateway refused the refund"; } else why = "no gateway order for this payment"; }
   catch (e) { why = String(e.message || e).slice(0, 160); }
-  await run(d, "UPDATE biz_refunds SET status=?2, amount=?3, provider=?4, provider_ref=?5, note=?6, done_at=CASE WHEN ?2='refunded' THEN ?7 ELSE NULL END WHERE id=?1", refundId, status, amount, provider, ref, why || null, now);
-  await C.auditLog(env, u.email, "refund:" + status, refundId, m.id + " ₹" + amount + (why ? " · " + why : ""));
+  await run(d, "UPDATE biz_refunds SET status='processing', amount=?2, provider=?3, provider_ref=?4, note=?5, attempts=COALESCE(attempts,0)+1 WHERE id=?1", refundId, amount, provider, ref, why || null);
+  await C.auditLog(env, u.email, "refund:start", refundId, m.id + " ₹" + amount + " → " + status + (why ? " · " + why : ""));
+  if (status === "refunded") return finalizeRefund(env, d, refundId, ref, u.email, C);
+  if (failed) return failRefund(env, d, refundId, why, u.email, C);
+  if (status === "needs_manual") await run(d, "UPDATE biz_refunds SET status='needs_manual' WHERE id=?1 AND status='processing'", refundId);
   await C.notify(env, pj.client_id, "refund", status === "needs_manual" ? "Refund of ₹" + amount.toLocaleString("en-IN") + " approved for “" + m.title + "”. FODO finance will send it and share the reference." : "Refund of ₹" + amount.toLocaleString("en-IN") + " started with the payment gateway for “" + m.title + "”. Banks usually take 5 to 7 working days.", "#project=" + pj.id);
-  const pu = await one(d, "SELECT user_id FROM biz_pros WHERE id=?1", m.pro_id || pj.pro_id); if (pu && pu.user_id !== u.id) await C.notify(env, pu.user_id, "refund", "Milestone “" + m.title + "” was refunded to the client (₹" + amount.toLocaleString("en-IN") + ").", "#project=" + pj.id);
+}
+/* provider (or finance, with a bank reference) confirmed the money went back. Idempotent: only one caller wins the UPDATE. */
+export async function finalizeRefund(env, d, refundId, ref, actor, C) {
+  const now = nowIso(), r = await one(d, "SELECT * FROM biz_refunds WHERE id=?1", refundId); if (!r) return false;
+  const x = await run(d, "UPDATE biz_refunds SET status='refunded', provider_ref=COALESCE(?2, provider_ref), done_at=?3 WHERE id=?1 AND status IN ('processing','needs_manual')", refundId, ref || null, now); if (!x.meta.changes) return false;
+  const m = await one(d, "SELECT * FROM biz_milestones WHERE id=?1", r.milestone_id), pj = await one(d, "SELECT * FROM biz_projects WHERE id=?1", r.project_id);
+  await run(d, "UPDATE biz_milestones SET status='refunded', refunded=?2 WHERE id=?1 AND status='refund_processing'", r.milestone_id, r.amount);
+  if (m && r.amount < m.amount) { const c = (await settings(env)).commission, rest = m.amount - r.amount, com = Math.round(rest * c / 100);   // partial refund: the rest becomes payable to the professional only now
+    await run(d, "INSERT OR IGNORE INTO biz_payouts (id, milestone_id, pro_id, gross, commission, net, status, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", "po" + randId(12), m.id, m.pro_id || (pj && pj.pro_id), rest, com, rest - com, payoutsOn(env) ? "queued" : "awaiting_provider", now); }
+  await C.auditLog(env, actor || "system", "refund:refunded", refundId, (m ? m.id : "") + " ₹" + r.amount + (ref ? " · " + ref : ""));
+  if (pj) { await C.notify(env, pj.client_id, "refund", "Your refund of ₹" + (+r.amount).toLocaleString("en-IN") + " for “" + (m ? m.title : "a milestone") + "” is confirmed" + (ref ? " (reference " + ref + ")" : "") + ".", "#project=" + pj.id);
+    const pu = await one(d, "SELECT user_id FROM biz_pros WHERE id=?1", (m && m.pro_id) || pj.pro_id); if (pu) await C.notify(env, pu.user_id, "refund", "Milestone “" + (m ? m.title : "") + "” was refunded to the client (₹" + (+r.amount).toLocaleString("en-IN") + ").", "#project=" + pj.id); }
+  return true;
+}
+/* the provider said no (or finance marked it failed): the refund ends as failed and the milestone returns to its earlier state */
+export async function failRefund(env, d, refundId, why, actor, C) {
+  const r = await one(d, "SELECT * FROM biz_refunds WHERE id=?1", refundId); if (!r) return false;
+  const x = await run(d, "UPDATE biz_refunds SET status='failed', note=?2, done_at=?3 WHERE id=?1 AND status IN ('processing','needs_manual')", refundId, clip(why, 200) || null, nowIso()); if (!x.meta.changes) return false;
+  await run(d, "UPDATE biz_milestones SET status=COALESCE(pre_refund,'funded') WHERE id=?1 AND status='refund_processing'", r.milestone_id);
+  await C.auditLog(env, actor || "system", "refund:failed", refundId, clip(why, 200));
+  const pj = await one(d, "SELECT client_id FROM biz_projects WHERE id=?1", r.project_id); if (pj) await C.notify(env, pj.client_id, "refund", "A refund of ₹" + (+r.amount).toLocaleString("en-IN") + " could not be completed. FODO finance will look at it; the milestone is unchanged.", "#project=" + r.project_id);
+  return true;
+}
+/* ask the gateway what happened to a refund that is still processing (admin "Check status" + the daily scheduler) */
+export async function checkRefund(env, refundId, actor, C) {
+  const d = await (await import("./biz.js")).bdb(env), r = await one(d, "SELECT r.*, m.order_id FROM biz_refunds r JOIN biz_milestones m ON m.id=r.milestone_id WHERE r.id=?1", refundId);
+  if (!r) throw err("Refund not found.", 404); if (r.status !== "processing") return { status: r.status };
+  const s = await providerRefundStatus(env, r).catch((e) => ({ error: String(e.message || e).slice(0, 160) }));
+  if (s && s.done) { await finalizeRefund(env, d, r.id, s.ref, actor, C); return { status: "refunded" }; }
+  if (s && s.failed) { await failRefund(env, d, r.id, "the gateway reported the refund failed", actor, C); return { status: "failed" }; }
+  return { status: "processing", note: s && s.error ? s.error : "still processing at the gateway" };
+}
+export async function checkRefunds(env, C, limit) { const d = await (await import("./biz.js")).bdb(env), rows = await all(d, "SELECT id FROM biz_refunds WHERE status='processing' ORDER BY created_at LIMIT ?1", limit || 20), out = [];
+  for (const r of rows) { try { out.push(Object.assign({ id: r.id }, await checkRefund(env, r.id, "scheduler", C))); } catch (e) { out.push({ id: r.id, error: String(e.message || e).slice(0, 120) }); } } return out; }
+async function providerRefundStatus(env, r) {
+  if (r.provider === "razorpay" && r.provider_ref) { const x = await rzp(env, "GET", "/refunds/" + encodeURIComponent(r.provider_ref)); return { done: x.status === "processed", failed: x.status === "failed", ref: x.id }; }
+  if (r.provider === "cashfree" && r.order_id && cfOn(env)) { const x = await cf(env, "GET", "/orders/" + encodeURIComponent(r.order_id) + "/refunds/" + encodeURIComponent(r.id)); return { done: x.refund_status === "SUCCESS", failed: ["CANCELLED", "FAILED", "REJECTED"].indexOf(x.refund_status) >= 0, ref: x.cf_refund_id ? String(x.cf_refund_id) : null }; }
+  return null;
 }
 /* the real refund call. Razorpay: refund the captured payment of the order. Cashfree: refund the order. null = no gateway order */
 export async function providerRefund(env, orderId, amount, refundId, noteText) {
@@ -157,9 +203,9 @@ export async function providerRefund(env, orderId, amount, refundId, noteText) {
   if (/^order_/.test(o.cf_order_id || "")) {
     const P = await rzp(env, "GET", "/orders/" + encodeURIComponent(o.cf_order_id) + "/payments"), pay = (P.items || []).find((x) => x.status === "captured"); if (!pay) throw new Error("Razorpay: no captured payment");
     const r = await rzp(env, "POST", "/payments/" + encodeURIComponent(pay.id) + "/refund", { amount: Math.round(amount * 100), receipt: refundId, notes: { fodo: noteText.slice(0, 200) } });
-    return { provider: "razorpay", ref: r.id || null, done: r.status === "processed" };
+    return { provider: "razorpay", ref: r.id || null, done: r.status === "processed", failed: r.status === "failed" };
   }
   if (!cfOn(env)) return null;
   const r = await cf(env, "POST", "/orders/" + encodeURIComponent(orderId) + "/refunds", { refund_amount: amount, refund_id: refundId, refund_note: noteText.slice(0, 100) }, refundId);
-  return { provider: "cashfree", ref: r.cf_refund_id ? String(r.cf_refund_id) : refundId, done: r.refund_status === "SUCCESS" };
+  return { provider: "cashfree", ref: r.cf_refund_id ? String(r.cf_refund_id) : refundId, done: r.refund_status === "SUCCESS", failed: ["CANCELLED", "FAILED", "REJECTED"].indexOf(r.refund_status) >= 0 };
 }

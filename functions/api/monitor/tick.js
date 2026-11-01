@@ -28,6 +28,7 @@ export async function onRequest({ request, env }) {
   const brain = left && left.n ? null : await brainDaily(env, request);
   // v46.1: once a day, the notification digest emails (people who chose "daily")
   let payouts = null; if (!(left && left.n)) { try { payouts = await (await import("../../_lib/payouts.js")).checkAll(env, 20); } catch (e) { payouts = { error: true }; } }   // v46.2: ask the provider about payouts in progress
+  let refunds = null; if (!(left && left.n)) { try { const B = await import("../../_lib/biz.js"); refunds = await (await import("../../_lib/projects2.js")).checkRefunds(env, { auditLog: B.auditLog, notify: B.notify }, 20); } catch (e) { refunds = { error: true }; } }   // v47.1: confirm refunds still processing
   let digest = null; if (!(left && left.n)) { try { digest = await (await import("../../_lib/alerts.js")).digest(env); } catch (e) { digest = { error: true }; } }
-  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest, payouts });
+  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest, payouts, refunds });
 }

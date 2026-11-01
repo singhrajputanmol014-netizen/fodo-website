@@ -22,6 +22,8 @@ import * as PV from "../../_lib/privacy.js";
 import * as AL from "../../_lib/alerts.js";
 import * as AN from "../../_lib/analytics.js";
 import * as PO from "../../_lib/payouts.js";
+import * as PR from "../../_lib/production.js";
+import * as QT from "../../_lib/quotes.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -131,8 +133,51 @@ export async function onRequest(ctx) {
     /* notifications */
     if (p0 === "notes" && !p1 && m === "GET") return ok(await B.notes(env, u));
     if (p0 === "notes" && p1 === "read" && m === "POST") return ok(await B.readNotes(env, u));
+    /* v47.1 Project Builder: templates → questions → team options → live price → saved draft → quote */
+    if (p0 === "builder") {
+      if (p1 === "catalog" && m === "GET") return ok({ templates: await PR.templates(env), meta: PR.catalogMeta(), roles: (await PR.roles(env)).map((r) => ({ id: r.id, name: r.name, category: r.category, unit: r.unit, rate: r.rate })), equipment: (await PR.equipment(env)).map((e) => ({ id: e.id, name: e.name, category: e.category, rate: e.rate })) });
+      if (p1 === "templates" && p2 && m === "GET") { const t = await PR.template(env, p2); return ok({ template: { id: t.id, name: t.name, group: t.group, family: t.family, description: t.description, mode: t.mode, questions: t.questions, tiers: Object.keys(t.tiers).map((k) => ({ key: k, label: t.tiers[k].label, sub: t.tiers[k].sub || "" })) } }); }
+      if (p1 === "estimate" && m === "POST") { if (await count(env, "est:" + u.id, 600, 3600)) return json({ ok: false, reason: "Too many price checks this hour, slow down a little." }, 429); return ok(await PR.estimate(env, R, body)); }
+      if (p1 === "match" && m === "POST") { if (await count(env, "match:" + u.id, 200, 3600)) return json({ ok: false, reason: "Too many searches this hour." }, 429); return ok(await PR.match(env, R, body)); }
+      if (p1 === "availability" && m === "POST") { if (await count(env, "avail:" + u.id, 120, 3600)) return json({ ok: false, reason: "Too many checks this hour." }, 429); return ok(await PR.availability(env, R, body)); }
+      if (p1 === "drafts" && !p2 && m === "GET") return ok({ items: await PR.builds(env, u) });
+      if (p1 === "drafts" && !p2 && m === "POST") return ok({ draft: await PR.saveBuild(env, u, R, body) });
+      if (p1 === "drafts" && p2 && m === "GET") return ok({ draft: await PR.build(env, u, R, p2) });
+      if (p1 === "drafts" && p2 && m === "DELETE") return ok(await PR.deleteBuild(env, u, p2));
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
+    if (p0 === "quotes") {
+      if (!p1 && m === "GET") return ok({ items: await QT.myQuotes(env, u) });
+      if (!p1 && m === "POST") return ok({ quote: await QT.requestQuote(env, u, R, body) });
+      if (p1 && !p2 && m === "GET") return ok({ quote: await QT.getQuote(env, u, R, p1) });
+      if (p1 && ["print", "summary", "csv", "json"].indexOf(p2) > -1 && m === "GET") {
+        const qq = await QT.getQuote(env, u, R, p1, { noView: true, version: q.version }); if (!qq.data || qq.data.pending) return json({ ok: false, reason: "FODO hasn't sent this quote yet." }, 409);
+        const nm = qq.number + "-v" + qq.version, H = { "cache-control": "no-store", "x-robots-tag": "noindex" };
+        if (p2 === "print") return new Response(QT.printable(qq), { headers: Object.assign({ "content-type": "text/html; charset=utf-8" }, H) });
+        if (p2 === "summary") return new Response(QT.whatsapp(qq, new URL(request.url).origin), { headers: Object.assign({ "content-type": "text/plain; charset=utf-8" }, H) });
+        if (p2 === "csv") return new Response(QT.csv(qq), { headers: Object.assign({ "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="' + nm + '.csv"' }, H) });
+        const jj = Object.assign({}, qq); return new Response(JSON.stringify(jj, null, 2), { headers: Object.assign({ "content-type": "application/json; charset=utf-8", "content-disposition": 'attachment; filename="' + nm + '.json"' }, H) });
+      }
+      if (p1 && ["accept", "decline", "changes"].indexOf(p2) > -1 && m === "POST") return ok({ quote: await QT.answer(env, u, R, p1, p2, body, request) });
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
     /* admin / moderation / finance (roles checked inside) */
     if (p0 === "admin") {
+      /* v47.1 catalog, pricing rules and quotes */
+      if (p1 === "catalog" && !p2 && m === "GET") { if (!B.can(R, ["admin", "finance", "viewer"])) return json({ ok: false, reason: "Not allowed." }, 403); return ok({ roles: await PR.roles(env, true), equipment: await PR.equipment(env, true, true), templates: await PR.templates(env, true), pricing: await PR.pricingConfig(env), meta: PR.catalogMeta(), canEdit: B.can(R, ["admin"]), canPricing: isOwner(u), gstin: !!env.FODO_GSTIN }); }
+      if (p1 === "catalog" && p2 === "templates" && path[3] && m === "GET") { if (!B.can(R, ["admin", "finance", "viewer"])) return json({ ok: false, reason: "Not allowed." }, 403); return ok({ template: await PR.template(env, path[3]) }); }
+      if (p1 === "catalog" && p2 === "roles" && m === "POST") return ok({ role: await PR.saveRole(env, u, R, body) });
+      if (p1 === "catalog" && p2 === "equipment" && m === "POST") return ok({ item: await PR.saveEquipment(env, u, R, body) });
+      if (p1 === "catalog" && p2 === "templates" && m === "POST") return ok({ template: await PR.saveTemplate(env, u, R, body) });
+      if (p1 === "pricing" && m === "POST") return ok({ pricing: await PR.savePricingConfig(env, u, body) });
+      if (p1 === "price-history" && m === "GET") return ok({ items: await PR.priceHistory(env, R, q) });
+      if (p1 === "quotes" && !p2 && m === "GET") return ok({ items: await QT.adminQuotes(env, R, q) });
+      if (p1 === "quotes" && !p2 && m === "POST") return ok({ quote: await QT.adminCreate(env, u, R, body) });
+      if (p1 === "quotes" && p2 && !path[3] && m === "GET") return ok({ quote: await QT.getQuote(env, u, R, p2, { version: q.version }) });
+      if (p1 === "quotes" && p2 && path[3] === "revise" && m === "POST") return ok({ quote: await QT.revise(env, u, R, p2, body) });
+      if (p1 === "quotes" && p2 && path[3] === "send" && m === "POST") return ok({ quote: await QT.send(env, u, R, p2) });
+      if (p1 === "quotes" && p2 && path[3] === "cancel" && m === "POST") return ok({ quote: await QT.cancel(env, u, R, p2, body) });
+      if (p1 === "quotes" && p2 && path[3] === "clone" && m === "POST") return ok({ quote: await QT.clone(env, u, R, p2) });
       if (p1 === "overview" && m === "GET") return ok(await B.adminOverview(env, R));
       if (p1 === "pros" && !p2 && m === "GET") return ok({ items: await B.adminPros(env, R, q.status) });
       if (p1 === "pros" && p2 && m === "POST") return ok(await B.moderatePro(env, u, R, p2, body.action, body.note));

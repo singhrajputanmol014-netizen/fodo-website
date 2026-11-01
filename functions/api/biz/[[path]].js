@@ -12,6 +12,7 @@
    v45 Studio: GET studio/usage · POST studio/caption · studio/script · studio/ads · studio/utm · studio/save
    v47.4: GET apply · POST apply · apply/submit · GET pro/case-studies · POST pro/case-studies · pro/case-studies/<id>/submit|delete
         GET admin/applications[?status&q] · admin/applications/<id> · admin/case-studies?status · admin/badges · POST admin/applications/<id> {action} · admin/case-studies/<id> · admin/badges · admin/pros/<id>/recommend
+   v47.5: GET admin/mission · admin/search?q · admin/hiring?days&role · admin/export/<what> (CSV, audited)
    v43 private files: GET files?project= · files/storage · files/<id>/download[?inline=1]
         POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
 import { json, accountsOn, sessionUser, sameOrigin, count, isOwner } from "../../_lib/accounts.js";
@@ -30,6 +31,7 @@ import * as TM from "../../_lib/teams.js";
 import * as AV from "../../_lib/availability.js";
 import * as FN from "../../_lib/finance.js";
 import * as PA from "../../_lib/proapps.js";
+import * as MC from "../../_lib/mission.js";
 
 export async function onRequest(ctx) {
   const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
@@ -227,6 +229,11 @@ export async function onRequest(ctx) {
       if (p1 === "quotes" && p2 && path[3] === "send" && m === "POST") return ok({ quote: await QT.send(env, u, R, p2) });
       if (p1 === "quotes" && p2 && path[3] === "cancel" && m === "POST") return ok({ quote: await QT.cancel(env, u, R, p2, body) });
       if (p1 === "quotes" && p2 && path[3] === "clone" && m === "POST") return ok({ quote: await QT.clone(env, u, R, p2) });
+      /* v47.5 Mission Control: attention list, staff search, hiring intelligence, CSV exports */
+      if (p1 === "mission" && m === "GET") return ok(Object.assign(await MC.mission(env, R), { exports: MC.exportList(R) }));
+      if (p1 === "search" && m === "GET") return ok(await MC.adminSearch(env, R, q.q));
+      if (p1 === "hiring" && m === "GET") return ok(await MC.hiring(env, R, q));
+      if (p1 === "export" && p2 && m === "GET") { const x = await MC.exportCsv(env, u, R, p2); return new Response(x.body, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="' + x.name + '"', "cache-control": "no-store", "x-content-type-options": "nosniff", "x-fodo-rows": String(x.rows) } }); }
       /* v47.4 Pro applications, case-study moderation, badge rules */
       if (p1 === "applications" && !p2 && m === "GET") return ok(await PA.adminApplications(env, R, q));
       if (p1 === "applications" && p2 && m === "GET") return ok({ application: await PA.adminApplication(env, R, p2) });
@@ -257,6 +264,7 @@ export async function onRequest(ctx) {
     }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
+    if (env.XRAY_TEST_MODE === "1" && env.API_DEBUG === "1") console.error("API", e.stack);   /* v47.5: stack traces only in the local test runtime */
     return json(Object.assign({ ok: false, reason: e.status ? e.message : "Something went wrong, please try again." }, e.missing ? { missing: e.missing } : {}, e.dup ? { dup: e.dup } : {}, e.blockers ? { blockers: e.blockers } : {}), e.status || 500);
   }
 }

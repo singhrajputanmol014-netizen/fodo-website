@@ -27,7 +27,7 @@ export function provider(env) {
 }
 const T = ["CREATE TABLE IF NOT EXISTS biz_payout_methods (pro_id TEXT PRIMARY KEY, kind TEXT, enc TEXT, masked TEXT, name TEXT, updated_at TEXT, bene_id TEXT)"];
 const COLS = ["ALTER TABLE biz_payouts ADD COLUMN provider TEXT", "ALTER TABLE biz_payouts ADD COLUMN provider_ref TEXT", "ALTER TABLE biz_payouts ADD COLUMN fail_reason TEXT", "ALTER TABLE biz_payouts ADD COLUMN attempts INTEGER DEFAULT 0", "ALTER TABLE biz_payouts ADD COLUMN sent_at TEXT"];
-async function pdb(env) { const d = await bdb(env); for (const q of T) await d.prepare(q).run(); const { migrateOnce } = await import("./accounts.js"); await migrateOnce(d, COLS); return d; }
+export async function pdb(env) { const d = await bdb(env); for (const q of T) await d.prepare(q).run(); const { migrateOnce } = await import("./accounts.js"); await migrateOnce(d, COLS); return d; }
 const clip = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
 
 /* ---------- the professional's payout method ---------- */

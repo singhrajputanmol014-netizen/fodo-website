@@ -105,6 +105,7 @@
         (j.items.length ? '<ul class="ws-rows">' + j.items.map(function (a) { return '<li><button type="button" class="ws-link" data-app="' + esc(a.id) + '"><b>' + esc(a.name) + "</b></button><span>" + esc([a.role, a.city, a.years != null ? a.years + " yrs" : ""].filter(Boolean).join(" · ")) + "</span><small>" + esc(a.email || "") + (a.submittedAt ? " · sent " + esc(day(a.submittedAt)) : "") + " · " + a.links + " link" + (a.links === 1 ? "" : "s") + " · checks " + a.checks + "/4" + (a.reviewer ? " · " + esc(a.reviewer) : "") + "</small>" + pill(a.status, a.label) + "</li>"; }).join("") + "</ul>" : empty(st ? "Nothing in this stage." : "No open applications.", "People apply from fodo.co.in/become-a-pro/. Each one shows up here after they send it."));
       $("#pa-q", X).onsubmit = function (e) { e.preventDefault(); location.hash = "admin?tab=applications&status=" + st + "&q=" + encodeURIComponent(this.elements.q.value); };
       $$("[data-app]", X).forEach(function (b) { b.onclick = function () { detail(b.dataset.app, function () { admin(B, q); }); }; });
+      if (q.get("id") && !X.dataset.opened) { X.dataset.opened = "1"; detail(q.get("id"), function () { admin(B, q); }); }   /* v47.5 deep link from search */
     });
   }
   function detail(id, after) {

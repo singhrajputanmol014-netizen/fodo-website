@@ -15,13 +15,13 @@ const WRANGLER = process.env.WRANGLER || (NM && existsSync(join(NM, ".bin", "wra
 
 const UNIT = ["v13-plans", "ops", "llm-function", "voice-function", "v24-voice", "v26-live", "competitors-function", "finder-v11-functions"];
 const STORE = ["v29-store", "v34-store", "v27-razorpay", "accounts-functions"];
-const BUILDER = ["v28-builder", "v31-builder", "v32-builder", "v34-builder", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476"];
+const BUILDER = ["v28-builder", "v31-builder", "v32-builder", "v34-builder", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476", "v48"];
 const BRAIN = ["v21-brain", "v22-brain", "v23-brain", "v24-voice", "v26-live", "v27-engineer", "v30-brain-xray", "v31-live-client.js", "v37"];
 const XRAY = ["xray-functions", "v17-functions", "v18-functions", "v19-functions", "xray-e2e.js"];
-const SECURITY = ["v34-security", "v34-store", "v34-site", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476"];
+const SECURITY = ["v34-security", "v34-store", "v34-site", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476", "v48"];
 const INTEGRATION = ["accounts-functions", "v17-functions", "v18-functions", "v19-functions", "v20-functions", "v201-functions", "v203-chat",
   "v21-brain", "v22-brain", "v23-brain", "v27-engineer", "v27-razorpay", "v28-builder", "v29-store", "v30-brain-xray", "v31-builder", "v32-builder",
-  "xray-functions", "v34-store", "v34-builder", "v34-security", "v34-site", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476"];
+  "xray-functions", "v34-store", "v34-builder", "v34-security", "v34-site", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476", "v48"];
 const STATIC_E2E = ["v5-pages.js", "v6-features.js", "v9-seo.js", "v12-brand.js", "design-smoke.js", "voice-ui.js", "lab.js", "ai-auto.js",
   "bot-memory.js", "bot-regression.js", "v8-finder.js", "v11-finder.js", "v172-engine.js", "v202-engine.js", "v203-bot.js", "v31-live-client.js"];
 const RUNTIME_E2E = ["v13-accounts-e2e.js", "v17-e2e.js", "v19-e2e.js", "v21-e2e.js", "xray-e2e.js", "cross-browser.js"];

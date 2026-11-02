@@ -863,7 +863,7 @@ os.makedirs(os.path.join(ROOT, "workspace"), exist_ok=True)
 open(os.path.join(ROOT, "workspace", "index.html"), "w").write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FODO Workspace</title><meta name="robots" content="noindex, nofollow"><meta name="fodo-root" content="/"><meta name="theme-color" content="#0f0f16">
 <link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" type="image/png" sizes="512x512" href="/favicon.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-{THEMEJS}<link rel="stylesheet" href="/css/styles.css?v={_V}"><link rel="stylesheet" href="/css/theme-glass.css?v={_V}c"><link rel="stylesheet" href="/css/studio.css?v={_V}"><link rel="stylesheet" href="/css/workspace.css?v={_V}"></head>
+{THEMEJS}<link rel="stylesheet" href="/css/styles.css?v={_V}"><link rel="stylesheet" href="/css/theme-glass.css?v={_V}c"><link rel="stylesheet" href="/css/studio.css?v={_V}"><link rel="stylesheet" href="/css/workspace.css?v={_V}"><link rel="stylesheet" href="/css/workspace-2.css?v={_V}"></head>
 <body class="ws-body"><div id="ws" class="ws-app"><div class="ws-load" role="status">Loading your FODO workspace…</div></div><noscript><p style="padding:24px">The workspace needs JavaScript.</p></noscript>
 <script src="/js/account.js?v={_V}" defer></script><script src="/js/workspace.js?v={_V}" defer></script></body></html>""")
 # ---- v40.1 FODO PROS PORTAL (/fodo-pros/): invite-only page for professionals (profile + dashboard). NOT linked from anywhere,
@@ -872,7 +872,7 @@ os.makedirs(os.path.join(ROOT, "fodo-pros"), exist_ok=True)
 open(os.path.join(ROOT, "fodo-pros", "index.html"), "w").write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FODO Pros</title><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><meta name="fodo-root" content="/"><meta name="theme-color" content="#0f0f16">
 <link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" type="image/png" sizes="512x512" href="/favicon.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-{THEMEJS}<link rel="stylesheet" href="/css/styles.css?v={_V}"><link rel="stylesheet" href="/css/theme-glass.css?v={_V}c"><link rel="stylesheet" href="/css/studio.css?v={_V}"><link rel="stylesheet" href="/css/workspace.css?v={_V}"></head>
+{THEMEJS}<link rel="stylesheet" href="/css/styles.css?v={_V}"><link rel="stylesheet" href="/css/theme-glass.css?v={_V}c"><link rel="stylesheet" href="/css/studio.css?v={_V}"><link rel="stylesheet" href="/css/workspace.css?v={_V}"><link rel="stylesheet" href="/css/workspace-2.css?v={_V}"></head>
 <body class="ws-body" data-mode="pro"><div id="ws" class="ws-app"><div class="ws-load" role="status">Loading FODO Pros…</div></div><noscript><p style="padding:24px">This page needs JavaScript.</p></noscript>
 <script src="/js/account.js?v={_V}" defer></script><script src="/js/workspace.js?v={_V}" defer></script></body></html>""")
 # ---- v21 FODO BRAIN (/owner-brain/): owner-only command center. The page is an empty shell, every byte of data comes from

@@ -258,5 +258,3 @@
 .wb-el-c input[type=color]{width:38px;height:32px;padding:1px;border-radius:8px}.wb-el-c input:not([type=color]){flex:1;min-width:0}
 .wb-el-layers summary{cursor:pointer;font-weight:700;font-size:13px;margin:6px 0}.wb-el-layers .wb-secs li.on{border-color:#FFB547}
 fieldset[disabled]{opacity:.55}
-/* v48 theme switch in the builder home bar */
-.wbh-theme{min-width:40px;padding:0 10px;font-size:16px}

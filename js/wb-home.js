@@ -54,7 +54,7 @@ export function wireVisual(root) {
 
 /* ---------- shared pieces ---------- */
 const navBar = (j, mine) => '<header class="wbh-nav"><a class="wbh-brand" href="/" aria-label="FODO home"><b>FODO</b><span>Website Builder</span></a><nav aria-label="Builder"><a href="/workspace/">Workspace</a><a href="#" data-jump="wbh-gal">Templates</a>' + (j ? (mine ? '<a href="#" data-jump="wbh-mine">My websites</a>' : "") + '<a href="#archived=1">Archived</a>' : "") + '<a href="/help/">Help</a></nav>' +
-  '<button type="button" class="wbh-search" id="wbh-search" aria-label="Search (Ctrl+K)"><span aria-hidden="true">⌕</span> Search templates, websites…<kbd>Ctrl K</kbd></button><button type="button" class="wb-btn wbh-theme" id="wbh-theme" aria-label="Switch dark / light theme" title="Dark / light">◐</button>' + (j ? '<button class="wb-btn pri" id="wb-new">+ New website</button>' : '<button class="wb-btn pri" id="wbh-login">Start free</button>') + "</header>";
+  '<button type="button" class="wbh-search" id="wbh-search" aria-label="Search (Ctrl+K)"><span aria-hidden="true">⌕</span> Search templates, websites…<kbd>Ctrl K</kbd></button>' + (j ? '<button class="wb-btn pri" id="wb-new">+ New website</button>' : '<button class="wb-btn pri" id="wbh-login">Start free</button>') + "</header>";
 function bento(list) {   // 1 large + 4 small
   return '<div class="wbh-bento">' + list.slice(0, 5).map((t, i) => '<article class="wbh-tc' + (i === 0 ? " big" : "") + '" data-id="' + esc(t.id) + '"><div class="wbh-tv"><iframe tabindex="-1" aria-hidden="true" sandbox="" loading="lazy"></iframe></div><div class="wbh-ov">' + (t.free ? '<span class="wb-tier free">Free</span>' : "") + '<b>' + esc(t.name) + "</b><small>" + esc(t.category) + " · " + esc((STYLES[t.theme.style] || {}).name || "Original") + " · " + t.pages.length + ' pages</small><span><button type="button" class="wb-btn sm" data-pv="' + esc(t.id) + '">Preview</button><button type="button" class="wb-btn sm pri" data-use="' + esc(t.id) + '">Use template</button></span></div></article>').join("") + "</div>";
 }
@@ -110,7 +110,7 @@ export async function home(root, opts) {
   if ($("#wbh-health", root)) $("#wbh-health", root).onclick = healthPanel;
   // search / command palette
   const pal = () => palette({ sites, signedIn, start, useTpl, root });
-  $("#wbh-search", root).onclick = pal; const th = $("#wbh-theme", root); if (th) th.onclick = () => { const t = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"; document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem("fodo-theme", t); } catch (e) {} };   /* v48 theme switch */ if (window.__wbhKey) window.__wbhKey(); window.__wbhKey = bindKey(() => { if (!document.querySelector(".wb-pal-ov") && !location.hash.match(/site=/)) pal(); });
+  $("#wbh-search", root).onclick = pal; if (window.__wbhKey) window.__wbhKey(); window.__wbhKey = bindKey(() => { if (!document.querySelector(".wb-pal-ov") && !location.hash.match(/site=/)) pal(); });
 }
 function palette(c) {
   track("wb_palette_used", "home");

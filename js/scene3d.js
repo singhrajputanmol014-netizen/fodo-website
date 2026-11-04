@@ -13,10 +13,12 @@
 
   var canvas = document.createElement("canvas");
   canvas.className = "fodo-3d"; canvas.setAttribute("aria-hidden", "true");
-  var gl = canvas.getContext("webgl", { antialias: false, alpha: true, premultipliedAlpha: false, powerPreference: "low-power" });
+  var gl = canvas.getContext("webgl", { antialias: false, alpha: true, premultipliedAlpha: false, powerPreference: "default", desynchronized: true });
   if (!gl) return;
   document.body.prepend(canvas);
   var scrim = document.createElement("div"); scrim.className = "fodo-3d-scrim"; scrim.setAttribute("aria-hidden", "true"); canvas.after(scrim);
+  /* v47.6.2: the wash is its own compositor layer and is eased here, so a per-frame opacity change never restarts a CSS transition or repaints the page */
+  scrim.style.transition = "none"; scrim.style.willChange = "opacity"; canvas.style.willChange = "transform";
   document.documentElement.classList.add("has-3d");
 
   /* ---------- shapes (each N xyz points, roughly unit-sized) ---------- */
@@ -72,12 +74,18 @@
 
   /* ---------- size, scroll, pointer ---------- */
   var W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2);
-  function resize() { W = innerWidth; H = innerHeight; canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); gl.viewport(0, 0, canvas.width, canvas.height); }
-  resize(); addEventListener("resize", resize);
-  var target = 0, prog01 = 0, mx = 0, my = 0, tmx = 0, tmy = 0;
-  function readScroll() { var max = Math.max(1, document.documentElement.scrollHeight - innerHeight); target = Math.min(1, Math.max(0, scrollY / Math.max(1, max - footerH()))); }
-  function footerH() { var f = document.querySelector("footer"); return f ? Math.min(f.offsetHeight, document.documentElement.scrollHeight * .4) : 0; }
-  readScroll(); addEventListener("scroll", readScroll, { passive: true });
+  /* v47.6.2: resize is batched to one per frame and skipped when nothing changed; on phones the address bar showing / hiding
+     (a small height change while scrolling) no longer reallocates the canvas, which was the main source of scroll jank there */
+  function resize() { var w = innerWidth, h = innerHeight; if (w === W && (h === H || (mobile && Math.abs(h - H) < 160 && h <= H))) { measure(); return; }
+    var sameW = w === W; W = w; H = mobile && sameW ? Math.max(h, H) : h; canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); gl.viewport(0, 0, canvas.width, canvas.height); measure(); }
+  var rz = 0; addEventListener("resize", function () { if (!rz) rz = requestAnimationFrame(function () { rz = 0; resize(); }); });
+  var target = 0, prog01 = 0, mx = 0, my = 0, tmx = 0, tmy = 0, span = 1, sy = 0;
+  /* v47.6.2: the page height and footer height are measured on load / resize / content changes only, never inside the scroll
+     handler (reading offsetHeight there forced a full layout on every scroll event) */
+  function measure() { var de = document.documentElement, f = document.querySelector("footer"), sh = de.scrollHeight, fh = f ? Math.min(f.offsetHeight, sh * .4) : 0; span = Math.max(1, sh - innerHeight - fh); readScroll(); }
+  function readScroll() { sy = scrollY; target = Math.min(1, Math.max(0, sy / span)); }
+  resize(); addEventListener("scroll", readScroll, { passive: true }); addEventListener("load", measure);
+  if (window.ResizeObserver) { var mq = 0; new ResizeObserver(function () { if (!mq) mq = requestAnimationFrame(function () { mq = 0; measure(); }); }).observe(document.body); }
   if (!mobile) addEventListener("pointermove", function (e) { tmx = e.clientX / W - .5; tmy = e.clientY / H - .5; }, { passive: true });
 
   var ease = function (x) { return x * x * (3 - 2 * x); };
@@ -85,14 +93,14 @@
   var BP = [0, 0], introOn = document.documentElement.classList.contains("intro") && !reduce;
   (function () { var d = document.querySelector(".fi-dot"); if (!introOn || !d) return; var r = d.getBoundingClientRect(); BP = [((r.left + r.width / 2) / innerWidth) * 2 - 1, 1 - ((r.top + r.height / 2) / innerHeight) * 2]; })();
   function introBurst(now) { if (!introOn) return 1; var go = window.__fodoIntroGo; if (!go) return 0; var u = Math.min(1, Math.max(0, (now - go) / 1100)); if (u >= 1) introOn = false; return 1 - Math.pow(1 - u, 3); }
-  var last = performance.now(), clock = 0, running = true, raf = 0;
+  var last = performance.now(), clock = 0, running = true, raf = 0, sOp = -1, heroE = 0;
   function frame(now) {
     raf = 0; if (!running) return;
     if (mobile && now - last < 30) { raf = requestAnimationFrame(frame); return; }   // phones: ~30 fps is plenty for a background and halves the work
-    var dt = Math.min(.05, (now - last) / 1000); last = now; if (!reduce) clock += dt;
+    var dt = Math.min(.05, Math.max(0, (now - last) / 1000)); last = now; if (!reduce) clock += dt;
     prog01 += (target - prog01) * Math.min(1, dt * 4.5);
     mx += (tmx - mx) * Math.min(1, dt * 3); my += (tmy - my) * Math.min(1, dt * 3);
-    var heroIn = scrollY < innerHeight * .6;
+    var heroIn = sy < H * .6;
     var S = SHAPES.length, seg = prog01 * (S - 1), i = Math.min(S - 1, Math.floor(seg)), j = Math.min(S - 1, i + 1), t = reduce ? 0 : ease(seg - i);
     bind(i, j);
     var wordT = (j === S - 1 && !reduce) ? t : 0;
@@ -108,7 +116,8 @@
     gl.uniform1f(U.scale, ((mobile ? .78 : .95) - wordT * (mobile ? .36 : .05)) * (1 + .32 * Math.max(0, 1 - prog01 * 12)));
     gl.uniform3fv(U.c1, col1); gl.uniform3fv(U.c2, col2); gl.uniform1f(U.alpha, Math.min(1, alpha * (heroIn ? 1.25 : 1) * (1 + .55 * wordT)));
     var bu = introBurst(now); gl.uniform1f(U.burst, bu); gl.uniform2f(U.bpos, BP[0], BP[1]);
-    var heroK = Math.min(1, scrollY / (innerHeight * .9)); scrim.style.opacity = ((.25 + .75 * heroK) * (1 - .7 * wordT)).toFixed(3);
+    heroE += (Math.min(1, sy / (H * .9)) - heroE) * Math.min(1, dt * 8);
+    var op = Math.round((.25 + .75 * heroE) * (1 - .7 * wordT) * 250) / 250; if (op !== sOp) { sOp = op; scrim.style.opacity = op; }
     gl.drawArrays(gl.POINTS, 0, N);
     if (!reduce || Math.abs(target - prog01) > .001 || bu < 1) raf = requestAnimationFrame(frame);
   }

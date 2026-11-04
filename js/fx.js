@@ -24,6 +24,15 @@
       }, { passive: true });
     }, "navbar");
 
+    /* ---- 1b. v47.6.2 smoothness: looping CSS / SVG animations in sections that are off screen are paused (they were
+       re-styling the page on every frame while nobody could see them) and resume 300 px before they scroll into view ---- */
+    safe(function () {
+      if (!("IntersectionObserver" in window)) return;
+      var io = new IntersectionObserver(function (en) { en.forEach(function (e) { if (e.isIntersecting) e.target.removeAttribute("data-fx-off"); else e.target.setAttribute("data-fx-off", ""); }); }, { rootMargin: "300px 0px" });
+      var watch = function () { [].forEach.call(document.querySelectorAll("main > section, main > div > section, footer"), function (el) { if (!el.__fxo) { el.__fxo = 1; io.observe(el); } }); };
+      watch(); if ("MutationObserver" in window) { var m = document.querySelector("main"); if (m) new MutationObserver(function () { watch(); }).observe(m, { childList: true }); }
+    }, "offscreen");
+
     /* ---- 2. flip words: letters blur-rise into place ---- */
     safe(function () {
       document.querySelectorAll("[data-flip]").forEach(function (el) {

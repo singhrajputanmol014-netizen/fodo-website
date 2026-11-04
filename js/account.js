@@ -208,11 +208,12 @@
         if (!cf.enabled) { if (c) c.remove(); return; }
         if (!c) { c = document.createElement("a"); c.className = i ? "acct-drawer" : "acct-chip"; if (i) host.appendChild(c); else host.insertBefore(c, host.querySelector("#search-open") || host.querySelector(".header-cta") || host.querySelector(".burger")); }
         c.href = ROOT + "account/";
-        if (user) { var t = esc(user.planName) + " · " + user.credits.total + " X-Ray" + (user.credits.total === 1 ? "" : "s"); c.innerHTML = '<span class="acct-dot" aria-hidden="true">' + esc((user.name || user.email || user.phone || "U").charAt(0).toUpperCase()) + "</span><span>" + (i ? "My account · " + t : t) + "</span>"; c.setAttribute("aria-label", "Your account: " + user.planName + " plan, " + user.credits.total + " X-Rays left"); c.onclick = null; }
+        if (user) { var t = esc(user.planName) + " · " + user.credits.total + " X-Ray" + (user.credits.total === 1 ? "" : "s"); c.innerHTML = '<span class="acct-dot" aria-hidden="true">' + esc((user.name || user.email || user.phone || "U").charAt(0).toUpperCase()) + "</span><span>" + (i ? "My account · " + t : t) + "</span>"; c.setAttribute("aria-label", "Your account: " + user.planName + " plan, " + user.credits.total + " X-Rays left"); c.title = user.planName + " plan · " + user.credits.total + " X-Ray" + (user.credits.total === 1 ? "" : "s") + " left"; c.onclick = null; }
         else { c.innerHTML = '<span class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span>' + (i ? "Log in / Sign up, 2 free X-Rays" : "Log in") + "</span>"; c.setAttribute("aria-label", "Log in"); c.onclick = function (e) { e.preventDefault(); var d = document.getElementById("drawer"); if (d && d.classList.contains("open")) { d.classList.remove("open"); document.body.classList.remove("locked"); } login().catch(function () {}); }; }
         // v40.2: signed-in people get a direct "Workspace" link next to their account (header + mobile drawer)
         var w = host.querySelector(i ? ".acct-ws-d" : ".acct-ws");
         if (user && !w) { w = document.createElement("a"); w.className = i ? "acct-ws-d" : "acct-ws"; w.href = ROOT + "workspace/"; w.textContent = "Workspace"; if (i) host.insertBefore(w, c); else host.insertBefore(w, c); }
+        if (!i) host.classList.toggle("has-acct", !!user);   /* v47.6.2: the header compacts the account pill to its avatar so "Let's talk" and the menu stay inside the bar */
         if (!user && w) w.remove();
       });
     });

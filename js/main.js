@@ -66,7 +66,7 @@
     sb.addEventListener("click",()=>{const o=sub.classList.toggle("open");sb.setAttribute("aria-expanded",o);});
     document.addEventListener("click",e=>{ if(!sub.contains(e.target)){sub.classList.remove("open");sb.setAttribute("aria-expanded","false");} });
     sub.addEventListener("keydown",e=>{ if(e.key==="Escape"){sub.classList.remove("open");sb.setAttribute("aria-expanded","false");sb.focus();} });
-    addEventListener("scroll",()=>h.classList.toggle("scrolled",scrollY>8),{passive:true});
+    {let on=null; addEventListener("scroll",()=>{const v=scrollY>8; if(v!==on){on=v;h.classList.toggle("scrolled",v);}},{passive:true});}
     // Drawer
     const d=document.createElement("div"); d.id="drawer"; d.className="drawer"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true"); d.setAttribute("aria-label","Menu");
     const grp=(t,items,cls)=>`<div class="dgrp"><span class="dlabel">${t}</span><div class="${cls||"dlist"}">${items.map(l=>`<a href="${routes[l[1]]}" class="${l[2]||""}"${cur(l[1])}>${l[0]}</a>`).join("")}</div></div>`;

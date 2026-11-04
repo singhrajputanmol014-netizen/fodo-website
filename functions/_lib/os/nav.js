@@ -1,0 +1,30 @@
+/* FODO OS V4 Phase 1 (v50.1): role-aware navigation. Clients and FODO Pros keep exactly the v47 navigation (navFor(R)).
+   FODO staff (members, owners, legacy staff roles) get the same entries plus the OS ones, arranged in collapsible groups:
+   Command · Operations · Growth · People · Platform (V4 section 38, decision 2a). Entries appear only when the person holds the
+   permission; a module the owner switched off disappears for everybody but owners. */
+import { navFor } from "../biz.js";
+import { osdb, all } from "./db.js";
+import { has, isEmployee } from "./authz.js";
+import { MODULES } from "./permissions.js";
+
+const GROUP = { command: "Command", tower: "Command", admin: "Command", people: "People", hr: "People", "os-pros": "People", "my-fodo": "Operations", work: "Operations", tasks: "Operations", approvals: "Operations", calendar: "Operations", workload: "Operations", "os-projects": "Operations", clients: "Operations", support: "Operations", overview: "Operations", projects: "Operations", quotes: "Operations", "project-builder": "Operations", pros: "Operations", builder: "Growth", xray: "Growth", growth: "Growth", content: "Growth", studio: "Growth", leads: "Growth", brand: "Growth" };
+const ORDER = ["Command", "Operations", "Growth", "People", "Platform"];
+/* nav id → permission an employee needs to see it (null = never for employees; entries missing here are always shown) */
+const NEED = { builder: ["site", "view", "own"], xray: ["xray", "view", "own"], growth: ["growthlab", "view", "own"], content: ["content", "view", "own"], studio: ["content", "manage", "own"], leads: ["crm", "view", "own"], brand: ["content", "view", "own"], projects: ["project", "view", "own"], quotes: ["quote", "view", "assigned"], "project-builder": ["production", "manage", "team"], pros: ["pro", "view", "assigned"], files: ["file", "read", "own"], apply: null, billing: null, pro: null };
+const MODULE_OF = { builder: "builder", growth: "growthlab", xray: "xray", pros: "pros", "project-builder": "pros", leads: "crm", studio: "studio", content: "content", billing: "finance" };
+export async function modulesOff(env) { try { const d = await osdb(env); return new Set((await all(d, "SELECT key FROM os_modules WHERE enabled=0")).map((r) => r.key)); } catch (e) { return new Set(); } }
+export const moduleList = () => MODULES.map((m) => ({ key: m[0], name: m[1] }));
+
+export async function navInfo(env, P, R) {
+  const base = navFor(R), off = await modulesOff(env), keep = (n) => P.isOwner || !off.has(MODULE_OF[n.id] || "");
+  if (!isEmployee(P)) { const nv = base.filter(keep); if (P.R && P.R.pro && (P.isOwner || !off.has("pros"))) nv.push({ id: "workroom", label: "Workroom" }); return { nav: nv, groups: null, home: P.home === "command" ? "overview" : P.home }; }
+  /* employees see only modules their permissions reach (V4: "employees see only relevant work"); owners keep everything */
+  const nav = base.filter(keep).filter((n) => n.id !== "projects" && (P.isOwner || !(n.id in NEED) || (NEED[n.id] && has(P, NEED[n.id][0], NEED[n.id][1], NEED[n.id][2]))));
+  /* v50.2 OS entries, each behind its permission; module switches apply to Approvals and Support too */
+  const add = (id, label, res, act, sc, mod) => { if ((!res || has(P, res, act, sc)) && (P.isOwner || !mod || !off.has(mod))) nav.push({ id, label }); };
+  add("hr", "HR", "hr", "view", "own", "hr"); add("os-pros", "FODO Pros", "pro", "view", "assigned", "pros"); add("command", "Command Centre", "analytics", "view", "team"); add("tower", "Control Tower", "analytics", "view", "department"); add("my-fodo", "My FODO"); add("work", "Work queues", "task", "view", "team"); add("tasks", "Tasks"); add("os-projects", "Projects", "project", "view", "own"); add("approvals", "Approvals", "approval", "request", "own", "approvals"); add("calendar", "Calendar", "calendar", "view", "own"); add("workload", "Workload", "workload", "view", "team"); add("clients", "Clients", "client", "view", "assigned", "crm"); add("support", "Support", "message", "read", "own"); if (has(P, "people", "view", "team")) nav.push({ id: "people", label: "People & Access" });
+  const ORDER_IDS = ["command", "tower", "admin", "people", "my-fodo", "work", "tasks", "os-projects", "approvals", "calendar", "workload", "clients", "support", "overview", "quotes", "project-builder", "pros", "hr", "os-pros"]; nav.sort((a, b) => { const ia = ORDER_IDS.indexOf(a.id), ib = ORDER_IDS.indexOf(b.id); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+  const by = {}; nav.forEach((n) => { const g = GROUP[n.id] || "Platform"; (by[g] = by[g] || []).push(n); });
+  const ids = nav.map((n) => n.id), home = P.isOwner ? "command" : ids.indexOf(P.home) > -1 ? P.home : "my-fodo";
+  return { nav, groups: ORDER.filter((g) => by[g] && by[g].length).map((g) => ({ id: g.toLowerCase(), label: g, items: by[g] })), home };
+}

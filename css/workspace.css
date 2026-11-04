@@ -197,3 +197,23 @@ html:has(.ws-body){background:var(--bg)}
 .ws-tw{overflow:auto;margin:0 0 14px}.ws-table{width:100%;border-collapse:collapse;font-size:13px}.ws-table th,.ws-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.ws-table th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 /* v47.6 sync: calendar link row */
 .sy-link{align-items:center}.sy-link input{flex:1 1 260px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--muted);font:inherit;font-size:13px}
+/* v50.1 FODO OS: collapsible navigation groups for staff (same links, same sizes), the read-only view-as banner, People & Access bits */
+.ws-navg{margin:0 0 4px}.ws-navg summary{list-style:none;cursor:pointer;padding:8px 10px 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px;user-select:none}.ws-navg summary::-webkit-details-marker{display:none}.ws-navg summary::before{content:"▾";font-size:10px;opacity:.7;transition:transform .15s}.ws-navg:not([open]) summary::before{transform:rotate(-90deg)}.ws-navg summary:focus-visible{outline:2px solid var(--signal);outline-offset:2px;border-radius:8px}
+.ws-viewas{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;padding:8px 14px;background:color-mix(in srgb,#f5a623 22%,var(--panel));border-bottom:1px solid color-mix(in srgb,#f5a623 60%,transparent);font-size:14px;position:sticky;top:0;z-index:5}.ws-viewas .ws-btn{min-height:32px;padding:0 12px;font-size:13px}
+.ws-check{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.ws-check input{width:auto!important;min-height:0!important}
+.pe-acts{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}.pe-acc td select{min-height:34px!important;font-size:13px!important}.ws-pill.warn{border-color:color-mix(in srgb,#f5a623 60%,transparent)}
+@media (max-width:900px){.ws-viewas{position:static}}
+/* v50.2 FODO OS views (same system: panels, pills, rows) */
+.os-h4{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}.os-h4.warn{color:#f5a623}
+.os-desc{white-space:pre-wrap;color:var(--muted);margin:0 0 12px;line-height:1.55}
+.os-board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:10px;overflow-x:auto;padding-bottom:8px}.os-col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:120px}.os-col h4{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;align-items:center}.os-col h4 small{color:var(--muted);font-weight:500}
+.os-tc{display:block;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:0 0 8px;color:inherit;text-decoration:none;font-size:13px}.os-tc b{display:block;margin:0 0 2px}.os-tc small{color:var(--muted);display:block}.os-tc .ws-pill{margin-top:6px}a.os-tc:hover{border-color:var(--signal)}
+.os-bar{display:inline-block;width:80px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;margin-right:6px;overflow:hidden}.os-bar i{display:block;height:100%;background:var(--signal)}.os-bar i.warn{background:#f5a623}.os-bar i.low{background:var(--muted)}
+.os-day{margin:0 0 14px}.os-feed li{flex-wrap:wrap}.os-feed li small{flex-basis:100%;color:var(--muted);margin-top:2px}.os-feed li.sev-critical b,.os-feed li.sev-high b{color:#f5a623}
+.os-ind .ws-card em{font-style:normal;font-size:13px;margin-left:6px}.os-ind .ws-card em.up{color:#2fbf71}.os-ind .ws-card em.down{color:#f5a623}.os-ind .ws-card small{display:block;color:var(--muted);margin-top:4px;font-size:12px}.os-formula{opacity:.8}
+.os-thread li.in{border-left:3px solid var(--signal);padding-left:10px}.os-thread li.out{border-left:3px solid var(--line);padding-left:10px}.os-thread li.note{border-left:3px solid #f5a623;padding-left:10px;background:color-mix(in srgb,#f5a623 8%,transparent)}
+.warn{color:#f5a623}
+@media (max-width:700px){.os-board{grid-auto-flow:row;grid-auto-columns:auto;overflow:visible}.os-col{min-height:0}}
+/* v50.3 HR + Pros */
+.os-heat td{text-align:center;font-weight:600}.os-heat td.lv-low{color:var(--muted)}.os-heat td.lv-ok{color:#2fbf71}.os-heat td.lv-high{color:#f5a623}.os-heat td.lv-over{color:#ff5c5c;background:color-mix(in srgb,#ff5c5c 10%,transparent)}.os-heat td.lv-off{color:var(--muted);font-weight:400}.os-heat td small{display:block;font-weight:400;color:var(--muted)}
+.os-ck{margin:0 0 16px}

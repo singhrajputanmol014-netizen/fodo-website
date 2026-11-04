@@ -19,6 +19,8 @@
         POST files/upload?project=&milestone=&kind=&replaces=&name=&note= (raw bytes, same-origin + X-FODO-Upload header) */
 import { json, accountsOn, sessionUser, sameOrigin, count, isOwner } from "../../_lib/accounts.js";
 import * as B from "../../_lib/biz.js";
+import * as OSI from "../../_lib/os/impersonate.js";
+import * as OSME from "../../_lib/os/me.js";
 import * as W from "../../_lib/sites.js";
 import * as FL from "../../_lib/files.js";
 import * as CRM from "../../_lib/crm.js";
@@ -46,7 +48,9 @@ export async function onRequest(ctx) {
     if (p0 === "invite" && m === "GET") return json(Object.assign({ ok: true }, await B.inviteStatus(env, new URL(request.url).searchParams.get("i"))), 200, { "cache-control": "no-store" });   // valid or not, nothing else
     /* v47.6 private calendar feeds: the token is the only credential (no session, so calendar apps can subscribe) */
     if (p0 === "calendar" && p1 && /\.ics$/.test(p1) && m === "GET") { if (await count(env, "cal:" + (request.headers.get("cf-connecting-ip") || "anon"), 120, 3600)) return json({ ok: false, reason: "Too many requests." }, 429); const body0 = await CAL.serve(env, p1, new URL(request.url).origin); if (!body0) return json({ ok: false, reason: "Not found." }, 404); return new Response(body0, { headers: { "content-type": "text/calendar; charset=utf-8", "cache-control": "private, max-age=300", "x-robots-tag": "noindex", "content-disposition": "inline; filename=\"fodo.ics\"" } }); }
-    const u = await sessionUser(env, request); if (!u) return json({ ok: false, reason: "Log in to use your FODO workspace.", login: true }, 401);
+    const u0 = await sessionUser(env, request); if (!u0) return json({ ok: false, reason: "Log in to use your FODO workspace.", login: true }, 401);
+    /* v50.1 view-as (FODO OS): while an owner views as someone, GETs answer as that person and every write is refused */
+    const imp = await OSI.readAs(env, u0); if (imp && m !== "GET" && m !== "HEAD") return json({ ok: false, reason: "View-as is read-only. Stop viewing as " + (imp.user.email || "this person") + " first." }, 403); const u = imp ? imp.user : u0;
     /* v43 private files: the upload body is the raw file (not JSON); same-origin + a custom header (a cross-site form can't send it) */
     if (p0 === "files" && p1 === "upload" && m === "POST") {
       if (!sameOrigin(request) || request.headers.get("x-fodo-upload") !== "1") return json({ ok: false, reason: "Bad request." }, 403);
@@ -61,7 +65,7 @@ export async function onRequest(ctx) {
     if (m !== "GET" && (await count(env, "biz:" + u.id, 400, 3600))) return json({ ok: false, reason: "Too many changes this hour, slow down a little." }, 429);
     const body = m === "POST" || m === "PUT" ? (await request.json().catch(() => null)) || {} : {}, q = Object.fromEntries(new URL(request.url).searchParams), R = await B.rolesOf(env, u), ok = (o) => json(Object.assign({ ok: true }, o));
 
-    if (p0 === "me" && m === "GET") return ok({ user: { id: u.id, email: u.email, name: u.name || "" }, roles: R.roles, nav: B.navFor(R), pro: R.pro, unread: (await B.notes(env, u)).unread });
+    if (p0 === "me" && m === "GET") { const os = await OSME.meBlock(env, u, R, imp); return ok({ user: { id: u.id, email: u.email, name: u.name || "" }, roles: R.roles, nav: os.nav, pro: R.pro, unread: (await B.notes(env, u)).unread, os: os.os }); }
     if (p0 === "dashboard" && m === "GET") return ok(await B.dashboard(env, u));
     if (p0 === "search" && m === "GET") return ok(await B.search(env, u, q.q));
     if (p0 === "leads" && !p1 && m === "GET") return ok(await B.leads(env, u, q));

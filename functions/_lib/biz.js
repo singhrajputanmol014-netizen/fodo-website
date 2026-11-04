@@ -48,7 +48,8 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS biz_invites (token TEXT PRIMARY KEY, note TEXT, max_uses INTEGER, uses INTEGER DEFAULT 0, expires_at TEXT, revoked INTEGER DEFAULT 0, created_by TEXT, created_at TEXT)",
   "CREATE TABLE IF NOT EXISTS biz_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, target TEXT, detail TEXT, created_at TEXT)",
 ];
-const MIG = ["ALTER TABLE biz_pros ADD COLUMN invite TEXT",   // v40.1
+const MIG = ["ALTER TABLE biz_notes ADD COLUMN category TEXT", "ALTER TABLE biz_notes ADD COLUMN urgency TEXT", "ALTER TABLE biz_notes ADD COLUMN dedupe_key TEXT", "CREATE INDEX IF NOT EXISTS biz_notes_dedupe ON biz_notes(user_id, dedupe_key, created_at)", /* v50.1 */
+  "ALTER TABLE biz_pros ADD COLUMN invite TEXT",   // v40.1
   /* v44 Projects 2.0: time slots (one booking per pro + day + slot; '' = the whole day), modes, team, tasks, change requests, time, refunds */
   "ALTER TABLE biz_bookings ADD COLUMN slot TEXT DEFAULT ''", "DROP INDEX IF EXISTS biz_bookings_day", "CREATE UNIQUE INDEX IF NOT EXISTS biz_bookings_slot ON biz_bookings(pro_id, day, slot)",
   "ALTER TABLE biz_pros ADD COLUMN slots TEXT", "ALTER TABLE biz_projects ADD COLUMN slot TEXT", "ALTER TABLE biz_projects ADD COLUMN mode TEXT", "ALTER TABLE biz_projects ADD COLUMN rate INTEGER", "ALTER TABLE biz_projects ADD COLUMN cap INTEGER",
@@ -88,8 +89,15 @@ export async function bdb(env) { const d = await adb(env); if (!d) throw err("Da
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
-export async function auditLog(env, actor, action, target, detail) { try { await run(await bdb(env), "INSERT INTO biz_audit (actor, action, target, detail, created_at) VALUES (?1,?2,?3,?4,?5)", actor || "", action, target || "", clip(detail, 400), nowIso()); } catch (e) {} }
-export async function notify(env, userId, kind, text, link) { if (!userId) return; await run(await bdb(env), "INSERT INTO biz_notes (user_id, kind, text, link, created_at) VALUES (?1,?2,?3,?4,?5)", userId, kind, clip(text, 300), clip(link, 200), nowIso());
+export async function auditLog(env, actor, action, target, detail) { try { await run(await bdb(env), "INSERT INTO biz_audit (actor, action, target, detail, created_at) VALUES (?1,?2,?3,?4,?5)", actor || "", action, target || "", clip(detail, 400), nowIso()); } catch (e) {}
+  /* v50.1: every audited marketplace write is also an OS event ("project:create" → project.create on subject project/<id>), so the activity timeline and automations see real writes without touching each write point */
+  try { const m = /^([a-z_]+):?([a-z_-]*)$/.exec(String(action || "")); if (m && m[1]) { const A = await import("./os/audit.js"); await A.emit(env, { user: { id: null, name: actor, email: actor } }, m[1] + "." + (m[2] || "update"), { kind: m[1], id: target || "" }, { detail: clip(detail, 300) || "" }, { quiet: true }); } } catch (e) {} }
+/* v50.1: optional 6th argument { category, urgency: urgent | action | info, dedupe }. A note with the same dedupe key for the same person
+   within one hour is stored once (no duplicate notifications, V4 section 33). Category and urgency default from the kind. */
+export const NOTE_CAT = { task: ["task", "action"], project: ["project", "info"], approval: ["approval", "urgent"], payment: ["finance", "action"], payout: ["finance", "action"], booking: ["booking", "action"], message: ["message", "action"], system: ["system", "info"], security: ["security", "urgent"], team: ["booking", "action"], quote: ["project", "action"], contract: ["project", "action"], invoice: ["finance", "action"], refund: ["finance", "urgent"], dispute: ["project", "urgent"] };
+export async function notify(env, userId, kind, text, link, opt) { if (!userId) return; const d = await bdb(env), o = opt || {}, dflt = NOTE_CAT[kind] || ["account", "info"], cat = clip(o.category, 20) || dflt[0], urg = ["urgent", "action", "info"].indexOf(o.urgency) > -1 ? o.urgency : dflt[1], key = o.dedupe ? clip(o.dedupe, 120) : null;
+  if (key && await one(d, "SELECT id FROM biz_notes WHERE user_id=?1 AND dedupe_key=?2 AND created_at>?3", userId, key, new Date(Date.now() - 3600e3).toISOString())) return;
+  await run(d, "INSERT INTO biz_notes (user_id, kind, text, link, created_at, category, urgency, dedupe_key) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", userId, kind, clip(text, 300), clip(link, 200), nowIso(), cat, urg, key);
   try { await (await import("./alerts.js")).deliver(env, userId, kind, clip(text, 300), clip(link, 200)); } catch (e) {} }   // v46.1: email per the person's notification settings
 
 /* ---------- roles (server-side only) ---------- */

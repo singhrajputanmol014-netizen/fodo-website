@@ -5,7 +5,7 @@
 (function () {
   "use strict";
   if (window.__fodo3d) return; window.__fodo3d = 1;
-  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches, running = true;
   var saveData = navigator.connection && navigator.connection.saveData;
   if (saveData) return;
   var mobile = matchMedia("(max-width: 767px)").matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -13,12 +13,15 @@
 
   var canvas = document.createElement("canvas");
   canvas.className = "fodo-3d"; canvas.setAttribute("aria-hidden", "true");
-  var gl = canvas.getContext("webgl", { antialias: false, alpha: true, premultipliedAlpha: false, powerPreference: "default", desynchronized: true });
+  /* v47.6.3: no "desynchronized" (a low-latency context behind the page composites to nothing on many GPU-backed Chrome builds; the background vanished) */
+  var gl = canvas.getContext("webgl", { antialias: false, alpha: true, premultipliedAlpha: false, powerPreference: "default" }) || canvas.getContext("experimental-webgl", { alpha: true, premultipliedAlpha: false });
   if (!gl) return;
   document.body.prepend(canvas);
   var scrim = document.createElement("div"); scrim.className = "fodo-3d-scrim"; scrim.setAttribute("aria-hidden", "true"); canvas.after(scrim);
   /* v47.6.2: the wash is its own compositor layer and is eased here, so a per-frame opacity change never restarts a CSS transition or repaints the page */
-  scrim.style.transition = "none"; scrim.style.willChange = "opacity"; canvas.style.willChange = "transform";
+  scrim.style.transition = "none"; scrim.style.willChange = "opacity";
+  /* if the GPU drops the context the plain page background comes back instead of a blank layer */
+  canvas.addEventListener("webglcontextlost", function (e) { e.preventDefault(); running = false; canvas.remove(); scrim.remove(); document.documentElement.classList.remove("has-3d"); }, false);
   document.documentElement.classList.add("has-3d");
 
   /* ---------- shapes (each N xyz points, roughly unit-sized) ---------- */
@@ -93,7 +96,7 @@
   var BP = [0, 0], introOn = document.documentElement.classList.contains("intro") && !reduce;
   (function () { var d = document.querySelector(".fi-dot"); if (!introOn || !d) return; var r = d.getBoundingClientRect(); BP = [((r.left + r.width / 2) / innerWidth) * 2 - 1, 1 - ((r.top + r.height / 2) / innerHeight) * 2]; })();
   function introBurst(now) { if (!introOn) return 1; var go = window.__fodoIntroGo; if (!go) return 0; var u = Math.min(1, Math.max(0, (now - go) / 1100)); if (u >= 1) introOn = false; return 1 - Math.pow(1 - u, 3); }
-  var last = performance.now(), clock = 0, running = true, raf = 0, sOp = -1, heroE = 0;
+  var last = performance.now(), clock = 0, raf = 0, sOp = -1, heroE = 0;
   function frame(now) {
     raf = 0; if (!running) return;
     if (mobile && now - last < 30) { raf = requestAnimationFrame(frame); return; }   // phones: ~30 fps is plenty for a background and halves the work

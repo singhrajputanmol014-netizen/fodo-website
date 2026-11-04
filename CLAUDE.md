@@ -2,7 +2,7 @@
 
 This file is the complete working memory of the FODO website project, written so that a brand-new Claude account or session can continue the work exactly where it stopped, without asking the owner to explain anything again and without breaking the live site.
 
-- **Current version:** v47.6.2 (4 November 2026): v47.6 features + this handover file + header fit / background smoothness fix. See `VERSION`.
+- **Current version:** v50.3 (5 November 2026): v47.6.3 + FODO OS V4 Phases 1 to 3 (permission system + People & Access; operations core: My FODO, tasks, approvals, queues, calendar, workload, projects, clients, support, Command Centre, Control Tower; HR: leave, reviews, training, skills, onboarding, capacity, attendance; Pros: lifecycle, passport, appeals, two-stage matching, booking changes, hours, team assembly with employees, workroom). Phases 4 to 8 are NOT built; OS work is paused until the owner says so. Reports: `docs/FODO-V50.1-REPORT.md`, `docs/FODO-V50.2-REPORT.md`, `docs/FODO-V50.3-REPORT.md`.
 - **Repository:** `singhrajputanmol014-netizen/fodo-website` (GitHub). The repo root IS the website (Cloudflare Pages build output directory is `.`).
 - **Live site:** https://www.fodo.co.in
 - **If you are a new Claude:** read sections 1 to 6 completely before touching any file. Sections 7 onward are reference.
@@ -154,7 +154,7 @@ wrangler.toml          bindings · _headers (generated) · _redirects · _routes
 
 **Possible next code work (only when asked):** a consumer Worker for the `JOBS` queue; uncommenting R2 once the bucket exists; anything Rohit reports from testing.
 
-**Planned, not started: FODO OS** (one permission system, people & roles, shared tasks / approvals, My FODO, Owner Command Center, role-scoped assistant). Design is complete and on hold until Rohit says to build it: read `docs/FODO-OS-ARCHITECTURE.md` (build guide, section 15 = essentials, section 16 = how to start), `docs/FODO-OS-AUDIT.md`, `docs/FODO-OS-IMPLEMENTATION-PLAN.md`. Draft server modules live outside the repo in `FODO-OS-Architecture-Pack.zip` (`fodo-os-starter/`), not deployed.
+**FODO OS V4 (in progress, phase by phase).** The owner's V4 master prompt is the roadmap. Phase 0 audit + plan: `docs/FODO-OS-V4-IMPLEMENTATION-PLAN.md` (section 2 = owner decisions, section 4 = phases, section 6 = backlog format), `-EXISTING-ARCHITECTURE.md`, `-FEATURE-INVENTORY.md`, `-TECHNICAL-DEBT.md`, `-SECURITY-AUDIT.md`. **Phase 1 shipped in v50.1** (`docs/FODO-V50.1-REPORT.md`): `functions/_lib/os/` (permissions, db, authz, audit + events, people, impersonate, nav, me), `/api/os/*` router, People & Access UI (`js/ws-people.js`), grouped navigation for staff, kill switch. Reference docs: `FODO-OS-V4-PERMISSIONS.md`, `-DATA-MODEL.md`, `-API-REFERENCE.md`, `-SECURITY.md`. Next: Phase 2 (v50.2) Command Centre + operations (clients canonical record, task engine 2.0, approvals, My FODO, queues, calendar, project lifecycle, support SLA). The older `docs/FODO-OS-ARCHITECTURE.md` / `FODO-OS-AUDIT.md` / `FODO-OS-IMPLEMENTATION-PLAN.md` are the first design and are superseded where they differ. Owner decisions taken for Phase 1 by recommendation: design unchanged (light theme reviewed, no token change needed), sidebar grouped (Command / Operations / Growth / People / Platform), roles confirmed by the owner in People & Access, 13 departments seeded (managers to be named by the owner).
 
 ---
 
@@ -198,6 +198,11 @@ wrangler.toml          bindings · _headers (generated) · _redirects · _routes
 - Money views: admin / finance / viewer. Moderation: admin / moderator. Owner-only: pricing rules, badge rules, commission, staff, act-on-behalf in orgs is the org owner.
 
 ### 9.3 Database and migrations
+
+- **v50.2 (hard rule):** dynamic `import()` must use a string literal. A variable path is not bundled by Pages and fails silently at runtime (the Node test shim resolves it, so tests pass while production breaks). `os/db.js SETUPS` is the pattern.
+- **v47.6.3:** `js/scene3d.js` must not request a `desynchronized` WebGL context or put `will-change: transform` on the fixed canvas; both blanked the background on GPU-backed Chrome. `/js/*` is `no-cache`, so a JS-only fix needs no page rebuild.
+- **v50.1:** `osdb(env)` is the OS set-up (it calls `bdb` first). Any OS reader of marketplace tables beyond `bdb` (quotes, finance, jobs) must call that module's set-up too (see `health()` calling `jdb`). `auditLog()` in biz.js now also writes `os_events` through a dynamic import of `os/audit.js` (biz.js must never import `os/` statically: `os/db.js` imports biz.js).
+
 - `bdb(env)` (biz.js) creates DDL + runs `migrateOnce(d, MIG)` once per isolate. Other modules wrap it: `pdb` (production.js), `qdb` (quotes.js, exported), `fdb` (finance.js), `jdb` (jobs.js), `odb` (orgs.js), `pdb` in payouts.js (exported), `fdb` in files.js. **If a query touches another module's tables, call that module's set-up first** (e.g. mission.js `mdb` = `qdb` + payouts `pdb` + finance `fdb`; calendar.js calls `qdb`). Missing this causes "no such table" 500s on a fresh database.
 - `migrateOnce(d, list)` (accounts.js) records each statement hash in `schema_migrations`; ALTERs that already ran are skipped. Add new statements at the END of the module's `MIG` array with a `/* vXX ... */` comment.
 - Main table families: `acct_*` (users, sessions, orders, subs, ledger, runs...), `xray_*`, `brain_*`, `site_*` / `sites` (builder), `help_*`, `lab_*`, `mon_*`, `crm_*`, `biz_*` (marketplace and workspace: pros, projects, milestones, quotes, teams, contracts, ledger (append-only triggers), invoices, payouts, applications, case studies, jobs, orgs, cal tokens, files...).
@@ -218,6 +223,19 @@ wrangler.toml          bindings · _headers (generated) · _redirects · _routes
 | payouts.js | Encrypted payout methods (`PAYOUT_ENC_KEY`), Cashfree Payouts / RazorpayX adapters, status checks |
 | proapps.js | Applications pipeline + checks, case studies, badges (`badgeMap`, owner-tuned rules in `biz_settings.badges`), FODO Recommended |
 | mission.js | Mission Control, staff search, hiring intelligence, 13 audited CSV exports |
+| os/permissions.js | v50.1 FODO OS: permission registry (`resource.action.scope`), 6 scopes, 17 role templates, LEGACY role map, MODULES. **The only file where permission strings may be written** (check.mjs rule 5) |
+| os/db.js | `osdb(env)` (runs `bdb` first): `os_*` tables, additive columns on biz tables, seeds (org, 13 departments, templates, owners, legacy staff backfill), `backfillLegacy`, `linkMember`, FTS5 probe, prefs |
+| os/authz.js | `principal()`, `allows()`, `authorize()` (deny by default, object-level through `relationOf`), `cleanFor()`, `describe()` |
+| os/audit.js | `audit()` structured + scrubbed, `auditList()` (os + biz + brain merged), `emit()` / `on()` event bus with isolated automations, `events()` |
+| os/people.js | members, invite, update, status, grants, sessions, offboarding + handoff, departments, roles / Access Builder, registry, directory |
+| os/impersonate.js | owner read-only view-as (KV token 30 min, audited, writes refused by both routers) |
+| os/nav.js, os/me.js | role-aware navigation groups for staff (clients / Pros unchanged), the `os` block of `/api/biz/me` (never throws) |
+| os/tasks.js, os/approvals.js, os/work.js | v50.2 task engine (dependencies, checklist, comments, status, manager approval), approvals + escalation, My FODO, department queues, calendar, workload, deadline reminders |
+| os/clients.js, os/projects.js | v50.2 canonical clients (backfill, 360, health formula, pipeline, handover gate); project lifecycle (validated transitions, brief, scope + change requests, deliverables with immutable reviews, risks, daily reports, progress / health / closure formulas) |
+| os/support.js, os/command.js | v50.2 support SLA / notes / CSAT / escalation on help_tickets; Command Centre exception feed, Control Tower indicators (snapshots in os_health_log), permission-aware search |
+| os/hr.js | v50.3 leave (policy in biz_settings.leave_policy, balances, approvals), reviews, training, skills matrix (os_members.skills), onboarding checklists, capacity heatmap, attendance (off unless biz_settings.attendance_enabled="1"), employee profile |
+| os/pros.js | v50.3 Pro lifecycle (biz_pros.lifecycle), passport (computed, snapshot in os_pro_passports, appeals), two-stage matching (hard constraints with reasons, then production.match + passport), booking changes (os_booking_changes, notice window), working hours, team assembly with employees (biz_team_members.user_id / member_kind), Pro workroom |
+| js/ws-os.js | the lazy Workspace module for every OS view (`window.FODO_WS_OS.view(name, el, q)`), same ws-* design system; tests check it calls only routes the router has |
 | files.js | Private files (R2 `FILES` or KV fallback), type from bytes, versions, multipart (v47.6) |
 | jobs.js | D1 job queue (`biz_jobs`), handlers, backoff, dead letter, `runDue`, `enqueueDaily` |
 | calendar.js | Token iCal feeds (pro / client / staff) |
@@ -285,7 +303,8 @@ After adding or changing one: Deployments → latest → Retry deployment.
 - **Unit/integration harness pattern** (copy the head of `tests/v476.test.mjs`): `node:sqlite` in-memory database wrapped as a D1 shim, handlers imported directly (`functions/api/biz/[[path]].js` etc.), `call()` builds real `Request`s with cookies per user, `login(email)` via `/api/account/test-login` (only in `XRAY_TEST_MODE`), `Z(path, body, who)` shortcut, `fetch` mocked for providers.
 - **Register new suites** in `tests/run.mjs` in the BUILDER, SECURITY and INTEGRATION lists.
 - **Runtime e2e** suites start `wrangler pages dev` on port 8788 via `tests/xray-fixtures/run-local.sh`. Known flaky when run in the full suite (pass when run alone): `xray-e2e`, `v17-e2e`, `v19-e2e`, `v8-finder`. Rerun alone before calling it a failure: `node tests/run.mjs xray`, `node tests/v19-e2e.test.js`.
-- **Static checks:** `node scripts/check.mjs` (parse every JS file, no "worker" / long dash in marketplace files, no key patterns in `js/`).
+- **Static checks:** `node scripts/check.mjs` (parse every JS file, no "worker" / long dash in marketplace files, no key patterns in `js/`; v50.1: every `/api/os` route declares a permission, no permission string outside `functions/_lib/os/`).
+- **v50.1 suite:** `tests/v501.test.mjs` (119 checks: permission matrix, People & Access, view-as, events, kill switch, owner access). Visual script pattern for OS screens: log in several people through `test-login`, call `/api/os/me` once per person so the member row links, then screenshot.
 - **Syntax check one file:** copy to a `.mjs` and `node --check`.
 - **Visual check:** Playwright against the local runtime (log in through `/api/account/test-login`, screenshot desktop 1440 px and phone 390 px, assert `scrollWidth - innerWidth === 0`). Look at the screenshots before delivering.
 

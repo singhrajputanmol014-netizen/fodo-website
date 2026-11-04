@@ -24,6 +24,9 @@ export const HANDLERS = {
   mail: { desc: "Send an email (retried up to 5 times)", run: async (env, p) => { await sendMail(env, p.to, p.subject, p.html, p.text, p.opt || {}); return { sent: true }; } },
   notify: { desc: "Workspace notification", run: async (env, p) => { await notify(env, p.userId, p.kind || "system", p.text, p.link || ""); return { ok: true }; } },
   upload_sweep: { desc: "Abort expired multipart uploads", run: async (env) => ({ aborted: await (await import("./files.js")).mpSweep(env, 20) }) },
+  /* v50.2 FODO OS jobs (hourly: os_hourly, daily: os_daily) */
+  os_hourly: { desc: "FODO OS hourly: approval escalation, SLA check, grant expiry, deadline reminders", run: async (env) => { const out = {}; try { out.approvals = await (await import("./os/approvals.js")).escalateDue(env, 25); } catch (e) { out.approvals = String(e.message); } try { out.sla = await (await import("./os/support.js")).slaCheck(env); } catch (e) { out.sla = String(e.message); } try { out.grants = await (await import("./os/people.js")).expireGrants(env); } catch (e) { out.grants = String(e.message); } try { out.reminders = await (await import("./os/work.js")).deadlineReminders(env); } catch (e) { out.reminders = String(e.message); } return out; } },
+  os_daily: { desc: "FODO OS daily: control tower snapshot, problem scan", run: async (env) => { const out = {}; try { out.snapshot = await (await import("./os/command.js")).snapshot(env); } catch (e) { out.snapshot = String(e.message); } try { const PB = await import("./os/problems.js"); out.problems = await PB.scan(env); } catch (e) { out.problems = String(e.message); } try { const WF = await import("./os/workflows.js"); out.workflows = await WF.runScheduled(env); } catch (e) { out.workflows = String(e.message); } return out; } },
   team_housekeeping: { desc: "Expire overdue team invitations and send reminders", run: async (env) => { const TM = await import("./teams.js"); return { expired: await TM.expireDue(env), reminded: await TM.remindDue(env) }; } },
   refund_check: { desc: "Ask the payment provider about refunds in progress", run: async (env) => { const B = await import("./biz.js"); return (await import("./projects2.js")).checkRefunds(env, { auditLog: B.auditLog, notify: B.notify }, 20); } },
   payout_check: { desc: "Ask the payout provider about payouts in progress", run: async (env) => (await import("./payouts.js")).checkAll(env, 20) },
@@ -60,7 +63,7 @@ export async function runDue(env, n) {
   out.remaining = ((await one(d, "SELECT count(*) n FROM biz_jobs WHERE status IN ('queued','failed') AND run_after <= ?1", nowIso())) || {}).n || 0; return out;
 }
 /* the daily housekeeping jobs, queued once per day each (idempotent through the key) */
-export async function enqueueDaily(env) { const day = nowIso().slice(0, 10), out = []; for (const k of ["upload_sweep", "team_housekeeping", "refund_check", "payout_check"]) out.push((await enqueue(env, k, {}, { key: k + ":" + day, maxAttempts: 3 })).id); return out; }
+export async function enqueueDaily(env) { const day = nowIso().slice(0, 10), out = []; for (const k of ["upload_sweep", "team_housekeeping", "refund_check", "payout_check", "os_daily"]) out.push((await enqueue(env, k, {}, { key: k + ":" + day, maxAttempts: 3 })).id); return out; }
 
 /* ---------- staff view ---------- */
 export async function adminJobs(env, R, q) {

@@ -47,6 +47,10 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
 
 (async () => {
   start();
+  /* v51: in a full run this suite twice stopped at its very first page load (TimeoutError before any check, v50.7 and v51.0):
+     a cold runtime answers the first page requests slowly. Warm it up with plain requests, with a budget of their own, before
+     the browser's 30 s navigation timeout starts counting. */
+  for (const u of ["/plans/", "/business-x-ray/", "/api/account/me"]) { const t0 = Date.now(); await fetch(BASE + u).then((r) => r.text()).catch(() => {}); if (Date.now() - t0 > 5000) console.log("info: warm-up " + u + " took " + (Date.now() - t0) + " ms"); }
   const b = await chromium.launch();
   let ctx = await newCtx(b), p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(e.message));
 

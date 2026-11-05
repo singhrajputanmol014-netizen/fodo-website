@@ -180,7 +180,7 @@
   function bubbleU(t) { var d = document.createElement("div"); d.className = "ob-msg u"; d.textContent = t; LOG().appendChild(d); return d; }
   function bubbleA(r) {
     var d = document.createElement("div"); d.className = "ob-msg a";
-    var src = (r.sources || []).map(function (s) { return s.name; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    var src = (r.sources || []).map(function (s) { return s.name + (s.at && /FODO OS/.test(s.name) ? " at " + new Date(s.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : ""); }).filter(function (x, i, a) { return a.indexOf(x) === i; });   /* v51: OS sources say which screen and when */
     d.innerHTML = md(r.answer) + (r.attachments || []).map(function (x) {
       if (x.kind === "change") return '<div class="ob-act" style="border-color:rgba(139,123,255,.45);background:rgba(139,123,255,.06)"><b>Prepared change: ' + esc(x.title) + "</b> · " + badge(x.risk === "high" ? "important" : x.risk === "low" ? "ok" : "info") + " <small>" + esc(x.risk) + " risk · " + esc((x.files || []).join(", ")) + '</small><pre style="font:12px/1.5 var(--b-mono);max-height:320px;overflow:auto">' + esc(x.diff) + "</pre>" + (x.test ? '<small class="ob-empty">Check on the preview: ' + esc(x.test) + "</small>" : "") + "</div>";
       if (x.kind === "sources") return '<div class="ob-meta"><span>Sources: ' + (x.sources || []).map(function (s0, i) { return '<a href="' + esc(/^https:\/\//.test(s0.link) ? s0.link : "#") + '" target="_blank" rel="noopener noreferrer nofollow">[' + (i + 1) + "] " + esc(String(s0.title).slice(0, 40)) + "</a>"; }).join(" ") + "</span></div>";

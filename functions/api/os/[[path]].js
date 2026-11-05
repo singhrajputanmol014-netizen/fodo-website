@@ -38,6 +38,7 @@ import * as DO from "../../_lib/os/docs.js";
 import * as IB from "../../_lib/os/inbox.js";
 import * as CP from "../../_lib/os/comply.js";
 import * as MON from "../../_lib/os/monitor.js";
+import * as AS from "../../_lib/os/assets.js";
 
 const err = (reason, status) => json({ ok: false, reason }, status || 400);
 /* route table: method, path pattern, permission needed (resource + action, or "self"), handler(ctx, match) */
@@ -72,6 +73,11 @@ export const ROUTES = [
   ["POST", /^settings$/, { resource: "system", action: "settings" }, async (c) => { const d = await osdb(c.env), on = c.body.os_enabled === false || c.body.os_enabled === "0" ? "0" : "1"; await run(d, "INSERT OR REPLACE INTO biz_settings (k, v) VALUES ('os_enabled', ?1)", on); await audit(c.env, c.P, "OWNER_CHANGED_SYSTEM_SETTING", { kind: "setting", id: "os_enabled" }, null, { os_enabled: on }, c.body.reason); return { settings: { os_enabled: on === "1" } }; }],
   ["GET", /^health$/, { resource: "system", action: "health" }, (c) => health(c.env)],
   ["GET", /^monitoring$/, { resource: "system", action: "health" }, async (c) => MON.overview(c.env, c.P, (await health(c.env)).probes)],   /* v50.8 */
+  /* v51: company assets */
+  ["GET", /^company-assets$/, { resource: "equipment", action: "view" }, (c) => AS.list(c.env, c.P, c.q)],
+  ["POST", /^company-assets$/, { resource: "equipment", action: "manage" }, (c) => AS.save(c.env, c.P, c.body)],
+  ["GET", /^company-assets\/([A-Za-z0-9_-]+)$/, { resource: "equipment", action: "view" }, (c, m) => AS.get(c.env, c.P, m[1])],
+  ["POST", /^company-assets\/([A-Za-z0-9_-]+)\/move$/, { resource: "equipment", action: "manage" }, (c, m) => AS.move(c.env, c.P, m[1], c.body)],
   ["POST", /^monitoring\/backup$/, { resource: "system", action: "health" }, (c) => MON.backupRecord(c.env, c.P, c.body)],
   /* ---- Phase 2 (v50.2) ---- */
   ["GET", /^my$/, { resource: "task", action: "view" }, (c) => WK.my(c.env, c.P)],

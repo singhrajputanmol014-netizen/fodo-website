@@ -37,3 +37,8 @@ jobs:
           NODE_PATH: ${{ github.workspace }}/tests/node_modules
           BROWSERS: ${{ matrix.browser }}
         run: node tests/v508-csp.test.js
+      - name: Enforced Content-Security-Policy on the app pages (v51)
+        env:
+          WRANGLER: ${{ github.workspace }}/tests/node_modules/.bin/wrangler
+          NODE_PATH: ${{ github.workspace }}/tests/node_modules
+        run: node tests/v51-csp.test.js

@@ -163,7 +163,7 @@ r = await Z("me", undefined, "tech"); ok(r.j.nav.some((n) => n.id === "monitorin
 { const src = fs.readFileSync(new URL("../functions/api/os/[[path]].js", import.meta.url), "utf8"); ok(/MON\.recordError\(env, routeKey/.test(src), "the router records every 5xx"); }
 
 /* ---------- 7. release hygiene ---------- */
-{ const v = fs.readFileSync(new URL("../VERSION", import.meta.url), "utf8").trim(); ok(v === "FODO v50.8", "VERSION is FODO v50.8"); }
+{ const v = fs.readFileSync(new URL("../VERSION", import.meta.url), "utf8").trim(); ok(/^FODO v5[01]\.\d+$/.test(v), "VERSION is a v50.8 or later release (" + v + ")"); }
 { const run = fs.readFileSync(new URL("./run.mjs", import.meta.url), "utf8"); ok(/"v508"/.test(run) && /"v508-csp\.js"/.test(run), "run.mjs runs the Phase 8 suites"); }
 for (const f of ["docs/FODO-V50.8-REPORT.md", "docs/RELEASE-CHECKLIST.md", "docs/BACKUP-RESTORE.md", "scripts/backup.mjs"]) ok(fs.existsSync(new URL("../" + f, import.meta.url)), f + " exists");
 console.log(`\nv50.8: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

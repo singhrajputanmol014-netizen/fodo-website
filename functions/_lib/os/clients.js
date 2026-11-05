@@ -28,7 +28,7 @@ export async function list(env, P, q) {
   return { items: rows, scope };
 }
 export async function get(env, P, id) {
-  const d = await osdb(env), c = await one(d, "SELECT * FROM os_clients WHERE id=?1 AND org_id=?2", id, ORG); if (!c) throw err("Not found.", 404);
+  const d = await osdb(env), c = await one(d, "SELECT * FROM os_clients WHERE id=?1 AND org_id=?2", id, ORG); if (!c) throw err("Not found.", 404); try { await (await import("./growth.js")).gdb(env); } catch (e) {}   /* v51: the growth columns the activity query reads */
   await authorize(env, P, { resource: "client", action: "view", target: { kind: "client", row: { id: c.primary_user_id, account_manager_user_id: c.account_manager_user_id } } }); const uid = c.primary_user_id;
   const fin = has(P, "finance", "view", "department"), x = {
     client: out(c), projects: uid ? await all(d, "SELECT id, title, status, type, kind, lifecycle, due, created_at FROM biz_projects WHERE client_id=?1 ORDER BY created_at DESC LIMIT 50", uid) : [],
@@ -39,7 +39,7 @@ export async function get(env, P, id) {
     contacts: await all(d, "SELECT id, name, email, phone, title FROM crm_contacts WHERE email=?1 OR company=?2 ORDER BY updated_at DESC LIMIT 20", c.email, c.name).catch(() => []),
     files: uid && has(P, "file", "read", "assigned") ? await all(d, "SELECT f.id, f.name, f.size, f.created_at, f.project_id FROM biz_files f WHERE f.owner_id=?1 AND f.deleted_at IS NULL ORDER BY f.created_at DESC LIMIT 20", uid) : [],
     links: await all(d, "SELECT kind, ref, project_id, created_at FROM os_links WHERE client_id=?1 ORDER BY created_at DESC", c.id).catch(() => []),
-    activity: uid ? await all(d, "SELECT kind, subject_kind, subject_id, actor_name, created_at FROM os_events WHERE subject_id IN (SELECT id FROM biz_projects WHERE client_id=?1 UNION SELECT id FROM biz_quotes WHERE client_id=?1 UNION SELECT id FROM biz_contracts WHERE client_id=?1 UNION SELECT id FROM biz_invoices WHERE client_id=?1) ORDER BY created_at DESC LIMIT 40", uid) : [],
+    activity: uid ? await all(d, "SELECT kind, subject_kind, subject_id, actor_name, created_at FROM os_events WHERE subject_id IN (SELECT id FROM biz_projects WHERE client_id=?1 UNION SELECT id FROM biz_quotes WHERE client_id=?1 UNION SELECT id FROM biz_contracts WHERE client_id=?1 UNION SELECT id FROM biz_invoices WHERE client_id=?1 UNION SELECT id FROM biz_content WHERE os_client_id=?2 UNION SELECT id FROM biz_campaigns WHERE os_client_id=?2) ORDER BY created_at DESC LIMIT 40", uid, c.id).catch(() => []) : [],   /* v51: growth work (content, campaigns) shows in the client's activity too */
     health: await health(env, c)
   };
   if (!isEmployee(P)) { delete x.invoices; } return x;

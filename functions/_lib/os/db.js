@@ -125,7 +125,7 @@ async function seed(d) {
    Phase 1 resources count as already handed out, so owner edits made before this release stay as they are. */
 /* multi-row INSERT OR IGNORE of (role_id, perm) pairs, 45 rows per statement (D1: at most 100 bound values) */
 async function pairs(d, table, rows) { for (let k = 0; k < rows.length; k += 45) { const part = rows.slice(k, k + 45); await d.prepare("INSERT OR IGNORE INTO " + table + " (role_id, perm) VALUES " + part.map((_, n) => "(?" + (2 * n + 1) + ",?" + (2 * n + 2) + ")").join(",")).bind(...[].concat(...part)).run(); } }
-export const LATER = ["asset", "report", "workflow", "decision", "agent", "vendor", "purchase", "integration", "subscription", "knowledge", "document", "inbox", "risk", "incident", "privacy"];
+export const LATER = ["equipment", "asset", "report", "workflow", "decision", "agent", "vendor", "purchase", "integration", "subscription", "knowledge", "document", "inbox", "risk", "incident", "privacy"];
 export async function syncTemplates(d, roles) {
   await d.prepare("CREATE TABLE IF NOT EXISTS os_template_sync (role_id TEXT, perm TEXT, PRIMARY KEY (role_id, perm))").run(); let added = 0;
   if (!roles) { roles = {}; for (const r of await all(d, "SELECT id, slug FROM os_roles WHERE org_id=?1", ORG)) roles[r.slug] = r.id; }

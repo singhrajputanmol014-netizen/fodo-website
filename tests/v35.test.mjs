@@ -148,7 +148,7 @@ r = await call("admin/security", undefined, { as: "own" }); ok(r.j.items.filter(
 r = await call("admin/security/clear", {}, { as: "own" }); ok(r.j.ok && !(await call("admin/security", undefined, { as: "own" })).j.items.length, "team can clear the list");
 
 /* ---------- on-demand chatbot (built pages) ---------- */
-const about = readFileSync(new URL("../about/index.html", import.meta.url), "utf8");
+const about = readFileSync(new URL("../about/index.html", import.meta.url), "utf8") + (/js\/boot-tail\.js/.test(readFileSync(new URL("../about/index.html", import.meta.url), "utf8")) ? readFileSync(new URL("../js/boot-tail.js", import.meta.url), "utf8") : "");   /* v50.8: the loader moved from an inline script to js/boot-tail.js (enforced CSP) */
 ok(/bot-ph/.test(about) && /FODO_BOT_LOAD/.test(about) && !/\["pointerdown","keydown","scroll","touchstart"\]\.forEach\(function\(e\)\{addEventListener\(e,go/.test(about), "chatbot: light Ask FODO button at once, the ~246 KB bot loads on demand (not on the first scroll / tap)");
 ok(/s\.async=false/.test(about) && /saveData/.test(about), "…bot files download in parallel, and Save-Data / 2G visitors only get it when they tap");
 ok(!all.some((t) => /SUPERSECRET|re_SECRETresendKEY/.test(t)), "no secret in any response");

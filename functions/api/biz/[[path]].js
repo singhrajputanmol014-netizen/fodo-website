@@ -8,7 +8,7 @@
    DELETE content/<id> · pro/packages/<id> · pro/portfolio/<id> · files/<id>
    v45 CRM: GET crm/contacts?q&tag · crm/contacts/<id> · crm/pipeline · crm/followups · crm/duplicates · crm/export?what=contacts|deals (CSV)
         POST crm/contacts · crm/contacts/<id>/delete · crm/merge · crm/import-forms · crm/import-csv {csv} · crm/deals · crm/deals/<id>/delete · crm/activities · crm/activities/<id> {done} · crm/activities/<id>/delete
-   v46.1: GET settings/notify · POST settings/notify · GET privacy (log + what blocks a deletion) · POST privacy/export (JSON file) · POST privacy/delete {confirm:"DELETE"} · GET admin/analytics
+   v46.1: GET settings/notify · POST settings/notify · GET privacy (log + what blocks a deletion) · POST privacy/export (JSON file) · POST privacy/delete {confirm:"DELETE"} · v50.7 GET privacy/dpdp · POST privacy/consent {purpose, granted} · POST privacy/request {kind, detail} · GET admin/analytics
    v45 Studio: GET studio/usage · POST studio/caption · studio/script · studio/ads · studio/utm · studio/save
    v47.4: GET apply · POST apply · apply/submit · GET pro/case-studies · POST pro/case-studies · pro/case-studies/<id>/submit|delete
         GET admin/applications[?status&q] · admin/applications/<id> · admin/case-studies?status · admin/badges · POST admin/applications/<id> {action} · admin/case-studies/<id> · admin/badges · admin/pros/<id>/recommend
@@ -125,6 +125,10 @@ export async function onRequest(ctx) {
     if (p0 === "privacy" && !p1 && m === "GET") return ok({ log: await PV.history(env, u), blockers: await PV.blockers(env, u) });
     if (p0 === "privacy" && p1 === "export" && m === "POST") return new Response(JSON.stringify(await PV.exportData(env, u), null, 2), { headers: { "content-type": "application/json; charset=utf-8", "content-disposition": "attachment; filename=\"fodo-my-data-" + new Date().toISOString().slice(0, 10) + ".json\"", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     if (p0 === "privacy" && p1 === "delete" && m === "POST") return json(await PV.deleteAccount(env, u, body), 200, { "set-cookie": "fodo_s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" });
+    /* v50.7 DPDP: own consents, rights requests and grievances (every signed-in person) */
+    if (p0 === "privacy" && p1 === "dpdp" && m === "GET") return ok(await (await import("../../_lib/os/comply.js")).myPrivacy(env, u));
+    if (p0 === "privacy" && p1 === "consent" && m === "POST") return ok(await (await import("../../_lib/os/comply.js")).consentSet(env, u, body));
+    if (p0 === "privacy" && p1 === "request" && m === "POST") { if (await count(env, "dpr:" + u.id, 10, 86400)) return json({ ok: false, reason: "Too many requests today." }, 429); return ok(await (await import("../../_lib/os/comply.js")).requestCreate(env, u, body)); }
     /* v45 CRM (every row is the user's own) */
     if (p0 === "crm") {
       if (p1 === "contacts" && !p2 && m === "GET") return ok(await CRM.listContacts(env, u, q));

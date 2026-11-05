@@ -38,6 +38,7 @@ export async function get(env, P, id) {
     tickets: await all(d, "SELECT id, subject, status, priority, category, created_at, updated_at FROM help_tickets WHERE user_id=?1 OR email=?2 ORDER BY updated_at DESC LIMIT 30", uid || "-", c.email).catch(() => []),
     contacts: await all(d, "SELECT id, name, email, phone, title FROM crm_contacts WHERE email=?1 OR company=?2 ORDER BY updated_at DESC LIMIT 20", c.email, c.name).catch(() => []),
     files: uid && has(P, "file", "read", "assigned") ? await all(d, "SELECT f.id, f.name, f.size, f.created_at, f.project_id FROM biz_files f WHERE f.owner_id=?1 AND f.deleted_at IS NULL ORDER BY f.created_at DESC LIMIT 20", uid) : [],
+    links: await all(d, "SELECT kind, ref, project_id, created_at FROM os_links WHERE client_id=?1 ORDER BY created_at DESC", c.id).catch(() => []),
     activity: uid ? await all(d, "SELECT kind, subject_kind, subject_id, actor_name, created_at FROM os_events WHERE subject_id IN (SELECT id FROM biz_projects WHERE client_id=?1 UNION SELECT id FROM biz_quotes WHERE client_id=?1 UNION SELECT id FROM biz_contracts WHERE client_id=?1 UNION SELECT id FROM biz_invoices WHERE client_id=?1) ORDER BY created_at DESC LIMIT 40", uid) : [],
     health: await health(env, c)
   };

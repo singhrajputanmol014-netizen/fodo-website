@@ -22,12 +22,14 @@ const start = () => { stop(); sh("bash", ["-c", "curl -s --noproxy '*' -m 2 " + 
   if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
 const calls = () => fetch(F + "/_calls").then((r) => r.json());
 const bodies = [];
-const SDK = `window.Cashfree=function(o){try{sessionStorage.setItem("cfmode",o&&o.mode)}catch(e){}return{checkout:function(x){var id=x.paymentSessionId.replace(/^sess_/,"");return fetch("${F}/_cf/pay?order="+id).then(function(){location.href="/account/?order_id="+id;});},subscriptionsCheckout:function(){}};};`;
+const SDK = `window.Cashfree=function(o){try{sessionStorage.setItem("cfmode",o&&o.mode)}catch(e){}return{checkout:function(x){var id=x.paymentSessionId.replace(/^sess_/,"");return fetch("https://sdk.cashfree.com/_test_pay?order="+id).then(function(){location.href="/account/?order_id="+id;});},subscriptionsCheckout:function(){}};};`;
 async function newCtx(b) {
   const ctx = await b.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 950 } });
   await ctx.addInitScript(() => { try { localStorage.setItem("fodo-consent", JSON.stringify({ analytics: false, t: Date.now() })); } catch (e) {} });
   await ctx.route("**/api/chat", (r) => r.fulfill({ status: 404, body: "" }));
-  await ctx.route("https://sdk.cashfree.com/**", (r) => r.fulfill({ status: 200, contentType: "application/javascript", body: SDK }));
+  /* v50.8: the public pages enforce a CSP, so the stub SDK talks to an allowed origin (sdk.cashfree.com) and this route forwards
+     the "payment" to the fixture server, instead of the page calling the local fixture server directly */
+  await ctx.route("https://sdk.cashfree.com/**", async (r) => { const u = new URL(r.request().url()); if (u.pathname === "/_test_pay") { await fetch(F + "/_cf/pay?order=" + encodeURIComponent(u.searchParams.get("order") || "")); return r.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: "{}" }); } r.fulfill({ status: 200, contentType: "application/javascript", body: SDK }); });
   await ctx.route(/accounts\.google\.com/, (r) => r.fulfill({ status: 404, body: "" }));
   ctx.on("response", async (res) => { try { if (/localhost:8788/.test(res.url())) bodies.push(await res.text()); } catch (e) {} });
   return ctx;

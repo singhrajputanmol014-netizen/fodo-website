@@ -88,6 +88,6 @@ let r = await S("list", undefined, "a"); const mine = await S("list", undefined,
 { const rd = (f) => fs.readFileSync(new URL("../" + f, import.meta.url), "utf8"), main = rd("css/styles.css") + rd("css/theme-glass.css") + rd("css/studio.css"), bot = rd("css/bot.css"), page = rd("contact/index.html");
   ok(!/(^|[}\s])\.bot-log\{/.test(main) && !/(^|[}\s])\.msg\.me\{/.test(main) && /\.bot-log\{/.test(bot) && /\.msg\.me\{/.test(bot), "chatbot panel and message styles moved out of the CSS every page loads");
   ok(/\.bot-fab\{/.test(main) && !/(^|[}\s])\.bot-fab\{/.test(bot.replace(/[^{}]*,[^{}]*\{/g, "")), "the launcher button styles stay in the main CSS (the button looks the same before the chatbot loads)");
-  ok(!/css\/bot\.css/.test(page.split("<script>(function(){var R=")[0]) && /c\.href=R\+"css\/bot\.css\?v="\+V;c\.onload=c\.onerror=go2;setTimeout\(go2,4000\)/.test(page), "bot.css is not loaded with the page; the chatbot loads it first and only then its scripts (4 s fallback)"); }
+  ok(!/css\/bot\.css/.test(page) && /js\/boot-tail\.js/.test(page) && /c\.href=R\+"css\/bot\.css\?v="\+V;c\.onload=c\.onerror=go2;setTimeout\(go2,4000\)/.test(rd("js/boot-tail.js")),   /* v50.8: the loader lives in js/boot-tail.js */ "bot.css is not loaded with the page; the chatbot loads it first and only then its scripts (4 s fallback)"); }
 
 console.log("\nv37: " + pass + "/" + (pass + fail) + " passed"); process.exit(fail ? 1 : 0);

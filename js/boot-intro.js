@@ -1,0 +1,2 @@
+/* v50.8 (S6): the opening animation timeline, formerly inline right after the intro markup. */
+(function(){var h=document.documentElement;if(!h.classList.contains("intro"))return;setTimeout(function(){window.__fodoIntroGo=performance.now();h.classList.add("intro-go")},700);setTimeout(function(){h.classList.add("intro-out")},1700);setTimeout(function(){h.classList.remove("intro","intro-go","intro-out");var o=document.querySelector(".fodo-intro");if(o)o.remove()},2350)})();

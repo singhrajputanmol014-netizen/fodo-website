@@ -27,6 +27,7 @@ export async function emit(env, P, kind, subject, payload) {
   const d = await osdb(env), ev = { org_id: ORG, kind: clip(kind, 60), subject_kind: subject ? clip(subject.kind, 30) : null, subject_id: subject ? clip(subject.id, 60) : null, actor_user_id: P && P.user ? P.user.id : null, actor_name: P && P.user ? clip(P.user.name || P.user.email, 80) : "system", payload: payload || {}, created_at: nowIso() };
   try { await run(d, "INSERT INTO os_events (org_id, kind, subject_kind, subject_id, actor_user_id, actor_name, payload, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", ev.org_id, ev.kind, ev.subject_kind, ev.subject_id, ev.actor_user_id, ev.actor_name, JSON.stringify(scrub(ev.payload)).slice(0, 4000), ev.created_at); } catch (e) {}
   const ran = []; for (const fn of (AUTOMATIONS[kind] || []).concat(AUTOMATIONS["*"] || [])) { try { const r = await fn(env, ev, P); if (r) ran.push(r); } catch (e) { ran.push({ error: String(e && e.message || e).slice(0, 120) }); } }
+  try { const WF = await import("./workflows.js"); const r = await WF.dispatch(env, ev); if (r) ran.push({ workflows: r }); } catch (e) { ran.push({ error: "workflows: " + String(e && e.message || e).slice(0, 100) }); }   /* v50.6 */
   return { event: kind, automations: ran };
 }
 export async function events(env, q) {

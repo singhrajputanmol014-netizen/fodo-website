@@ -217,3 +217,11 @@ html:has(.ws-body){background:var(--bg)}
 /* v50.3 HR + Pros */
 .os-heat td{text-align:center;font-weight:600}.os-heat td.lv-low{color:var(--muted)}.os-heat td.lv-ok{color:#2fbf71}.os-heat td.lv-high{color:#f5a623}.os-heat td.lv-over{color:#ff5c5c;background:color-mix(in srgb,#ff5c5c 10%,transparent)}.os-heat td.lv-off{color:var(--muted);font-weight:400}.os-heat td small{display:block;font-weight:400;color:var(--muted)}
 .os-ck{margin:0 0 16px}
+/* v50.5 marketing */
+.os-qa{display:grid;grid-template-columns:auto auto auto 1fr;gap:6px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.os-qa b{grid-column:1/-1;font-weight:600}.os-qa input[name^=n]{grid-column:1/-1}
+/* v50.6 assistant, workflows */
+.as-log{display:flex;flex-direction:column;gap:10px;margin:0 0 14px;max-width:860px}.as-q{align-self:flex-end;background:var(--signal);color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;max-width:80%}.as-a{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:14px 14px 14px 4px;padding:10px 14px;max-width:92%}.as-a p{margin:0 0 6px}.as-wait{color:var(--muted)}.as-meta{font-size:12px;margin:6px 0 0!important}
+.as-f{max-width:860px}.as-row{display:flex;gap:8px}.as-row input{flex:1}
+.wf-c{margin:0 0 6px}.wf-a{border:1px solid var(--line);border-radius:10px;padding:10px;margin:0 0 8px}.pb-acts{flex-basis:100%;margin-top:4px}
+/* v50.7 risk heat map */
+.rk-heat{max-width:560px;margin:0 0 16px}.rk-heat td{text-align:center;font-weight:700}.rk-heat td.hi{background:rgba(239,68,68,.18)}.rk-heat td.md{background:rgba(245,158,11,.16)}.rk-heat td.lo{background:rgba(34,197,94,.10)}

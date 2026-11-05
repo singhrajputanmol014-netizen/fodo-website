@@ -188,6 +188,7 @@
   U.safe(U.reveal,"reveal");
   // Reveal elements added later
   U.rereveal=()=>U.safe(U.reveal,"reveal2");
+  window.__fodoReady = 1;   /* v50.8: scripts loaded after main.js (no inline scripts any more) check this flag */
   document.dispatchEvent(new CustomEvent("fodo:ready"));
 })();
 (function(){ try{ document.querySelectorAll("main h2, .hero h1").forEach(h=>{ if(h.querySelector("span"))return; const t=h.lastChild; if(t&&t.nodeType===3&&/[.?!]\s*$/.test(t.textContent)){ const s=t.textContent.replace(/\s+$/,""); t.textContent=s.slice(0,-1); const sp=document.createElement("span"); const ch=s.slice(-1); sp.className="dot"+(ch==="?"||ch==="!"?" q":""); sp.style.color="var(--signal)"; sp.textContent=ch; h.appendChild(sp);} }); }catch(e){} })();

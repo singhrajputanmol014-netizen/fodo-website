@@ -66,7 +66,11 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS os_deliverable_reviews (id TEXT PRIMARY KEY, deliverable_id TEXT, project_id TEXT, revision INTEGER, action TEXT, by_user_id TEXT, by_role TEXT, note TEXT, created_at TEXT)", "CREATE INDEX IF NOT EXISTS os_dr_d ON os_deliverable_reviews(deliverable_id, created_at)",
   "CREATE TABLE IF NOT EXISTS os_risks (id TEXT PRIMARY KEY, org_id TEXT, project_id TEXT, title TEXT, kind TEXT, severity INTEGER, likelihood INTEGER, impact TEXT, mitigation TEXT, owner_user_id TEXT, status TEXT, review_at TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)", "CREATE INDEX IF NOT EXISTS os_risks_p ON os_risks(project_id, status)",
   "CREATE TABLE IF NOT EXISTS os_daily_reports (id TEXT PRIMARY KEY, project_id TEXT, user_id TEXT, day TEXT, done TEXT, pending TEXT, blockers TEXT, client_update TEXT, team_issues TEXT, next_plan TEXT, budget_note TEXT, risk_note TEXT, created_at TEXT)", "CREATE UNIQUE INDEX IF NOT EXISTS os_dreport_u ON os_daily_reports(project_id, user_id, day)",
-  "CREATE INDEX IF NOT EXISTS os_comments_ctx ON os_comments(context_kind, context_id, created_at)"
+  "CREATE INDEX IF NOT EXISTS os_comments_ctx ON os_comments(context_kind, context_id, created_at)",
+  /* v50.8: indexes found missing by the 10,000-project / 50,000-task test (each of these was a full table scan) */
+  "CREATE INDEX IF NOT EXISTS biz_tasks_project ON biz_tasks(project_id, status)", "CREATE INDEX IF NOT EXISTS biz_tasks_creator ON biz_tasks(created_by)",
+  "CREATE INDEX IF NOT EXISTS os_members_mgr ON os_members(manager_user_id)", "CREATE INDEX IF NOT EXISTS os_team_members_u ON os_team_members(user_id)",
+  "CREATE INDEX IF NOT EXISTS biz_milestones_project ON biz_milestones(project_id)", "CREATE INDEX IF NOT EXISTS os_teams_project ON os_teams(project_id)"
 ];
 /* additive columns on existing tables (v49). migrateOnce skips the ones that already exist. */
 const MIG = [
@@ -109,9 +113,30 @@ async function seed(d) {
   for (const n of DEPARTMENTS) { const s = slugOf(n); if (!depts[s]) { const id = rid("dp"); await run(d, "INSERT INTO os_departments (id, org_id, name, slug, status, created_at) VALUES (?1,?2,?3,?4,'active',?5)", id, ORG, n, s, now); depts[s] = id; } }
   const roles = {}; for (const r of await all(d, "SELECT id, slug FROM os_roles WHERE org_id=?1", ORG)) roles[r.slug] = r.id;
   for (const t of TEMPLATES) { if (roles[t.slug]) continue; const id = rid("rl"); await run(d, "INSERT INTO os_roles (id, org_id, name, slug, department_id, template, home, dashboard, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?4,?6,'[]','active',?7,?7)", id, ORG, t.name, t.slug, t.dept ? depts[slugOf(t.dept)] || null : null, t.home, now); roles[t.slug] = id;
-    for (const p of t.perms) if (validPerm(p)) await run(d, "INSERT OR IGNORE INTO os_role_perms (role_id, perm) VALUES (?1,?2)", id, p); }
+    await pairs(d, "os_role_perms", [...new Set(t.perms.filter(validPerm))].map((p) => [id, p])); }
+  await syncTemplates(d, roles);
   /* owners and legacy staff become members once; later changes are made in People & Access, never by the seed again */
   await backfillLegacy(d, depts, roles);
+}
+/* v50.7: template upgrades reach roles that already exist. The seed above creates a role once and never touches it again, so a
+   permission added to a template in a later release (asset, report, workflow, decision, agent, and the Phase 7 resources) never
+   reached the live roles. os_template_sync remembers every template permission ever handed to a role: a permission the template
+   gains later is added once; one the owner removed is never added back. First run: the role's current permissions plus the
+   Phase 1 resources count as already handed out, so owner edits made before this release stay as they are. */
+/* multi-row INSERT OR IGNORE of (role_id, perm) pairs, 45 rows per statement (D1: at most 100 bound values) */
+async function pairs(d, table, rows) { for (let k = 0; k < rows.length; k += 45) { const part = rows.slice(k, k + 45); await d.prepare("INSERT OR IGNORE INTO " + table + " (role_id, perm) VALUES " + part.map((_, n) => "(?" + (2 * n + 1) + ",?" + (2 * n + 2) + ")").join(",")).bind(...[].concat(...part)).run(); } }
+export const LATER = ["asset", "report", "workflow", "decision", "agent", "vendor", "purchase", "integration", "subscription", "knowledge", "document", "inbox", "risk", "incident", "privacy"];
+export async function syncTemplates(d, roles) {
+  await d.prepare("CREATE TABLE IF NOT EXISTS os_template_sync (role_id TEXT, perm TEXT, PRIMARY KEY (role_id, perm))").run(); let added = 0;
+  if (!roles) { roles = {}; for (const r of await all(d, "SELECT id, slug FROM os_roles WHERE org_id=?1", ORG)) roles[r.slug] = r.id; }
+  /* three reads in total, writes in multi-row batches (D1 allows 100 bound values per statement), so a cold start stays cheap */
+  const seenAll = {}, curAll = {}; for (const r of await all(d, "SELECT role_id, perm FROM os_template_sync")) (seenAll[r.role_id] = seenAll[r.role_id] || new Set()).add(r.perm);
+  for (const r of await all(d, "SELECT role_id, perm FROM os_role_perms")) (curAll[r.role_id] = curAll[r.role_id] || new Set()).add(r.perm);
+  const toSync = [], toGrant = [];
+  for (const t of TEMPLATES) { const id = roles[t.slug]; if (!id) continue; const perms = t.perms.filter(validPerm), seen = seenAll[id] || new Set(), cur = curAll[id] || new Set();
+    if (!seen.size) { for (const p of perms) if (cur.has(p) || LATER.indexOf(p.split(".")[0]) < 0) { seen.add(p); toSync.push([id, p]); } }
+    for (const p of perms) { if (seen.has(p)) continue; seen.add(p); toSync.push([id, p]); if (!cur.has(p)) { toGrant.push([id, p]); added++; } } }
+  await pairs(d, "os_role_perms", toGrant); await pairs(d, "os_template_sync", toSync); return { added };
 }
 /* legacy staff (OWNER_EMAILS, acct_admins, biz_staff) become members once; also called lazily by principal() for a staff e-mail
    that was added to the old tables after the OS set-up ran, so nobody loses access during the migration */

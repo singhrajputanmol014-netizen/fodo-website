@@ -13,6 +13,7 @@
  *   POST webhook/cashfree       → signed Cashfree webhooks (payments + subscriptions)
  *   POST webhook/razorpay       → signed Razorpay webhooks (order.paid / payment.captured)
  */
+import * as RP from "../../_lib/replay.js";
 import { PRODUCTS } from "../../_lib/products.js";
 import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser, builderTier,
   verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, payOn, payProvider, rzp, rzpOn, rzpMode, rzpVerifyWebhook, rzpVerifyPayment, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
@@ -313,11 +314,13 @@ async function cancel(env, b) {
 async function webhook(request, env) {
   const raw = await request.text();
   if (!cfOn(env) || !(await verifyWebhook(env, request.headers.get("x-webhook-timestamp"), raw, request.headers.get("x-webhook-signature")))) { log({ route: "webhook", ok: false, err: "signature" }); return json({ ok: false }, 401); }
+  const g = await RP.guard(env, "cashfree", raw, request.headers.get("x-webhook-timestamp")); { if (!g.ok) { log({ route: "webhook", ok: false, err: g.reason }); return g.duplicate ? json({ ok: true, duplicate: true }) : json({ ok: false, reason: g.reason }, 400); } }
   let j = {}; try { j = JSON.parse(raw); } catch (e) { return json({ ok: false }, 400); }
   const t = String(j.type || ""), dt = j.data || {};
   let r = { ok: true, ignored: true };
   if (dt.order && dt.order.order_id && /^fo_/.test(dt.order.order_id)) r = await settleOrder(env, dt.order.order_id);
   else if (/^SUBSCRIPTION_/.test(t)) { const sid = dt.subscription_id || (dt.subscription_details || {}).subscription_id; if (sid && /^fs_/.test(sid)) r = await settleSub(env, sid, /PAYMENT_SUCCESS/.test(t) ? dt : null); }
+  if (r.ok) await RP.mark(env, "cashfree", g.key);
   log({ route: "webhook", type: t, ok: !!r.ok });
   return json({ ok: true });
 }
@@ -325,10 +328,12 @@ async function webhook(request, env) {
 async function rzpWebhook(request, env) {
   const raw = await request.text();
   if (!rzpOn(env) || !(await rzpVerifyWebhook(env, raw, request.headers.get("x-razorpay-signature")))) { log({ route: "webhook-rzp", ok: false, err: "signature" }); return json({ ok: false }, 401); }
+  const g = await RP.guard(env, "razorpay", raw, null); { if (!g.ok) { log({ route: "webhook-rzp", ok: false, err: g.reason }); return json({ ok: true, duplicate: true }); } }
   let j = {}; try { j = JSON.parse(raw); } catch (e) { return json({ ok: false }, 400); }
   const P = j.payload || {}, rid = (P.order && P.order.entity && P.order.entity.id) || (P.payment && P.payment.entity && P.payment.entity.order_id) || "";
   let r = { ok: true, ignored: true };
   if (/^order_/.test(rid)) { const o = await (await db(env)).prepare("SELECT order_id FROM acct_orders WHERE cf_order_id=?1").bind(rid).first(); if (o) r = await settleOrder(env, o.order_id); }
+  if (r.ok) await RP.mark(env, "razorpay", g.key);
   log({ route: "webhook-rzp", type: String(j.event || ""), ok: !!r.ok });
   return json({ ok: true });
 }

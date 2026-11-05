@@ -9,7 +9,7 @@ import { osdb, one, all, run, clip, err, DAY, rid, ORG } from "./db.js";
 import { authorize, allows, has, isEmployee } from "./authz.js";
 import { audit, emit } from "./audit.js";
 
-export const KINDS = ["creative", "client", "budget", "payment", "payout", "campaign", "site_publish", "contract", "refund", "production", "task", "expense", "content"], STATES = ["pending", "approved", "rejected", "expired", "cancelled"];
+export const KINDS = ["creative", "client", "budget", "payment", "payout", "campaign", "site_publish", "contract", "refund", "production", "task", "expense", "content", "purchase", "document"], STATES = ["pending", "approved", "rejected", "expired", "cancelled"];
 const SEL = "a.*, (SELECT name FROM os_members m WHERE m.user_id=a.requester_user_id AND m.org_id='" + ORG + "') AS requester, (SELECT name FROM os_members m WHERE m.user_id=a.approver_user_id AND m.org_id='" + ORG + "') AS approver";
 
 export async function request(env, P, b, opt) {
@@ -29,6 +29,7 @@ export async function decide(env, P, id, b) {
   if (a.requester_user_id === P.user.id && !P.isOwner) throw err("You cannot approve your own request.", 403);
   if (["payment", "payout", "refund"].indexOf(a.kind) > -1 && !has(P, "finance", "manage", "organization") && !P.isOwner) throw err("Money approvals need finance management rights.", 403);
   const note = clip(b.note, 1000); if (decision === "rejected" && !note) throw err("Say why you are rejecting."); const now = nowIso();
+  if (a.object_kind === "purchase" && a.object_id) await (await import("./procure.js")).checkDecide(env, P, a, decision);   /* v50.7 */
   const r = await run(d, "UPDATE os_approvals SET status=?2, decision_note=?3, decided_by=?4, decided_at=?5, updated_at=?5 WHERE id=?1 AND status='pending'", id, decision, note, P.user.id, now); if (!r.meta.changes) throw err("Already decided.", 409);
   await audit(env, P, decision === "approved" ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED", { kind: "approval", id }, { status: "pending" }, { status: decision, object: a.object_kind + ":" + a.object_id }, note); await emit(env, P, "approval." + decision, { kind: "approval", id }, { kind: a.kind, object_kind: a.object_kind, object_id: a.object_id, requester_user_id: a.requester_user_id, note });
   /* side effects on the object */
@@ -36,6 +37,8 @@ export async function decide(env, P, id, b) {
   if (a.object_kind === "expense" && a.object_id) await run(d, "UPDATE os_expenses SET status=?2, decided_by=?3, decided_at=?4 WHERE id=?1 AND status='submitted'", a.object_id, decision === "approved" ? "approved" : "rejected", P.user.id, now);
   if (a.object_kind === "deliverable" && a.object_id) await run(d, "UPDATE os_deliverables SET status=?2, updated_at=?3 WHERE id=?1 AND status='review'", a.object_id, decision === "approved" ? "approved" : "submitted", now);
   if (a.object_kind === "campaign" && a.object_id) await run(d, "UPDATE os_campaign_flow SET state=?2, updated_at=?3 WHERE campaign_id=?1", a.object_id, decision === "approved" ? "approved" : "creative_ready", now);
+  if (a.object_kind === "purchase" && a.object_id) await (await import("./procure.js")).onDecided(env, P, a, decision, note);   /* v50.7 */
+  if (a.object_kind === "document" && a.object_id) await (await import("./docs.js")).onDecided(env, P, a, decision, note);
   if (a.object_kind === "content" && a.object_id) await run(d, "UPDATE biz_content SET status=?2, updated_at=?3 WHERE id=?1 AND status='review'", a.object_id, decision === "approved" ? "approved" : "production", now);
   notify(env, a.requester_user_id, "approval", (decision === "approved" ? "Approved: " : "Rejected: ") + a.title + (note ? " · " + note.slice(0, 80) : ""), "/workspace/#approvals?id=" + id).catch(() => {}); return { ok: true, status: decision };
 }

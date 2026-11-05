@@ -59,6 +59,7 @@
      projected CR = CR × (1 + lift); projected conversions/value recomputed; ROAS = value ÷ spend (shown only if spend > 0).
      Lift is a user-editable assumption, NOT a FODO result. */
   U.safe(()=>{ if(route!=="roi")return; const f=document.getElementById("roi-form"), o=document.getElementById("roi-out");
+    f.addEventListener("submit",(e)=>e.preventDefault());   /* v50.8: was an inline onsubmit="return false" (the page CSP forbids inline handlers) */
     const num=(n,min,max,def)=>{ let x=parseFloat(f[n].value); if(!isFinite(x))x=def; x=Math.min(max,Math.max(min,x)); return x; };
     const sync=(a,b)=>{ f[a].addEventListener("input",()=>{f[b].value=f[a].value;calc();}); f[b].addEventListener("input",()=>{f[a].value=f[b].value;calc();}); };
     sync("spend","spend_n"); ["value","visitors","cr","lift","scenario","industry"].forEach(n=>f[n].addEventListener("input",calc));

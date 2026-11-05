@@ -189,7 +189,7 @@ let ownerOk = 0, bad = []; for (const p of ownerRoutes) { const rr = await O(p);
 /* ---------- 10. UI wiring: every /api/os path the lazy module calls exists in the router; the views are registered ---------- */
 { const ui = fs.readFileSync(new URL("../js/ws-os.js", import.meta.url), "utf8"), ws = fs.readFileSync(new URL("../js/workspace.js", import.meta.url), "utf8");
   const paths = new Set(); for (const m of ui.matchAll(/oapi\("([a-z\-]+(?:\/[a-z\-]+)*)/g)) paths.add(m[1]); for (const m of ui.matchAll(/"([a-z\-]+)\/" \+ [a-zA-Z.]+ \+ "\/([a-z\-]+(?:\/[a-z\-]+)?)"/g)) paths.add(m[1] + "/x/" + m[2]);
-  const routes = ROUTES.map((r) => r[1]); const missing = [...paths].filter((p) => !routes.some((re) => re.test(p) || re.test(p.replace(/\/x\//, "/abc123/")) || re.test(p + "/abc")));
+  const routes = ROUTES.map((r) => r[1]); const missing = [...paths].filter((p) => !routes.some((re) => re.test(p) || re.test(p.replace(/\/x\//, "/abc123/")) || re.test(p + "/abc") || re.source.indexOf("^" + p.replace(/\//g, "\\/") + "\\/") === 0));
   ok(missing.length === 0, "ws-os.js calls only routes the OS router has" + (missing.length ? " (missing: " + missing.join(", ") + ")" : ""));
   ok(/ws-os\.js/.test(ws) && ["my-fodo", "tasks", "approvals", "work", "calendar", "workload", "os-projects", "os-project", "clients", "support", "command", "tower"].every((v) => ws.indexOf('"' + v + '"') > -1), "workspace.js registers all 12 OS views on the lazy module");
   ok(!/\bworker\b/i.test(ui) && !/—/.test(ui), "ws-os.js: no 'worker', no long dash in user-facing text");

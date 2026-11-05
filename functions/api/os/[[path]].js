@@ -25,6 +25,19 @@ import * as SP from "../../_lib/os/support.js";
 import * as CC from "../../_lib/os/command.js";
 import * as HR from "../../_lib/os/hr.js";
 import * as PS from "../../_lib/os/pros.js";
+import * as FI from "../../_lib/os/finance.js";
+import * as GR from "../../_lib/os/growth.js";
+import * as WF from "../../_lib/os/workflows.js";
+import * as PB from "../../_lib/os/problems.js";
+import * as DC from "../../_lib/os/decide.js";
+import * as AI from "../../_lib/os/ai.js";
+import * as PC from "../../_lib/os/procure.js";
+import * as PL from "../../_lib/os/platform.js";
+import * as KB from "../../_lib/os/kb.js";
+import * as DO from "../../_lib/os/docs.js";
+import * as IB from "../../_lib/os/inbox.js";
+import * as CP from "../../_lib/os/comply.js";
+import * as MON from "../../_lib/os/monitor.js";
 
 const err = (reason, status) => json({ ok: false, reason }, status || 400);
 /* route table: method, path pattern, permission needed (resource + action, or "self"), handler(ctx, match) */
@@ -58,6 +71,8 @@ export const ROUTES = [
   ["GET", /^settings$/, { resource: "system", action: "settings" }, async (c) => ({ settings: { os_enabled: await enabled(c.env) } })],
   ["POST", /^settings$/, { resource: "system", action: "settings" }, async (c) => { const d = await osdb(c.env), on = c.body.os_enabled === false || c.body.os_enabled === "0" ? "0" : "1"; await run(d, "INSERT OR REPLACE INTO biz_settings (k, v) VALUES ('os_enabled', ?1)", on); await audit(c.env, c.P, "OWNER_CHANGED_SYSTEM_SETTING", { kind: "setting", id: "os_enabled" }, null, { os_enabled: on }, c.body.reason); return { settings: { os_enabled: on === "1" } }; }],
   ["GET", /^health$/, { resource: "system", action: "health" }, (c) => health(c.env)],
+  ["GET", /^monitoring$/, { resource: "system", action: "health" }, async (c) => MON.overview(c.env, c.P, (await health(c.env)).probes)],   /* v50.8 */
+  ["POST", /^monitoring\/backup$/, { resource: "system", action: "health" }, (c) => MON.backupRecord(c.env, c.P, c.body)],
   /* ---- Phase 2 (v50.2) ---- */
   ["GET", /^my$/, { resource: "task", action: "view" }, (c) => WK.my(c.env, c.P)],
   ["GET", /^tasks$/, { resource: "task", action: "view" }, (c) => TK.list(c.env, c.P, c.q)],
@@ -104,6 +119,151 @@ export const ROUTES = [
   ["GET", /^command$/, { resource: "analytics", action: "view" }, (c) => CC.centre(c.env, c.P)],
   ["GET", /^tower$/, { resource: "analytics", action: "view" }, (c) => CC.tower(c.env, c.P)],
   ["GET", /^search$/, { resource: "task", action: "view" }, (c) => CC.search(c.env, c.P, c.q)],
+  /* v50.6 Phase 6: automation + AI */
+  ["GET", /^workflows$/, { resource: "workflow", action: "view" }, (c) => WF.list(c.env, c.P)],
+  ["POST", /^workflows$/, { resource: "workflow", action: "manage" }, (c) => WF.save(c.env, c.P, c.body)],
+  ["POST", /^workflows\/install$/, { resource: "workflow", action: "manage" }, (c) => WF.install(c.env, c.P, clip(c.body.key, 40))],
+  ["GET", /^workflows\/([A-Za-z0-9_-]+)$/, { resource: "workflow", action: "view" }, (c, m) => WF.get(c.env, c.P, m[1])],
+  ["POST", /^workflows\/([A-Za-z0-9_-]+)\/status$/, { resource: "workflow", action: "manage" }, (c, m) => WF.setStatus(c.env, c.P, m[1], c.body.status)],
+  ["POST", /^workflows\/([A-Za-z0-9_-]+)\/test$/, { resource: "workflow", action: "manage" }, (c, m) => WF.test(c.env, c.P, m[1], c.body)],
+  ["GET", /^problems$/, { resource: "analytics", action: "view" }, (c) => PB.list(c.env, c.P, c.q)],
+  ["POST", /^problems\/scan$/, { resource: "analytics", action: "view" }, (c) => PB.scanNow(c.env, c.P)],
+  ["POST", /^problems\/([A-Za-z0-9_-]+)$/, { resource: "analytics", action: "view" }, (c, m) => PB.act(c.env, c.P, m[1], c.body)],
+  ["GET", /^decisions$/, { resource: "decision", action: "view" }, (c) => DC.list(c.env, c.P, c.q)],
+  ["POST", /^decisions$/, { resource: "decision", action: "manage" }, (c) => DC.save(c.env, c.P, c.body)],
+  ["GET", /^decisions\/([A-Za-z0-9_-]+)$/, { resource: "decision", action: "view" }, (c, m) => DC.get(c.env, c.P, m[1])],
+  ["POST", /^decisions\/([A-Za-z0-9_-]+)\/review$/, { resource: "decision", action: "view" }, (c, m) => DC.review(c.env, c.P, m[1], c.body)],
+  ["GET", /^simulate\/baseline$/, { resource: "finance", action: "view" }, (c) => DC.simBaseline(c.env, c.P)],
+  ["POST", /^simulate$/, { resource: "finance", action: "view" }, (c) => DC.simulate(c.env, c.P, c.body)],
+  /* v50.7 Phase 7: vendors + procurement */
+  ["GET", /^procurement$/, { resource: "purchase", action: "view" }, (c) => PC.overview(c.env, c.P)],
+  ["POST", /^procurement\/limit$/, { resource: "finance", action: "manage" }, (c) => PC.setLimit(c.env, c.P, c.body)],
+  ["GET", /^vendors$/, { resource: "vendor", action: "view" }, (c) => PC.vendors(c.env, c.P, c.q)],
+  ["POST", /^vendors$/, { resource: "vendor", action: "manage" }, (c) => PC.vendorSave(c.env, c.P, c.body)],
+  ["GET", /^vendors\/([A-Za-z0-9_-]+)$/, { resource: "vendor", action: "view" }, (c, m) => PC.vendorGet(c.env, c.P, m[1])],
+  ["GET", /^purchases$/, { resource: "purchase", action: "view" }, (c) => PC.requests(c.env, c.P, c.q)],
+  ["POST", /^purchases$/, { resource: "purchase", action: "request" }, (c) => PC.requestSave(c.env, c.P, c.body)],
+  ["GET", /^purchases\/([A-Za-z0-9_-]+)$/, { resource: "purchase", action: "view" }, (c, m) => PC.requestGet(c.env, c.P, m[1])],
+  ["POST", /^purchases\/([A-Za-z0-9_-]+)\/submit$/, { resource: "purchase", action: "request" }, (c, m) => PC.requestSubmit(c.env, c.P, m[1])],
+  ["POST", /^purchases\/([A-Za-z0-9_-]+)\/cancel$/, { resource: "purchase", action: "request" }, (c, m) => PC.requestCancel(c.env, c.P, m[1])],
+  ["POST", /^purchases\/([A-Za-z0-9_-]+)\/order$/, { resource: "vendor", action: "manage" }, (c, m) => PC.orderCreate(c.env, c.P, m[1], c.body)],
+  ["GET", /^purchase-orders$/, { resource: "purchase", action: "view" }, (c) => PC.orders(c.env, c.P, c.q)],
+  ["GET", /^purchase-orders\/([A-Za-z0-9_-]+)$/, { resource: "purchase", action: "view" }, (c, m) => PC.orderGet(c.env, c.P, m[1])],
+  ["GET", /^purchase-orders\/([A-Za-z0-9_-]+)\/print$/, { resource: "purchase", action: "view" }, (c, m) => PC.orderPrint(c.env, c.P, m[1])],
+  ["POST", /^purchase-orders\/([A-Za-z0-9_-]+)\/receive$/, { resource: "purchase", action: "view" }, (c, m) => PC.orderReceive(c.env, c.P, m[1], c.body)],
+  ["POST", /^purchase-orders\/([A-Za-z0-9_-]+)\/cancel$/, { resource: "vendor", action: "manage" }, (c, m) => PC.orderCancel(c.env, c.P, m[1], c.body)],
+  ["POST", /^purchase-orders\/([A-Za-z0-9_-]+)\/rate$/, { resource: "purchase", action: "view" }, (c, m) => PC.rate(c.env, c.P, m[1], c.body)],
+  ["POST", /^vendor-bills$/, { resource: "finance", action: "manage" }, (c) => PC.billCreate(c.env, c.P, c.body)],
+  /* integrations + subscriptions */
+  ["GET", /^integrations$/, { resource: "integration", action: "view" }, (c) => PL.integrations(c.env, c.P)],
+  ["POST", /^integrations$/, { resource: "integration", action: "manage" }, (c) => PL.integrationSave(c.env, c.P, c.body)],
+  ["POST", /^integrations\/([A-Za-z0-9_-]+)\/revoke$/, { resource: "integration", action: "manage" }, (c, m) => PL.integrationRevoke(c.env, c.P, m[1], c.body)],
+  ["GET", /^subscriptions$/, { resource: "subscription", action: "view" }, (c) => PL.subscriptions(c.env, c.P, c.q)],
+  ["POST", /^subscriptions$/, { resource: "subscription", action: "manage" }, (c) => PL.subscriptionSave(c.env, c.P, c.body)],
+  ["POST", /^subscriptions\/([A-Za-z0-9_-]+)\/cancel$/, { resource: "subscription", action: "manage" }, (c, m) => PL.subscriptionCancel(c.env, c.P, m[1], c.body)],
+  ["POST", /^subscriptions\/([A-Za-z0-9_-]+)\/bill$/, { resource: "finance", action: "manage" }, (c, m) => PL.subscriptionBill(c.env, c.P, m[1])],
+  /* knowledge base + SOPs */
+  ["GET", /^kb$/, { resource: "knowledge", action: "view" }, (c) => KB.list(c.env, c.P, c.q)],
+  ["POST", /^kb$/, { resource: "knowledge", action: "manage" }, (c) => KB.save(c.env, c.P, c.body)],
+  ["GET", /^kb\/([A-Za-z0-9_-]+)$/, { resource: "knowledge", action: "view" }, (c, m) => KB.get(c.env, c.P, m[1], c.q.v)],
+  ["POST", /^kb\/([A-Za-z0-9_-]+)\/status$/, { resource: "knowledge", action: "view" }, (c, m) => KB.setStatus(c.env, c.P, m[1], c.body)],
+  ["POST", /^kb\/([A-Za-z0-9_-]+)\/reviewed$/, { resource: "knowledge", action: "view" }, (c, m) => KB.reviewed(c.env, c.P, m[1], c.body)],
+  ["POST", /^kb\/([A-Za-z0-9_-]+)\/legal$/, { resource: "knowledge", action: "publish" }, (c, m) => KB.legal(c.env, c.P, m[1], c.body)],
+  /* document centre */
+  ["GET", /^documents$/, { resource: "document", action: "view" }, (c) => DO.list(c.env, c.P, c.q)],
+  ["POST", /^documents$/, { resource: "document", action: "manage" }, (c) => DO.create(c.env, c.P, c.body)],
+  ["GET", /^documents\/([A-Za-z0-9_-]+)$/, { resource: "document", action: "view" }, (c, m) => DO.get(c.env, c.P, m[1])],
+  ["POST", /^documents\/([A-Za-z0-9_-]+)$/, { resource: "document", action: "manage" }, (c, m) => DO.edit(c.env, c.P, m[1], c.body)],
+  ["POST", /^documents\/([A-Za-z0-9_-]+)\/submit$/, { resource: "document", action: "manage" }, (c, m) => DO.submit(c.env, c.P, m[1])],
+  ["POST", /^documents\/([A-Za-z0-9_-]+)\/status$/, { resource: "document", action: "manage" }, (c, m) => DO.setStatus(c.env, c.P, m[1], c.body)],
+  ["GET", /^documents\/([A-Za-z0-9_-]+)\/print$/, { resource: "document", action: "view" }, (c, m) => DO.print(c.env, c.P, m[1])],
+  ["GET", /^doc-templates$/, { resource: "document", action: "view" }, (c) => DO.templates(c.env, c.P)],
+  ["POST", /^doc-templates$/, { resource: "document", action: "manage" }, (c) => DO.templateSave(c.env, c.P, c.body)],
+  ["POST", /^doc-templates\/([A-Za-z0-9_-]+)\/legal$/, { resource: "document", action: "manage" }, (c, m) => DO.templateLegal(c.env, c.P, m[1], c.body)],
+  ["POST", /^doc-templates\/([A-Za-z0-9_-]+)\/archive$/, { resource: "document", action: "manage" }, (c, m) => DO.templateArchive(c.env, c.P, m[1])],
+  /* unified inbox */
+  ["GET", /^inbox$/, { resource: "inbox", action: "view" }, (c) => IB.list(c.env, c.P, c.q)],
+  ["POST", /^inbox$/, { resource: "inbox", action: "manage" }, (c) => IB.act(c.env, c.P, c.body)],
+  ["GET", /^inbox\/gmail\/([A-Za-z0-9_.@%:+-]+)$/, { resource: "inbox", action: "view" }, (c, m) => IB.gmailRead(c.env, c.P, (() => { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } })())],
+  /* risks, incidents, continuity */
+  ["GET", /^risks$/, { resource: "risk", action: "view" }, (c) => CP.risks(c.env, c.P, c.q)],
+  ["POST", /^risks$/, { resource: "risk", action: "view" }, (c) => CP.riskSave(c.env, c.P, c.body)],
+  ["GET", /^incidents$/, { resource: "incident", action: "view" }, (c) => CP.incidents(c.env, c.P, c.q)],
+  ["POST", /^incidents$/, { resource: "incident", action: "report" }, (c) => CP.report(c.env, c.P, c.body)],
+  ["GET", /^incidents\/([A-Za-z0-9_-]+)$/, { resource: "incident", action: "view" }, (c, m) => CP.incident(c.env, c.P, m[1])],
+  ["POST", /^incidents\/([A-Za-z0-9_-]+)$/, { resource: "incident", action: "view" }, (c, m) => CP.incidentUpdate(c.env, c.P, m[1], c.body)],
+  ["GET", /^continuity$/, { resource: "incident", action: "view" }, (c) => CP.continuity(c.env, c.P)],
+  /* DPDP privacy desk */
+  ["GET", /^privacy-desk$/, { resource: "privacy", action: "view" }, (c) => CP.privacyOverview(c.env, c.P)],
+  ["POST", /^privacy-desk\/settings$/, { resource: "privacy", action: "manage" }, (c) => CP.settingsSave(c.env, c.P, c.body)],
+  ["POST", /^privacy-desk\/notices$/, { resource: "privacy", action: "manage" }, (c) => CP.noticeSave(c.env, c.P, c.body)],
+  ["POST", /^privacy-desk\/notices\/([A-Za-z0-9_-]+)\/publish$/, { resource: "privacy", action: "manage" }, (c, m) => CP.noticePublish(c.env, c.P, m[1], c.body)],
+  ["POST", /^privacy-desk\/requests\/([A-Za-z0-9_-]+)$/, { resource: "privacy", action: "view" }, (c, m) => CP.requestUpdate(c.env, c.P, m[1], c.body)],
+  ["POST", /^privacy-desk\/retention$/, { resource: "privacy", action: "manage" }, (c) => CP.retentionSave(c.env, c.P, c.body)],
+  ["POST", /^privacy-desk\/retention\/([A-Za-z0-9_-]+)\/apply$/, { resource: "privacy", action: "manage" }, (c, m) => CP.retentionApply(c.env, c.P, m[1], c.body)],
+  ["GET", /^ai\/agents$/, { resource: "agent", action: "view" }, (c) => AI.registry(c.env, c.P)],
+  ["POST", /^ai\/agents\/([A-Za-z0-9_-]+)$/, { resource: "agent", action: "manage" }, (c, m) => AI.setAgent(c.env, c.P, m[1], c.body)],
+  ["POST", /^ai\/kill$/, { resource: "agent", action: "manage" }, (c) => AI.setKill(c.env, c.P, !!c.body.on, c.body.reason)],
+  ["POST", /^assistant$/, { resource: "assistant", action: "use" }, (c) => AI.ask(c.env, c.P, c.body)],
+  /* v50.5 Phase 5: growth + production */
+  ["GET", /^content$/, { resource: "content", action: "view" }, (c) => GR.contentList(c.env, c.P, c.q)],
+  ["POST", /^content$/, { resource: "content", action: "manage" }, (c) => GR.contentCreate(c.env, c.P, c.body)],
+  ["GET", /^content\/([A-Za-z0-9_-]+)$/, { resource: "content", action: "view" }, (c, m) => GR.contentGet(c.env, c.P, m[1])],
+  ["POST", /^content\/([A-Za-z0-9_-]+)\/version$/, { resource: "content", action: "manage" }, (c, m) => GR.contentVersion(c.env, c.P, m[1], c.body)],
+  ["POST", /^content\/([A-Za-z0-9_-]+)\/move$/, { resource: "content", action: "view" }, (c, m) => GR.contentMove(c.env, c.P, m[1], c.body)],
+  ["GET", /^campaigns$/, { resource: "campaign", action: "view" }, (c) => GR.campaignList(c.env, c.P, c.q)],
+  ["POST", /^campaigns$/, { resource: "campaign", action: "manage" }, (c) => GR.campaignCreate(c.env, c.P, c.body)],
+  ["GET", /^campaigns\/([A-Za-z0-9_-]+)$/, { resource: "campaign", action: "view" }, (c, m) => GR.campaignGet(c.env, c.P, m[1])],
+  ["POST", /^campaigns\/([A-Za-z0-9_-]+)\/move$/, { resource: "campaign", action: "manage" }, (c, m) => GR.campaignMove(c.env, c.P, m[1], c.body)],
+  ["POST", /^campaigns\/([A-Za-z0-9_-]+)\/results$/, { resource: "campaign", action: "manage" }, (c, m) => GR.campaignResult(c.env, c.P, m[1], c.body)],
+  ["GET", /^assets\/rights$/, { resource: "asset", action: "view" }, (c) => GR.rightsList(c.env, c.P, c.q)],
+  ["POST", /^assets\/rights$/, { resource: "asset", action: "manage" }, (c) => GR.rightsAdd(c.env, c.P, c.body)],
+  ["POST", /^assets\/rights\/([A-Za-z0-9_-]+)\/revoke$/, { resource: "asset", action: "manage" }, (c, m) => GR.rightsRevoke(c.env, c.P, m[1], c.body)],
+  ["GET", /^qa\/templates$/, { resource: "project", action: "view" }, (c) => GR.qaTemplates(c.env, c.P)],
+  ["POST", /^qa\/templates$/, { resource: "content", action: "approve" }, (c) => GR.qaTemplateSave(c.env, c.P, c.body)],
+  ["GET", /^projects\/([A-Za-z0-9_-]+)\/deliverables\/([A-Za-z0-9_-]+)\/qa$/, { resource: "project", action: "view" }, (c, m) => GR.deliverableQa(c.env, c.P, m[1], m[2])],
+  ["POST", /^projects\/([A-Za-z0-9_-]+)\/deliverables\/([A-Za-z0-9_-]+)\/qa$/, { resource: "project", action: "view" }, (c, m) => GR.deliverableRunQa(c.env, c.P, m[1], m[2], c.body)],
+  ["POST", /^projects\/([A-Za-z0-9_-]+)\/deliverables\/([A-Za-z0-9_-]+)\/template$/, { resource: "project", action: "view" }, (c, m) => GR.deliverableSetQa(c.env, c.P, m[1], m[2], c.body)],
+  ["POST", /^projects\/([A-Za-z0-9_-]+)\/deliverables\/([A-Za-z0-9_-]+)\/version$/, { resource: "project", action: "view" }, (c, m) => GR.deliverableAddVersion(c.env, c.P, m[1], m[2], c.body)],
+  ["GET", /^clients\/([A-Za-z0-9_-]+)\/links$/, { resource: "client", action: "view" }, (c, m) => GR.linkCandidates(c.env, c.P, m[1])],
+  ["POST", /^links$/, { resource: "client", action: "manage" }, (c) => GR.linkAdd(c.env, c.P, c.body)],
+  ["POST", /^links\/remove$/, { resource: "client", action: "manage" }, (c) => GR.linkRemove(c.env, c.P, c.body)],
+  ["GET", /^reports$/, { resource: "report", action: "view" }, (c) => GR.reportList(c.env, c.P, c.q)],
+  ["POST", /^reports$/, { resource: "report", action: "manage" }, (c) => GR.reportCreate(c.env, c.P, c.body)],
+  ["GET", /^reports\/([A-Za-z0-9_-]+)\/csv$/, { resource: "report", action: "view" }, (c, m) => GR.reportCsv(c.env, c.P, m[1])],
+  ["GET", /^reports\/([A-Za-z0-9_-]+)\/print$/, { resource: "report", action: "view" }, (c, m) => GR.reportPrint(c.env, c.P, m[1])],
+  ["GET", /^reports\/([A-Za-z0-9_-]+)$/, { resource: "report", action: "view" }, (c, m) => GR.reportGet(c.env, c.P, m[1])],
+  ["POST", /^reports\/([A-Za-z0-9_-]+)\/refresh$/, { resource: "report", action: "manage" }, (c, m) => GR.reportRefresh(c.env, c.P, m[1], c.body)],
+  ["POST", /^reports\/([A-Za-z0-9_-]+)\/share$/, { resource: "report", action: "share" }, (c, m) => GR.reportShare(c.env, c.P, m[1])],
+  ["GET", /^client\/inbox$/, { resource: "report", action: "view" }, (c) => GR.clientInbox(c.env, c.P)],
+  /* v50.4 Phase 4: finance */
+  ["GET", /^expenses$/, { resource: "expense", action: "view" }, (c) => FI.expenseList(c.env, c.P, c.q)],
+  ["POST", /^expenses$/, { resource: "expense", action: "submit" }, (c) => FI.expenseCreate(c.env, c.P, c.body)],
+  ["POST", /^expenses\/([A-Za-z0-9_-]+)\/decide$/, { resource: "expense", action: "view" }, (c, m) => FI.expenseDecide(c.env, c.P, m[1], c.body.decision, c.body.note)],
+  ["POST", /^expenses\/([A-Za-z0-9_-]+)\/reimburse$/, { resource: "finance", action: "manage" }, (c, m) => FI.expenseReimburse(c.env, c.P, m[1], c.body)],
+  ["GET", /^finance$/, { resource: "finance", action: "view" }, (c) => FI.overview(c.env, c.P)],
+  ["GET", /^finance\/budgets$/, { resource: "finance", action: "view" }, (c) => FI.budgets(c.env, c.P)],
+  ["POST", /^finance\/budgets$/, { resource: "finance", action: "manage" }, (c) => FI.budgetSave(c.env, c.P, c.body)],
+  ["GET", /^finance\/receivables$/, { resource: "finance", action: "view" }, (c) => FI.receivables(c.env, c.P)],
+  ["POST", /^finance\/invoices$/, { resource: "finance", action: "manage" }, (c) => FI.invoiceCreate(c.env, c.P, c.body)],
+  ["GET", /^finance\/invoices\/([A-Za-z0-9_-]+)\/print$/, { resource: "finance", action: "view" }, (c, m) => FI.invoicePrint(c.env, c.P, m[1])],
+  ["GET", /^finance\/invoices\/([A-Za-z0-9_-]+)$/, { resource: "finance", action: "view" }, (c, m) => FI.invoiceGet(c.env, c.P, m[1])],
+  ["POST", /^finance\/invoices\/([A-Za-z0-9_-]+)\/pay$/, { resource: "finance", action: "manage" }, (c, m) => FI.invoicePay(c.env, c.P, m[1], c.body)],
+  ["POST", /^finance\/invoices\/([A-Za-z0-9_-]+)\/void$/, { resource: "finance", action: "manage" }, (c, m) => FI.invoiceVoid(c.env, c.P, m[1], c.body)],
+  ["GET", /^finance\/payables$/, { resource: "finance", action: "view" }, (c) => FI.payables(c.env, c.P)],
+  ["POST", /^finance\/payables$/, { resource: "finance", action: "manage" }, (c) => FI.payableCreate(c.env, c.P, c.body)],
+  ["POST", /^finance\/payables\/([A-Za-z0-9_-]+)\/pay$/, { resource: "finance", action: "manage" }, (c, m) => FI.payablePay(c.env, c.P, m[1], c.body)],
+  ["POST", /^finance\/payables\/([A-Za-z0-9_-]+)\/cancel$/, { resource: "finance", action: "manage" }, (c, m) => FI.payableCancel(c.env, c.P, m[1], c.body)],
+  ["GET", /^finance\/cash$/, { resource: "finance", action: "view" }, (c) => FI.cash(c.env, c.P)],
+  ["POST", /^finance\/cash$/, { resource: "finance", action: "manage" }, (c) => FI.bankSave(c.env, c.P, c.body)],
+  ["GET", /^finance\/forecast$/, { resource: "finance", action: "view" }, (c) => FI.forecast(c.env, c.P, c.q)],
+  ["POST", /^finance\/forecast$/, { resource: "finance", action: "manage" }, (c) => FI.saveForecastSettings(c.env, c.P, c.body)],
+  ["GET", /^finance\/profitability$/, { resource: "finance", action: "view" }, (c) => FI.profitability(c.env, c.P, c.q)],
+  ["GET", /^finance\/profitability\/([A-Za-z0-9_-]+)$/, { resource: "finance", action: "view" }, (c, m) => FI.projectProfit(c.env, c.P, m[1])],
+  ["GET", /^finance\/leakage$/, { resource: "finance", action: "view" }, (c) => FI.leakage(c.env, c.P)],
+  ["GET", /^finance\/analytics$/, { resource: "finance", action: "view" }, (c) => FI.analytics(c.env, c.P, c.q)],
+  ["GET", /^finance\/archive$/, { resource: "finance", action: "view" }, (c) => FI.archive(c.env, c.P, c.q)],
+  ["POST", /^projects\/([A-Za-z0-9_-]+)\/change$/, { resource: "project", action: "view" }, (c, m) => PJ.changeDecide(c.env, c.P, m[1], c.body)],
   /* v50.3 Phase 3: HR */
   ["GET", /^hr\/policy$/, { resource: "hr", action: "view" }, async (c) => ({ policy: await HR.policy(c.env, c.P), attendance: await HR.attendanceEnabled(c.env) })],
   ["POST", /^hr\/policy$/, { resource: "system", action: "settings" }, (c) => HR.savePolicy(c.env, c.P, c.body)],
@@ -163,6 +323,7 @@ async function health(env) {
 }
 
 export async function onRequest({ request, env, params }) {
+  let routeKey = "unmatched", method = request.method;
   try {
     const m = request.method, path = [].concat(params.path || []), p = path.join("/");
     if (!accountsOn(env)) return err("FODO accounts are not switched on.", 503);
@@ -176,9 +337,9 @@ export async function onRequest({ request, env, params }) {
     const R = await B.rolesOf(env, u), P = await principal(env, u, { R, quiet: m === "GET" }); if (imp) { P.readOnly = true; P.impersonator = { user: u0, email: u0.email, until: imp.until }; }
     const on = await enabled(env); if (!on && !(P.isOwner && !imp && /^settings$/.test(p)) && p !== "me") return err("FODO OS is switched off. An owner can switch it on under Settings.", 503);
     if (!on && p === "me") return json({ ok: true, me: describe(P), enabled: false });
-    for (const [rm, re, need, fn] of ROUTES) { if (rm !== m) continue; const mt = re.exec(p); if (!mt) continue;
+    for (const [rm, re, need, fn] of ROUTES) { if (rm !== m) continue; const mt = re.exec(p); if (!mt) continue; routeKey = m + " " + re.source.replace(/^\^|\$$/g, "").replace(/\\\//g, "/");
       if (need !== "self") await authorize(env, P, need);
-      const ctx = { env, request, P, R, body, q, origin, u }; const out = await fn(ctx, mt); return json(Object.assign({ ok: true }, out), 200, { "cache-control": "no-store" }); }
+      const ctx = { env, request, P, R, body, q, origin, u }; const out = await fn(ctx, mt); if (out instanceof Response) return out; return json(Object.assign({ ok: true }, out), 200, { "cache-control": "no-store" }); }
     return err("Not found.", 404);
-  } catch (e) { if (env.XRAY_TEST_MODE === "1" && env.API_DEBUG === "1") console.error("OS API", e && e.stack); return err(e && e.status ? e.message : "Something went wrong. Try again.", e && e.status ? e.status : 500); }
+  } catch (e) { if (env.XRAY_TEST_MODE === "1" && env.API_DEBUG === "1") console.error("OS API", e && e.stack); if (!(e && e.status) || e.status >= 500) await MON.recordError(env, routeKey, (e && e.status) || 500, e); return err(e && e.status ? e.message : "Something went wrong. Try again.", e && e.status ? e.status : 500); }
 }

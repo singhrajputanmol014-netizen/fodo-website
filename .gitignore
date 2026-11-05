@@ -1,0 +1,8 @@
+# v50.8: local backups and test outputs never go to GitHub
+backups/
+tests/.last-run.json
+tests/.perf-v508.json
+tests/.backup-rehearsal-v508.json
+qa-report.json
+node_modules/
+.wrangler/

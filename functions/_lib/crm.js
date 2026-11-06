@@ -27,8 +27,8 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS crm_acts (id TEXT PRIMARY KEY, user_id TEXT, contact_id TEXT, deal_id TEXT, kind TEXT, body TEXT, due TEXT, done INTEGER DEFAULT 0, created_at TEXT)",
   "CREATE INDEX IF NOT EXISTS crm_acts_c ON crm_acts(user_id, contact_id, created_at)",
 ];
-const ready = new WeakSet();
-export async function cdb(env) { const d = await bdb(env); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function cdb(env) { const d = await bdb(env); await SCH.setup(d, "crm", () => SCH.ddl(d, DDL)); return d; }
 
 /* ---------- contacts ---------- */
 function contactOut(c, extra) { return Object.assign({ id: c.id, name: c.name, email: c.email || "", phone: c.phone || "", company: c.company || "", title: c.title || "", city: c.city || "", source: c.source || "manual", tags: J(c.tags, []), notes: c.notes || "", fromForm: !!c.form_id, created_at: c.created_at, updated_at: c.updated_at, last_at: c.last_at }, extra || {}); }

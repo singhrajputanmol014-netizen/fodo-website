@@ -12,8 +12,8 @@ const enc = new TextEncoder();
 export const bgOn = (env) => !!(env && env.RUNNER_URL && env.RUNNER_KEY && String(env.RUNNER_KEY).length >= 16);
 
 const DDL = "CREATE TABLE IF NOT EXISTS xray_bg (job_id TEXT PRIMARY KEY, user_id TEXT, owner_id TEXT, email TEXT, payload TEXT, status TEXT, executor TEXT, attempts INTEGER DEFAULT 0, note TEXT, enqueued_at TEXT, started_at TEXT, finished_at TEXT, notified INTEGER DEFAULT 0)";
-const made = new WeakSet();
-export async function bdb(env) { const d = env.XRAY_DB; if (!d) return null; if (!made.has(d)) { await d.prepare(DDL).run(); made.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function bdb(env) { const d = env.XRAY_DB; if (!d) return null; await SCH.setup(d, "bg", () => d.prepare(DDL).run()); return d; }
 
 /* the page token: HMAC(RUNNER_KEY, job id), only the runner (which knows the key) can open a job's background page */
 export async function bgToken(env, jobId) {

@@ -20,8 +20,8 @@ PRODUCT_IDS.forEach((id) => { DEF.products[id] = { price: defaultPrice(id), on: 
 BUILDER_SELL.forEach((id) => { DEF.builder[id] = { price: BUILDER[id].price }; });   // v39: Website Builder plans sold on their own   // v18: one price per standalone tool
 
 const DDL = "CREATE TABLE IF NOT EXISTS lab_config (k TEXT PRIMARY KEY, v TEXT, updated_by TEXT, updated_at TEXT)";
-let at = 0, cur = { pricing: null, tools: {} }, lastDb = null; const made = new WeakSet();
-async function cdb(env) { const d = env && env.XRAY_DB; if (!d) return null; if (!made.has(d)) { await d.prepare(DDL).run(); made.add(d); } return d; }
+let at = 0, cur = { pricing: null, tools: {} }, lastDb = null; import * as SCH from "./schema.js";
+export async function cdb(env) { const d = env && env.XRAY_DB; if (!d) return null; await SCH.setup(d, "config", () => d.prepare(DDL).run()); return d; }
 
 function apply(p) {
   ORDER.forEach((id) => { const s = (p && p.plans && p.plans[id]) || {}, dft = DEF.plans[id];

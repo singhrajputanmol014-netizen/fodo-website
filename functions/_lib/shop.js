@@ -19,8 +19,8 @@ const DDL = [
 const MIGRATE = ["ALTER TABLE site_orders ADD COLUMN code_state TEXT", "ALTER TABLE site_orders ADD COLUMN refund TEXT", "ALTER TABLE site_orders ADD COLUMN idem TEXT",
   "CREATE UNIQUE INDEX IF NOT EXISTS site_orders_num ON site_orders(site_id, number)", "CREATE UNIQUE INDEX IF NOT EXISTS site_orders_idem ON site_orders(site_id, idem)"];
 export const SHOP_SCHEMA = 34;
-const made = new WeakSet();
-export async function shopDb(env) { const d = await accountsDb(env); if (!d) return null; if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); await migrateOnce(d, MIGRATE); made.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function shopDb(env) { const d = await accountsDb(env); if (!d) return null; await SCH.setup(d, "shop", async () => { await SCH.ddl(d, DDL); await migrateOnce(d, MIGRATE); }); return d; }
 const err = (m, s) => Object.assign(new Error(m), { status: s || 400 });
 const clip = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) : s; };
 const paise = (x) => { const n = Math.round(Number(String(x == null ? "" : x).replace(/[^\d.]/g, "")) * 100); return isFinite(n) && n >= 0 && n < 1e11 ? n : 0; };

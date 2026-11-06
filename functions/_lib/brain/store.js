@@ -36,15 +36,14 @@ export const DDL = [
 const MIGRATIONS = ["ALTER TABLE brain_memory ADD COLUMN emb TEXT", "ALTER TABLE brain_chunks ADD COLUMN emb TEXT", "ALTER TABLE brain_tasks ADD COLUMN assignee TEXT", "ALTER TABLE brain_tasks ADD COLUMN kind TEXT", "ALTER TABLE brain_threads ADD COLUMN owner TEXT",
   // v27 Website Engineer
   "ALTER TABLE brain_changes ADD COLUMN plan TEXT", "ALTER TABLE brain_changes ADD COLUMN klass TEXT", "ALTER TABLE brain_changes ADD COLUMN qa TEXT", "ALTER TABLE brain_changes ADD COLUMN qa_status TEXT", "ALTER TABLE brain_changes ADD COLUMN attempts INTEGER", "ALTER TABLE brain_changes ADD COLUMN head_sha TEXT", "ALTER TABLE brain_changes ADD COLUMN merged_sha TEXT", "ALTER TABLE brain_changes ADD COLUMN base_sha TEXT", "ALTER TABLE brain_changes ADD COLUMN approved_by TEXT", "ALTER TABLE brain_changes ADD COLUMN rollback_of TEXT", "ALTER TABLE brain_changes ADD COLUMN kind TEXT"];
-const made = new WeakSet();
+import * as SCH from "../schema.js";
 export async function brainDb(env) {
   const d = env && env.XRAY_DB; if (!d) return null;
-  if (!made.has(d)) {
-    await d.batch(DDL.map((s) => d.prepare(s)));
+  await SCH.setup(d, "brain-store", async () => {
+    await SCH.ddl(d, DDL);
     // add only the columns that are missing (no failing ALTERs on every cold start)
     const seen = {}; for (const m of MIGRATIONS) { const x = /ALTER TABLE (\w+) ADD COLUMN (\w+)/.exec(m); try { const cols = seen[x[1]] || (seen[x[1]] = ((await d.prepare("PRAGMA table_info(" + x[1] + ")").all()).results || []).map((c) => c.name)); if (cols.indexOf(x[2]) < 0) { await d.prepare(m).run(); cols.push(x[2]); } } catch (e) {} }
-    made.add(d);
-  }
+  });
   return d;
 }
 export const nowIso = () => new Date().toISOString();

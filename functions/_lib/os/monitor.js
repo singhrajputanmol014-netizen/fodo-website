@@ -6,10 +6,10 @@ import { nowIso } from "../accounts.js";
 import { osdb, one, all, run, J, clip, err, ORG } from "./db.js";
 import { audit } from "./audit.js";
 import { setting, settingSet } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = ["CREATE TABLE IF NOT EXISTS os_errors (k TEXT PRIMARY KEY, day TEXT, route TEXT, status INTEGER, n INTEGER, last_message TEXT, last_at TEXT)", "CREATE INDEX IF NOT EXISTS os_errors_d ON os_errors(day)"];
-const made = new WeakSet();
-export async function mdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function mdb(env) { const d = await osdb(env); await SCH.setup(d, "os-monitor", () => SCH.ddl(d, DDL)); return d; }
 const scrub = (s) => clip(String(s || "").replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\b\d{6,}\b/g, "<n>").replace(/(key|token|secret)=\S+/gi, "$1=<hidden>"), 200);
 /* the router calls this for every 5xx; it never throws */
 export async function recordError(env, route, status, e) {

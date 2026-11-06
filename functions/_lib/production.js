@@ -11,6 +11,7 @@ import { nowIso, randId, isOwner, migrateOnce } from "./accounts.js";
 import { bdb, err, can, auditLog, proOut } from "./biz.js";
 import { proFree, dayList } from "./availability.js";
 import { ROLES, EQUIPMENT, TEMPLATES, FAMILIES, GROUPS } from "./catalog-seed.js";
+import * as SCH from "./schema.js";
 
 const clip = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
 const num = (v, lo, hi) => { const n = +v; return v !== "" && v != null && isFinite(n) && n >= lo && n <= hi ? n : null; };
@@ -31,14 +32,13 @@ const MIG = [
   "CREATE TABLE IF NOT EXISTS biz_builds (id TEXT PRIMARY KEY, user_id TEXT, template_id TEXT, title TEXT, answers TEXT, tier TEXT, custom TEXT, estimate TEXT, total INTEGER, status TEXT, quote_id TEXT, created_at TEXT, updated_at TEXT)",
   "CREATE INDEX IF NOT EXISTS biz_builds_u ON biz_builds(user_id, updated_at)",
 ];
-const seeded = new WeakSet();
 export async function pdb(env) {
-  const d = await bdb(env); if (seeded.has(d)) return d;
+  const d = await bdb(env); await SCH.setup(d, "production", async () => {
   await migrateOnce(d, MIG);
   /* first run only: load the benchmark seeds (an admin's later edits are never overwritten: INSERT OR IGNORE) */
   if (!(await one(d, "SELECT 1 x FROM biz_roles LIMIT 1"))) { const now = nowIso(); for (const r of ROLES) await run(d, "INSERT OR IGNORE INTO biz_roles (id, name, category, unit, rate, rate_min, rate_max, match, description, skills, source, active, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'[]','benchmark_seed',1,?10)", r.id, r.name, r.category, r.unit, r.rate, r.rate_min, r.rate_max, JSON.stringify(r.match), r.description, now); }
   if (!(await one(d, "SELECT 1 x FROM biz_equipment LIMIT 1"))) { const now = nowIso(); for (const e of EQUIPMENT) await run(d, "INSERT OR IGNORE INTO biz_equipment (id, name, category, rate, rate_min, rate_max, cost_rate, owner, qty, note, bundle, source, active, updated_at) VALUES (?1,?2,?3,?4,?5,?6,NULL,'partner',NULL,?7,?8,'benchmark_seed',1,?9)", e.id, e.name, e.category, e.rate, e.rate_min, e.rate_max, e.note, JSON.stringify(e.bundle), now); }
-  seeded.add(d); return d;
+  }); return d;
 }
 
 /* ---------- pricing configuration (biz_settings 'pricing'; owner-only changes) ---------- */

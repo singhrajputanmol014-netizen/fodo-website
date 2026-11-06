@@ -11,6 +11,7 @@ import * as F from "../finance.js";
 import { osdb, one, all, run, J, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { authorize, allows, has } from "./authz.js";
 import { audit, emit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 export const CATEGORIES = ["travel", "equipment_rental", "software", "props", "food", "venue", "talent", "printing", "ads", "office", "other"];
 export const DEFAULT_SCENARIOS = { conservative: { inflow: 0.8, outflow: 1.1 }, expected: { inflow: 1, outflow: 1 }, optimistic: { inflow: 1.1, outflow: 0.95 }, overdue_collect: 0.6, payroll_weeks: 4.33 };
@@ -22,8 +23,7 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS os_invoice_payments_i ON os_invoice_payments(invoice_id)"
 ];
 const MIG = ["ALTER TABLE os_expenses ADD COLUMN billable INTEGER DEFAULT 0", "ALTER TABLE os_expenses ADD COLUMN invoice_id TEXT", "ALTER TABLE os_expenses ADD COLUMN vendor TEXT", "ALTER TABLE os_expenses ADD COLUMN spent_on TEXT", "ALTER TABLE os_expenses ADD COLUMN reimburse_ref TEXT", "ALTER TABLE os_expenses ADD COLUMN decision_note TEXT"];
-let made = new WeakSet();
-export async function xdb(env) { const d = await osdb(env); if (!made.has(d)) { await F.fdb(env); for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } made.add(d); } return d; }
+export async function xdb(env) { const d = await osdb(env); await F.fdb(env); await SCH.setup(d, "os-finance", async () => { await SCH.ddl(d, DDL); await SCH.alters(d, MIG); }); return d; }
 
 const today = () => nowIso().slice(0, 10), month = (s) => String(s || "").slice(0, 7), addDays = (day, n) => { const t = new Date(day + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 864e5);

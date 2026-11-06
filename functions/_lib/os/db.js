@@ -5,6 +5,7 @@
 import { migrateOnce, nowIso, randId, OWNER_EMAILS } from "../accounts.js";
 import { bdb } from "../biz.js";
 import { TEMPLATES, DEPARTMENTS, LEGACY, validPerm } from "./permissions.js";
+import * as SCH from "../schema.js";
 
 export const clip = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
 export const J = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
@@ -92,16 +93,14 @@ const MIG = [
   "ALTER TABLE acct_sessions ADD COLUMN last_seen TEXT",
   "ALTER TABLE help_tickets ADD COLUMN sla_due TEXT", "ALTER TABLE help_tickets ADD COLUMN escalated_at TEXT", "ALTER TABLE help_tickets ADD COLUMN csat INTEGER", "ALTER TABLE help_tickets ADD COLUMN csat_note TEXT", "ALTER TABLE help_tickets ADD COLUMN assignee_user_id TEXT"
 ];
-const ready = new WeakSet();
 /* every module set-up the OS reads from (the "no such table" trap of CLAUDE.md 9.3), once per isolate */
 /* every module whose tables the OS reads. Literal import paths: the bundler cannot resolve a variable import, which silently skipped all of these on the real runtime (caught in v50.2 visual check). */
 const SETUPS = [() => import("../production.js").then((m) => m.pdb), () => import("../quotes.js").then((m) => m.qdb), () => import("../finance.js").then((m) => m.fdb), () => import("../payouts.js").then((m) => m.pdb), () => import("../jobs.js").then((m) => m.jdb), () => import("../crm.js").then((m) => m.cdb), () => import("../files.js").then((m) => m.fdb), () => import("../orgs.js").then((m) => m.odb), () => import("../help.js").then((m) => m.hdb), () => import("../sites.js").then((m) => m.sdb)];
 async function setups(env) { for (const load of SETUPS) { let fn = null; try { fn = await load(); } catch (e) { fn = null; } if (typeof fn === "function") await fn(env); } }
 export async function osdb(env) {
-  const d = await bdb(env); if (ready.has(d)) return d; await setups(env);
-  for (const q of DDL) await d.prepare(q).run();
-  await migrateOnce(d, MIG);
-  await seed(d); await ftsProbe(d); ready.add(d); return d;
+  const d = await bdb(env);
+  await SCH.setup(d, "os", async () => { await setups(env); await SCH.ddl(d, DDL); await migrateOnce(d, MIG); await seed(d); await ftsProbe(d); });
+  return d;
 }
 export const rid = (p) => p + randId(14);
 

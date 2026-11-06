@@ -26,8 +26,8 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS biz_files_o ON biz_files(owner_id, created_at)",
   "CREATE INDEX IF NOT EXISTS biz_files_g ON biz_files(grp, ver)",
 ];
-const ready = new WeakSet();
-export async function fdb(env) { const d = await bdb(env); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function fdb(env) { const d = await bdb(env); await SCH.setup(d, "files", () => SCH.ddl(d, DDL)); return d; }
 
 /* ---------- type detection from the bytes ---------- */
 export const TYPES = {

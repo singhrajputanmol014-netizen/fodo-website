@@ -21,8 +21,8 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS help_chat_msgs (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id TEXT, role TEXT, text TEXT, t TEXT, model TEXT)",
   "CREATE TABLE IF NOT EXISTS help_mail (id INTEGER PRIMARY KEY AUTOINCREMENT, t TEXT, dir TEXT, kind TEXT, from_addr TEXT, to_addr TEXT, subject TEXT, text TEXT, ticket_id TEXT, status TEXT, provider_id TEXT, error TEXT, by_email TEXT, msg_id TEXT)",
 ];
-const made = new WeakSet();
-export async function hdb(env) { const d = await db(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function hdb(env) { const d = await db(env); await SCH.setup(d, "help", () => SCH.ddl(d, DDL)); return d; }
 export const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, " ").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, n);
 export const CATS = ["Plans & pricing", "Payments & refunds", "Business X-Ray", "Pro tools", "Account & login", "Bug / something broken", "FODO services", "Other"];
 export const STATUSES = ["open", "pending", "solved", "closed"];

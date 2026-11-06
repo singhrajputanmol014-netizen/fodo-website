@@ -8,14 +8,14 @@ import { osdb, one, all, run, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { has } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import { today, addDays, nameOf, ownerIds, looksLikeAccountNo } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS os_assets (id TEXT PRIMARY KEY, org_id TEXT, tag TEXT, name TEXT, category TEXT, serial TEXT, equipment_id TEXT, bought_on TEXT, cost INTEGER, vendor TEXT, warranty_until TEXT, condition TEXT, location TEXT, holder_user_id TEXT, status TEXT, maintenance_due TEXT, notes TEXT, retired_reason TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)",
   "CREATE UNIQUE INDEX IF NOT EXISTS os_assets_tag ON os_assets(org_id, tag)", "CREATE INDEX IF NOT EXISTS os_assets_holder ON os_assets(holder_user_id, status)",
   "CREATE TABLE IF NOT EXISTS os_asset_log (id INTEGER PRIMARY KEY AUTOINCREMENT, asset_id TEXT, kind TEXT, from_user_id TEXT, to_user_id TEXT, by_user_id TEXT, note TEXT, created_at TEXT)", "CREATE INDEX IF NOT EXISTS os_asset_log_a ON os_asset_log(asset_id, id)"
 ];
-const made = new WeakSet();
-export async function adb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function adb(env) { const d = await osdb(env); await SCH.setup(d, "os-assets", () => SCH.ddl(d, DDL)); return d; }
 export const CATEGORIES = ["camera", "lens", "lighting", "audio", "drone", "laptop", "phone", "storage", "monitor", "furniture", "software_licence", "other"], CONDITIONS = ["new", "good", "fair", "poor"], STATUSES = ["available", "in_use", "repair", "lost", "retired"];
 const manage = (P) => P.isOwner || has(P, "equipment", "manage", "department");
 const SEL = "a.*, " + nameOf("a.holder_user_id") + " AS holder, (SELECT name FROM biz_equipment e WHERE e.id=a.equipment_id) AS catalogue";

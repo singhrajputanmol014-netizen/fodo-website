@@ -11,6 +11,7 @@ import { proFree, bookDays, releaseDays, rulesOf } from "../availability.js";
 import { osdb, one, all, run, J, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { authorize, allows, has, isEmployee } from "./authz.js";
 import { audit, emit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 export const LIFECYCLE = ["active", "paused", "suspended", "alumni"], APPEAL_METRICS = ["on_time", "rating", "reliability", "disputes", "other"];
 const DDL = [
@@ -20,8 +21,7 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS os_booking_changes_ref ON os_booking_changes(ref, pro_id)"
 ];
 const MIG = ["ALTER TABLE biz_pros ADD COLUMN hours_from TEXT", "ALTER TABLE biz_pros ADD COLUMN hours_to TEXT", "ALTER TABLE biz_pros ADD COLUMN lifecycle_reason TEXT", "ALTER TABLE biz_pros ADD COLUMN lifecycle_at TEXT", "ALTER TABLE biz_team_members ADD COLUMN user_id TEXT", "ALTER TABLE biz_team_members ADD COLUMN member_kind TEXT"];
-let made = new WeakSet();
-export async function xdb(env) { const d = await osdb(env); if (!made.has(d)) { await PR.pdb(env); for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } made.add(d); } return d; }
+export async function xdb(env) { const d = await osdb(env); await PR.pdb(env); await SCH.setup(d, "os-pros", async () => { await SCH.ddl(d, DDL); await SCH.alters(d, MIG); }); return d; }
 const proRow = (d, id) => one(d, "SELECT * FROM biz_pros WHERE id=?1", id);
 const stem = (s) => String(s || "").toLowerCase().replace(/(ers?|ing|y|ist|ists)$/, "");
 const canFees = (P) => has(P, "finance", "view", "department") || has(P, "production", "manage", "team") || P.isOwner;

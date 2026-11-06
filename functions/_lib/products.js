@@ -42,8 +42,8 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS lab_tool_runs_user ON lab_tool_runs (owner_id, created_at)",
   "CREATE INDEX IF NOT EXISTS lab_tool_runs_job ON lab_tool_runs (job_id)",
 ];
-const made = new WeakSet();
-export async function tdb(env) { const d = env.XRAY_DB; if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function tdb(env) { const d = env.XRAY_DB; if (!d) return null; await SCH.setup(d, "products", () => SCH.ddl(d, DDL)); return d; }
 export async function toolCredits(env, userId) {
   const r = (await (await tdb(env)).prepare("SELECT tool, credits FROM lab_tool_credits WHERE user_id=?1 AND credits > 0").bind(userId).all()).results || [], m = {};
   r.forEach((x) => { m[x.tool] = x.credits; }); return m;

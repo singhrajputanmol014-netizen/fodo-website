@@ -6,10 +6,10 @@ import { notify } from "../biz.js";
 import { osdb, one, all, run, J, clip, err, rid, ORG } from "./db.js";
 import { has, allows } from "./authz.js";
 import { audit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 const DDL = ["CREATE TABLE IF NOT EXISTS os_problems (id TEXT PRIMARY KEY, org_id TEXT, rule TEXT, key TEXT, title TEXT, detail TEXT, fix TEXT, severity TEXT, subject_kind TEXT, subject_id TEXT, href TEXT, evidence TEXT, owner_user_id TEXT, status TEXT, first_seen TEXT, last_seen TEXT, resolved_at TEXT, note TEXT, seen INTEGER DEFAULT 1, manual INTEGER DEFAULT 0, UNIQUE (rule, key))", "CREATE INDEX IF NOT EXISTS os_problems_s ON os_problems(status, severity)"];
-let made = new WeakSet();
-export async function pdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function pdb(env) { const d = await osdb(env); await SCH.setup(d, "os-problems", () => SCH.ddl(d, DDL)); return d; }
 const SEV = { critical: 0, high: 1, medium: 2, low: 3 }, today = () => nowIso().slice(0, 10);
 export const RULES = {
   project_overdue_tasks: "Projects with 3 or more overdue tasks", project_past_due: "Internal projects past their deadline", approval_overdue: "Approvals past their deadline", sla_breach: "Support tickets past their SLA",

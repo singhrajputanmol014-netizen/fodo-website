@@ -10,14 +10,14 @@ import { osdb, one, all, run, J, clip, err, DAY, rid, ORG } from "./db.js";
 import { has } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import { today, addDays, nameOf } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS os_kb_articles (id TEXT PRIMARY KEY, org_id TEXT, title TEXT, kind TEXT, body TEXT, department_id TEXT, owner_user_id TEXT, status TEXT, version INTEGER, review_on TEXT, visibility TEXT, tags TEXT, legal_review TEXT, signed_off_by TEXT, signed_off_at TEXT, signed_version INTEGER, created_by TEXT, created_at TEXT, updated_at TEXT, published_at TEXT, reviewed_at TEXT)",
   "CREATE INDEX IF NOT EXISTS os_kb_s ON os_kb_articles(org_id, status, kind)",
   "CREATE TABLE IF NOT EXISTS os_kb_versions (article_id TEXT, version INTEGER, title TEXT, body TEXT, by_user_id TEXT, note TEXT, created_at TEXT, PRIMARY KEY (article_id, version))"
 ];
-const made = new WeakSet();
-export async function kdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function kdb(env) { const d = await osdb(env); await SCH.setup(d, "os-kb", () => SCH.ddl(d, DDL)); return d; }
 export const KINDS = ["sop", "guide", "policy", "faq", "procedure"];
 const REVIEW_DAYS = 180;
 /* may this person publish this article? department leads for their department, organization publishers for all */

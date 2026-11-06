@@ -1,3 +1,4 @@
+import * as SCH from "./schema.js";
 /* FODO Business X-Ray, server core (Cloudflare Pages Functions).
    Design for the free plan (≈10 ms CPU per request): the server never parses big bodies. Pages, search results and
    PageSpeed reports are passed through byte for byte; the browser (js/xray-engine.js) does the parsing and analysis.
@@ -112,8 +113,8 @@ const DDL = [
 ];
 export const ROW_TABLES = { pages: ["xray_pages", ["url", "status", "title"]], competitors: ["xray_competitors", ["domain", "name", "confidence"]], evidence: ["xray_evidence", ["id", "type", "claim", "source_url"]],
   findings: ["xray_findings", ["id", "area", "status"]], opportunities: ["xray_opportunities", ["id", "priority", "score"]], sources: ["xray_sources", ["url", "name"]], scores: ["xray_scores", ["area", "score"]], business: ["xray_businesses", ["name", "domain", "industry", "location"]] };
-let ddlDone = false;
-async function d1(env) { const db = env.XRAY_DB; if (!db) return null; if (!ddlDone) { await db.batch(DDL.map((s) => db.prepare(s))); ddlDone = true; } return db; }
+async function d1(env) { const db = env.XRAY_DB; if (!db) return null; await SCH.setup(db, "xray-core", () => SCH.ddl(db, DDL)); return db; }
+export const xdb = d1;
 export function storageKind(env) { return env.XRAY_DB ? "d1" : env.CHAT_KV ? "kv" : "none"; }
 const now = () => new Date().toISOString();
 

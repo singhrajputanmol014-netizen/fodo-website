@@ -10,6 +10,7 @@ import { has, allows, authorize } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import { xdb } from "./finance.js";
 import { today, addDays, setting, settingSet, numberFor, scopeWhere, holders, chainOf, nameOf, EMAIL, looksLikeAccountNo } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS os_vendors (id TEXT PRIMARY KEY, org_id TEXT, name TEXT, category TEXT, contact_name TEXT, email TEXT, phone TEXT, gstin TEXT, city TEXT, terms_days INTEGER, status TEXT, block_reason TEXT, notes TEXT, rating_avg REAL, rating_n INTEGER DEFAULT 0, created_by TEXT, created_at TEXT, updated_at TEXT)",
@@ -21,8 +22,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS os_vendor_ratings (id TEXT PRIMARY KEY, vendor_id TEXT, po_id TEXT, by_user_id TEXT, quality INTEGER, timeliness INTEGER, communication INTEGER, note TEXT, created_at TEXT, UNIQUE (po_id, by_user_id))"
 ];
 const MIG = ["ALTER TABLE os_payables ADD COLUMN vendor_id TEXT", "ALTER TABLE os_payables ADD COLUMN po_id TEXT", "ALTER TABLE os_payables ADD COLUMN bill_no TEXT", "ALTER TABLE os_payables ADD COLUMN bill_date TEXT", "ALTER TABLE os_payables ADD COLUMN match_status TEXT", "ALTER TABLE os_payables ADD COLUMN match_note TEXT"];
-const made = new WeakSet();
-export async function vdb(env) { const d = await xdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); await migrateOnce(d, MIG); made.add(d); } return d; }
+export async function vdb(env) { const d = await xdb(env); await SCH.setup(d, "os-procure", async () => { await SCH.ddl(d, DDL); await migrateOnce(d, MIG); }); return d; }
 export const CATEGORIES = ["equipment_rental", "studio", "printing", "software", "travel", "freelance", "props", "catering", "hardware", "media", "other"];
 /* vendor category → the finance (budget) category of its bills */
 const FIN_CAT = { equipment_rental: "equipment_rental", studio: "venue", printing: "printing", software: "software", travel: "travel", freelance: "talent", props: "props", catering: "food", hardware: "office", media: "ads", other: "other" };

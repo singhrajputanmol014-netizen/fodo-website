@@ -84,8 +84,8 @@ const MIG = ["ALTER TABLE biz_notes ADD COLUMN category TEXT", "ALTER TABLE biz_
   "CREATE INDEX IF NOT EXISTS biz_pro_case_studies_p ON biz_pro_case_studies(pro_id, status)",
   "ALTER TABLE biz_pros ADD COLUMN specializations TEXT", "ALTER TABLE biz_pros ADD COLUMN industries TEXT", "ALTER TABLE biz_pros ADD COLUMN equipment TEXT", "ALTER TABLE biz_pros ADD COLUMN rate_project INTEGER",
   "ALTER TABLE biz_pros ADD COLUMN recommended INTEGER DEFAULT 0", "ALTER TABLE biz_pros ADD COLUMN recommended_note TEXT", "ALTER TABLE biz_pros ADD COLUMN recommended_by TEXT", "ALTER TABLE biz_pros ADD COLUMN recommended_at TEXT"];
-const ready = new WeakSet();
-export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); await migrateOnce(d, MIG); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function bdb(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); await SCH.setup(d, "biz", async () => { await SCH.ddl(d, DDL); await migrateOnce(d, MIG); }); return d; }
 const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).results || [];
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
@@ -142,7 +142,7 @@ export function brandFromSite(s) {
 }
 
 /* ---------- Content & Ads ---------- */
-const noUid = (r) => { if (r) delete r.user_id; return r; };   // v45: the browser never needs internal user ids
+const noUid = (r) => { if (r) { delete r.user_id; delete r.owner_user_id; } return r; };   // v45: the browser never needs internal user ids; v51.1: owner_user_id (an OS column since v50.5) too. Found when v51.1 ran every set-up before the v45 suite, which gave the test database that column
 export async function listContent(env, u) { return (await all(await bdb(env), "SELECT * FROM biz_content WHERE user_id=?1 ORDER BY COALESCE(due,'9999'), created_at LIMIT 500", u.id)).map(noUid); }
 export async function saveContent(env, u, b) {
   const d = await bdb(env), id = b.id ? clip(b.id, 40) : "ct" + randId(14), title = clip(b.title, 140); if (title.length < 2) throw err("Give the content a title.");

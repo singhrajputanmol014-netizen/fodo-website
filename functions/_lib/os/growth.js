@@ -12,6 +12,7 @@ import { osdb, one, all, run, J, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { authorize, allows, has, isEmployee } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import * as AP from "./approvals.js";
+import * as SCH from "../schema.js";
 
 export const CONTENT_STATES = ["idea", "draft", "internal_review", "client_review", "approved", "scheduled", "published", "revision", "cancelled"];
 const CONTENT_NEXT = { idea: ["draft", "cancelled"], draft: ["internal_review", "cancelled"], internal_review: ["client_review", "approved", "revision"], client_review: ["approved", "revision"], revision: ["draft", "internal_review", "cancelled"], approved: ["scheduled", "published", "revision"], scheduled: ["published", "approved", "cancelled"], published: [], cancelled: [] };
@@ -40,8 +41,7 @@ const DDL = [
 const MIG = ["ALTER TABLE biz_content ADD COLUMN os_client_id TEXT", "ALTER TABLE biz_content ADD COLUMN owner_user_id TEXT", "ALTER TABLE biz_content ADD COLUMN workflow TEXT", "ALTER TABLE biz_content ADD COLUMN version INTEGER DEFAULT 0", "ALTER TABLE biz_content ADD COLUMN live_url TEXT", "ALTER TABLE biz_content ADD COLUMN published_at TEXT", "ALTER TABLE biz_content ADD COLUMN scheduled_at TEXT", "ALTER TABLE biz_content ADD COLUMN file_id TEXT",
   "ALTER TABLE biz_campaigns ADD COLUMN os_client_id TEXT", "ALTER TABLE biz_campaigns ADD COLUMN owner_user_id TEXT", "ALTER TABLE biz_campaigns ADD COLUMN project_id TEXT", "ALTER TABLE biz_campaigns ADD COLUMN platform_ref TEXT", "ALTER TABLE biz_campaigns ADD COLUMN launched_at TEXT", "ALTER TABLE biz_campaigns ADD COLUMN ended_at TEXT", "ALTER TABLE biz_campaigns ADD COLUMN start_day TEXT",
   "ALTER TABLE os_deliverables ADD COLUMN qa_template_id TEXT", "ALTER TABLE os_deliverables ADD COLUMN kind TEXT"];
-let made = new WeakSet();
-export async function gdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } if (!(await one(d, "SELECT id FROM os_qa_templates LIMIT 1"))) { const now = nowIso(); for (const k of Object.keys(QA_DEFAULTS)) await run(d, "INSERT INTO os_qa_templates (id, kind, name, items, created_by, created_at, updated_at) VALUES (?1,?2,?3,?4,'seed',?5,?5)", "qa_" + k, k, k[0].toUpperCase() + k.slice(1) + " QA", JSON.stringify(QA_DEFAULTS[k]), now); } made.add(d); } return d; }
+export async function gdb(env) { const d = await osdb(env); await SCH.setup(d, "os-growth", async () => { await SCH.ddl(d, DDL); await SCH.alters(d, MIG); if (!(await one(d, "SELECT id FROM os_qa_templates LIMIT 1"))) { const now = nowIso(); for (const k of Object.keys(QA_DEFAULTS)) await run(d, "INSERT INTO os_qa_templates (id, kind, name, items, created_by, created_at, updated_at) VALUES (?1,?2,?3,?4,'seed',?5,?5)", "qa_" + k, k, k[0].toUpperCase() + k.slice(1) + " QA", JSON.stringify(QA_DEFAULTS[k]), now); } }); return d; }
 
 const today = () => nowIso().slice(0, 10), addDays = (day, n) => { const t = new Date(day + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const URLRE = /^https:\/\/[^\s/$.?#].[^\s]*$/i, n0 = (x) => (x && x.n) || 0;

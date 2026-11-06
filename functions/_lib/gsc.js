@@ -35,8 +35,8 @@ async function query(env, at, site, body) {
   if (!r.ok) throw Object.assign(new Error("query " + r.status), { status: r.status }); return (await r.json()).rows || [];
 }
 export const DDL = "CREATE TABLE IF NOT EXISTS lab_gsc (user_id TEXT PRIMARY KEY, refresh_enc TEXT, sites TEXT, email TEXT, connected_at TEXT, last_used TEXT)";
-const made = new WeakSet();
-export async function gdb(env) { const d = env.XRAY_DB; if (!d) return null; if (!made.has(d)) { await d.prepare(DDL).run(); made.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function gdb(env) { const d = env.XRAY_DB; if (!d) return null; await SCH.setup(d, "gsc", () => d.prepare(DDL).run()); return d; }
 export const siteDomain = (s) => regDomain(String(s).replace(/^sc-domain:/, "").replace(/^https?:\/\//, "").split("/")[0].toLowerCase());
 const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 const r1 = (x) => Math.round(x * 10) / 10, pct = (x) => Math.round(x * 1000) / 10;

@@ -8,6 +8,7 @@ import { nowIso } from "../accounts.js";
 import { osdb, one, all, run, J, clip, err, int, ORG } from "./db.js";
 import { has, isEmployee } from "./authz.js";
 import { audit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 const DDL = ["CREATE TABLE IF NOT EXISTS os_agents (id TEXT PRIMARY KEY, name TEXT, purpose TEXT, model TEXT, tools TEXT, monthly_call_limit INTEGER, status TEXT, usage_source TEXT, risk TEXT, owner_note TEXT, updated_by TEXT, updated_at TEXT)"];
 const MIG = ["ALTER TABLE os_ai_calls ADD COLUMN agent TEXT", "ALTER TABLE os_ai_calls ADD COLUMN intent TEXT", "ALTER TABLE os_ai_calls ADD COLUMN used_ai INTEGER DEFAULT 0"];
@@ -17,8 +18,7 @@ const SEED = [
   ["xray", "Business X-Ray writer", "Writes the Business X-Ray report from collected website data.", "configured X-Ray providers", ["website fetch", "report writer"], null, "X-Ray costs (Admin → Costs)", "read only (public website data)"],
   ["growthlab", "Growth Lab helper", "Suggests next growth actions inside Growth Lab.", "Workers AI", ["growth lab actions"], null, "lab usage", "read only"]
 ];
-let made = new WeakSet();
-export async function adb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); for (const q of MIG) { try { await d.prepare(q).run(); } catch (e) {} } for (const s of SEED) await run(d, "INSERT OR IGNORE INTO os_agents (id, name, purpose, model, tools, monthly_call_limit, status, usage_source, risk, updated_at) VALUES (?1,?2,?3,?4,?5,?6,'active',?7,?8,?9)", s[0], s[1], s[2], s[3], JSON.stringify(s[4]), s[5], s[6], s[7], nowIso()); made.add(d); } return d; }
+export async function adb(env) { const d = await osdb(env); await SCH.setup(d, "os-ai", async () => { await SCH.ddl(d, DDL); await SCH.alters(d, MIG); for (const s of SEED) await run(d, "INSERT OR IGNORE INTO os_agents (id, name, purpose, model, tools, monthly_call_limit, status, usage_source, risk, updated_at) VALUES (?1,?2,?3,?4,?5,?6,'active',?7,?8,?9)", s[0], s[1], s[2], s[3], JSON.stringify(s[4]), s[5], s[6], s[7], nowIso()); }); return d; }
 const killed = async (d) => { const r = await one(d, "SELECT v FROM biz_settings WHERE k='ai_kill'"); return !!(r && String(r.v).replace(/"/g, "") === "1"); };
 const monthStart = () => nowIso().slice(0, 7) + "-01";
 

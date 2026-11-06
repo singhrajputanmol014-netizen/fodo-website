@@ -20,12 +20,16 @@ import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER
 import { PLANS, PACKS, rank, has, publicPlans, BUILDER, BUILDER_SELL, builderRank, publicBuilder } from "../../_lib/plans.js";
 import { log, providers, outbound } from "../../_lib/xray-core.js";
 import { applyConfig } from "../../_lib/config.js";
+import * as SCH from "../../_lib/schema.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const SITE = (request) => new URL(request.url).origin;
 
+/* v51.1: a "no such table / column" error means the database is behind this code (a forgotten SCHEMA_VERSION bump, or a
+   brand-new database): set every module up once and retry the request on a clone of it, once */
+async function healed(ctx, e, run) { if (ctx.__healed || !SCH.isSchemaError(e)) return null; try { SCH.reset(ctx.env.XRAY_DB); await SCH.setupAll(ctx.env); } catch (e2) { return null; } return run(Object.assign({}, ctx, { request: ctx.__clone, __healed: true })); }
 export async function onRequest(ctx) {
-  const { request, env, params } = ctx, path = [].concat(params.path || []).join("/"), m = request.method;
+  const { request, env, params } = ctx, path = [].concat(params.path || []).join("/"), m = request.method; if (!ctx.__healed) ctx.__clone = request.clone();
   try {
     await applyConfig(env);
     if (path === "config" && m === "GET") return config(env);
@@ -67,6 +71,7 @@ export async function onRequest(ctx) {
     if (path === "brand" && m === "POST") return await brand(env, b, body);
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
+    const h = await healed(ctx, e, onRequest); if (h) return h;
     log({ route: "account/" + path, ok: false, err: String(e && e.message || e).slice(0, 200) });
     return json({ ok: false, reason: e && e.status ? "The payment service said: " + clean(e.message, 160) : "The account service hit an error. Please try again." }, e && e.status ? 502 : 500);
   }

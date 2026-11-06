@@ -3,13 +3,14 @@
    Founding Programme counter. Nothing secret lives here. Enquiries from the contact / audit / call forms are saved in D1
    (fodo_leads) with page, source and campaign, the team gets an email, and WhatsApp stays available to the visitor. */
 import { db, nowIso, randId, sendMail, OWNER_EMAILS } from "./accounts.js";
+import * as SCH from "./schema.js";
 
 export const SITE_DEFAULTS = { bookingProvider: "", bookingUrl: "", meetingType: "30-minute growth call", ga4Id: "", metaPixelId: "", reviewUrl: "", foundingSlotsTotal: 10, foundingSlotsTaken: 0, foundingCohort: "Q4 2026", leadEmail: "" };
 const httpsUrl = (u) => { try { const x = new URL(String(u)); return x.protocol === "https:" && !x.username && x.hostname.indexOf(".") > 0 ? x.toString().slice(0, 300) : null; } catch (e) { return null; } };
 const clip = (s, n) => String(s == null ? "" : s).trim().slice(0, n);
 let cache = null, at = 0;
 
-async function cdb(env) { const d = env && env.XRAY_DB; if (!d) return null; await d.prepare("CREATE TABLE IF NOT EXISTS lab_config (k TEXT PRIMARY KEY, v TEXT, updated_by TEXT, updated_at TEXT)").run(); return d; }
+export async function cdb(env) { const d = env && env.XRAY_DB; if (!d) return null; await SCH.setup(d, "sitecfg", () => d.prepare("CREATE TABLE IF NOT EXISTS lab_config (k TEXT PRIMARY KEY, v TEXT, updated_by TEXT, updated_at TEXT)").run()); return d; }
 export async function getSiteCfg(env, fresh) {
   if (!fresh && cache && Date.now() - at < 60000) return cache;
   const d = await cdb(env); let v = {}; if (d) { const r = await d.prepare("SELECT v FROM lab_config WHERE k='site'").first().catch(() => null); try { v = r ? JSON.parse(r.v) : {}; } catch (e) { v = {}; } }
@@ -37,7 +38,7 @@ export async function saveSiteCfg(env, body, by) {
 /* ---------------- enquiries ---------------- */
 const LDDL = ["CREATE TABLE IF NOT EXISTS fodo_leads (id TEXT PRIMARY KEY, mode TEXT, name TEXT, email TEXT, phone TEXT, business TEXT, data TEXT, page TEXT, source TEXT, campaign TEXT, status TEXT, notes TEXT, ip_hash TEXT, created_at TEXT, updated_at TEXT)",
   "CREATE INDEX IF NOT EXISTS fodo_leads_at ON fodo_leads(created_at)"];
-async function ldb(env) { const d = await db(env); if (!d) return null; for (const q of LDDL) await d.prepare(q).run(); return d; }
+export async function ldb(env) { const d = await db(env); if (!d) return null; await SCH.setup(d, "leads", () => SCH.ddl(d, LDDL)); return d; }
 export const LEAD_STATUS = ["new", "contacted", "qualified", "won", "lost", "spam"];
 export async function saveLead(env, b, ip) {
   b = b || {}; const d = await ldb(env); if (!d) throw Object.assign(new Error("Enquiries are not set up."), { status: 503 });

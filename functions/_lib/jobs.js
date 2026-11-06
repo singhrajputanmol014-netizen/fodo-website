@@ -13,8 +13,8 @@ const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
 const DDL = ["CREATE TABLE IF NOT EXISTS biz_jobs (id TEXT PRIMARY KEY, kind TEXT, payload TEXT, status TEXT, attempts INTEGER DEFAULT 0, max_attempts INTEGER DEFAULT 5, run_after TEXT, locked_at TEXT, last_error TEXT, result TEXT, created_by TEXT, created_at TEXT, done_at TEXT)",
   "CREATE INDEX IF NOT EXISTS biz_jobs_due ON biz_jobs(status, run_after)"];
-const ready = new WeakSet();
-export async function jdb(env) { const d = await bdb(env); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function jdb(env) { const d = await bdb(env); await SCH.setup(d, "jobs", () => SCH.ddl(d, DDL)); return d; }
 export const queueOn = (env) => !!(env.JOBS && typeof env.JOBS.send === "function");
 export const STATES = ["queued", "running", "done", "failed", "dead"];
 const BACKOFF = [60, 300, 900, 3600, 7200];   /* seconds before the next try */

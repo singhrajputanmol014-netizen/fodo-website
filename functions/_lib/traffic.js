@@ -9,8 +9,8 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS web_live (ts INTEGER, vk TEXT, path TEXT, src TEXT, country TEXT, device TEXT)",
   "CREATE INDEX IF NOT EXISTS web_live_ts ON web_live(ts)",
 ];
-const readyT = new WeakSet();   // per-instance flag, never a promise shared across requests (see accounts.js db())
-export async function tdb(env) { const d = env.XRAY_DB; if (!d) return null; if (!readyT.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); readyT.add(d); } return d; }
+import * as SCH from "./schema.js";   // per-instance flag, never a promise shared across requests (see accounts.js db())
+export async function tdb(env) { const d = env.XRAY_DB; if (!d) return null; await SCH.setup(d, "traffic", () => SCH.ddl(d, DDL)); return d; }
 export const istDay = (t) => new Date((t || Date.now()) + 5.5 * 3600e3).toISOString().slice(0, 10);
 
 const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");

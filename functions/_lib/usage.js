@@ -27,11 +27,10 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS api_usage_day ON api_usage(day)",
   "CREATE INDEX IF NOT EXISTS api_usage_job ON api_usage(job_id)",
 ];
-const ready = new WeakMap();
+import * as SCH from "./schema.js";
 export async function usageDb(env) {
   const d = env && env.XRAY_DB; if (!d) return null;
-  if (!ready.has(d)) ready.set(d, d.batch(DDL.map((s) => d.prepare(s))).catch((e) => { ready.delete(d); throw e; }));
-  await ready.get(d); return d;
+  await SCH.setup(d, "usage", () => SCH.ddl(d, DDL)); return d;
 }
 /* o = { provider, endpoint, tool, job, user, status, ok, ms, cached, cost (real USD, optional), units }, never throws */
 export async function logUsage(env, o) {

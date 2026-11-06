@@ -36,8 +36,8 @@ const MIG = [
   "CREATE UNIQUE INDEX IF NOT EXISTS biz_invoices_rf ON biz_invoices(refund_id) WHERE kind='credit_note'",
   "ALTER TABLE biz_payouts ADD COLUMN source_milestone TEXT", "ALTER TABLE biz_payouts ADD COLUMN label TEXT", "ALTER TABLE biz_pros ADD COLUMN cf_vendor_id TEXT",
 ];
-const ready = new WeakSet();
-export async function fdb(env) { const d = await pdb(env); if (!ready.has(d)) { await migrateOnce(d, MIG); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function fdb(env) { const d = await pdb(env); await SCH.setup(d, "finance", () => migrateOnce(d, MIG)); return d; }
 const cev = (d, c, v, kind, by, note) => run(d, "INSERT INTO biz_contract_events (contract_id, version, kind, by_email, note, created_at) VALUES (?1,?2,?3,?4,?5,?6)", c, v, kind, by || "", clip(note, 500), nowIso());
 async function owners(env, text, link) { try { const d = await bdb(env); for (const o of await all(d, "SELECT id FROM acct_users WHERE lower(email) IN (" + OWNER_EMAILS.map(() => "?").join(",") + ")", ...OWNER_EMAILS)) await notify(env, o.id, "contract", text, link); } catch (e) {} }
 async function numberFor(d, table, prefix) { const now = nowIso(), n = ((await one(d, "SELECT count(*) n FROM " + table + " WHERE number LIKE ?1", prefix + "-%")) || {}).n || 0; return prefix + "-" + now.slice(2, 4) + now.slice(5, 7) + "-" + String(n + 1).padStart(4, "0"); }

@@ -49,9 +49,11 @@ ok(Object.values(REGISTRY).every((r) => Object.values(r).every((sc) => sc.every(
 /* ---------- 2. set-up, seeds, legacy backfill ---------- */
 await login("anmol@fodo.co.in", null, "own"); await login("client@biz.in", null, "c"); await login("pro@studio.in", null, "p"); await login("finance@fodo.co.in", null, "f"); await login("viewer@fodo.co.in", null, "v");
 await bdb(env); qr("INSERT INTO acct_admins (email, role, added_by, added_at) VALUES ('oldadmin@fodo.co.in','admin','seed','2026-01-01')"); qr("INSERT INTO biz_staff (email, role, added_by, added_at) VALUES ('finance@fodo.co.in','finance','anmol@fodo.co.in','2026-01-01'), ('viewer@fodo.co.in','viewer','anmol@fodo.co.in','2026-01-01')");
-const d = await osdb(env); await osdb(env);
+/* v51.1: the login above already ran every set-up once (schema gate); reset the gate so the OS set-up runs again on a database that now holds legacy staff, which is the migration case this block checks */
+(await import("../functions/_lib/schema.js")).reset(env.XRAY_DB); const d = await osdb(env); await osdb(env);
 ok(q1("SELECT count(*) n FROM os_orgs").n === 1 && q1("SELECT id FROM os_orgs").id === ORG, "one FODO organization seeded");
 ok(q1("SELECT count(*) n FROM os_departments").n === 13 && q1("SELECT count(*) n FROM os_roles").n === 17, "13 departments and 17 role templates seeded once (set-up ran twice)");
+await O("me", undefined, "own");   /* v51.1: the owner's member row was created by the set-up that ran inside the login request (before the account row existed); the first OS call links it, as in production */
 const mem = (e) => q1("SELECT m.*, (SELECT group_concat(r.slug) FROM os_member_roles mr JOIN os_roles r ON r.id=mr.role_id WHERE mr.member_id=m.id) rs FROM os_members m WHERE email=?", e);
 ok(mem("anmol@fodo.co.in") && mem("anmol@fodo.co.in").rs === "owner" && mem("anmol@fodo.co.in").user_id === uid("anmol@fodo.co.in"), "owner backfilled with the owner role, linked to the account");
 ok(mem("oldadmin@fodo.co.in") && mem("oldadmin@fodo.co.in").rs === "admin" && mem("oldadmin@fodo.co.in").user_id === null, "acct_admins admin → admin template (no account yet, linked at first login)");

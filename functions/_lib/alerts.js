@@ -2,6 +2,7 @@
    email "instant", "daily" (one digest email a day) or "off". Emails are throttled (20 an hour per person) and only sent
    when the mail provider is set up. The daily digest runs from the scheduler (POST /api/monitor/tick), once a day. */
 import { db as adb, nowIso, sendMail, count } from "./accounts.js";
+import * as SCH from "./schema.js";
 
 export const CATS = [
   ["projects", "Projects", "Requests, proposals, submitted and approved work, change requests, team invitations", "instant"],
@@ -16,7 +17,7 @@ const KIND_CAT = { request: "projects", proposal: "projects", accepted: "project
   funded: "payments", refund: "payments", hours: "payments", retainer: "payments", payout: "payments", message: "messages", file: "messages", moderation: "account", followup: "crm", news: "news" };
 export const catOf = (kind) => KIND_CAT[kind] || "account";
 const T = "CREATE TABLE IF NOT EXISTS biz_notify_prefs (user_id TEXT PRIMARY KEY, data TEXT, last_digest TEXT, updated_at TEXT)";
-async function d0(env) { const d = await adb(env); await d.prepare(T).run(); return d; }
+export async function d0(env) { const d = await adb(env); await SCH.setup(d, "alerts", () => d.prepare(T).run()); return d; }
 const defaults = () => Object.fromEntries(CATS.map((c) => [c[0], c[3]]));
 export async function getPrefs(env, u) { const d = await d0(env), r = await d.prepare("SELECT data FROM biz_notify_prefs WHERE user_id=?1").bind(u.id).first(); let x = {}; try { x = r ? JSON.parse(r.data) : {}; } catch (e) {}
   const out = defaults(); Object.keys(out).forEach((k) => { if (MODES.indexOf(x[k]) > -1) out[k] = x[k]; }); return { prefs: out, categories: CATS.map((c) => ({ id: c[0], label: c[1], hint: c[2], default: c[3] })), mail: !!env.RESEND_API_KEY, email: u.email }; }

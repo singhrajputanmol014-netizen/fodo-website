@@ -11,14 +11,14 @@ import { osdb, one, all, run, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { has } from "./authz.js";
 import { audit } from "./audit.js";
 import { today, addDays, ownerIds, nameOf, looksLikeAccountNo } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS os_integrations (id TEXT PRIMARY KEY, org_id TEXT, name TEXT, provider TEXT, purpose TEXT, data_shared TEXT, owner_user_id TEXT, status TEXT, connected_on TEXT, last_sync TEXT, token_expires TEXT, scopes TEXT, notes TEXT, revoked_at TEXT, revoked_by TEXT, revoke_reason TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)",
   "CREATE TABLE IF NOT EXISTS os_subscriptions (id TEXT PRIMARY KEY, org_id TEXT, name TEXT, vendor TEXT, category TEXT, plan TEXT, cost INTEGER, cycle TEXT, seats INTEGER, seats_used INTEGER, owner_user_id TEXT, department_id TEXT, renews_on TEXT, auto_renew INTEGER DEFAULT 1, paid_via TEXT, status TEXT, cancel_note TEXT, notes TEXT, payable_id TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)",
   "CREATE INDEX IF NOT EXISTS os_subs_r ON os_subscriptions(status, renews_on)"
 ];
-const made = new WeakSet();
-export async function pdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function pdb(env) { const d = await osdb(env); await SCH.setup(d, "os-platform", () => SCH.ddl(d, DDL)); return d; }
 const safe = async (fn, dflt) => { try { return await fn(); } catch (e) { return dflt; } };
 
 /* ---------------- integrations ---------------- */

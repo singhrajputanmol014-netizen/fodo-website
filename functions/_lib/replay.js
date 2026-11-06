@@ -3,12 +3,13 @@
    2) Once only: the SHA-256 of provider + body is stored; the same signed delivery a second time is acknowledged (200) but not processed.
    Settlement code is already idempotent; this stops an old captured delivery being replayed and keeps logs clean. Rows older than 14 days are pruned. */
 const T = "CREATE TABLE IF NOT EXISTS webhook_seen (provider TEXT, key TEXT, at TEXT, PRIMARY KEY (provider, key))";
-let ready = new WeakSet();
+import * as SCH from "./schema.js";
 async function hex(s) { const b = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))); return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""); }
 export function fresh(ts, now) { if (ts == null || ts === "") return { ok: true, checked: false }; let n = +ts; if (!isFinite(n) || n <= 0) return { ok: false, reason: "bad timestamp" }; if (n < 1e12) n *= 1000; const t = now || Date.now(); if (n < t - 15 * 60e3) return { ok: false, reason: "stale" }; if (n > t + 5 * 60e3) return { ok: false, reason: "future" }; return { ok: true, checked: true }; }
 /* check before processing (fresh + not already processed); mark only after the delivery was processed successfully, so a provider retry
    of a delivery that failed (amount mismatch, a transient error) is still processed */
-async function table(d) { if (!ready.has(d)) { await d.prepare(T).run(); ready.add(d); } }
+async function table(d) { await SCH.setup(d, "replay", () => d.prepare(T).run()); }
+export const rdb = async (env) => { const d = env && env.XRAY_DB; if (!d) return null; await table(d); return d; };
 export async function guard(env, provider, raw, ts) {
   const f = fresh(ts); if (!f.ok) return { ok: false, replay: true, reason: f.reason };
   const d = env.XRAY_DB, key = await hex(provider + "\n" + raw); if (!d) return { ok: true, key, unchecked: true };

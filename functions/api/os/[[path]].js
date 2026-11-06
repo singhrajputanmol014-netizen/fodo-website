@@ -39,6 +39,7 @@ import * as IB from "../../_lib/os/inbox.js";
 import * as CP from "../../_lib/os/comply.js";
 import * as MON from "../../_lib/os/monitor.js";
 import * as AS from "../../_lib/os/assets.js";
+import * as SCH from "../../_lib/schema.js";
 
 const err = (reason, status) => json({ ok: false, reason }, status || 400);
 /* route table: method, path pattern, permission needed (resource + action, or "self"), handler(ctx, match) */
@@ -328,7 +329,11 @@ async function health(env) {
   return out;
 }
 
-export async function onRequest({ request, env, params }) {
+/* v51.1: a "no such table / column" error means the database is behind this code (a forgotten SCHEMA_VERSION bump, or a
+   brand-new database): set every module up once and retry the request on a clone of it, once */
+async function healed(ctx, e, run) { if (ctx.__healed || !SCH.isSchemaError(e)) return null; try { SCH.reset(ctx.env.XRAY_DB); await SCH.setupAll(ctx.env); } catch (e2) { return null; } return run(Object.assign({}, ctx, { request: ctx.__clone, __healed: true })); }
+export async function onRequest(ctx) {
+  const { request, env, params } = ctx; if (!ctx.__healed) ctx.__clone = request.clone();
   let routeKey = "unmatched", method = request.method;
   try {
     const m = request.method, path = [].concat(params.path || []), p = path.join("/");
@@ -347,5 +352,5 @@ export async function onRequest({ request, env, params }) {
       if (need !== "self") await authorize(env, P, need);
       const ctx = { env, request, P, R, body, q, origin, u }; const out = await fn(ctx, mt); if (out instanceof Response) return out; return json(Object.assign({ ok: true }, out), 200, { "cache-control": "no-store" }); }
     return err("Not found.", 404);
-  } catch (e) { if (env.XRAY_TEST_MODE === "1" && env.API_DEBUG === "1") console.error("OS API", e && e.stack); if (!(e && e.status) || e.status >= 500) await MON.recordError(env, routeKey, (e && e.status) || 500, e); return err(e && e.status ? e.message : "Something went wrong. Try again.", e && e.status ? e.status : 500); }
+  } catch (e) { const h = await healed(ctx, e, onRequest); if (h) return h; if (env.XRAY_TEST_MODE === "1" && env.API_DEBUG === "1") console.error("OS API", e && e.stack); if (!(e && e.status) || e.status >= 500) await MON.recordError(env, routeKey, (e && e.status) || 500, e); return err(e && e.status ? e.message : "Something went wrong. Try again.", e && e.status ? e.status : 500); }
 }

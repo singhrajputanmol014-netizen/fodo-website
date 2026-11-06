@@ -8,6 +8,7 @@ import { notify } from "../biz.js";
 import { osdb, one, all, run, J, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { authorize, allows, has } from "./authz.js";
 import { audit, emit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 export const LEAVE_KINDS = ["casual", "sick", "earned", "unpaid", "wfh"], DEFAULT_POLICY = { casual: 12, sick: 8, earned: 15, unpaid: 0, wfh: 0, year_start: "01-01" };
 export const REVIEW_KINDS = ["quarterly", "half_yearly", "annual", "probation"], TRAIN_KINDS = ["course", "certification", "workshop", "mentoring", "other"];
@@ -19,8 +20,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS os_checklists (id TEXT PRIMARY KEY, org_id TEXT, user_id TEXT, kind TEXT, items TEXT, status TEXT, created_by TEXT, created_at TEXT, completed_at TEXT, updated_at TEXT)",
   "CREATE TABLE IF NOT EXISTS os_attendance (user_id TEXT, day TEXT, in_at TEXT, out_at TEXT, source TEXT, note TEXT, PRIMARY KEY (user_id, day))"
 ];
-let made = new WeakSet();
-export async function hdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function hdb(env) { const d = await osdb(env); await SCH.setup(d, "os-hr", () => SCH.ddl(d, DDL)); return d; }
 const setting = async (d, k, dflt) => { const r = await one(d, "SELECT v FROM biz_settings WHERE k=?1", k); return r ? J(r.v, dflt) : dflt; };
 const memberOf = (d, userId) => one(d, "SELECT * FROM os_members WHERE user_id=?1 AND org_id=?2", userId, ORG);
 const names = async (d, ids) => { const out = {}; for (const r of await all(d, "SELECT user_id, name, email FROM os_members WHERE org_id=?1 AND user_id IN (" + ids.map(() => "?").join(",") + ")", ORG, ...ids)) out[r.user_id] = r.name || r.email; return out; };

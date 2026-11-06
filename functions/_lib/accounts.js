@@ -5,6 +5,7 @@
 import { PRODUCTS, addTool } from "./products.js";
 import { PLANS, PACKS, rank, limitsFor, BUILDER, BUILDER_SELL, BUILDER_IN_PLAN, builderRank } from "./plans.js";
 import { outbound, log } from "./xray-core.js";
+import * as SCH from "./schema.js";
 
 export const json = (b, s, h) => new Response(JSON.stringify(b), { status: s || 200, headers: Object.assign({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }, h || {}) });
 const enc = new TextEncoder();
@@ -41,7 +42,6 @@ const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", 
 /* Table setup runs once per worker instance. It is NOT shared as a promise between requests: on Cloudflare Workers a request
    that awaits a promise created by ANOTHER request can hang forever (that was the Brain's "Loading…" / "timeout at session").
    Each request awaits its own (idempotent) setup until one has finished; then everyone skips it. */
-const readyDb = new WeakSet();
 /* v46 migration version table: every ALTER / index change runs ONCE per database (recorded in schema_migrations) instead of
    being retried on every cold start. "Already there" errors count as applied; any other error is retried next time. */
 const fnv = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
@@ -54,7 +54,8 @@ export async function migrateOnce(d, list) {
     if (ok) { try { await d.prepare("INSERT OR IGNORE INTO schema_migrations (id, sql, applied_at) VALUES (?1,?2,?3)").bind(id, q.slice(0, 300), new Date().toISOString()).run(); } catch (e) {} } }
 }
 export async function db(env) { const d = env.XRAY_DB; if (!d) return null;
-  if (!readyDb.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); await migrateOnce(d, MIGRATE); readyDb.add(d); }
+  await SCH.setup(d, "accounts", async () => { await SCH.ddl(d, DDL); await migrateOnce(d, MIGRATE); });
+  if (!(await SCH.current(d))) await SCH.setupAll(env);   // v51.1: first request after a deploy sets every module up once
   return d; }
 /* v15: activity log for the admin dashboard, never throws, never blocks the request */
 export const EVENT_KINDS = ["login_google", "login_email", "login_facebook", "login_phone", "login_microsoft", "login_apple", "login_email_link", "login_github", "login_x", "login_whatsapp", "login_other", "xray_start", "xray_done", "xray_refund", "limit_hit", "checkout", "paid", "export_pdf", "export_xlsx", "export_csv", "export_plan", "export_json", "share", "finder_export", "edge_fixPack", "edge_battleCards", "edge_roadmap90", "edge_clientPitch", "linkcheck", "authority", "copy_schema", "copy_pitch", "blocked_try", "admin_grant", "admin_block", "admin_config", "action_update", "monitor_add", "monitor_check", "gsc_connect", "gsc_disconnect", "monthly_report", "why_winning", "budget_plan", "tool_use", "share_off", "share_on", "admin_qc", "admin_prompt", "upgrade_click", "report_view", "help_ticket", "admin_help"];
@@ -262,9 +263,9 @@ export const displayName = (u) => (u && (u.name || u.email || u.phone)) || "User
 /* every email FODO sends goes through here, and is logged for the admin Mail view (v20). Login codes are never stored.
    opt = { replyTo, kind: system|ticket|compose, ticket, by, from } */
 const MAIL_DDL = "CREATE TABLE IF NOT EXISTS help_mail (id INTEGER PRIMARY KEY AUTOINCREMENT, t TEXT, dir TEXT, kind TEXT, from_addr TEXT, to_addr TEXT, subject TEXT, text TEXT, ticket_id TEXT, status TEXT, provider_id TEXT, error TEXT, by_email TEXT, msg_id TEXT)";
-const mailMade = new WeakSet();
+export async function mailDb(env) { const d = env && env.XRAY_DB; if (!d) return null; await SCH.setup(d, "mail", () => d.prepare(MAIL_DDL).run()); return d; }
 export async function mailLog(env, o) {
-  try { const d = env.XRAY_DB; if (!d) return; if (!mailMade.has(d)) { await d.prepare(MAIL_DDL).run(); mailMade.add(d); }
+  try { const d = await mailDb(env); if (!d) return;
     await d.prepare("INSERT INTO help_mail (t, dir, kind, from_addr, to_addr, subject, text, ticket_id, status, provider_id, error, by_email, msg_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)")
       .bind(new Date().toISOString(), o.dir || "out", o.kind || "system", String(o.from || "").slice(0, 200), String(o.to || "").slice(0, 200), String(o.subject || "").slice(0, 300), String(o.text || "").slice(0, 20000), o.ticket || null, o.status || "sent", o.providerId || null, o.error || null, o.by || null, o.msgId || null).run();
   } catch (e) {}

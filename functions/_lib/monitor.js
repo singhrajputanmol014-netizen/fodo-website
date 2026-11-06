@@ -12,8 +12,8 @@ export const DDL = [
   "CREATE TABLE IF NOT EXISTS mon_events (id INTEGER PRIMARY KEY AUTOINCREMENT, target_id TEXT, user_id TEXT, domain TEXT, t TEXT, kind TEXT, severity TEXT, what TEXT, why TEXT, todo TEXT, seen INTEGER DEFAULT 0)",
   "CREATE INDEX IF NOT EXISTS mon_events_user ON mon_events(user_id, t)",
 ];
-const made = new WeakSet();
-export async function mdb(env) { const d = env.XRAY_DB; if (!d) return null; if (!made.has(d)) { await d.batch(DDL.map((s) => d.prepare(s))); made.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function mdb(env) { const d = env.XRAY_DB; if (!d) return null; await SCH.setup(d, "monitor", () => SCH.ddl(d, DDL)); return d; }
 export const EVERY_MS = { free: 7 * 864e5, paid: 864e5 };
 
 const ent = (s) => String(s || "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n));

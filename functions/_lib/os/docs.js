@@ -10,6 +10,7 @@ import { osdb, one, all, run, J, clip, err, DAY, rid, ORG } from "./db.js";
 import { has, allows, authorize } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import { today, addDays, numberFor, scopeWhere, nameOf, chainOf } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS os_doc_templates (id TEXT PRIMARY KEY, org_id TEXT, name TEXT, kind TEXT, body TEXT, fields TEXT, version INTEGER, status TEXT, legal_reviewer TEXT, legal_reviewed_version INTEGER, legal_reviewed_at TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)",
@@ -18,8 +19,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS os_doc_access (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id TEXT, user_id TEXT, action TEXT, note TEXT, created_at TEXT)",
   "CREATE INDEX IF NOT EXISTS os_doc_access_d ON os_doc_access(doc_id, created_at)"
 ];
-const made = new WeakSet();
-export async function ddb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function ddb(env) { const d = await osdb(env); await SCH.setup(d, "os-docs", () => SCH.ddl(d, DDL)); return d; }
 export const KINDS = ["contract", "nda", "sow", "offer_letter", "policy", "agreement", "other"], LINKS = ["client", "project", "vendor", "member"];
 export const esignOn = (env) => !!(env.ESIGN_PROVIDER && env.ESIGN_API_KEY);
 const PH = /\{\{\s*([a-z][a-z0-9_]{0,39})\s*\}\}/g;

@@ -13,6 +13,7 @@ import { osdb, one, all, run, J, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { has, allows } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import { today, addDays, numberFor, scopeWhere, nameOf, holders, ownerIds, setting, settingSet, EMAIL } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = [
   "CREATE TABLE IF NOT EXISTS os_incidents (id TEXT PRIMARY KEY, org_id TEXT, number TEXT, title TEXT, kind TEXT, severity TEXT, status TEXT, detected_at TEXT, summary TEXT, reported_by TEXT, owner_user_id TEXT, personal_data INTEGER DEFAULT 0, affected_count INTEGER, root_cause TEXT, board_informed_at TEXT, people_informed_at TEXT, not_informed_reason TEXT, contained_at TEXT, resolved_at TEXT, closed_at TEXT, created_at TEXT, updated_at TEXT)",
@@ -24,8 +25,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS os_rights_requests (id TEXT PRIMARY KEY, number TEXT, kind TEXT, user_id TEXT, email TEXT, name TEXT, detail TEXT, status TEXT, verified INTEGER DEFAULT 0, due_on TEXT, assignee_user_id TEXT, response TEXT, created_at TEXT, updated_at TEXT, closed_at TEXT)",
   "CREATE INDEX IF NOT EXISTS os_rr_s ON os_rights_requests(status, due_on)"
 ];
-const made = new WeakSet();
-export async function cdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); await seedRetention(d); made.add(d); } return d; }
+export async function cdb(env) { const d = await osdb(env); await SCH.setup(d, "os-comply", async () => { await SCH.ddl(d, DDL); await seedRetention(d); }); return d; }
 
 /* ---------------- risk register ---------------- */
 export const RISK_KINDS = ["strategic", "operational", "financial", "legal", "security", "people", "client", "compliance"];

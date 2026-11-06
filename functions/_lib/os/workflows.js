@@ -8,6 +8,7 @@ import { notify } from "../biz.js";
 import { osdb, one, all, run, J, clip, err, int, rid, ORG } from "./db.js";
 import { principal, has } from "./authz.js";
 import { audit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 export const TRIGGERS = [
   ["task.created", "A task is created"], ["task.updated", "A task changes status"], ["task.blocked", "A task is blocked"], ["project.created", "A project is created"], ["project.status_changed", "A project changes state"],
@@ -31,8 +32,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS os_workflow_runs (id TEXT PRIMARY KEY, workflow_id TEXT, version INTEGER, trigger TEXT, subject_kind TEXT, subject_id TEXT, payload TEXT, status TEXT, detail TEXT, approval_id TEXT, created_at TEXT, finished_at TEXT)",
   "CREATE INDEX IF NOT EXISTS os_workflow_runs_w ON os_workflow_runs(workflow_id, created_at)"
 ];
-let made = new WeakSet();
-export async function wdb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function wdb(env) { const d = await osdb(env); await SCH.setup(d, "os-workflows", () => SCH.ddl(d, DDL)); return d; }
 
 /* ---------- conditions + templates ---------- */
 const pick = (ev, path) => { const p = String(path || "").split("."); let v = p[0] === "payload" ? ev.payload : p[0] === "subject" ? { kind: ev.subject_kind, id: ev.subject_id } : p[0] === "actor" ? { id: ev.actor_user_id, name: ev.actor_name } : ev; for (const k of p.slice(1)) v = v == null ? undefined : v[k]; return v; };

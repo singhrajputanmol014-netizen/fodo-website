@@ -28,8 +28,8 @@ const MIG = [
   "CREATE TABLE IF NOT EXISTS biz_quote_versions (quote_id TEXT, version INTEGER, data TEXT, internal TEXT, total INTEGER, created_by TEXT, created_at TEXT, sent_at TEXT, PRIMARY KEY (quote_id, version))",
   "CREATE TABLE IF NOT EXISTS biz_quote_events (id INTEGER PRIMARY KEY AUTOINCREMENT, quote_id TEXT, version INTEGER, kind TEXT, by_email TEXT, note TEXT, created_at TEXT)",
 ];
-const ready = new WeakSet();
-export async function qdb(env) { const d = await pdb(env); if (!ready.has(d)) { await (await import("./accounts.js")).migrateOnce(d, MIG); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function qdb(env) { const d = await pdb(env); await SCH.setup(d, "quotes", async () => (await import("./accounts.js")).migrateOnce(d, MIG)); return d; }
 const event = (d, q, v, kind, by, note) => run(d, "INSERT INTO biz_quote_events (quote_id, version, kind, by_email, note, created_at) VALUES (?1,?2,?3,?4,?5,?6)", q, v, kind, by || "", clip(note, 500), nowIso());
 const staff = (R) => can(R, ["admin", "finance", "viewer"]);
 async function ownersNotify(env, text, link) { try { const d = await qdb(env); for (const o of await all(d, "SELECT id FROM acct_users WHERE lower(email) IN (" + OWNER_EMAILS.map(() => "?").join(",") + ")", ...OWNER_EMAILS)) await notify(env, o.id, "quote", text, link); } catch (e) {} }

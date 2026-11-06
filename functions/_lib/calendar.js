@@ -12,8 +12,8 @@ const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).resu
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
 const DDL = "CREATE TABLE IF NOT EXISTS biz_cal_tokens (token TEXT PRIMARY KEY, user_id TEXT, kind TEXT, created_at TEXT, used_at TEXT, revoked INTEGER DEFAULT 0)";
-const ready = new WeakSet();
-async function cdb(env) { const d = await bdb(env); await qdb(env); if (!ready.has(d)) { await d.prepare(DDL).run(); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function cdb(env) { const d = await bdb(env); await qdb(env); await SCH.setup(d, "calendar", () => d.prepare(DDL).run()); return d; }
 const KINDS = ["pro", "client", "staff"];
 
 export async function feedFor(env, u, R, kind, origin, regenerate) {

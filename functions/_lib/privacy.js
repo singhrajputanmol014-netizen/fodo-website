@@ -5,10 +5,11 @@
    other person's record but your messages are replaced by "removed". Blocked while money or a dispute is open. */
 import { db as adb, nowIso, isOwner, sendMail, count } from "./accounts.js";
 import { err } from "./biz.js";
+import * as SCH from "./schema.js";
 
 const J = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
 const LOG = "CREATE TABLE IF NOT EXISTS privacy_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, kind TEXT, detail TEXT, created_at TEXT)";
-async function d0(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); await d.prepare(LOG).run(); return d; }
+export async function d0(env) { const d = await adb(env); if (!d) throw err("Database not connected.", 503); await SCH.setup(d, "privacy", () => d.prepare(LOG).run()); return d; }
 const safeAll = async (d, sql, ...a) => { try { return (await d.prepare(sql).bind(...a).all()).results || []; } catch (e) { return []; } };
 const safeOne = async (d, sql, ...a) => { try { return await d.prepare(sql).bind(...a).first(); } catch (e) { return null; } };
 const safeRun = async (d, sql, ...a) => { try { const r = await d.prepare(sql).bind(...a).run(); return (r.meta && r.meta.changes) || 0; } catch (e) { return 0; } };

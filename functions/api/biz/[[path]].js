@@ -39,9 +39,13 @@ import * as MC from "../../_lib/mission.js";
 import * as JB from "../../_lib/jobs.js";
 import * as CAL from "../../_lib/calendar.js";
 import * as ORG from "../../_lib/orgs.js";
+import * as SCH from "../../_lib/schema.js";
 
+/* v51.1: a "no such table / column" error means the database is behind this code (a forgotten SCHEMA_VERSION bump, or a
+   brand-new database): set every module up once and retry the request on a clone of it, once */
+async function healed(ctx, e, run) { if (ctx.__healed || !SCH.isSchemaError(e)) return null; try { SCH.reset(ctx.env.XRAY_DB); await SCH.setupAll(ctx.env); } catch (e2) { return null; } return run(Object.assign({}, ctx, { request: ctx.__clone, __healed: true })); }
 export async function onRequest(ctx) {
-  const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || "";
+  const { request, env, params } = ctx, m = request.method, path = [].concat(params.path || []).map(String), p0 = path[0] || "", p1 = path[1] || "", p2 = path[2] || ""; if (!ctx.__healed) ctx.__clone = request.clone();
   try {
     if (!accountsOn(env)) return json({ ok: false, reason: "FODO accounts are not switched on." }, 503);
     if (p0 === "roles" && m === "GET") return json({ ok: true, roles: B.PRO_ROLES, categories: B.PRO_CATS, platforms: B.AD_PLATFORMS, contentStates: B.CONTENT_STATES });
@@ -305,6 +309,7 @@ export async function onRequest(ctx) {
     }
     return json({ ok: false, reason: "Not found." }, 404);
   } catch (e) {
+    const h = await healed(ctx, e, onRequest); if (h) return h;
     if (env.XRAY_TEST_MODE === "1" && env.API_DEBUG === "1") console.error("API", e.stack);   /* v47.5: stack traces only in the local test runtime */
     return json(Object.assign({ ok: false, reason: e.status ? e.message : "Something went wrong, please try again." }, e.missing ? { missing: e.missing } : {}, e.dup ? { dup: e.dup } : {}, e.blockers ? { blockers: e.blockers } : {}), e.status || 500);
   }

@@ -8,10 +8,10 @@ import { notify } from "../biz.js";
 import { osdb, one, all, run, J, clip, err, int, DAY, rid, ORG } from "./db.js";
 import { has, allows } from "./authz.js";
 import { audit } from "./audit.js";
+import * as SCH from "../schema.js";
 
 const DDL = ["CREATE TABLE IF NOT EXISTS os_decisions (id TEXT PRIMARY KEY, org_id TEXT, title TEXT, context TEXT, options TEXT, decision TEXT, rationale TEXT, expected TEXT, owner_user_id TEXT, review_on TEXT, status TEXT, outcome TEXT, outcome_note TEXT, links TEXT, visibility TEXT, tags TEXT, created_by TEXT, created_at TEXT, decided_at TEXT, reviewed_at TEXT, updated_at TEXT)"];
-let made = new WeakSet();
-export async function ddb(env) { const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function ddb(env) { const d = await osdb(env); await SCH.setup(d, "os-decide", () => SCH.ddl(d, DDL)); return d; }
 const lead = (P) => P.isOwner || has(P, "decision", "manage", "department");
 const visible = (P, x) => P.isOwner || x.created_by === P.user.id || x.owner_user_id === P.user.id || (x.visibility === "leadership" && lead(P)) || x.visibility === "team";
 const OUTCOMES = ["as_expected", "better", "worse", "mixed", "too_early"];

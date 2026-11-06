@@ -17,8 +17,8 @@ const DDL = ["CREATE TABLE IF NOT EXISTS biz_orgs (id TEXT PRIMARY KEY, name TEX
   "CREATE TABLE IF NOT EXISTS biz_org_members (org_id TEXT, email TEXT, user_id TEXT, role TEXT, status TEXT, invited_by TEXT, invited_at TEXT, joined_at TEXT, PRIMARY KEY (org_id, email))",
   "CREATE UNIQUE INDEX IF NOT EXISTS biz_org_members_u ON biz_org_members(user_id) WHERE user_id IS NOT NULL AND status='active'",
   "CREATE INDEX IF NOT EXISTS biz_org_members_e ON biz_org_members(email, status)"];
-const ready = new WeakSet();
-export async function odb(env) { const d = await bdb(env); if (!ready.has(d)) { for (const q of DDL) await d.prepare(q).run(); ready.add(d); } return d; }
+import * as SCH from "./schema.js";
+export async function odb(env) { const d = await bdb(env); await SCH.setup(d, "orgs", () => SCH.ddl(d, DDL)); return d; }
 export const ROLES = ["owner", "admin", "member"];
 const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 

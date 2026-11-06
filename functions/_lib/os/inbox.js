@@ -9,10 +9,10 @@ import { osdb, one, all, run, clip, err, DAY, ORG } from "./db.js";
 import { has, allows } from "./authz.js";
 import { audit, emit } from "./audit.js";
 import { scopeWhere, nameOf } from "./kit.js";
+import * as SCH from "../schema.js";
 
 const DDL = ["CREATE TABLE IF NOT EXISTS os_inbox_state (source TEXT, ref TEXT, status TEXT, assignee_user_id TEXT, task_id TEXT, snooze_until TEXT, title TEXT, updated_by TEXT, updated_at TEXT, PRIMARY KEY (source, ref))"];
-const made = new WeakSet();
-export async function idb(env) { await HP.hdb(env); const d = await osdb(env); if (!made.has(d)) { for (const q of DDL) await d.prepare(q).run(); made.add(d); } return d; }
+export async function idb(env) { await HP.hdb(env); const d = await osdb(env); await SCH.setup(d, "os-inbox", () => SCH.ddl(d, DDL)); return d; }
 const waOn = (env) => !!(env.WA_NUMBER && env.WA_TOKEN && env.WA_PHONE_ID && env.WA_APP_SECRET);
 const gmailFor = (P) => P.isOwner;
 

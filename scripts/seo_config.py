@@ -30,7 +30,8 @@ AREA_SERVED = [{"@type": "Country", "name": n} for n in
                ["India", "United Arab Emirates", "United Kingdom", "United States", "Canada", "Australia", "Singapore"]]
 KNOWS_ABOUT = ["Digital marketing", "Search engine optimisation", "Local SEO", "Google Ads", "Meta Ads", "LinkedIn Ads", "Content marketing",
                "Social media marketing", "Short-form video", "Brand strategy", "Brand identity", "Web design", "Landing pages",
-               "Conversion rate optimisation", "Marketing automation", "Marketing analytics"]
+               "Conversion rate optimisation", "Marketing automation", "Marketing analytics", "AI automation", "WhatsApp marketing",
+               "Email marketing", "Google Business Profile", "App development", "E-commerce marketplace listings"]
 
 def org_graph():
     """Organization + ProfessionalService + WebSite + founder Person, the home page's entity graph."""
@@ -66,7 +67,7 @@ PAGE_META = {
  "/": ("FODO: Digital Marketing & Growth Agency, India & Worldwide",
        "FODO is a digital growth agency headquartered in New Delhi: SEO, paid ads, content, social, brand and web for ambitious brands across India and worldwide."),
  "/services/": ("Digital Marketing Services: SEO, Ads, Content & Web | FODO",
-       "20 digital marketing services for brands in India and worldwide, paid ads, SEO, content, social, brand, web and automation. Open any service for details."),
+       "30 digital marketing services for brands in India and worldwide, paid ads, SEO, content, social, brand, web, AI and tech. Open any service for details."),
  "/about/": ("About FODO: Founder Anmol Singh & How We Work",
        "Why FODO exists, the six-stage Growth System that keeps every activity accountable, and Anmol Singh, the founder clients work with directly."),
  "/industries/": ("Industries We Serve: Marketing by Sector | FODO",

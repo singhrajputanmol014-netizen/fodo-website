@@ -156,7 +156,7 @@ FU.forEach(([t,r])=>add("followup",t,r,WEAK));
 ].forEach(([q,r,not])=>add("emotional",q,r,not?new RegExp(WEAK.source+"|"+not.source,"i"):WEAK));
 
 /* ---------- FODO (20+) ---------- */
-[["what is fodo",/Fear Of Digitally Out/],["what does fodo mean",/Fear Of Digitally Out/],["fodo services",/20 services/],["how much do you charge",/fixed price|scope/i],["pricing",/fixed price|scope|price/i],["free audit",/human review|Audit/i],["is the audit really free",/free|Yes/i],["contact",/7827007676|anmol@fodo/],["how can i contact anmol",/7827007676|anmol@fodo/],["who is the founder",/Anmol/],
+[["what is fodo",/Fear Of Digitally Out/],["what does fodo mean",/Fear Of Digitally Out/],["fodo services",/30 services/],["how much do you charge",/fixed price|scope/i],["pricing",/fixed price|scope|price/i],["free audit",/human review|Audit/i],["is the audit really free",/free|Yes/i],["contact",/7827007676|anmol@fodo/],["how can i contact anmol",/7827007676|anmol@fodo/],["who is the founder",/Anmol/],
  ["where is fodo located",/Najafgarh|New Delhi/],["why fodo",/compare|Diagnosis/i],["do you guarantee results",/no|No/],["what are the contract terms",/3-month|30 days/],["how long does seo take",/months/],["how do you report",/dashboard|review/i],["who owns the ad accounts",/You do/],["do you make videos",/script|production/i],["do you have case studies",/concept/i],["are you hiring",/don't have|guess/i],
  ["which industries do you work with",/E-commerce|Healthcare|Real Estate/],["what is the growth system",/Discover/],["play the game",/Challenge|game/i],["founding programme",/Founding/i],["minimum ad budget",/minimum|realistic/i]
 ].forEach(([q,r])=>add("fodo",q,r,WEAK));

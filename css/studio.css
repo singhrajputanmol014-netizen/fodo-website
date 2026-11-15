@@ -1838,3 +1838,32 @@ select.xr-act.done{border-color:var(--ok);color:var(--ok)}
 /* v47.6.2: off-screen sections keep still (js/fx.js sets data-fx-off with an IntersectionObserver) */[data-fx-off] *,[data-fx-off] *::before,[data-fx-off] *::after{animation-play-state:paused!important}
 /* v47.6.2 header fit when signed in: the account pill becomes the avatar circle (full text in its tooltip and in the menu), so "Let's talk" and the menu button sit inside the bar */@media(min-width:1024px){.header .container.has-acct .acct-chip{padding:0;width:42px;height:42px;justify-content:center;margin:0 4px 0 6px;flex:none}.header .container.has-acct .acct-chip span:last-child{display:none}.header .container.has-acct .acct-chip .acct-dot{margin:0}.header .container.has-acct .search-btn{margin-left:0}.header .container.has-acct .acct-ws{flex:none}.header .container>*{flex-shrink:0}.header .container .nav{flex-shrink:1;min-width:0}}
 @media (min-width:1024px) and (max-width:1279px){.header .container.has-acct .nav a,.header .container.has-acct .nav .sub-btn{padding:8px 7px;font-size:13px}.header .container.has-acct .acct-ws{padding-left:12px;padding-right:12px}}
+
+/* v51.2 brand band: brands the FODO team has worked with (home). Pure CSS marquee, no scripts.
+   Logos live in assets/brands/. Tiles stay white in both themes because the logos were drawn for light sites. */
+.bb{padding:46px 0 10px}
+.bb .container{max-width:var(--wrap,1200px)}
+.bb-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 18px;margin-bottom:22px}
+.bb-head p{margin:0}
+.bb-head .bb-sub{color:var(--muted,#6a6c74);font-size:14px}
+.bb-strip{position:relative;overflow:hidden;--bb-gap:18px;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}
+.bb-track{display:flex;width:max-content;margin:0;padding:6px 0 18px;list-style:none;animation:bbScroll 42s linear infinite}
+.bb-strip:hover .bb-track,.bb-strip:focus-within .bb-track{animation-play-state:paused}
+.bb-card{flex:none;display:flex;align-items:center;justify-content:center;height:92px;min-width:150px;margin-right:var(--bb-gap);
+  padding:16px 26px;background:#fff;border:1px solid var(--hairline,rgba(16,17,20,.1));border-radius:16px;
+  filter:grayscale(1);opacity:.85;transition:filter .35s var(--ease,ease),opacity .35s,transform .35s,box-shadow .35s}
+.bb-card:hover{filter:grayscale(0);opacity:1;transform:translateY(-5px);box-shadow:0 16px 34px rgba(16,17,20,.14)}
+.bb-card img{display:block;max-height:52px;max-width:160px;width:auto;height:auto}
+html[data-theme="dark"] .bb-card{border-color:rgba(255,255,255,.1)}
+html[data-theme="dark"] .bb-card:hover{box-shadow:0 16px 34px rgba(0,0,0,.5)}
+@keyframes bbScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){
+  .bb-track{animation:none;width:auto;flex-wrap:wrap;justify-content:center;gap:var(--bb-gap)}
+  .bb-card{margin-right:0}
+  .bb-dup{display:none}
+  .bb-strip{-webkit-mask-image:none;mask-image:none}}
+@media (max-width:640px){.bb-card{height:76px;min-width:120px;padding:12px 18px}.bb-card img{max-height:42px;max-width:130px}}
+.bb-card.bb-inv{background:#132a1b;border-color:#132a1b}
+.bb-card.bb-inv:hover{box-shadow:0 16px 34px rgba(19,42,27,.35)}

@@ -1,8 +1,8 @@
 # FODO: SEO audit report
 
-Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
+Generated 2026-11-15 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
-**108 HTML pages · 101 sitemap URLs · 11 errors · 9 warnings · 8 notes**
+**119 HTML pages · 112 sitemap URLs · 11 errors · 9 warnings · 8 notes**
 
 ## Issues
 
@@ -39,11 +39,12 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 
 | URL | Title len | Desc len | H1 | Static words | Schema | Title |
 |---|---|---|---|---|---|---|
-| `/` | 58 | 154 | 1 | 1323 | Organization,Person,ProfessionalService,WebSite | FODO: Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
+| `/` | 58 | 154 | 1 | 1326 | Organization,Person,ProfessionalService,WebSite | FODO: Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
 | `/404.html` | 20 | 65 | 1 | 30 | — | Page not found: FODO |
 | `/about/` | 45 | 140 | 1 | 388 | BreadcrumbList,Person | About FODO: Founder Anmol Singh &amp; How We Work |
 | `/account/` | 30 | 135 | 1 | 8 | BreadcrumbList | Your Growth Lab Account | FODO |
 | `/admin/` | 10 | 0 | 0 | 6 | — | FODO Admin |
+| `/become-a-pro/` | 47 | 152 | 1 | 703 | BreadcrumbList,FAQPage | Become a FODO Pro: Apply to Join FODO&#x27;s Network |
 | `/business-x-ray/` | 58 | 144 | 1 | 378 | BreadcrumbList | Business X-Ray: Free Website &amp; Competitor Diagnosis | FODO |
 | `/competitor-finder/` | 56 | 150 | 1 | 517 | BreadcrumbList | Competitor Finder: Any Business, Brand or Startup | FODO |
 | `/contact/` | 47 | 150 | 1 | 37 | BreadcrumbList | Contact FODO: Free Growth Audit &amp; Strategy Call |
@@ -114,27 +115,37 @@ Generated 2026-11-01 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/resources/` | 44 | 148 | 1 | 292 | BreadcrumbList | Free Marketing Checklists &amp; Resources | FODO |
 | `/reviews/` | 38 | 147 | 1 | 68 | BreadcrumbList | FODO Reviews: Verified Client Feedback |
 | `/roi-calculator/` | 55 | 142 | 1 | 216 | BreadcrumbList | Marketing ROI Calculator: Leads, Sales &amp; Payback | FODO |
-| `/services/` | 58 | 153 | 1 | 245 | BreadcrumbList | Digital Marketing Services: SEO, Ads, Content &amp; Web | FODO |
-| `/services/analytics/` | 59 | 145 | 1 | 793 | BreadcrumbList,FAQPage,Service | Marketing Analytics &amp; GA4 Setup in India &amp; Worldwide | FODO |
+| `/services/` | 58 | 151 | 1 | 358 | BreadcrumbList | Digital Marketing Services: SEO, Ads, Content &amp; Web | FODO |
+| `/services/ai-automation/` | 48 | 148 | 1 | 877 | BreadcrumbList,FAQPage,Service | AI Automation Agency in India &amp; Worldwide | FODO |
+| `/services/ai-chat-assistants/` | 54 | 151 | 1 | 942 | BreadcrumbList,FAQPage,Service | AI Chat Assistants: Instagram, WhatsApp &amp; Email | FODO |
+| `/services/analytics/` | 59 | 145 | 1 | 808 | BreadcrumbList,FAQPage,Service | Marketing Analytics &amp; GA4 Setup in India &amp; Worldwide | FODO |
+| `/services/app-development/` | 52 | 152 | 1 | 920 | BreadcrumbList,FAQPage,Service | App Design &amp; Development in India &amp; Worldwide | FODO |
 | `/services/brand-identity/` | 49 | 145 | 1 | 733 | BreadcrumbList,FAQPage,Service | Brand Identity Design in India &amp; Worldwide | FODO |
 | `/services/brand-strategy/` | 49 | 155 | 1 | 744 | BreadcrumbList,FAQPage,Service | Brand Strategy Agency in India &amp; Worldwide | FODO |
-| `/services/content-marketing/` | 52 | 147 | 1 | 764 | BreadcrumbList,FAQPage,Service | Content Marketing Agency in India &amp; Worldwide | FODO |
-| `/services/copywriting/` | 48 | 154 | 1 | 747 | BreadcrumbList,FAQPage,Service | Copywriting Services in India &amp; Worldwide | FODO |
+| `/services/cloud-kitchen-marketing/` | 59 | 147 | 1 | 945 | BreadcrumbList,FAQPage,Service | Cloud Kitchen Setup &amp; Marketing in India &amp; Worldwide | FODO |
+| `/services/content-marketing/` | 52 | 147 | 1 | 767 | BreadcrumbList,FAQPage,Service | Content Marketing Agency in India &amp; Worldwide | FODO |
+| `/services/copywriting/` | 48 | 154 | 1 | 750 | BreadcrumbList,FAQPage,Service | Copywriting Services in India &amp; Worldwide | FODO |
 | `/services/cro/` | 56 | 154 | 1 | 797 | BreadcrumbList,FAQPage,Service | Conversion Rate Optimisation in India &amp; Worldwide | FODO |
-| `/services/ecommerce-seo/` | 49 | 155 | 1 | 796 | BreadcrumbList,FAQPage,Service | E-commerce SEO Agency in India &amp; Worldwide | FODO |
+| `/services/ecommerce-seo/` | 49 | 155 | 1 | 800 | BreadcrumbList,FAQPage,Service | E-commerce SEO Agency in India &amp; Worldwide | FODO |
+| `/services/email-marketing/` | 50 | 146 | 1 | 787 | BreadcrumbList,FAQPage,Service | Email Marketing Agency in India &amp; Worldwide | FODO |
+| `/services/ga4-gtm-setup/` | 58 | 146 | 1 | 896 | BreadcrumbList,FAQPage,Service | GA4 &amp; Google Tag Manager Setup in India &amp; Worldwide | FODO |
 | `/services/google-ads/` | 45 | 154 | 1 | 896 | BreadcrumbList,FAQPage,Service | Google Ads Agency in India &amp; Worldwide | FODO |
+| `/services/google-business-profile/` | 60 | 150 | 1 | 891 | BreadcrumbList,FAQPage,Service | Google Business Profile Management: India &amp; Worldwide | FODO |
+| `/services/hrms-setup/` | 55 | 151 | 1 | 856 | BreadcrumbList,FAQPage,Service | HRMS Setup &amp; Implementation in India &amp; Worldwide | FODO |
 | `/services/influencer-marketing/` | 55 | 157 | 1 | 795 | BreadcrumbList,FAQPage,Service | Influencer Marketing Agency in India &amp; Worldwide | FODO |
 | `/services/landing-pages/` | 47 | 150 | 1 | 796 | BreadcrumbList,FAQPage,Service | Landing Page Design in India &amp; Worldwide | FODO |
 | `/services/linkedin-ads/` | 55 | 152 | 1 | 824 | BreadcrumbList,FAQPage,Service | LinkedIn Ads Agency for B2B in India &amp; Worldwide | FODO |
-| `/services/local-seo/` | 46 | 148 | 1 | 816 | BreadcrumbList,FAQPage,Service | Local SEO Services in India &amp; Worldwide | FODO |
-| `/services/marketing-automation/` | 59 | 141 | 1 | 747 | BreadcrumbList,FAQPage,Service | Marketing Automation &amp; WhatsApp in India &amp; Worldwide | FODO |
+| `/services/local-seo/` | 46 | 148 | 1 | 820 | BreadcrumbList,FAQPage,Service | Local SEO Services in India &amp; Worldwide | FODO |
+| `/services/marketing-automation/` | 59 | 141 | 1 | 762 | BreadcrumbList,FAQPage,Service | Marketing Automation &amp; WhatsApp in India &amp; Worldwide | FODO |
+| `/services/marketplace-listing/` | 55 | 151 | 1 | 888 | BreadcrumbList,FAQPage,Service | E-commerce Marketplace Listing Services in India | FODO |
 | `/services/meta-ads/` | 53 | 148 | 1 | 864 | BreadcrumbList,FAQPage,Service | Meta Ads Agency: Facebook &amp; Instagram in India | FODO |
 | `/services/paid-advertising/` | 51 | 157 | 1 | 909 | BreadcrumbList,FAQPage,Service | Paid Advertising Agency in India &amp; Worldwide | FODO |
-| `/services/seo/` | 38 | 150 | 1 | 839 | BreadcrumbList,FAQPage,Service | SEO Agency in India &amp; Worldwide | FODO |
+| `/services/seo/` | 38 | 150 | 1 | 843 | BreadcrumbList,FAQPage,Service | SEO Agency in India &amp; Worldwide | FODO |
 | `/services/short-form-content/` | 52 | 153 | 1 | 752 | BreadcrumbList,FAQPage,Service | Reels &amp; Short-Form Video in India &amp; Worldwide | FODO |
 | `/services/social-media/` | 57 | 147 | 1 | 788 | BreadcrumbList,FAQPage,Service | Social Media Marketing Agency in India &amp; Worldwide | FODO |
 | `/services/tiktok-ads/` | 52 | 147 | 1 | 763 | BreadcrumbList,FAQPage,Service | TikTok &amp; Short-Video Ads in India &amp; Worldwide | FODO |
 | `/services/web-design/` | 50 | 160 | 1 | 780 | BreadcrumbList,FAQPage,Service | Website Design Company in India &amp; Worldwide | FODO |
+| `/services/whatsapp-marketing/` | 53 | 151 | 1 | 833 | BreadcrumbList,FAQPage,Service | WhatsApp Marketing Agency in India &amp; Worldwide | FODO |
 | `/teardowns/` | 33 | 135 | 1 | 486 | BreadcrumbList | Ad &amp; Landing Page Teardowns: FODO |
 | `/templates/` | 59 | 142 | 1 | 295 | BreadcrumbList | Free Marketing Templates: Calendar, Ad Brief, Report | FODO |
 | `/thank-you/` | 15 | 38 | 1 | 35 | — | Thank You: FODO |

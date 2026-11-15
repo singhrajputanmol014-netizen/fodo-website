@@ -27,7 +27,7 @@ ICON = {
 
 def art(kind, **k):
     parts = []
-    if kind == "orbit":            # Services, 20 services, 7 pillars, one connected system
+    if kind == "orbit":            # Services, 30 services, 8 pillars, one connected system
         pillars = k.get("pillars", [])
         parts.append('<span class="ring" style="--s:92%"></span><span class="ring" style="--s:64%"></span><span class="ring" style="--s:36%"></span>')
         import math

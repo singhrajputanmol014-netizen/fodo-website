@@ -161,7 +161,7 @@ def ASIDE(label, items, seq=False, note=""):
     return f'<aside class="ha-aside" aria-label="{X(label)}"><p class="ha-label">{X(label)}</p><{tag} class="ha-list{" seq" if seq else ""}">{lis}</{tag}>' + (f'<p class="ha-note">{X(note)}</p>' if note else "") + "</aside>"
 HERO_ART.update({
  "About FODO": (ASIDE("The Growth System", [(x["name"], "#growth-system") for x in _D["stages"]], seq=True), ""),
- "Services": (ASIDE("Seven pillars", [(p["name"], p["first"] + "/") for p in _D["pillars"]], note="20 services, one connected system."), ""),
+ "Services": (ASIDE("Eight pillars", [(p["name"], p["first"] + "/") for p in _D["pillars"]], note="30 services, one connected system."), ""),
  "Industries": (ASIDE("Playbooks", [(i["name"], "#" + i["slug"]) for i in _D["industries"]]), IDX([("Typical challenges", "What usually holds growth back."), ("Channels & KPIs", "Where to show up and what to measure."), ("The FODO approach", "General guidance, not guarantees.")])),
  "Work": (ASIDE("Concept engagements", [(__import__("re").split(r" — |: ", c["title"])[0], "#" + c["slug"]) for c in _D["cases"]], note="Marked concept: structure and thinking, not client claims."), ""),
  "Insights": (ASIDE("Recent articles", [(a["title"], "#" + a["slug"]) for a in _D["articles"][:5]]), ""),
@@ -218,9 +218,27 @@ NCR_BLOCK = ('<div class="ncr-block reveal"><h3>Built for ambitious brands, wher
 SVC_BENTO = ('<div class="grid g3 reveal bento">' + "".join(
     f'<a class="panel hud spot" href="services/{sl}/"><h3>{n}</h3><p class="muted" style="font-size:14px;margin:0">{d}</p><span class="panel-line"></span></a>'
     for sl, n, d in [("paid-advertising", "Paid Media", "Buy attention and turn it into results you can count."), ("seo", "SEO", "Be found before you are needed."), ("content-marketing", "Content", "Earn attention with material that keeps working."), ("social-media", "Social", "Show up with purpose and consistency."), ("brand-strategy", "Brand", "Know who you are before they ask."), ("marketing-automation", "Automation", "Follow up while you sleep.")])
-    + '</div><h3 style="margin-top:40px">All 20 services</h3><div class="marquee" id="services-strip"></div>')
+    + '</div><h3 style="margin-top:40px">All 30 services</h3><div class="marquee" id="services-strip"></div>')
+# ---- v51.2 brand band: brands the FODO team has worked with (marketing, websites, apps, HRMS and more).
+# Logos pulled from each brand's own live website into assets/brands/ (Plann4U and Ante Air Logistics are set
+# as wordmarks until their logo files arrive). Pure CSS marquee (css/studio.css .bb-*), no inline scripts.
+BRANDS = [
+    ("abrakh", "ABRAKH", ""), ("agricul", "Agricul", ""), ("gpcgroup", "GPC Group", " bb-inv"), ("expocity", "Expocity Travels", ""),
+    ("flyscan", "Flyscan", ""), ("asiadawn", "Asia Dawn Bio Care", ""), ("gausuch", "Gausuch Farms", ""),
+    ("khushi", "Khushi Studio", ""), ("jeevanshakti", "Jeevan Shakti Herbs", ""), ("plann4u", "Plann4U", ""),
+    ("anteair", "Ante Air Logistics", ""),
+]
+_BB_CARDS = "".join(f'<li class="bb-card{v}"><img src="assets/brands/{f}.webp" alt="{X(n)} logo" loading="lazy" decoding="async"></li>' for f, n, v in BRANDS)
+BRAND_BAND = ('<section class="bb" aria-label="Brands we have worked with"><div class="container">'
+    '<div class="bb-head reveal"><p class="eyebrow">Brands we have worked with</p>'
+    '<p class="bb-sub">Marketing, websites, e-commerce, apps and HRMS work delivered for these brands by the FODO team.</p></div>'
+    '<div class="bb-strip"><ul class="bb-track">' + _BB_CARDS + '</ul></div>'
+    '</div></section>').replace('<ul class="bb-track">' + _BB_CARDS,
+    '<ul class="bb-track">' + _BB_CARDS + _BB_CARDS.replace('<li class="bb-card', '<li aria-hidden="true" class="bb-card bb-dup'))
+
 HOME_SECTIONS = (
- sec("01", "What are you afraid of?", '<p class="flip-line reveal">Being <span class="flip" data-flip="invisible.|irrelevant.|outdated.|unnoticed.|outperformed.">invisible.</span></p><p class="reveal" style="max-width:62ch">Brands no longer compete only with direct rivals. They compete for attention, relevance, trust, visibility and speed. The fear of being digitally out is rational, and fixable with a plan you can measure.</p><a class="btn ghost" data-route="about" href="#about-system">See how we work</a>', "afraid")
+ BRAND_BAND
+ + sec("01", "What are you afraid of?", '<p class="flip-line reveal">Being <span class="flip" data-flip="invisible.|irrelevant.|outdated.|unnoticed.|outperformed.">invisible.</span></p><p class="reveal" style="max-width:62ch">Brands no longer compete only with direct rivals. They compete for attention, relevance, trust, visibility and speed. The fear of being digitally out is rational, and fixable with a plan you can measure.</p><a class="btn ghost" data-route="about" href="#about-system">See how we work</a>', "afraid")
  + sec("02", "We build digital growth systems.", SVC_BENTO + NCR_BLOCK)
  + sec("03", "The FODO Growth System", '<p class="lead reveal" style="max-width:60ch">Six stages, in order. Nothing moves to the next stage until you approve it, and every stage has a number we track.</p>' + GS_FLOW + '<div class="btn-row"><a class="btn ghost" data-route="about" href="#growth-system">How the system works</a></div>')
  + sec("04", "Selected work", '<p class="muted" style="max-width:62ch">How we think through a growth problem, shown as concept studies. Real client stories appear only with written approval.</p><div class="wl-grid reveal">' + "".join(work_card_lite(c, f'work/{c["slug"]}/') for c in _D["cases"][:3]) + '</div><div class="btn-row"><a class="btn ghost" data-route="work" href="#">See all 6 concept studies</a></div>')
@@ -261,7 +279,7 @@ pages["about"] = ("about", "/about/", "About FODO & Founder Anmol Singh: FODO", 
  sec("05","Next step",'<div class="btn-row">'+A+'<a class="btn ghost" data-route="services" href="#">Explore services</a></div>'),
  1, '<script type="application/ld+json">'+json.dumps({"@context":"https://schema.org","@type":"Person","name":"Anmol Singh","jobTitle":"Founder","worksFor":{"@type":"Organization","name":"FODO"},"sameAs":["https://www.linkedin.com/in/anmol-singh-43720724a"]})+'</script>', ())
 
-pages["services"] = ("services","/services/","Digital Marketing Services for Growing Brands | FODO","20 digital marketing services for brands in India and worldwide, paid ads, SEO, content, social, brand, web and automation. Open any service for details.",
+pages["services"] = ("services","/services/","Digital Marketing Services for Growing Brands | FODO","30 digital marketing services for brands in India and worldwide, paid ads, SEO, content, social, brand, web, AI and tech. Open any service for details.",
  hero("Services","Services, everything your brand needs to compete digitally.","Twenty focused services, one connected system. Filter by pillar, open any service for the problem it solves, what we do, what we track and who it is for.",A+'<a class="btn ghost" data-route="about" href="#growth-system">How the Growth System works</a>')+
  '<section id="services-wrap"><div class="container"><div id="services-list"><div class="filters" id="services-filters" role="group" aria-label="Filter services"></div><div class="grid g3" id="services-grid">'+SVC_GRID+'</div></div><div class="detail" hidden></div></div></section>',1,"",())
 pages["industries"] = ("industries","/industries/","Industries We Serve: FODO","Growth approaches for e-commerce, healthcare, real estate, startups, SaaS, local business and personal brands.",

@@ -1,7 +1,7 @@
 {
 "/": [
-"3f180bb6b9f52b90",
-"2026-11-01"
+"03cb8db60206e8f1",
+"2026-11-15"
 ],
 "/about/": [
 "95b0ee9c2726b256",
@@ -284,12 +284,24 @@
 "2026-11-05"
 ],
 "/services/": [
-"9ba9eba4e62119bf",
-"2026-10-31"
+"95780e05888472f9",
+"2026-11-15"
+],
+"/services/ai-automation/": [
+"90b54a3339c2f0b5",
+"2026-11-15"
+],
+"/services/ai-chat-assistants/": [
+"7a22e5a6c4c93a37",
+"2026-11-15"
 ],
 "/services/analytics/": [
-"2db7c52ddb7c6f9b",
-"2026-10-31"
+"c46b1365c92b81f1",
+"2026-11-15"
+],
+"/services/app-development/": [
+"98918bc13cae19c9",
+"2026-11-15"
 ],
 "/services/brand-identity/": [
 "96db0be7814b08ac",
@@ -299,25 +311,45 @@
 "b69409d2a4f40ad7",
 "2026-10-31"
 ],
+"/services/cloud-kitchen-marketing/": [
+"a5de7c565b5ae25b",
+"2026-11-15"
+],
 "/services/content-marketing/": [
-"53b7b6ebe14cf011",
-"2026-10-31"
+"4ee31f2af0e3358c",
+"2026-11-15"
 ],
 "/services/copywriting/": [
-"b7778047568f8277",
-"2026-10-31"
+"31cb470ed0db3479",
+"2026-11-15"
 ],
 "/services/cro/": [
 "0dc9ea90a9e7966b",
 "2026-10-31"
 ],
 "/services/ecommerce-seo/": [
-"83315cb0e4e49887",
-"2026-10-31"
+"1a97f222087350b5",
+"2026-11-15"
+],
+"/services/email-marketing/": [
+"5e18ad9e89662bc8",
+"2026-11-15"
+],
+"/services/ga4-gtm-setup/": [
+"6449c7e5f40ee812",
+"2026-11-15"
 ],
 "/services/google-ads/": [
 "ff085164dc8bb673",
 "2026-10-31"
+],
+"/services/google-business-profile/": [
+"273be01f88cf051a",
+"2026-11-15"
+],
+"/services/hrms-setup/": [
+"c8b601cd8d9a8f43",
+"2026-11-15"
 ],
 "/services/influencer-marketing/": [
 "78f326c11cb103e8",
@@ -332,12 +364,16 @@
 "2026-10-31"
 ],
 "/services/local-seo/": [
-"65e9c7c6d51c79e5",
-"2026-10-31"
+"b37195b4258d565b",
+"2026-11-15"
 ],
 "/services/marketing-automation/": [
-"5264f455fadb1792",
-"2026-10-31"
+"dff4f63f2eaf434e",
+"2026-11-15"
+],
+"/services/marketplace-listing/": [
+"364cbb9969bb0c32",
+"2026-11-15"
 ],
 "/services/meta-ads/": [
 "2fac690d29b99479",
@@ -348,8 +384,8 @@
 "2026-10-31"
 ],
 "/services/seo/": [
-"87ef175e953af8cd",
-"2026-10-31"
+"226239e548f9e3f5",
+"2026-11-15"
 ],
 "/services/short-form-content/": [
 "de9d0d9d3a7853aa",
@@ -367,6 +403,10 @@
 "8983e0d8d623c675",
 "2026-10-31"
 ],
+"/services/whatsapp-marketing/": [
+"bc58e49c34a8dfbc",
+"2026-11-15"
+],
 "/teardowns/": [
 "214606e11be7f12a",
 "2026-10-31"
@@ -377,7 +417,7 @@
 ],
 "/website-builder/": [
 "wb",
-"2026-11-05"
+"2026-11-15"
 ],
 "/work/": [
 "fc71d15723eeb508",

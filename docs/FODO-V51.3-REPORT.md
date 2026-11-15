@@ -34,3 +34,7 @@ Owner follow-up: Anmol and Rohit both reachable by call and WhatsApp everywhere 
 - Test updated for the intentional change: `design-smoke` "WhatsApp links point to FODO number" now accepts
   either founder's number (was Anmol-only). All suites re-run green: v5-pages 668/668, v9-seo 137/137,
   v6-features 40/40, design-smoke 23/23, bot-regression 547/547, check.mjs OK (605 files).
+
+Owner corrections, same day: Rohit's Background keeps the MBA (Marketing + IT) only (no B.Tech); Anmol's
+Background gains "BBA in Marketing"; Anmol's /about/ block gains a "Call +91 7827007676" button next to
+LinkedIn and WhatsApp. Suites re-run green: v5-pages 668/668, design-smoke 23/23, v9-seo 137/137.

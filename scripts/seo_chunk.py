@@ -4,7 +4,7 @@
 # central titles/descriptions, entity schema. Nothing here changes the visual design.
 # ==================================================================================================================
 import re as _r9
-from seo_config import (PAGE_META, service_title, ARTICLE_SERVICE, ARTICLE_UPDATED, org_graph, person, provider_ref,
+from seo_config import (PAGE_META, service_title, ARTICLE_SERVICE, ARTICLE_UPDATED, org_graph, person, cofounder_person, provider_ref,
                         ORG_ID, BIZ_ID, FOUNDER_ID, FOUNDER, OG_IMAGE)
 from seo_markets import MARKETS, INDIA_CITIES, INTERNATIONAL
 
@@ -118,7 +118,7 @@ for _key, _p in list(pages.items()):
 # ---------- entity schema: home graph, founder on About ----------
 _LDRE = _r9.compile(r'<script type="application/ld\+json">.*?</script>', _r9.S)
 _hp = list(pages["home"]); _hp[6] = _LDRE.sub("", _hp[6]) + LD(org_graph()); pages["home"] = tuple(_hp)
-_ab = list(pages["about"]); _ab[6] = _LDRE.sub("", _ab[6]) + LD(dict(person(), **{"@context": "https://schema.org", "description": "Founder of FODO, a digital growth agency headquartered in New Delhi, India."}), crumbs_ld([("Home", "/"), ("About", "/about/")])); pages["about"] = tuple(_ab)
+_ab = list(pages["about"]); _ab[6] = _LDRE.sub("", _ab[6]) + LD(dict(person(), **{"@context": "https://schema.org", "description": "Founder of FODO, a digital growth agency headquartered in New Delhi, India."}), dict(cofounder_person(), **{"@context": "https://schema.org", "description": "Co-founder of FODO, leading websites, e-commerce, HRMS, CRM, analytics and AI automation."}), crumbs_ld([("Home", "/"), ("About", "/about/")])); pages["about"] = tuple(_ab)
 
 # ---------- breadcrumbs (schema) for top-level pages that had none ----------
 for _key, _p in list(pages.items()):

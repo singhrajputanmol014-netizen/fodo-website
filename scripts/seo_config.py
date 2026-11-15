@@ -24,8 +24,13 @@ ADDRESS = {"@type": "PostalAddress", "streetAddress": "65 M Block, New Roshanpur
 INSTAGRAM = "https://instagram.com/fodo.co.in"
 FOUNDER = "Anmol Singh"
 FOUNDER_LINKEDIN = "https://www.linkedin.com/in/anmol-singh-43720724a"
+COFOUNDER = "Rohit Saini"
+COFOUNDER_LINKEDIN = "https://www.linkedin.com/in/rohit-saini-7748a6280"
+COFOUNDER_EMAIL = "rohit@fodo.co.in"
+COFOUNDER_PHONE = "+918901492884"
 
 ORG_ID, BIZ_ID, SITE_ID, FOUNDER_ID = SITE + "/#organization", SITE + "/#business", SITE + "/#website", SITE + "/about/#founder"
+COFOUNDER_ID = SITE + "/about/#cofounder"
 AREA_SERVED = [{"@type": "Country", "name": n} for n in
                ["India", "United Arab Emirates", "United Kingdom", "United States", "Canada", "Australia", "Singapore"]]
 KNOWS_ABOUT = ["Digital marketing", "Search engine optimisation", "Local SEO", "Google Ads", "Meta Ads", "LinkedIn Ads", "Content marketing",
@@ -37,8 +42,10 @@ def org_graph():
     """Organization + ProfessionalService + WebSite + founder Person, the home page's entity graph."""
     org = {"@type": "Organization", "@id": ORG_ID, "name": BRAND, "legalName": LEGAL_NAME, "alternateName": ["Fear Of Digitally Out", "FODO Digital"],
            "slogan": TAGLINE, "url": SITE + "/", "logo": {"@type": "ImageObject", "url": LOGO}, "image": OG_IMAGE, "email": EMAIL,
-           "telephone": PHONE, "address": ADDRESS, "founder": {"@id": FOUNDER_ID}, "sameAs": [INSTAGRAM],
+           "telephone": PHONE, "address": ADDRESS, "founder": [{"@id": FOUNDER_ID}, {"@id": COFOUNDER_ID}], "sameAs": [INSTAGRAM],
            "contactPoint": [{"@type": "ContactPoint", "contactType": "sales", "email": EMAIL, "telephone": PHONE,
+                             "availableLanguage": ["English", "Hindi"], "areaServed": "Worldwide"},
+                            {"@type": "ContactPoint", "contactType": "sales", "email": COFOUNDER_EMAIL, "telephone": COFOUNDER_PHONE,
                              "availableLanguage": ["English", "Hindi"], "areaServed": "Worldwide"}],
            "areaServed": AREA_SERVED, "knowsAbout": KNOWS_ABOUT}
     biz = {"@type": "ProfessionalService", "@id": BIZ_ID, "name": LEGAL_NAME, "url": SITE + "/", "image": OG_IMAGE, "logo": LOGO,
@@ -49,11 +56,15 @@ def org_graph():
            "publisher": {"@id": ORG_ID},
            "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": SITE + "/?q={search_term_string}"},
                                "query-input": "required name=search_term_string"}}
-    return {"@context": "https://schema.org", "@graph": [org, biz, web, person()]}
+    return {"@context": "https://schema.org", "@graph": [org, biz, web, person(), cofounder_person()]}
 
 def person():
     return {"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "jobTitle": "Founder", "worksFor": {"@id": ORG_ID},
             "url": SITE + "/about/#founder", "sameAs": [FOUNDER_LINKEDIN]}
+
+def cofounder_person():
+    return {"@type": "Person", "@id": COFOUNDER_ID, "name": COFOUNDER, "jobTitle": "Co-founder", "worksFor": {"@id": ORG_ID},
+            "url": SITE + "/about/#cofounder", "email": COFOUNDER_EMAIL, "telephone": COFOUNDER_PHONE, "sameAs": [COFOUNDER_LINKEDIN]}
 
 def provider_ref():
     """Short reference used by Service / location schema so every page points at the same entity."""
@@ -68,8 +79,8 @@ PAGE_META = {
        "FODO is a digital growth agency headquartered in New Delhi: SEO, paid ads, content, social, brand and web for ambitious brands across India and worldwide."),
  "/services/": ("Digital Marketing Services: SEO, Ads, Content & Web | FODO",
        "30 digital marketing services for brands in India and worldwide, paid ads, SEO, content, social, brand, web, AI and tech. Open any service for details."),
- "/about/": ("About FODO: Founder Anmol Singh & How We Work",
-       "Why FODO exists, the six-stage Growth System that keeps every activity accountable, and Anmol Singh, the founder clients work with directly."),
+ "/about/": ("About FODO: Founders Anmol Singh & Rohit Saini",
+       "Why FODO exists, the six-stage Growth System that keeps work accountable, and the founders clients work with directly: Anmol Singh and Rohit Saini."),
  "/industries/": ("Industries We Serve: Marketing by Sector | FODO",
        "How FODO approaches growth for e-commerce and D2C, healthcare, real estate, startups, SaaS, local businesses and personal brands, challenges, channels, KPIs."),
  "/work/": ("Work: Concept Case Studies | FODO",

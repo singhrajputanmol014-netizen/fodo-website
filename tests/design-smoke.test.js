@@ -27,7 +27,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   ok((await p.textContent("h1")).replace(/\s+/g, " ").includes("Don't let your brand disappear."), "headline text intact for SEO / screen readers");
   ok((await p.$$("h1")).length === 1, "single real h1");
   // links
-  const wa = await p.$$eval("a[href*='wa.me']", (a) => a.map((x) => x.href)); ok(wa.length && wa.every((h) => h.startsWith("https://wa.me/917827007676")), "WhatsApp links point to FODO number");
+  const wa = await p.$$eval("a[href*='wa.me']", (a) => a.map((x) => x.href)); ok(wa.length && wa.every((h) => h.startsWith("https://wa.me/917827007676") || h.startsWith("https://wa.me/918901492884")), "WhatsApp links point to FODO numbers (Anmol or Rohit)");
   const mail = await p.$$eval("a[href^='mailto:']", (a) => a.map((x) => x.href)); ok(mail.some((h) => /anmol@fodo\.co\.in/.test(h)), "email link intact");
   // dark CTA band
   ok(await p.evaluate(() => getComputedStyle(document.querySelector(".cta-final > .container")).backgroundColor) === "rgb(91, 61, 245)", "closing CTA uses the violet band");

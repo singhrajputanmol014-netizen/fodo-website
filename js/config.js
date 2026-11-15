@@ -16,6 +16,13 @@ window.FODO = {
   linkedinUrl: "https://www.linkedin.com/in/anmol-singh-43720724a",
   founderName: "Anmol Singh",
   founderTitle: "Founder, FODO",
+  coFounderName: "Rohit Saini",
+  coFounderTitle: "Co-founder, FODO",
+  coFounderEmail: "rohit@fodo.co.in",
+  coFounderPhone: "+918901492884",
+  coFounderPhoneDisplay: "+91 89014 92884",
+  coFounderWhatsappNumber: "918901492884",
+  coFounderLinkedinUrl: "https://www.linkedin.com/in/rohit-saini-7748a6280",
   formEndpoint: "",        // Optional (Formspree/Apps Script URL). Blank = WhatsApp + copy fallback.
   bookingUrl: "",          // Optional Calendly/Cal.com URL. Blank = request a preferred slot via form.
   founderPhoto: "",        // Not used in this build (founder section is text-only by request).

@@ -26,7 +26,7 @@ Generated 2026-11-15 by `scripts/seo_audit.py` from the built files. Canonical h
 - **WARN** `/workspace/`: incomplete Twitter card tags
 - **WARN** `/workspace/`: no BreadcrumbList schema
 - **WARN** `/fodo-pros/`: orphan page (no static internal links)
-- **INFO** `/contact/`: thin static text (37 words in HTML; the rest is rendered by scripts)
+- **INFO** `/contact/`: thin static text (52 words in HTML; the rest is rendered by scripts)
 - **INFO** `/fodo-challenge/`: thin static text (113 words in HTML; the rest is rendered by scripts)
 - **INFO** `/fodo-pros/`: thin static text (5 words in HTML; the rest is rendered by scripts)
 - **INFO** `/industries/`: thin static text (129 words in HTML; the rest is rendered by scripts)
@@ -39,15 +39,15 @@ Generated 2026-11-15 by `scripts/seo_audit.py` from the built files. Canonical h
 
 | URL | Title len | Desc len | H1 | Static words | Schema | Title |
 |---|---|---|---|---|---|---|
-| `/` | 58 | 154 | 1 | 1326 | Organization,Person,ProfessionalService,WebSite | FODO: Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
+| `/` | 58 | 154 | 1 | 1371 | Organization,Person,ProfessionalService,WebSite | FODO: Digital Marketing &amp; Growth Agency, India &amp; Worldwide |
 | `/404.html` | 20 | 65 | 1 | 30 | — | Page not found: FODO |
-| `/about/` | 45 | 140 | 1 | 388 | BreadcrumbList,Person | About FODO: Founder Anmol Singh &amp; How We Work |
+| `/about/` | 46 | 147 | 1 | 500 | BreadcrumbList,Person | About FODO: Founders Anmol Singh &amp; Rohit Saini |
 | `/account/` | 30 | 135 | 1 | 8 | BreadcrumbList | Your Growth Lab Account | FODO |
 | `/admin/` | 10 | 0 | 0 | 6 | — | FODO Admin |
 | `/become-a-pro/` | 47 | 152 | 1 | 703 | BreadcrumbList,FAQPage | Become a FODO Pro: Apply to Join FODO&#x27;s Network |
 | `/business-x-ray/` | 58 | 144 | 1 | 378 | BreadcrumbList | Business X-Ray: Free Website &amp; Competitor Diagnosis | FODO |
 | `/competitor-finder/` | 56 | 150 | 1 | 517 | BreadcrumbList | Competitor Finder: Any Business, Brand or Startup | FODO |
-| `/contact/` | 47 | 150 | 1 | 37 | BreadcrumbList | Contact FODO: Free Growth Audit &amp; Strategy Call |
+| `/contact/` | 47 | 150 | 1 | 52 | BreadcrumbList | Contact FODO: Free Growth Audit &amp; Strategy Call |
 | `/faq/` | 48 | 154 | 1 | 602 | BreadcrumbList | FAQ: Services, Process &amp; Pricing Approach | FODO |
 | `/fodo-challenge/` | 45 | 138 | 1 | 113 | BreadcrumbList | The FODO Challenge: A 2-Minute Marketing Game |
 | `/fodo-pros/` | 9 | 0 | 0 | 5 | — | FODO Pros |

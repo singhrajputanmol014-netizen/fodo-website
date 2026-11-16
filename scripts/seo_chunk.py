@@ -64,8 +64,10 @@ for _k in LOCATIONS:
 ART_TITLES = {"traffic-vs-customers": "Why More Traffic Doesn't Mean More Customers", "diagnose-landing-page": "How to Diagnose a Landing Page Before Scaling Ads",
               "small-business-seo-foundation": "Small Business SEO: A Practical Foundation", "social-content-pillars": "How to Choose Social Media Content Pillars",
               "useful-marketing-dashboard": "What a Useful Marketing Dashboard Should Answer", "first-paid-media-experiment": "How to Structure Your First Paid Media Test",
-              "positioning-and-conversion": "How Brand Positioning Affects Conversion", "simple-lead-follow-up-system": "A Simple Follow-Up System for Inbound Leads"}
-ART_DESC = {"positioning-and-conversion": "Positioning is a conversion lever, not just branding. The clearer visitors are about what you are and who you are for, the faster they decide."}
+              "positioning-and-conversion": "How Brand Positioning Affects Conversion", "simple-lead-follow-up-system": "A Simple Follow-Up System for Inbound Leads",
+              "competitor-analysis-small-business": "Competitor Analysis for Small Businesses (Free)"}
+ART_DESC = {"competitor-analysis-small-business": "A one-hour, free competitor analysis method for small businesses: find real competitors, compare public signals and turn findings into three decisions.",
+            "positioning-and-conversion": "Positioning is a conversion lever, not just branding. The clearer visitors are about what you are and who you are for, the faster they decide."}
 import datetime as _dt9
 def _nice(d): return _dt9.date.fromisoformat(d).strftime("%-d %B %Y")
 def _desc_from(body):

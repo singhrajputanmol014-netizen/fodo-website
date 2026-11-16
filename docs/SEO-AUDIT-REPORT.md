@@ -2,7 +2,7 @@
 
 Generated 2026-11-16 by `scripts/seo_audit.py` from the built files. Canonical host: `https://www.fodo.co.in`.
 
-**119 HTML pages · 112 sitemap URLs · 11 errors · 9 warnings · 8 notes**
+**120 HTML pages · 113 sitemap URLs · 11 errors · 9 warnings · 8 notes**
 
 ## Issues
 
@@ -76,15 +76,16 @@ Generated 2026-11-16 by `scripts/seo_audit.py` from the built files. Canonical h
 | `/industries/real-estate/` | 56 | 151 | 1 | 277 | BreadcrumbList,FAQPage | Real Estate Marketing Agency in India &amp; Worldwide | FODO |
 | `/industries/saas/` | 49 | 144 | 1 | 245 | BreadcrumbList,FAQPage | SaaS Marketing Agency in India &amp; Worldwide | FODO |
 | `/industries/startups/` | 53 | 148 | 1 | 241 | BreadcrumbList,FAQPage | Startups Marketing Agency in India &amp; Worldwide | FODO |
-| `/insights/` | 42 | 145 | 1 | 152 | BreadcrumbList | Digital Marketing Insights &amp; Guides | FODO |
-| `/insights/diagnose-landing-page/` | 56 | 150 | 1 | 443 | Article,BreadcrumbList | How to Diagnose a Landing Page Before Scaling Ads | FODO |
-| `/insights/first-paid-media-experiment/` | 50 | 151 | 1 | 374 | Article,BreadcrumbList | How to Structure Your First Paid Media Test | FODO |
-| `/insights/positioning-and-conversion/` | 47 | 142 | 1 | 348 | Article,BreadcrumbList | How Brand Positioning Affects Conversion | FODO |
-| `/insights/simple-lead-follow-up-system/` | 50 | 122 | 1 | 373 | Article,BreadcrumbList | A Simple Follow-Up System for Inbound Leads | FODO |
-| `/insights/small-business-seo-foundation/` | 49 | 136 | 1 | 400 | Article,BreadcrumbList | Small Business SEO: A Practical Foundation | FODO |
-| `/insights/social-content-pillars/` | 49 | 158 | 1 | 396 | Article,BreadcrumbList | How to Choose Social Media Content Pillars | FODO |
-| `/insights/traffic-vs-customers/` | 51 | 144 | 1 | 428 | Article,BreadcrumbList | Why More Traffic Doesn&#x27;t Mean More Customers | FODO |
-| `/insights/useful-marketing-dashboard/` | 54 | 152 | 1 | 374 | Article,BreadcrumbList | What a Useful Marketing Dashboard Should Answer | FODO |
+| `/insights/` | 42 | 145 | 1 | 163 | BreadcrumbList | Digital Marketing Insights &amp; Guides | FODO |
+| `/insights/competitor-analysis-small-business/` | 54 | 151 | 1 | 1163 | Article,BreadcrumbList | Competitor Analysis for Small Businesses (Free) | FODO |
+| `/insights/diagnose-landing-page/` | 56 | 150 | 1 | 446 | Article,BreadcrumbList | How to Diagnose a Landing Page Before Scaling Ads | FODO |
+| `/insights/first-paid-media-experiment/` | 50 | 151 | 1 | 377 | Article,BreadcrumbList | How to Structure Your First Paid Media Test | FODO |
+| `/insights/positioning-and-conversion/` | 47 | 142 | 1 | 351 | Article,BreadcrumbList | How Brand Positioning Affects Conversion | FODO |
+| `/insights/simple-lead-follow-up-system/` | 50 | 122 | 1 | 376 | Article,BreadcrumbList | A Simple Follow-Up System for Inbound Leads | FODO |
+| `/insights/small-business-seo-foundation/` | 49 | 136 | 1 | 398 | Article,BreadcrumbList | Small Business SEO: A Practical Foundation | FODO |
+| `/insights/social-content-pillars/` | 49 | 158 | 1 | 399 | Article,BreadcrumbList | How to Choose Social Media Content Pillars | FODO |
+| `/insights/traffic-vs-customers/` | 51 | 144 | 1 | 431 | Article,BreadcrumbList | Why More Traffic Doesn&#x27;t Mean More Customers | FODO |
+| `/insights/useful-marketing-dashboard/` | 54 | 152 | 1 | 377 | Article,BreadcrumbList | What a Useful Marketing Dashboard Should Answer | FODO |
 | `/legal/` | 50 | 155 | 1 | 1009 | BreadcrumbList | Privacy Policy, Cookies, Terms &amp; Disclaimer | FODO |
 | `/locations/` | 39 | 131 | 1 | 217 | BreadcrumbList | Where We Work: India &amp; Worldwide | FODO |
 | `/locations/australia/` | 57 | 149 | 1 | 483 | BreadcrumbList,FAQPage,Service | Digital Marketing Agency for Australian Businesses | FODO |

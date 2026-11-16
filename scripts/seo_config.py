@@ -22,6 +22,9 @@ PHONE = "+917827007676"
 ADDRESS = {"@type": "PostalAddress", "streetAddress": "65 M Block, New Roshanpura, Najafgarh", "addressLocality": "New Delhi",
            "addressRegion": "Delhi", "postalCode": "110043", "addressCountry": "IN"}
 INSTAGRAM = "https://instagram.com/fodo.co.in"
+X_PROFILE = "https://x.com/fodo_media"   # v51.4: FODO brand account on X
+LINKEDIN_COMPANY = "https://www.linkedin.com/company/fodo_co_in/"   # v51.5: FODO company page
+FACEBOOK_PAGE = "https://www.facebook.com/profile.php?id=61576317054529"   # v51.5: FODO Facebook Page
 FOUNDER = "Anmol Singh"
 FOUNDER_LINKEDIN = "https://www.linkedin.com/in/anmol-singh-43720724a"
 COFOUNDER = "Rohit Saini"
@@ -42,7 +45,7 @@ def org_graph():
     """Organization + ProfessionalService + WebSite + founder Person, the home page's entity graph."""
     org = {"@type": "Organization", "@id": ORG_ID, "name": BRAND, "legalName": LEGAL_NAME, "alternateName": ["Fear Of Digitally Out", "FODO Digital"],
            "slogan": TAGLINE, "url": SITE + "/", "logo": {"@type": "ImageObject", "url": LOGO}, "image": OG_IMAGE, "email": EMAIL,
-           "telephone": PHONE, "address": ADDRESS, "founder": [{"@id": FOUNDER_ID}, {"@id": COFOUNDER_ID}], "sameAs": [INSTAGRAM],
+           "telephone": PHONE, "address": ADDRESS, "founder": [{"@id": FOUNDER_ID}, {"@id": COFOUNDER_ID}], "sameAs": [INSTAGRAM, X_PROFILE, LINKEDIN_COMPANY, FACEBOOK_PAGE],
            "contactPoint": [{"@type": "ContactPoint", "contactType": "sales", "email": EMAIL, "telephone": PHONE,
                              "availableLanguage": ["English", "Hindi"], "areaServed": "Worldwide"},
                             {"@type": "ContactPoint", "contactType": "sales", "email": COFOUNDER_EMAIL, "telephone": COFOUNDER_PHONE,

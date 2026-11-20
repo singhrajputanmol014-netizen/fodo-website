@@ -75,3 +75,39 @@ user's own computer, never from FODO's servers, and the Studio must look exactly
   - The NSIS installer has not been run on a Windows PC.
   - Neither is code-signed: Windows SmartScreen asks "More info ▸ Run anyway"; on a Mac, right-click ▸ Open.
 - **Tests:** v52 100/100 (control panel isolation, downloads, manifest, new tabs). App: 202 passed (power tiers incl. Apple / AMD, personal edition, health CORS).
+
+## v52.3: Mac audit (20-11-2026)
+
+No Mac was available, so the audit used code review, checks against the vendors' current pages, the real Python wheels resolved for macOS, and a full install run in a Mac-like shell.
+
+### Problems found and fixed
+1. **Homebrew's `ffmpeg` no longer renders captions.**
+   - Homebrew slimmed the formula in January 2026: no libass and no freetype. Every captioned export would have failed.
+   - `ffmpeg-full` has them, but it is keg-only and has ready-made bottles only for Apple chips on macOS 15+.
+   - Fix: a static FFmpeg build (github.com/vanloctech/ffmpeg-macos), native arm64 and x86_64. Inspected here: libass, freetype, fribidi and x264 are included; the arm64 build is ad-hoc signed; the minimum is macOS 15. The builds tested are pinned by sha256.
+   - Setup verifies the `ass` filter and `libx264` after download and stops with a clear message if either is missing.
+2. **Homebrew is unreliable on many Macs.** Homebrew 7 (Sep 2026) moved Intel Macs and macOS 14 to Tier 3 (no new bottles), so the setup would have compiled for hours. It also needed an admin password and Xcode tools.
+   - Fix: no Homebrew. Python 3.12 comes from `uv` (portable, in the app folder, `--no-bin`); Deno and Ollama come from their official GitHub releases. No admin password is needed.
+3. **Right-click > Open no longer works on macOS 15.** The old instructions told people to use it; macOS 15 needs System Settings ▸ Privacy & Security ▸ Open Anyway instead.
+   - Fix: the main path is now a Terminal one-liner, `curl -fsSL https://www.fodo.co.in/downloads/mac-install.sh | bash`. Files fetched with curl are not quarantined, so Gatekeeper does not block them.
+   - The zip stays as a fallback, with the correct macOS 15 steps.
+4. **Python packages:** the wheels for arm64 and x86_64 were resolved against the real PyPI index. Two fixes:
+   - `--prefer-binary`, so pip never builds a newer sdist from source (Windows got this too).
+   - The opencv-python / opencv-contrib clash (scenedetect pulls the plain build) is now fixed on Mac, as on Windows.
+5. **App code:**
+   - The Control Panel monitor read `/proc` (Linux only) on macOS, and its first sample sat outside the try block, so the monitor thread died. It now uses Mach `host_statistics` and `vm_stat` on Mac and never stops on an unknown OS.
+   - Health checks no longer warn "NVIDIA / NVENC / CUDA missing" on PCs without NVIDIA (Mac, AMD, Intel). They report the real graphics card, encoder and power plan.
+   - The CUDA button is hidden without NVIDIA.
+   - Messages no longer say "run setup.bat" on Mac.
+   - The Ollama path is found on Mac.
+   - Restart works on Mac and on installed Windows copies; before, it only worked with `run.bat`.
+
+### Verified
+- A Mac-like simulation (fake `sw_vers`, `sysctl`, `ditto`, `xattr` and `open`; real `uv`, Python 3.12 and pip) ran the full flow: one-liner → download → install → setup → launch.
+- The server started, `/health` answered fodo.co.in with the power mode, and the personal edition asked for an owner.
+- Re-install kept the user's data, macOS 14 was refused with a clear message, and nothing was written outside the app folder.
+- shellcheck is clean. App tests: 205 passed, including 3 new Mac tests (Apple chip probe, vm_stat parser, health without NVIDIA).
+
+### Still unverified
+- Not run on a physical Mac: the Mach-O binaries could not be executed here.
+- Requirements: macOS 15 Sequoia or newer, Apple chip or Intel.

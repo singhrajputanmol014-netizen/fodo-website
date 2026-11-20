@@ -92,12 +92,12 @@ export async function sendKey(env, b, by) {
   if (b.id) { const o = await original(env, acc, b.id); to = o.to; subject = o.subject; rep = o.reply; }
   else { to = cleanEmail(b.email); if (!to) throw err("Type a correct email address.", 400); }
   if (to === acc) throw err("That is FODO's own address.", 400);
-  const k = await keyFor(env, to), m = keyMail(to, k.key, String(b.message || "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").trim().slice(0, 1500));
+  const k = await keyFor(env, to), m = keyMail(to, k.key, String(b.message || "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").trim().slice(0, 1500), k.name || b.name);
   const r = await send(env, acc, to, subject, m.text, m.html, rep, by, "studio_key");
   await markRequests(env, to, true, null, by);
   return Object.assign(r, { email: to, user_id: k.user_id });
 }
-export async function sendKeyMail(env, to, msg, by) {   // used by "Email the key" when the mailbox is connected
-  const acc = await mailbox(env), k = await keyFor(env, to), m = keyMail(to, k.key, msg);
+export async function sendKeyMail(env, to, msg, by, name) {   // used by "Email the key" when the mailbox is connected
+  const acc = await mailbox(env), k = await keyFor(env, to), m = keyMail(to, k.key, msg, k.name || name);
   return send(env, acc, to, "Your FODO Studio key", m.text, m.html, null, by, "studio_key");
 }

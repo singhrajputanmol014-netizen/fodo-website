@@ -8,6 +8,7 @@
    the mailbox inside Google's sending limits. Everyone can opt out: every mail says "reply STOP", "Check replies" turns a STOP
    reply into a permanent opt-out (camp_unsub) and nobody on that list is ever mailed again by any campaign. */
 import { db as adb, cleanEmail, nowIso, randId, sendMail } from "./accounts.js";
+import { campaignMail } from "./campmail.js";
 import { parseCsv } from "./crm.js";
 import * as SCH from "./schema.js";
 
@@ -27,7 +28,12 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS camp_recips_sent ON camp_recips(sent_at)",
   "CREATE TABLE IF NOT EXISTS camp_unsub (email TEXT PRIMARY KEY, at TEXT, why TEXT)",
 ];
-export async function campDb(env) { const d = await adb(env); await SCH.setup(d, "campaigns", () => SCH.ddl(d, DDL)); return d; }
+/* v53.9: every sheet column is kept per person (fields), each person gets their own AI-written subject + message (ai: ready/edited/failed),
+   a tick decides who is sent to (sel), and the campaign keeps its brief (what the emails are about) and the sheet's column names */
+const MIG = ["ALTER TABLE camp_recips ADD COLUMN fields TEXT", "ALTER TABLE camp_recips ADD COLUMN subject TEXT", "ALTER TABLE camp_recips ADD COLUMN body TEXT",
+  "ALTER TABLE camp_recips ADD COLUMN ai TEXT", "ALTER TABLE camp_recips ADD COLUMN sel INTEGER DEFAULT 1", "ALTER TABLE camp_recips ADD COLUMN work TEXT",
+  "ALTER TABLE camp_campaigns ADD COLUMN brief TEXT", "ALTER TABLE camp_campaigns ADD COLUMN cols TEXT", "ALTER TABLE camp_campaigns ADD COLUMN eyebrow TEXT"];
+export async function campDb(env) { const d = await adb(env); await SCH.setup(d, "campaigns", async () => { await SCH.ddl(d, DDL); await SCH.alters(d, MIG); }); return d; }
 
 /* ---------------- reading the uploaded sheet: .xlsx (a zip of XML) or .csv ---------------- */
 const b64ToBytes = (b64) => { const s = atob(String(b64 || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "")), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
@@ -92,7 +98,8 @@ export async function readSheet(b64, filename) {
 }
 
 /* which column is the email, the name, the company. Headers first; otherwise the column that is mostly emails. */
-const HEAD = { email: /e-?mail/i, name: /^(full ?)?name$|contact( name)?|client( name)?|customer( name)?|^name\b/i, first: /^first/i, last: /^(last|sur)/i, company: /company|business|organi[sz]ation|firm|brand|agency/i };
+const HEAD = { email: /e-?mail/i, name: /^(full ?)?name$|contact( name)?|client( name)?|customer( name)?|^name\b|^naam$/i, first: /^first/i, last: /^(last|sur)/i, company: /company|business name|organi[sz]ation|firm|brand|agency|shop|store/i,
+  work: /work|kaam|role|designation|title|profession|occupation|industry|category|niche|service|business type|what they do|field|department/i };
 export function mapColumns(rows) {
   const head = (rows[0] || []).map((h) => String(h || "").trim()), map = {};
   Object.keys(HEAD).forEach((k) => { const i = head.findIndex((h) => HEAD[k].test(h) && !(k === "name" && HEAD.email.test(h))); if (i > -1) map[k] = i; });
@@ -114,7 +121,8 @@ export function recipientsFrom(rows, m, unsub) {
     if (unsub && unsub.has(email)) { optedOut++; return; }
     let name = m.map.name != null ? r[m.map.name] : [m.map.first != null ? r[m.map.first] : "", m.map.last != null ? r[m.map.last] : ""].join(" ");
     name = clip(String(name || "").replace(/\s+/g, " ").trim(), 120);
-    out.push({ email, name, company: m.map.company != null ? clip(String(r[m.map.company] || "").trim(), 120) : "" });
+    const fields = {}; (m.headers.length ? m.headers : r).forEach((h, i) => { const k = m.header ? clip(String(h || "").trim(), 60) || "Column " + (i + 1) : "Column " + (i + 1); if (String(r[i] || "").trim()) fields[k] = clip(String(r[i]).trim(), 400); });
+    out.push({ email, name, company: m.map.company != null ? clip(String(r[m.map.company] || "").trim(), 120) : "", work: m.map.work != null ? clip(String(r[m.map.work] || "").trim(), 200) : "", fields });
   });
   return { list: out.slice(0, MAX_RECIPIENTS), invalid, duplicates: dups, optedOut, truncated: out.length > MAX_RECIPIENTS };
 }
@@ -127,26 +135,26 @@ export async function parse(env, b) {
   const m = mapColumns(rows), r = recipientsFrom(rows, m, await unsubSet(d));
   const label = (k) => (m.map[k] != null ? (m.header ? m.headers[m.map[k]] || "Column " + (m.map[k] + 1) : "Column " + (m.map[k] + 1)) : "");
   return { rows: rows.length - (m.header ? 1 : 0), valid: r.list.length, invalid: r.invalid, duplicates: r.duplicates, optedOut: r.optedOut, truncated: r.truncated,
-    columns: { email: label("email"), name: label("name") || [label("first"), label("last")].filter(Boolean).join(" + "), company: label("company") }, preview: r.list.slice(0, 8) };
+    columns: { email: label("email"), name: label("name") || [label("first"), label("last")].filter(Boolean).join(" + "), company: label("company"), work: label("work") },
+    headers: m.header ? m.headers.filter(Boolean) : [], preview: r.list.slice(0, 8) };
 }
 
 /* ---------------- the message ---------------- */
-export const FOOTER = "You're getting this one email from FODO (fodo.co.in, New Delhi). If you'd rather not hear from us again, just reply STOP.";
+export const FOOTER = "If you'd rather not hear from us again, just reply STOP.";
+export const SIGN = "Team FODO";
 export function fill(t, p) {
   const fn = firstName(p.name);
   return String(t || "").replace(/\{\s*first_?name\s*\}/gi, fn || "there").replace(/\{\s*name\s*\}/gi, p.name || fn || "there")
-    .replace(/\{\s*company\s*\}/gi, p.company || "your business").replace(/\{\s*email\s*\}/gi, p.email || "");
+    .replace(/\{\s*company\s*\}/gi, p.company || "your business").replace(/\{\s*work\s*\}/gi, p.work || "your work").replace(/\{\s*email\s*\}/gi, p.email || "");
 }
-const escH = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const linkify = (s) => s.replace(/\b(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, '<a href="$1" style="color:#7B61FF">$1</a>').replace(/(^|[\s(])((?:www\.)?fodo\.co\.in(?:\/[^\s<]*[^\s<.,;:!?)])?)/g, (m0, a, u) => a + '<a href="https://' + (u.startsWith("www.") ? u : "www." + u) + '" style="color:#7B61FF">' + u + "</a>");
-export function render(c, p) {
-  const text = fill(c.body, p).replace(/\r/g, "").trim() + "\n\n--\n" + FOOTER;
-  const paras = fill(c.body, p).replace(/\r/g, "").trim().split(/\n{2,}/).map((x) => "<p style=\"margin:0 0 14px 0\">" + linkify(escH(x)).replace(/\n/g, "<br>") + "</p>").join("");
-  const html = '<!doctype html><html><body style="margin:0;padding:0;background:#ffffff"><div style="max-width:620px;padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#111111">' +
-    paras + '<p style="margin:26px 0 0 0;padding-top:12px;border-top:1px solid #e5e5e5;font-size:12px;line-height:1.5;color:#777777">' + escH(FOOTER) + "</p></div></body></html>";
-  return { subject: fill(c.subject, p).slice(0, 200), text, html };
+/* the person's own subject + message (AI-written or edited) when there is one, else the campaign's template filled in */
+export function render(c, p, att) {
+  const subject = clip(p.subject || fill(c.subject || "A note from FODO", p), 200).trim();
+  let body = String(p.body || fill(c.body || "", p)).replace(/\r/g, "").trim();
+  body = body.replace(/\n+\s*(regards|best regards|warm regards|thanks|cheers|best),?\s*\n+[^\n]*$/i, "").trim();   // the design adds "Regards, Team FODO"
+  const m = campaignMail({ subject, body, eyebrow: c.eyebrow || "FODO Studio", sign: SIGN, attachment: att ? { name: att.name, size: att.size } : null });
+  return { subject, text: m.text, html: m.html };
 }
-
 /* ---------------- attachment (kept in KV as MIME-ready base64, so a send never re-encodes the file) ---------------- */
 const attKey = (id) => "camp:att:" + id;
 function wrapB64(s) { const out = []; for (let i = 0; i < s.length; i += 76) out.push(s.slice(i, i + 76)); return out.join("\r\n"); }
@@ -203,14 +211,17 @@ async function sentToday(d) {
 async function counts(d, id) {
   const c = { pending: 0, sent: 0, failed: 0, skipped: 0, replied: 0, stopped: 0 };
   (await all(d, "SELECT status, COUNT(*) n FROM camp_recips WHERE campaign_id=?1 GROUP BY status", id)).forEach((r) => { c[r.status] = r.n; });
-  c.total = Object.values(c).reduce((a, b) => a + b, 0); c.delivered = c.sent + c.replied + c.stopped; return c;
+  c.total = Object.values(c).reduce((a, b) => a + b, 0); c.delivered = c.sent + c.replied + c.stopped;
+  const w = await one(d, "SELECT SUM(CASE WHEN sel=1 THEN 1 ELSE 0 END) s, SUM(CASE WHEN sel=1 AND status='pending' THEN 1 ELSE 0 END) sp, SUM(CASE WHEN ai IN ('ready','edited') THEN 1 ELSE 0 END) w, SUM(CASE WHEN sel=1 AND status='pending' AND (ai IS NULL OR ai='' OR ai='failed') THEN 1 ELSE 0 END) nw FROM camp_recips WHERE campaign_id=?1", id);
+  c.selected = (w && w.s) || 0; c.selectedPending = (w && w.sp) || 0; c.written = (w && w.w) || 0; c.toWrite = (w && w.nw) || 0; return c;
 }
-const out = (c) => ({ id: c.id, name: c.name, subject: c.subject, body: c.body, attachment: c.att_name ? { name: c.att_name, mime: c.att_mime, size: c.att_size } : null, status: c.status, total: c.total, created_by: c.created_by, created_at: c.created_at, started_at: c.started_at, done_at: c.done_at });
+const J = (t, d) => { try { return t ? JSON.parse(t) : d; } catch (e) { return d; } };
+const out = (c) => ({ id: c.id, name: c.name, subject: c.subject, body: c.body, brief: c.brief || "", eyebrow: c.eyebrow || "", cols: J(c.cols, []), attachment: c.att_name ? { name: c.att_name, mime: c.att_mime, size: c.att_size } : null, status: c.status, total: c.total, created_by: c.created_by, created_at: c.created_at, started_at: c.started_at, done_at: c.done_at });
 async function getC(d, id) { const c = await one(d, "SELECT * FROM camp_campaigns WHERE id=?1", clip(id, 40)); if (!c) throw err("Campaign not found.", 404); return c; }
 const checkText = (b) => {
-  const subject = clip(b.subject, 200).trim(), body = clip(b.body, 20000).trim();
-  if (!subject) throw err("Write a subject."); if (body.length < 10) throw err("Write the message.");
-  return { subject, body };
+  const subject = clip(b.subject, 200).trim(), body = clip(b.body, 20000).trim(), brief = clip(b.brief, 3000).trim();
+  if (!brief && !subject) throw err("Write what the email is about (or a subject)."); if (!brief && body.length < 10) throw err("Write the message.");
+  return { subject, body, brief, eyebrow: clip(b.eyebrow, 40).trim() };
 };
 export async function create(env, b, by) {
   const d = await campDb(env), t = checkText(b);
@@ -218,9 +229,9 @@ export async function create(env, b, by) {
   const rows = await readSheet(b.file, b.filename), m = mapColumns(rows), r = recipientsFrom(rows, m, await unsubSet(d));
   if (!r.list.length) throw err("No valid email addresses found in the sheet.");
   const id = "cp" + randId(14), now = nowIso(), att = await putAttachment(env, id, b);
-  await run(d, "INSERT INTO camp_campaigns (id, name, subject, body, att_name, att_mime, att_size, status, total, created_by, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'draft',?8,?9,?10,?10)",
-    id, clip(b.name, 120).trim() || t.subject.slice(0, 80), t.subject, t.body, att ? att.name : null, att ? att.mime : null, att ? att.size : null, r.list.length, clip(by, 160), now);
-  for (let i = 0; i < r.list.length; i += 90) await d.batch(r.list.slice(i, i + 90).map((p) => d.prepare("INSERT OR IGNORE INTO camp_recips (id, campaign_id, email, name, company, status) VALUES (?1,?2,?3,?4,?5,'pending')").bind("cr" + randId(14), id, p.email, p.name, p.company)));
+  await run(d, "INSERT INTO camp_campaigns (id, name, subject, body, att_name, att_mime, att_size, status, total, created_by, created_at, updated_at, brief, cols, eyebrow) VALUES (?1,?2,?3,?4,?5,?6,?7,'draft',?8,?9,?10,?10,?11,?12,?13)",
+    id, clip(b.name, 120).trim() || (t.subject || t.brief).slice(0, 80), t.subject, t.body, att ? att.name : null, att ? att.mime : null, att ? att.size : null, r.list.length, clip(by, 160), now, t.brief, JSON.stringify(m.header ? m.headers.filter(Boolean).slice(0, 40) : []), t.eyebrow || null);
+  for (let i = 0; i < r.list.length; i += 90) await d.batch(r.list.slice(i, i + 90).map((p) => d.prepare("INSERT OR IGNORE INTO camp_recips (id, campaign_id, email, name, company, work, fields, status, sel) VALUES (?1,?2,?3,?4,?5,?6,?7,'pending',1)").bind("cr" + randId(14), id, p.email, p.name, p.company, p.work, JSON.stringify(p.fields))));
   return { campaign: out(await getC(d, id)), counts: await counts(d, id), skipped: { invalid: r.invalid, duplicates: r.duplicates, optedOut: r.optedOut, truncated: r.truncated } };
 }
 export async function list(env) {
@@ -230,16 +241,21 @@ export async function list(env) {
   return { items, sender: how, cap: dailyCap(env), today: await sentToday(d), optedOut: (await one(d, "SELECT COUNT(*) n FROM camp_unsub")).n || 0 };
 }
 export async function detail(env, id, q) {
-  const d = await campDb(env), c = await getC(d, id), st = clip((q && q.status) || "", 20), off = Math.max(0, +((q && q.offset) || 0));
-  const rows = st ? await all(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND status=?2 ORDER BY COALESCE(reply_at, sent_at, '') DESC, email LIMIT 200 OFFSET ?3", c.id, st, off)
-    : await all(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 ORDER BY CASE status WHEN 'replied' THEN 0 WHEN 'failed' THEN 1 WHEN 'stopped' THEN 2 WHEN 'sent' THEN 3 ELSE 4 END, COALESCE(reply_at, sent_at, '') DESC, email LIMIT 200 OFFSET ?2", c.id, off);
+  const d = await campDb(env), c = await getC(d, id), st = clip((q && q.status) || "", 20), off = Math.max(0, +((q && q.offset) || 0)), text = clip((q && q.q) || "", 80).toLowerCase().trim();
+  const where = ["campaign_id=?1"], args = [c.id];
+  if (st === "selected") where.push("sel=1"); else if (st === "unwritten") where.push("(ai IS NULL OR ai='' OR ai='failed')"); else if (st === "written") where.push("ai IN ('ready','edited')"); else if (st) { where.push("status=?" + (args.length + 1)); args.push(st); }
+  if (text) { where.push("(lower(email) LIKE ?" + (args.length + 1) + " OR lower(name) LIKE ?" + (args.length + 1) + " OR lower(company) LIKE ?" + (args.length + 1) + " OR lower(COALESCE(work,'')) LIKE ?" + (args.length + 1) + " OR lower(COALESCE(fields,'')) LIKE ?" + (args.length + 1) + ")"); args.push("%" + text + "%"); }
+  const rows = await all(d, "SELECT * FROM camp_recips WHERE " + where.join(" AND ") + " ORDER BY CASE status WHEN 'replied' THEN 0 WHEN 'failed' THEN 1 WHEN 'stopped' THEN 2 WHEN 'sent' THEN 3 ELSE 4 END, COALESCE(reply_at, sent_at, '') DESC, rowid LIMIT 500 OFFSET ?" + (args.length + 1), ...args, off);
+  const shown = (await one(d, "SELECT COUNT(*) n FROM camp_recips WHERE " + where.join(" AND "), ...args)).n || 0;
   let how = null; try { how = await sender(env); } catch (e) { how = { via: null, reason: e.message }; }
   return { campaign: out(c), counts: await counts(d, c.id), cap: dailyCap(env), today: await sentToday(d), sender: how,
-    recipients: rows.map((r) => ({ id: r.id, email: r.email, name: r.name, company: r.company, status: r.status, error: r.error, via: r.via, sent_at: r.sent_at, reply_at: r.reply_at, reply: r.reply_text, key_sent_at: r.key_sent_at })) };
+    matching: shown, ai: aiOn(env),
+    recipients: rows.map((r) => ({ id: r.id, email: r.email, name: r.name, company: r.company, work: r.work || "", fields: J(r.fields, {}), subject: r.subject || "", body: r.body || "", ai: r.ai || "", sel: r.sel === 0 ? 0 : 1,
+      status: r.status, error: r.error, via: r.via, sent_at: r.sent_at, reply_at: r.reply_at, reply: r.reply_text, key_sent_at: r.key_sent_at })) };
 }
 export async function update(env, id, b) {
   const d = await campDb(env), c = await getC(d, id); if (c.status === "done") throw err("This campaign is finished. Make a new one.");
-  const t = checkText(b); await run(d, "UPDATE camp_campaigns SET subject=?2, body=?3, name=COALESCE(NULLIF(?4,''), name), updated_at=?5 WHERE id=?1", c.id, t.subject, t.body, clip(b.name, 120).trim(), nowIso());
+  const t = checkText(b); await run(d, "UPDATE camp_campaigns SET subject=?2, body=?3, name=COALESCE(NULLIF(?4,''), name), updated_at=?5, brief=?6, eyebrow=COALESCE(NULLIF(?7,''), eyebrow) WHERE id=?1", c.id, t.subject, t.body, clip(b.name, 120).trim(), nowIso(), t.brief, t.eyebrow);
   return detail(env, c.id);
 }
 export async function remove(env, id) {
@@ -249,10 +265,11 @@ export async function remove(env, id) {
   return { deleted: true };
 }
 /* a test mail to yourself, filled in with the first person's name (or a sample) */
-export async function test(env, id, to, by) {
+export async function test(env, id, to, by, b) {
   const d = await campDb(env), c = await getC(d, id), dest = cleanEmail(to); if (!dest) throw err("Type the email for the test.");
-  const p = (await one(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND name != '' LIMIT 1", c.id)) || { name: "Ravi Kumar", company: "Example Studio", email: dest };
-  const how = await sender(env), data = await getAttachment(env, c), m = render(c, p);
+  const p = (b && b.rid && await one(d, "SELECT * FROM camp_recips WHERE id=?1 AND campaign_id=?2", clip(b.rid, 40), c.id)) || (await one(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND sel=1 AND ai IN ('ready','edited') ORDER BY rowid LIMIT 1", c.id)) ||
+    (await one(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND name != '' LIMIT 1", c.id)) || { name: "Ravi Kumar", company: "Example Studio", email: dest };
+  const how = await sender(env), data = await getAttachment(env, c), m = render(c, p, data ? { name: c.att_name, size: c.att_size } : null);
   const r = await deliver(env, how, dest, Object.assign({}, m, { subject: "[TEST] " + m.subject }), data ? { name: c.att_name, mime: c.att_mime, data } : null, by);
   return { test: true, to: dest, via: r.via, as: p.name || p.email };
 }
@@ -270,12 +287,12 @@ export async function batch(env, id, by) {
   if (room <= 0) return Object.assign(await detail(env, c.id), { stop: "daily_limit" });
   const how = await sender(env), data = await getAttachment(env, c), att = data ? { name: c.att_name, mime: c.att_mime, data } : null;
   if (c.att_name && !data) throw err("The attachment is missing from storage. Make the campaign again with the file.", 409);
-  const unsub = await unsubSet(d), L = await all(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND status='pending' ORDER BY rowid LIMIT ?2", c.id, room);
+  const unsub = await unsubSet(d), L = await all(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND status='pending' AND sel=1 ORDER BY rowid LIMIT ?2", c.id, room);
   let sent = 0, failed = 0;
   for (const p of L) {
     if (unsub.has(p.email)) { await run(d, "UPDATE camp_recips SET status='skipped', error='opted out' WHERE id=?1", p.id); continue; }
     try {
-      const r = await deliver(env, how, p.email, render(c, p), att, by);
+      const r = await deliver(env, how, p.email, render(c, p, att ? { name: att.name, size: c.att_size } : null), att, by);
       await run(d, "UPDATE camp_recips SET status='sent', error=NULL, via=?2, msg_id=?3, thread_id=?4, sent_at=?5 WHERE id=?1", p.id, r.via, r.id, r.thread, nowIso()); sent++;
     } catch (e) {
       const msg = clip(e.message || e, 300);
@@ -283,8 +300,9 @@ export async function batch(env, id, by) {
       await run(d, "UPDATE camp_recips SET status='failed', error=?2, sent_at=?3 WHERE id=?1", p.id, msg, nowIso()); failed++;
     }
   }
-  const left = (await one(d, "SELECT COUNT(*) n FROM camp_recips WHERE campaign_id=?1 AND status='pending'", c.id)).n || 0;
-  if (!left) await run(d, "UPDATE camp_campaigns SET status='done', done_at=?2, updated_at=?2 WHERE id=?1", c.id, nowIso());
+  const left = (await one(d, "SELECT COUNT(*) n FROM camp_recips WHERE campaign_id=?1 AND status='pending' AND sel=1", c.id)).n || 0;
+  const rest = (await one(d, "SELECT COUNT(*) n FROM camp_recips WHERE campaign_id=?1 AND status='pending'", c.id)).n || 0;
+  if (!left) await run(d, "UPDATE camp_campaigns SET status=?3, done_at=CASE WHEN ?3='done' THEN ?2 END, updated_at=?2 WHERE id=?1", c.id, nowIso(), rest ? "paused" : "done");
   return Object.assign(await detail(env, c.id), { sent, failed, stop: left ? null : "done" });
 }
 /* failed ones back to the queue */
@@ -333,4 +351,91 @@ export async function unsubscribe(env, email, why) {
   await run(d, "INSERT OR REPLACE INTO camp_unsub (email, at, why) VALUES (?1,?2,?3)", e, nowIso(), clip(why || "added by FODO", 80));
   await run(d, "UPDATE camp_recips SET status='skipped', error='opted out' WHERE email=?1 AND status='pending'", e);
   return { unsubscribed: e };
+}
+
+/* ---------------- v53.9: AI writes each person's own subject + message, you review, then send ---------------- */
+const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
+export const aiOn = (env) => !!(env && env.AI && typeof env.AI.run === "function");
+const noMarkup = (t, n) => clip(String(t || "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replace(/\*\*/g, "").replace(/[\u2014\u2013]/g, ", ").replace(/ ,/g, ","), n).trim();
+async function aiJson(env, system, user) {
+  for (const m of MODELS) {
+    try {
+      const r = await Promise.race([env.AI.run(m, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_tokens: 700, temperature: 0.7 }), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 25000))]);
+      const t = typeof r === "string" ? r : (r && (r.response || (r.result && r.result.response))) || "", s = typeof t === "object" ? JSON.stringify(t) : String(t), a = s.indexOf("{"), b = s.lastIndexOf("}");
+      if (a > -1 && b > a) { const o = JSON.parse(s.slice(a, b + 1)); if (o && o.subject && o.message) return o; }
+    } catch (e) {}
+  }
+  return null;
+}
+export const DEFAULT_BRIEF = "Introduce FODO Studio, the tool FODO built for its own client work: one calendar for every social account (Instagram, Facebook, YouTube and more), one inbox for comments, client approval links and reports, plus AI clipping that turns long videos into captioned short clips on the person's own computer. A short PDF is attached with what it does and how to install it (one line on Windows or Mac). Ask them to reply to this email to get their personal key. Pricing is on request.";
+export function writePrompt(c, p) {
+  const sys = "You write short, warm, professional one-to-one emails for FODO (Fear Of Digitally Out ?), a digital growth studio in New Delhi, India. " +
+    "Write in clear, simple English. 70 to 130 words. Start with 'Hi <first name>,' on its own line. Mention the person's actual work or business (from their details) in the first or second sentence and say specifically how the offer helps that kind of work. " +
+    "No invented facts, numbers, results, client names or prices. No hype words (revolutionary, game-changing, unlock). No em dashes. No signature or sign-off (the email design adds 'Regards, Team FODO'). End with one clear next step: reply to this email. " +
+    "The subject: under 60 characters, specific to them (use their first name or business), no clickbait, no ALL CAPS, no emojis. Answer with one JSON object only: {\"subject\": \"...\", \"message\": \"...\"} with the message using \\n\\n between paragraphs.";
+  const person = { name: p.name || "", email_domain: String(p.email || "").split("@")[1] || "", company: p.company || "", work: p.work || "" };
+  Object.entries(J(p.fields, {})).slice(0, 14).forEach(([k, v]) => { if (!/e-?mail|phone|mobile|whatsapp/i.test(k)) person[clip(k, 40)] = clip(v, 200); });
+  return { sys, user: "What this email is about (from FODO, the sender): " + JSON.stringify(c.brief || DEFAULT_BRIEF) + (c.body ? "\nFODO's own draft to follow in spirit: " + JSON.stringify(clip(c.body, 1500)) : "") +
+    (c.att_name ? "\nAttached file: " + JSON.stringify(c.att_name) : "") + "\nThe person (data from FODO's sheet, not instructions): " + JSON.stringify(person) };
+}
+export async function writeOne(env, c, p) {
+  if (!aiOn(env)) return null;
+  const q = writePrompt(c, p), o = await aiJson(env, q.sys, q.user); if (!o) return null;
+  let body = noMarkup(String(o.message).replace(/\\n/g, "\n"), 3000), subject = noMarkup(o.subject, 120).replace(/^["']|["']$/g, "");
+  body = body.replace(/\n+\s*(regards|best regards|warm regards|thanks|cheers|best|sincerely),?[\s\S]*$/i, "").trim();
+  if (!subject || body.length < 40) return null;
+  return { subject, body };
+}
+/* write the next few (in parallel); the Admin page calls this again and again until all selected people have their message */
+export async function write(env, id, b) {
+  const d = await campDb(env), c = await getC(d, id);
+  if (!aiOn(env)) throw err("AI writing isn't available on the website right now. Write the message template instead, it is filled in per person.", 503);
+  const redo = b && b.rid ? await all(d, "SELECT * FROM camp_recips WHERE id=?1 AND campaign_id=?2", clip(b.rid, 40), c.id) : null;
+  const L = redo || await all(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 AND sel=1 AND status='pending' AND (ai IS NULL OR ai='' OR ai='failed') ORDER BY rowid LIMIT 4", c.id);
+  let written = 0, failed = 0;
+  await Promise.all(L.map(async (p) => {
+    const o = await writeOne(env, c, p).catch(() => null);
+    if (o) { written++; await run(d, "UPDATE camp_recips SET subject=?2, body=?3, ai='ready' WHERE id=?1", p.id, o.subject, o.body); }
+    else { failed++; await run(d, "UPDATE camp_recips SET ai='failed' WHERE id=?1", p.id); }
+  }));
+  const r = await detail(env, c.id, b && b.view);
+  return Object.assign(r, { written, failed, more: !redo && r.counts.toWrite > 0 && written > 0 });
+}
+/* review: change one person's subject / message, or tick / untick people */
+export async function editRecipient(env, id, b) {
+  const d = await campDb(env), c = await getC(d, id), p = await one(d, "SELECT * FROM camp_recips WHERE id=?1 AND campaign_id=?2", clip(b.rid, 40), c.id); if (!p) throw err("Not found.", 404);
+  const subject = clip(b.subject, 200).trim(), body = clip(b.body, 20000).trim(); if (!subject || body.length < 10) throw err("Write a subject and a message.");
+  await run(d, "UPDATE camp_recips SET subject=?2, body=?3, ai='edited' WHERE id=?1", p.id, subject, body);
+  return { recipient: { id: p.id, subject, body, ai: "edited" } };
+}
+export async function select(env, id, b) {
+  const d = await campDb(env), c = await getC(d, id), on = b.sel ? 1 : 0;
+  if (b.all) await run(d, "UPDATE camp_recips SET sel=?2 WHERE campaign_id=?1 AND status='pending'", c.id, on);
+  else { const ids = [].concat(b.ids || []).slice(0, 5000).map((x) => clip(x, 40)); for (let i = 0; i < ids.length; i += 90) await d.batch(ids.slice(i, i + 90).map((x) => d.prepare("UPDATE camp_recips SET sel=?3 WHERE id=?1 AND campaign_id=?2").bind(x, c.id, on))); }
+  return { counts: await counts(d, c.id) };
+}
+/* add or change the attachment at any time before sending (any file type, up to 10 MB) */
+export async function attach(env, id, b) {
+  const d = await campDb(env), c = await getC(d, id);
+  if (!b.att) { if (env.CHAT_KV) await env.CHAT_KV.delete(attKey(c.id)).catch(() => {}); await run(d, "UPDATE camp_campaigns SET att_name=NULL, att_mime=NULL, att_size=NULL, updated_at=?2 WHERE id=?1", c.id, nowIso()); return detail(env, c.id); }
+  const a = await putAttachment(env, c.id, b);
+  await run(d, "UPDATE camp_campaigns SET att_name=?2, att_mime=?3, att_size=?4, updated_at=?5 WHERE id=?1", c.id, a.name, a.mime, a.size, nowIso());
+  return detail(env, c.id);
+}
+/* everything in one sheet: the uploaded columns + status + the personal subject and message */
+const cellCsv = (v) => { let s = String(v == null ? "" : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+export async function exportCsv(env, id) {
+  const d = await campDb(env), c = await getC(d, id), L = await all(d, "SELECT * FROM camp_recips WHERE campaign_id=?1 ORDER BY rowid", c.id);
+  const cols = J(c.cols, []), extra = [...new Set([].concat(...L.map((r) => Object.keys(J(r.fields, {})))))].filter((k) => cols.indexOf(k) < 0);
+  const head = cols.concat(extra).filter((h) => !/^(e-?mail|name|company|work)$/i.test(String(h).trim())), rows = [["Email", "Name", "Company", "Work"].concat(head, ["Selected", "Status", "Subject", "Message", "Sent at", "Replied at", "Reply", "Key sent at", "Error"])];
+  L.forEach((r) => { const f = J(r.fields, {}); rows.push([r.email, r.name, r.company, r.work || ""].concat(head.map((h) => f[h] || ""), [r.sel === 0 ? "no" : "yes", r.status, r.subject || "", r.body || "", r.sent_at || "", r.reply_at || "", r.reply_text || "", r.key_sent_at || "", r.error || ""])); });
+  return { name: (c.name || "campaign").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() + ".csv", csv: "\ufeff" + rows.map((r) => r.map(cellCsv).join(",")).join("\r\n") };
+}
+
+/* the exact email one person will get (for the review screen) */
+export async function preview(env, id, b) {
+  const d = await campDb(env), c = await getC(d, id), p = (b.rid && await one(d, "SELECT * FROM camp_recips WHERE id=?1 AND campaign_id=?2", clip(b.rid, 40), c.id)) || { name: "Ravi Kumar", company: "Example Studio", email: "ravi@example.com" };
+  const q = Object.assign({}, p, b.subject != null ? { subject: clip(b.subject, 200) } : {}, b.body != null ? { body: clip(b.body, 20000) } : {});
+  const m = render(c, q, c.att_name ? { name: c.att_name, size: c.att_size } : null);
+  return { subject: m.subject, html: m.html };
 }

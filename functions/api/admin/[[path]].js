@@ -61,7 +61,10 @@ export async function onRequest(ctx) {
       }
       if (p0 === "campaigns") {   // v53.8 Email campaigns (owners only: it sends from FODO's mailbox)
         if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can open email campaigns." }, 403);
-        try { return json(Object.assign({ ok: true }, path[1] ? await CP.detail(env, path[1], { status: q.get("status"), offset: q.get("offset") }) : await CP.list(env))); }
+        try {
+          if (path[1] && path[2] === "export") { const x = await CP.exportCsv(env, path[1]); return new Response(x.csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="' + x.name + '"', "cache-control": "no-store" } }); }
+          return json(Object.assign({ ok: true }, path[1] ? await CP.detail(env, path[1], { status: q.get("status"), offset: q.get("offset"), q: q.get("q") }) : await CP.list(env)));
+        }
         catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 500); }
       }
       if (p0 === "studio" && !path[1]) return json(Object.assign({ ok: true, role, canEdit }, await LIC.adminList(env)));   // v53 Studio keys
@@ -103,11 +106,11 @@ export async function onRequest(ctx) {
         else if (path[1] === "key" && path[2]) r = await CP.sendKey(env, path[2], b, u.email);
         else if (!path[1]) { r = await CP.create(env, b, u.email); await logEvent(env, u.id, "campaign_create", r.campaign.id + " · " + r.counts.total); }
         else {
-          const A = { test: () => CP.test(env, path[1], b.to || u.email, u.email), start: () => CP.setStatus(env, path[1], "sending"), pause: () => CP.setStatus(env, path[1], "paused"),
+          const A = { test: () => CP.test(env, path[1], b.to || u.email, u.email, b), write: () => CP.write(env, path[1], b), recip: () => CP.editRecipient(env, path[1], b), select: () => CP.select(env, path[1], b), preview: () => CP.preview(env, path[1], b), attach: () => CP.attach(env, path[1], b), start: () => CP.setStatus(env, path[1], "sending"), pause: () => CP.setStatus(env, path[1], "paused"),
             batch: () => CP.batch(env, path[1], u.email), replies: () => CP.checkReplies(env, path[1]), retry: () => CP.retry(env, path[1]), update: () => CP.update(env, path[1], b), delete: () => CP.remove(env, path[1]) }[clean(b.action, 12)];
           if (!A) return json({ ok: false, reason: "Unknown action." }, 400);
           r = await A();
-          if (b.action !== "batch") await logEvent(env, u.id, "campaign_" + clean(b.action, 12), path[1]);
+          if (["batch", "write", "select", "recip", "preview"].indexOf(b.action) < 0) await logEvent(env, u.id, "campaign_" + clean(b.action, 12), path[1]);
         }
         return json(Object.assign({ ok: true }, r));
       } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not do that: " + String(e.message || e).slice(0, 220) }, e.status && e.status < 500 ? e.status : 502); }

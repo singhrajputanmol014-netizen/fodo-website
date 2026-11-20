@@ -44,3 +44,10 @@
 - Sending runs in batches of 8 while the Admin page is open; daily cap CAMPAIGN_DAILY_CAP (default 500, max 1800). A Gmail 429 / rate error pauses sending without marking anyone failed.
 - Check replies reads each Gmail thread: a reply marks the person Replied; STOP / unsubscribe / not interested marks Opted out and adds them to camp_unsub, which every later list skips. "Send key" replies in the same thread with the FODO Studio key mail.
 - Tables camp_campaigns, camp_recips, camp_unsub (SCHEMA_VERSION 53.8). Tests: 15 new checks in tests/v52.test.mjs.
+
+## v53.9 Email campaigns v2: CRM view, AI-written personal emails, review, FODO design
+- The uploaded sheet's columns are all kept per client (camp_recips.fields) and shown as a CRM table (search, filters, tick boxes).
+- "Write personal messages": Workers AI (llama 3.3 70B, fallback 3.1 8B) writes each ticked client their own subject + message from the campaign brief, their name, work, company and other columns (never their email). 4 at a time, the Admin page loops. No em dashes, no invented facts, sign-off removed (the design adds "Regards, Team FODO").
+- Review: edit any subject/message, rewrite one with AI, live preview of the exact email, send yourself that one. Then "Send to selected" or "Send all".
+- New email design (functions/_lib/campmail.js, Figma frame 25:2 "Email · FODO campaign (600)"): FODO website colours (#050505 / #111 / #222 / #F5F3EE / #8C8C8C, #7B61FF dot only), header = the site's particle orb (assets/email/campaign-hero.jpg), attachment card, Reply + See FODO Studio buttons, "Regards, Team FODO", footer links, STOP line, phone layout.
+- Export all clients (every column + status + subject + message, CSV). Attach or change any file (up to 10 MB) at any time. SCHEMA_VERSION 53.9 (ALTERs on camp_recips / camp_campaigns). 10 more tests (203 in v52).

@@ -259,6 +259,7 @@ ok((await call("social/license/request", {}, { anon: true })).status === 401, "w
 let lim = 0; for (let i = 0; i < 12; i++) if ((await APP("request", { email: "x" + i + "@flood.io" }, { headers: { origin: "", "cf-connecting-ip": "6.6.6.6" } })).status === 429) lim++; ok(lim >= 2, "request: limited per network (no flooding FODO's inbox)");
 delete env.RESEND_API_KEY;
 const AJ = fs.readFileSync("js/admin.js", "utf8"), FJ = fs.readFileSync("js/fodo-studio.js", "utf8");
+ok(/\["Customers", \[[^\]]*"studio"/.test(AJ), "admin: Studio is in the sidebar (Customers group)");
 ok(/Access requests/.test(AJ) && /studio\/req\//.test(AJ) && /Email the key/.test(AJ) && /data-k="email"/.test(AJ) && /fs-req/.test(FJ) && /license\/request/.test(FJ), "front end: Admin ▸ Studio Access requests + Email key; website gate Request access");
 }
 /* ---------- front end + schema ---------- */

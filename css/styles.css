@@ -475,3 +475,6 @@ a.ci:hover,a.ci:focus-visible{color:var(--signal)}
 .hero-mascot{position:absolute;right:4%;bottom:-6%;width:clamp(120px,16vw,220px);pointer-events:none;z-index:1;filter:drop-shadow(0 20px 40px rgba(0,0,0,.35))}
 @media(max-width:767px){.bot-fab .bot-av{width:44px;height:44px;margin:0}.hero-mascot{display:none}}
 @media(prefers-reduced-motion:reduce){.mascot *{animation:none!important}}
+/* v53.5 one-line install (FODO Studio page) */
+.fs-cmd{display:block;font:600 14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:12px 14px;border-radius:12px;border:1px solid var(--line,#ffffff22);background:var(--bg-2,#ffffff0a);word-break:break-all;user-select:all;margin-top:8px}
+.fs-steps{margin:10px 0 0;padding-left:20px;font-size:14px;line-height:1.6}.fs-one .panel{display:flex;flex-direction:column}

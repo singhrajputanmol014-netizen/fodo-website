@@ -171,6 +171,13 @@
     document.querySelectorAll("[data-rotate]").forEach(el=>{ const words=el.dataset.rotate.split("|"); let i=0; el.textContent=words[0]; if(matchMedia("(prefers-reduced-motion:reduce)").matches)return; setInterval(()=>{ i=(i+1)%words.length; el.style.opacity=0; setTimeout(()=>{el.textContent=words[i];el.style.opacity=1;},200); },2400); });
   },"rotate");
 
+  /* ---- v53.5 copy buttons: <button data-copy="#id"> copies that element's text ---- */
+  U.safe(()=>{
+    document.querySelectorAll("[data-copy]").forEach(b=>{ b.addEventListener("click",()=>{ const el=document.querySelector(b.dataset.copy); if(!el)return; const t=el.textContent.trim(), old=b.textContent;
+      const ok=()=>{ b.textContent="Copied"; setTimeout(()=>{ b.textContent=old; },1800); };
+      (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(ok,()=>{ const r=document.createRange(); r.selectNodeContents(el); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); b.textContent="Press Ctrl+C"; }); }); });
+  },"copy");
+
   /* ---- Link fill from config: [data-wa], [data-mail], [data-tel], [data-li], [data-ig], [data-route] ---- */
   U.safe(()=>{
     const pre=(a,k,cls)=>{ if(a.classList.contains("ci")&&!a.querySelector(".ic"))a.insertAdjacentHTML("afterbegin",`<i class="ic ${cls||""}">${ico[k]}</i>`); };

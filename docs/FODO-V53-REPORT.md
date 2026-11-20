@@ -37,3 +37,10 @@
 - Smart App Control blocks unsigned .exe files and downloaded .bat/.cmd files, with no Run anyway. New one-line install: PowerShell `irm https://www.fodo.co.in/downloads/win-install.ps1 | iex` (downloads the zip, checks SHA-256 from app.json, unpacks with Windows' tar.exe, installs to %LOCALAPPDATA%\FODO Studio, runs setup, opens the app). Works in Constrained Language Mode (tested with PowerShell 7.5 on Linux in both modes). App 0.18.1: setup.ps1 has no .NET calls that Constrained Language Mode would stop.
 - Shown in Studio ▸ Get the app (Windows ▸ "Smart App Control blocked an app?") and on /fodo-studio/.
 - Permanent fix still open: a code-signing certificate (paid) or the Microsoft Store.
+
+## v53.8 Admin ▸ Email campaigns (owners only)
+- Customers ▸ Email campaigns: upload an Excel (.xlsx, read on the server without any library) or CSV list, write one message with {first_name} / {name} / {company}, attach a file (up to 10 MB, kept in CHAT_KV as MIME-ready base64), send yourself a test, then send.
+- Every person gets their own email (never a shared To/CC), from FODO's Gmail mailbox (Admin ▸ Studio ▸ Inbox connection) through the Gmail upload endpoint, with a List-Unsubscribe header and a "reply STOP" line. Without Gmail it falls back to Resend (attachments supported).
+- Sending runs in batches of 8 while the Admin page is open; daily cap CAMPAIGN_DAILY_CAP (default 500, max 1800). A Gmail 429 / rate error pauses sending without marking anyone failed.
+- Check replies reads each Gmail thread: a reply marks the person Replied; STOP / unsubscribe / not interested marks Opted out and adds them to camp_unsub, which every later list skips. "Send key" replies in the same thread with the FODO Studio key mail.
+- Tables camp_campaigns, camp_recips, camp_unsub (SCHEMA_VERSION 53.8). Tests: 15 new checks in tests/v52.test.mjs.

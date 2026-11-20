@@ -328,4 +328,46 @@ ok(!/\son[a-z]+=["']/.test(SS) && !/<script/i.test(SS), "no inline handlers or s
 ok(/"sstudio", \(\) => import\("\.\/sstudio\.js"\)/.test(SC) && /SCHEMA_VERSION = "5[3-9]\.\d+"/.test(SC), "schema gate knows the new tables (version 53+)");
 ok(/"\/l\/\*"/.test(fs.readFileSync("_routes.json", "utf8")) && /"\/approve\/\*"/.test(fs.readFileSync("_routes.json", "utf8")), "public routes reach Functions");
 ok(/http:\/\/127\.0\.0\.1:8777/.test(fs.readFileSync("_headers", "utf8")), "the Workspace may talk to the FODO Studio app on the same computer");
+
+/* ---------- v53.8 Admin ▸ Email campaigns ---------- */
+{
+  const OPX = await import("node:child_process");
+  OPX.execFileSync("python3", ["-c", "import openpyxl,sys\nwb=openpyxl.Workbook();ws=wb.active\nfor r in [['Client Name','Company','E-mail'],['Ravi Kumar','Ravi Studio','ravi.k@gmail.com'],['Priya Shah','Glow Salon','PRIYA@glow.in'],['Dup','x','ravi.k@gmail.com'],['Bad','y','nope'],['Kabir','Cafe','kabir@cafe.in']]: ws.append(r)\nwb.save('/tmp/v538.xlsx')"]);
+  const XL = fs.readFileSync("/tmp/v538.xlsx").toString("base64"), PDF = Buffer.from("%PDF-1.4 fodo pitch").toString("base64");
+  const sendsBefore = calls.length, base = globalThis.fetch; let threadReply = {}, gmailLimit = false;
+  globalThis.fetch = async (u, o = {}) => { const s = String(u), J = (x, st) => new Response(JSON.stringify(x), { status: st || 200, headers: { "content-type": "application/json" } });
+    if (/gmail\.googleapis\.com\/upload\/gmail\/v1\/users\/me\/messages\/send\?uploadType=media/.test(s)) { calls.push({ u: s, m: "POST", body: o.body, ct: (o.headers || {})["content-type"] }); if (gmailLimit) return J({ error: { message: "Rate limit exceeded" } }, 429); const to = /\r\nTo: ([^\r]+)/.exec(o.body)[1]; return J({ id: "cm_" + to, threadId: "th_" + to }); }
+    { const m = /gmail\.googleapis\.com\/gmail\/v1\/users\/me\/threads\/([^?]+)\?format=(\w+)/.exec(s); if (m) { calls.push({ u: s, m: "GET" }); const to = decodeURIComponent(m[1]).slice(3), msgs = [{ id: "cm_" + to, snippet: "Hi", internalDate: "1", payload: { headers: [{ name: "From", value: "Anmol from FODO <anmol@fodo.co.in>" }] } }];
+      if (threadReply[to]) msgs.push({ id: "rep_" + to, snippet: threadReply[to], internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: "Someone <" + to + ">" }] } }); return J({ id: m[1], messages: msgs }); } }
+    return base(u, o); };
+  const CA = (p, b) => call("admin/campaigns" + (p ? "/" + p : ""), b, { as: "o" });
+  const pv = (await CA("parse", { file: XL, filename: "clients.xlsx" })).j;
+  ok(pv.ok && pv.valid === 3 && pv.invalid === 1 && pv.duplicates === 1 && pv.columns.email === "E-mail" && pv.columns.name === "Client Name" && pv.preview[1].email === "priya@glow.in", "campaigns: Excel list read (email/name columns found, bad + duplicate rows skipped)");
+  ok((await call("admin/campaigns", undefined, { as: "a" })).status === 403, "campaigns: only the FODO team (owners) can open them");
+  const cr = (await CA("", { name: "Studio pitch", subject: "{first_name}, meet FODO Studio", body: "Hi {first_name},\n\nHere is FODO Studio for {company}.\nReply and we'll send your key.", file: XL, filename: "clients.xlsx", att: PDF, att_name: "FODO-Studio-Pitch.pdf", att_mime: "application/pdf" })).j;
+  ok(cr.ok && cr.counts.pending === 3 && cr.campaign.status === "draft" && cr.campaign.attachment.name === "FODO-Studio-Pitch.pdf", "campaigns: saved as a draft with 3 people and the PDF");
+  const cid = cr.campaign.id;
+  const tst = (await CA(cid, { action: "test", to: "anmol@fodo.co.in" })).j, tm = calls.filter((c) => /upload\/gmail/.test(c.u)).slice(-1)[0];
+  ok(tst.ok && tst.via === "gmail" && /To: anmol@fodo\.co\.in/.test(tm.body) && /Subject: \[TEST\] Ravi, meet FODO Studio/.test(tm.body) && tm.ct === "message/rfc822" && /filename="FODO-Studio-Pitch\.pdf"/.test(tm.body) && /JVBERi0xLjQgZm9kbyBwaXRjaA==/.test(tm.body), "campaigns: test mail goes to me from Gmail, filled in, with the PDF attached");
+  ok((await CA(cid, { action: "batch" })).j.stop === "not_sending", "campaigns: nothing is sent before Start");
+  X("INSERT INTO camp_unsub (email, at, why) VALUES ('kabir@cafe.in', 'x', 'test')");
+  await CA(cid, { action: "start" }); const b1 = (await CA(cid, { action: "batch" })).j, sentM = calls.filter((c) => /upload\/gmail/.test(c.u)).slice(-2);
+  ok(b1.ok && b1.counts.sent === 2 && b1.counts.skipped === 1 && b1.campaign.status === "done" && b1.stop === "done", "campaigns: sending mails everyone once; an opted-out person is skipped");
+  ok(sentM.every((c) => (c.body.match(/\r\nTo: /g) || []).length === 1) && /To: ravi\.k@gmail\.com/.test(sentM[0].body) && /To: priya@glow\.in/.test(sentM[1].body) && /List-Unsubscribe: <mailto:anmol@fodo\.co\.in\?subject=STOP>/.test(sentM[0].body), "campaigns: one separate mail per person (no shared To/CC), with an unsubscribe header");
+  const html0 = Buffer.from(/Content-Type: text\/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n([\s\S]*?)\r\n--/.exec(sentM[1].body)[1].replace(/\r\n/g, ""), "base64").toString();
+  ok(/^Hi Priya,/.test(html0) && /for Glow Salon\./.test(html0) && /reply STOP/.test(html0), "campaigns: each mail is personal ({first_name}, {company}) and says how to opt out");
+  threadReply = { "ravi.k@gmail.com": "Yes please, send me the key", "priya@glow.in": "STOP" };
+  const rp = (await CA(cid, { action: "replies" })).j;
+  ok(rp.ok && rp.replied === 1 && rp.stopped === 1 && rp.counts.replied === 1 && rp.counts.stopped === 1 && q1("SELECT email FROM camp_unsub WHERE email='priya@glow.in'"), "campaigns: replies found in Gmail; STOP becomes a permanent opt-out");
+  const pv2 = (await CA("parse", { file: XL, filename: "clients.xlsx" })).j; ok(pv2.optedOut === 2 && pv2.valid === 1, "campaigns: people who opted out are left out of the next list");
+  const rr = rp.recipients.filter((x) => x.email === "ravi.k@gmail.com")[0], ks = (await CA("key/" + rr.id, { message: "Welcome!" })).j;
+  ok(ks.ok && ks.key && q1("SELECT key_sent_at FROM camp_recips WHERE id=?1", rr.id).key_sent_at, "campaigns: a FODO Studio key can be sent to someone who replied");
+  const cr2 = (await CA("", { subject: "Second", body: "Hello {name}, second note here.", file: XL, filename: "clients.xlsx" })).j; await CA(cr2.campaign.id, { action: "start" }); gmailLimit = true;
+  const b2 = (await CA(cr2.campaign.id, { action: "batch" })).j; gmailLimit = false;
+  ok(b2.ok && b2.stop === "provider_limit" && b2.counts.pending === 1, "campaigns: when Gmail says slow down, sending stops and nobody is marked failed");
+  ok((await CA("", { subject: "x", body: "short" })).status === 400 && (await CA("parse", { file: Buffer.from("hello,world\nfoo,bar").toString("base64"), filename: "a.csv" })).j.reason.indexOf("email column") > -1, "campaigns: clear errors for a missing message or a sheet without emails");
+  const del = (await CA(cr2.campaign.id, { action: "delete" })).j; ok(del.ok && !q1("SELECT id FROM camp_campaigns WHERE id=?1", cr2.campaign.id), "campaigns: a campaign can be deleted");
+  const AJ = fs.readFileSync("js/admin.js", "utf8"); ok(/"campaigns"/.test(AJ) && /campaignsView/.test(AJ) && !/\son[a-z]+=["']/.test(AJ.slice(AJ.indexOf("function campaignsView"), AJ.indexOf("function campaignsView") + 30000)), "campaigns: Admin has the Email campaigns screen (no inline handlers)");
+  globalThis.fetch = base;
+}
 console.log("\n" + pass + " passed, " + fail + " failed"); process.exit(fail ? 1 : 0);

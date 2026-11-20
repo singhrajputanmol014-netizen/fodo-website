@@ -192,3 +192,11 @@ body.ad-menu-on{overflow:hidden}
 .ad-ibdlg .cfx-box{width:min(720px,94vw);max-height:90vh;overflow:auto}.ad-ibtx{white-space:pre-wrap;font-size:14px;line-height:1.55;max-height:42vh;overflow:auto;padding:12px 14px;border-radius:12px;background:var(--bg-2,#ffffff08);margin:10px 0 14px}
 #ad-ibacc{padding:6px 10px;border-radius:10px}
 @media (max-width:720px){.ad-ibl li{flex-direction:column}.ad-iba{justify-content:flex-start}.ad-ibb{margin-left:0}}
+
+/* v53.8 Email campaigns */
+.ad-cp{margin-bottom:16px}.ad-cp h2{margin:0 0 6px}.ad-cp .ad-in{width:100%;margin-bottom:10px}.ad-cp-ta{min-height:300px;font:14px/1.55 var(--font-body,inherit);white-space:pre-wrap}
+.ad-cp-help code{font-size:12px;padding:1px 5px;border-radius:6px;background:color-mix(in srgb,var(--text) 8%,transparent)}
+.ad-cp-k{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px}.ad-cp-from{margin:-4px 0 14px}
+.ad-cp-bar{height:8px;border-radius:999px;background:color-mix(in srgb,var(--text) 10%,transparent);overflow:hidden;margin:4px 0 16px}.ad-cp-bar i{display:block;height:100%;background:var(--xr-acc,#7B61FF);border-radius:999px;transition:width .4s}
+.ad-cp-acts{margin-bottom:16px;flex-wrap:wrap}.ad-cp-rep{max-width:320px;font-size:13px;color:var(--muted)}.ad-cp-dlg{width:min(720px,94vw)}
+@media(max-width:760px){.ad-cp-k{grid-template-columns:repeat(2,minmax(0,1fr))}}

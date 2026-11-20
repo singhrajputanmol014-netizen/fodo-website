@@ -278,8 +278,9 @@ export async function sendMail(env, to, subject, html, text, opt) {
   const body = { from, to: [to], subject, html, text };
   if (opt.replyTo) body.reply_to = opt.replyTo;
   if (opt.headers) body.headers = opt.headers;
+  if (opt.attachments && opt.attachments.length) body.attachments = opt.attachments;   // v53.8 campaigns: [{ filename, content (base64) }]
   const r = await outbound(env)("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + env.RESEND_API_KEY, "content-type": "application/json" },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+    body: JSON.stringify(body), signal: AbortSignal.timeout(opt.attachments ? 25000 : 10000) });
   const j = await r.json().catch(() => ({}));
   await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, ticket: opt.ticket, status: r.ok ? "sent" : "failed", providerId: j.id || null, error: r.ok ? null : "Resend " + r.status + (j.message ? ": " + String(j.message).slice(0, 160) : ""), by: opt.by, msgId: opt.headers && opt.headers["X-FODO-Ticket"] || null });
   if (!r.ok) { log({ route: "mail", ok: false, status: r.status }); throw new Error("email failed " + r.status); }

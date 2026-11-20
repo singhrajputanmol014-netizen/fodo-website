@@ -30,6 +30,7 @@ import { DEFAULTS as PROMPTS, getPrompt, savePrompt, resetPrompt, activatePrompt
 import { istDay } from "../../_lib/traffic.js";
 import * as LIC from "../../_lib/slicense.js";
 import * as IB from "../../_lib/sinbox.js";
+import * as CP from "../../_lib/campaigns.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
@@ -57,6 +58,11 @@ export async function onRequest(ctx) {
           if (!path[2]) { const st = await IB.status(env); if (!st.connected || q.get("status") === "1") return json({ ok: true, status: st }); return json(Object.assign({ ok: true, status: st }, await IB.list(env, { account: q.get("account"), q: q.get("q"), page: q.get("page") }))); }
           return json(Object.assign({ ok: true }, { mail: await IB.read(env, path[2], q.get("account")) }));
         } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Gmail did not answer: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 502); }
+      }
+      if (p0 === "campaigns") {   // v53.8 Email campaigns (owners only: it sends from FODO's mailbox)
+        if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can open email campaigns." }, 403);
+        try { return json(Object.assign({ ok: true }, path[1] ? await CP.detail(env, path[1], { status: q.get("status"), offset: q.get("offset") }) : await CP.list(env))); }
+        catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 500); }
       }
       if (p0 === "studio" && !path[1]) return json(Object.assign({ ok: true, role, canEdit }, await LIC.adminList(env)));   // v53 Studio keys
       if (p0 === "studio" && path[1] && path[2] === "key") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can see keys." }, 403); return json(Object.assign({ ok: true }, await LIC.adminKey(env, path[1]))); }
@@ -87,6 +93,25 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "campaigns") {
+      if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can send email campaigns." }, 403);
+      const b = await request.json().catch(() => ({}));
+      try {
+        let r;
+        if (path[1] === "parse") r = await CP.parse(env, b);
+        else if (path[1] === "unsubscribe") r = await CP.unsubscribe(env, b.email, b.why);
+        else if (path[1] === "key" && path[2]) r = await CP.sendKey(env, path[2], b, u.email);
+        else if (!path[1]) { r = await CP.create(env, b, u.email); await logEvent(env, u.id, "campaign_create", r.campaign.id + " · " + r.counts.total); }
+        else {
+          const A = { test: () => CP.test(env, path[1], b.to || u.email, u.email), start: () => CP.setStatus(env, path[1], "sending"), pause: () => CP.setStatus(env, path[1], "paused"),
+            batch: () => CP.batch(env, path[1], u.email), replies: () => CP.checkReplies(env, path[1]), retry: () => CP.retry(env, path[1]), update: () => CP.update(env, path[1], b), delete: () => CP.remove(env, path[1]) }[clean(b.action, 12)];
+          if (!A) return json({ ok: false, reason: "Unknown action." }, 400);
+          r = await A();
+          if (b.action !== "batch") await logEvent(env, u.id, "campaign_" + clean(b.action, 12), path[1]);
+        }
+        return json(Object.assign({ ok: true }, r));
+      } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not do that: " + String(e.message || e).slice(0, 220) }, e.status && e.status < 500 ? e.status : 502); }
+    }
     if (p0 === "studio" && (path[1] === "inbox" || path[1] === "sendkey") && m === "POST") {
       if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can send from the mailbox." }, 403);
       const b = await request.json().catch(() => ({}));

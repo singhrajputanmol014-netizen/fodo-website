@@ -38,9 +38,10 @@
   // v34 enquiries + website settings
   TABS.push(["security", "Security reports", "M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"], ["enquiries", "Enquiries", "M4 4h16v12H5.2L4 17.2zM8 8h8M8 11h5"], ["sitesettings", "Website settings", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7.5-2.2-1.9-1.1-1.6 1.6L14 8.5 13 6.5h-2l-1 2-2 .9-1.6-1.6-1.9 1.1.5 2.2L3 12l2.1.7-.5 2.2 1.9 1.1 1.6-1.6 2 .9 1 2h2l1-2 2-.9 1.6 1.6 1.9-1.1-.5-2.2z"]);
   // v20 help desk
+  TABS.push(["campaigns", "Email campaigns", "M3 6h18v12H3zm0 0 9 7 9-7M17 3l4 3"]);   // v53.8
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -101,7 +102,7 @@
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, studio: studioView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      campaigns: function () { campaignsView(parts[1]); }, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -368,6 +369,133 @@
   var uq = "", uf = "";
   /* ---------- v53: FODO Studio keys: who uses Studio, key given or not, computers, block ---------- */
   var sf = "", sq = "";
+
+  /* ---------- v53.8 Email campaigns (owners): Excel/CSV list → one personal email each, from FODO's Gmail, with an attachment ---------- */
+  var CP_BODY = "Hi {first_name},\n\nI'm Anmol from FODO (fodo.co.in), a digital growth studio in New Delhi.\n\nWe built FODO Studio for our own client work, and now we're opening it up: one calendar for every social account, one inbox for comments, client approval links and reports, plus AI clipping that turns long videos into captioned short clips on your own computer.\n\nI've attached a short PDF with what it does and how to install it (one line on Windows or Mac).\n\nIf you'd like to try it, just reply to this email and I'll send your personal key. Pricing is on request.\n\nAnmol Singh\nFODO · www.fodo.co.in · WhatsApp +91 78270 07676";
+  var CP_ST = { pending: ["Waiting", ""], sent: ["Sent", "ok"], failed: ["Failed", "bad"], skipped: ["Skipped", ""], replied: ["Replied", "mid"], stopped: ["Opted out", "bad"] };
+  var CP_CS = { draft: ["Draft", ""], sending: ["Sending", "mid"], paused: ["Paused", ""], done: ["Finished", "ok"] };
+  var cpTimer = null;
+  var cpk = function (n, l, sub, c) { return '<div class="ad-kpi ' + (c || "") + '"><b>' + n + "</b><span>" + l + "</span>" + (sub ? "<small>" + sub + "</small>" : "") + "</div>"; };
+  var readB64 = function (file) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(",")[1] || ""); }; r.onerror = function () { rej(new Error("Could not read the file.")); }; r.readAsDataURL(file); }); };
+  var kb = function (n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; };
+  function cpSender(j) {
+    var s = j.sender || {};
+    if (!s.via) return '<div class="panel ad-card"><p class="cf-status warn">' + esc(s.reason || "Email is not connected.") + ' <a href="#studio">Open Studio ▸ Inbox</a></p></div>';
+    return '<p class="muted ad-cp-from">Sends from <b>' + esc(s.via === "gmail" ? s.account : "Resend (anmol@fodo.co.in)") + "</b>" + (s.via === "gmail" ? ", so replies come to that inbox." : ". Connect Gmail in Studio ▸ Inbox to see replies here.") + " Today: " + (j.today || 0) + " of " + (j.cap || 0) + " daily limit used.</p>";
+  }
+  function campaignsView(id) {
+    clearTimeout(cpTimer);
+    if (ME && ME.role !== "owner") { $("#ad-view").innerHTML = head("Email campaigns", "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners can send email campaigns.</p></div>'; return; }
+    if (id === "new") return cpNew();
+    if (id) return cpDetail(id);
+    api("campaigns").then(function (j) {
+      if (!j.ok) return fail(j);
+      $("#ad-view").innerHTML = head("Email campaigns", "Upload an Excel or CSV list, write one message, attach a file and send. Everyone gets their own email; replies come to your inbox.", '<a class="btn sm" href="#campaigns/new">+ New campaign</a>') + cpSender(j) +
+        (j.items.length ? '<div class="ad-table"><table><thead><tr><th>Campaign</th><th>Status</th><th>Sent</th><th>Replied</th><th>Created</th></tr></thead><tbody>' + j.items.map(function (c) { var st = CP_CS[c.status] || [c.status, ""], k = c.counts;
+          return '<tr data-cp="' + esc(c.id) + '" tabindex="0"><td><b>' + esc(c.name) + "</b><br><small class=\"muted\">" + esc(c.subject) + (c.attachment ? " · 📎 " + esc(c.attachment.name) : "") + '</small></td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span></td><td>" + k.delivered + " / " + k.total + "</td><td>" + (k.replied || 0) + (k.stopped ? ' <small class="muted">+' + k.stopped + " STOP</small>" : "") + "</td><td>" + date(c.created_at) + "</td></tr>"; }).join("") + "</tbody></table></div>"
+          : '<div class="panel ad-card"><p>No campaigns yet.</p><a class="btn" href="#campaigns/new">Make the first one</a></div>') +
+        (j.optedOut ? '<p class="muted" style="margin-top:12px">' + j.optedOut + " people asked not to be emailed. They are skipped in every campaign.</p>" : "");
+      $$("[data-cp]").forEach(function (r) { var go = function () { location.hash = "campaigns/" + r.dataset.cp; }; r.onclick = go; r.onkeydown = function (e) { if (e.key === "Enter") go(); }; });
+    });
+  }
+  function cpNew() {
+    var sheet = null, att = null;
+    $("#ad-view").innerHTML = head("New email campaign", '<a href="#campaigns">← All campaigns</a>') +
+      '<div class="panel ad-card ad-cp"><h2>1. Who gets it</h2><p class="muted">An Excel (.xlsx) or CSV file with an email column. Name and company columns are used if they are there (Name, Client Name, First name, Company…). Duplicates, wrong emails and people who said STOP are left out.</p>' +
+      '<input type="file" id="cp-sheet" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Excel or CSV file"><div id="cp-prev"></div></div>' +
+      '<div class="panel ad-card ad-cp"><h2>2. The message</h2><label class="ad-dl2" for="cp-name">Campaign name (only you see it)</label><input id="cp-name" class="ad-in" maxlength="120" value="FODO Studio pitch">' +
+      '<label class="ad-dl2" for="cp-subj">Subject</label><input id="cp-subj" class="ad-in" maxlength="200" value="{first_name}, meet FODO Studio">' +
+      '<label class="ad-dl2" for="cp-body">Message</label><textarea id="cp-body" class="ad-in ad-ta ad-cp-ta" rows="16" maxlength="20000"></textarea>' +
+      '<p class="muted ad-cp-help">Use <code>{first_name}</code>, <code>{name}</code> or <code>{company}</code> and each person sees their own. Every mail ends with one line: "If you\'d rather not hear from us again, just reply STOP."</p></div>' +
+      '<div class="panel ad-card ad-cp"><h2>3. Attachment (optional)</h2><p class="muted">Up to 10 MB, for example the FODO Studio pitch PDF.</p><input type="file" id="cp-att" aria-label="Attachment"><div id="cp-attn" class="muted"></div></div>' +
+      '<div class="btn-row"><button type="button" class="btn" id="cp-save" disabled>Save campaign</button><a class="btn ghost" href="#campaigns">Cancel</a></div><p class="muted">Saving does not send anything. Next you can send yourself a test, then start.</p>';
+    $("#cp-body").value = CP_BODY;
+    var ready = function () { $("#cp-save").disabled = !(sheet && sheet.valid); };
+    $("#cp-sheet").onchange = function () {
+      var f = this.files[0]; sheet = null; ready(); if (!f) return;
+      if (f.size > 8 * 1048576) { $("#cp-prev").innerHTML = '<p class="cf-status warn">The sheet can be up to 8 MB.</p>'; return; }
+      $("#cp-prev").innerHTML = '<p class="muted">Reading ' + esc(f.name) + "…</p>";
+      readB64(f).then(function (b64) { return api("campaigns/parse", { file: b64, filename: f.name }).then(function (j) {
+        if (!j.ok) { $("#cp-prev").innerHTML = '<p class="cf-status warn">' + esc(j.reason) + "</p>"; return; }
+        sheet = { b64: b64, name: f.name, valid: j.valid };
+        $("#cp-prev").innerHTML = '<div class="ad-kpis ad-cp-k">' + cpk(j.valid, "will get the email", "", "ok") + cpk(j.duplicates, "duplicates") + cpk(j.invalid, "wrong emails") + cpk(j.optedOut, "said STOP before") + "</div>" +
+          '<p class="muted">Columns used: email = <b>' + esc(j.columns.email) + "</b>" + (j.columns.name ? ", name = <b>" + esc(j.columns.name) + "</b>" : ", no name column (they get \"Hi there\")") + (j.columns.company ? ", company = <b>" + esc(j.columns.company) + "</b>" : "") + (j.truncated ? ". Only the first 5,000 are used." : ".") + "</p>" +
+          '<div class="ad-table"><table><thead><tr><th>Email</th><th>Name</th><th>Company</th></tr></thead><tbody>' + j.preview.map(function (p) { return "<tr><td>" + esc(p.email) + "</td><td>" + esc(p.name || "—") + "</td><td>" + esc(p.company || "—") + "</td></tr>"; }).join("") + "</tbody></table></div>" + (j.valid > j.preview.length ? '<p class="muted">…and ' + (j.valid - j.preview.length) + " more.</p>" : "");
+        ready();
+      }); }).catch(function (e) { $("#cp-prev").innerHTML = '<p class="cf-status warn">' + esc(e.message) + "</p>"; });
+    };
+    $("#cp-att").onchange = function () {
+      var f = this.files[0]; att = null; $("#cp-attn").textContent = ""; if (!f) return;
+      if (f.size > 10 * 1048576) { $("#cp-attn").textContent = "The attachment can be up to 10 MB."; this.value = ""; return; }
+      readB64(f).then(function (b64) { att = { b64: b64, name: f.name, mime: f.type || "", size: f.size }; $("#cp-attn").textContent = "📎 " + f.name + " (" + kb(f.size) + ")"; });
+    };
+    $("#cp-save").onclick = function () {
+      var btn = this; btn.disabled = true; btn.textContent = "Saving…";
+      api("campaigns", { name: $("#cp-name").value, subject: $("#cp-subj").value, body: $("#cp-body").value, file: sheet.b64, filename: sheet.name, att: att ? att.b64 : "", att_name: att ? att.name : "", att_mime: att ? att.mime : "" }).then(function (j) {
+        if (!j.ok) { btn.disabled = false; btn.textContent = "Save campaign"; return toast(j.reason || "Could not save.", true); }
+        toast("Saved: " + j.counts.total + " people"); location.hash = "campaigns/" + j.campaign.id;
+      });
+    };
+  }
+  function cpDetail(id) {
+    var data = null, filt = "", sending = false;
+    function load() { return api("campaigns/" + encodeURIComponent(id) + (filt ? "?status=" + filt : "")).then(function (j) { if (!j.ok) return fail(j); data = j; draw(); return j; }); }
+    function act(b, okMsg) { return api("campaigns/" + encodeURIComponent(id), b).then(function (j) { if (!j.ok) { toast(j.reason || "Could not do that.", true); return null; } if (j.campaign) { data = Object.assign(data || {}, j); draw(); } if (okMsg) toast(okMsg); return j; }); }
+    function loop() {
+      if (!sending || location.hash.indexOf("#campaigns/" + id) !== 0) { sending = false; return; }
+      act({ action: "batch" }).then(function (j) {
+        if (!j) { sending = false; draw(); return; }
+        if (j.stop === "done") { sending = false; toast("All sent."); return; }
+        if (j.stop === "daily_limit") { sending = false; draw(); return ask({ title: "Daily limit reached", text: "Today's " + j.cap + " emails are used up, so sending stopped to keep the mailbox safe. Open this campaign tomorrow and press Continue sending.", ok: "OK" }); }
+        if (j.stop === "provider_limit") { sending = false; act({ action: "pause" }); return ask({ title: "Gmail asked to slow down", text: (j.reason || "") + " Wait a while (an hour is safe), then press Continue sending.", ok: "OK" }); }
+        if (j.stop === "not_sending") { sending = false; draw(); return; }
+        cpTimer = setTimeout(loop, 1500);
+      });
+    }
+    function draw() {
+      var c = data.campaign, k = data.counts, st = CP_CS[c.status] || [c.status, ""], pct = k.total ? Math.round((k.total - k.pending) * 100 / k.total) : 0, R = data.recipients || [];
+      $("#ad-view").innerHTML = head(esc(c.name) + ' <span class="ad-tag ' + st[1] + '">' + st[0] + (sending ? "…" : "") + "</span>", '<a href="#campaigns">← All campaigns</a> · ' + esc(c.subject) + (c.attachment ? " · 📎 " + esc(c.attachment.name) + " (" + kb(c.attachment.size) + ")" : "")) + cpSender(data) +
+        '<div class="ad-kpis">' + cpk(k.total, "people") + cpk(k.delivered, "sent", "", "ok") + cpk(k.replied || 0, "replied", "", "money") + cpk(k.pending, "waiting") + cpk(k.failed, "failed") + cpk((k.stopped || 0) + (k.skipped || 0), "opted out / skipped") + "</div>" +
+        '<div class="ad-cp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Sent"><i style="width:' + pct + '%"></i></div>' +
+        '<div class="btn-row ad-cp-acts">' +
+          (c.status === "done" ? "" : sending || c.status === "sending" && sending ? '<button type="button" class="btn" id="cp-pause">Pause</button>' : '<button type="button" class="btn" id="cp-go">' + (c.status === "draft" ? "Start sending to " + k.pending : "Continue sending (" + k.pending + " left)") + "</button>") +
+          '<button type="button" class="btn ghost" id="cp-test">Send me a test</button>' +
+          (data.sender && data.sender.via === "gmail" && k.delivered ? '<button type="button" class="btn ghost" id="cp-rep">Check replies</button>' : "") +
+          (k.failed ? '<button type="button" class="btn ghost" id="cp-retry">Retry failed (' + k.failed + ")</button>" : "") +
+          (c.status !== "done" && !sending ? '<button type="button" class="btn ghost" id="cp-edit">Edit message</button>' : "") +
+          '<button type="button" class="btn ghost" id="cp-del">Delete</button></div>' +
+        '<div class="ad-bar2"><div class="ad-chips">' + [["", "All"], ["replied", "Replied"], ["sent", "Sent"], ["pending", "Waiting"], ["failed", "Failed"], ["stopped", "Opted out"]].map(function (f) { return '<button type="button" class="chip" data-cf="' + f[0] + '" aria-pressed="' + (filt === f[0]) + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
+        (R.length ? '<div class="ad-table"><table><thead><tr><th>Person</th><th>Status</th><th>When</th><th>Reply</th><th></th></tr></thead><tbody>' + R.map(function (r) { var s2 = CP_ST[r.status] || [r.status, ""];
+          return "<tr><td><b>" + esc(r.name || r.email) + "</b><br><small class=\"muted\">" + esc(r.email) + (r.company ? " · " + esc(r.company) : "") + '</small></td><td><span class="ad-tag ' + s2[1] + '">' + s2[0] + "</span>" + (r.error ? '<br><small class="muted">' + esc(r.error) + "</small>" : "") + "</td><td>" + (r.reply_at ? date(r.reply_at, 1) : r.sent_at ? date(r.sent_at, 1) : "—") + '</td><td class="ad-cp-rep">' + esc(r.reply || "") + "</td><td>" +
+            (r.status === "replied" || r.status === "sent" ? '<button type="button" class="btn sm' + (r.status === "replied" ? "" : " ghost") + '" data-key="' + esc(r.id) + '" data-em="' + esc(r.email) + '">' + (r.key_sent_at ? "Key sent ✓" : "Send key") + "</button>" : "") + "</td></tr>"; }).join("") + "</tbody></table></div>" + (R.length === 200 ? '<p class="muted">Showing 200. Use the filters to see the rest.</p>' : "")
+          : '<div class="panel ad-card"><p class="muted">Nobody here.</p></div>');
+      var g = $("#cp-go"); if (g) g.onclick = function () {
+        ask({ title: "Send to " + k.pending + " people?", text: "Each person gets their own email from " + (data.sender && data.sender.account || "FODO") + (c.attachment ? " with " + c.attachment.name : "") + ". Keep this page open while it sends (about " + Math.max(1, Math.round(k.pending * 0.25 / 60)) + " min). Up to " + data.cap + " a day.", ok: "Start sending" }).then(function (v) {
+          if (!v) return; act({ action: "start" }).then(function (j) { if (j) { sending = true; draw(); loop(); } });
+        });
+      };
+      var pz = $("#cp-pause"); if (pz) pz.onclick = function () { sending = false; clearTimeout(cpTimer); act({ action: "pause" }, "Paused"); };
+      $("#cp-test").onclick = function () { ask({ title: "Send a test email", text: "It is filled in with the first person's name and has the attachment, so you see exactly what they will get.", input: "Send the test to", ph: ME.email, ok: "Send test" }).then(function (v) { if (v === null) return; toast("Sending the test…"); act({ action: "test", to: v === true || !v ? ME.email : v }).then(function (j) { if (j) toast("Test sent to " + j.to + " (as " + (j.as || "sample") + ")"); }); }); };
+      var rp = $("#cp-rep"); if (rp) rp.onclick = function () { toast("Checking Gmail…"); act({ action: "replies" }).then(function (j) { if (j) toast(j.replied + " new repl" + (j.replied === 1 ? "y" : "ies") + (j.stopped ? ", " + j.stopped + " said STOP" : "") + " (checked " + j.checked + ")"); }); };
+      var rt = $("#cp-retry"); if (rt) rt.onclick = function () { act({ action: "retry" }, "Failed ones are back in the queue"); };
+      var ed = $("#cp-edit"); if (ed) ed.onclick = function () {
+        var w = document.createElement("div"); w.className = "cfx ad-dlg"; w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box ad-cp-dlg" role="dialog" aria-modal="true" aria-labelledby="cp-et"><h3 id="cp-et">Edit the message</h3><label class="ad-dl2" for="cp-es">Subject</label><input id="cp-es" class="ad-in" maxlength="200"><label class="ad-dl2" for="cp-eb">Message</label><textarea id="cp-eb" class="ad-in ad-ta ad-cp-ta" rows="14" maxlength="20000"></textarea><div class="btn-row"><button type="button" class="btn" data-ok>Save</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
+        document.body.appendChild(w); $("#cp-es", w).value = c.subject; $("#cp-eb", w).value = c.body;
+        $$("[data-x]", w).forEach(function (b) { b.onclick = function () { w.remove(); }; });
+        $("[data-ok]", w).onclick = function () { act({ action: "update", subject: $("#cp-es", w).value, body: $("#cp-eb", w).value }, "Saved").then(function (j) { if (j) w.remove(); }); };
+      };
+      $("#cp-del").onclick = function () { ask({ title: "Delete this campaign?", text: "Its list and statuses are removed. Emails already sent stay sent.", ok: "Delete" }).then(function (v) { if (v) act({ action: "delete" }).then(function (j) { if (j) location.hash = "campaigns"; }); }); };
+      $$("[data-cf]").forEach(function (b) { b.onclick = function () { filt = b.dataset.cf; load(); }; });
+      $$("[data-key]").forEach(function (b) { b.onclick = function () {
+        ask({ title: "Email the FODO Studio key to " + b.dataset.em + "?", text: "It goes as a reply in the same email thread, with their personal key and the install steps.", input: "Your message (optional)", area: true, ph: "e.g. Great to hear from you! Here is your key.", ok: "Send the key" }).then(function (v) {
+          if (v === null) return; toast("Sending the key…");
+          api("campaigns/key/" + encodeURIComponent(b.dataset.key), { message: v === true ? "" : v }).then(function (j) { if (!j.ok) return toast(j.reason || "Could not send.", true); toast("Key sent to " + b.dataset.em); load(); });
+        });
+      }; });
+    }
+    $("#ad-view").innerHTML = '<div class="ad-load">Loading…</div>';
+    load().then(function (j) { if (j && j.campaign && j.campaign.status === "sending") { sending = true; draw(); loop(); } });
+  }
   function studioView() {
     $("#ad-view").innerHTML = head("Studio", "Everyone who opened FODO Studio. Each person gets a key from their account; Studio (website and app) works only after they enter it. " + (owner() ? "Copy or WhatsApp the key to give access, block anyone (the app stops at its next check-in: within an hour online, at most " : "Read-only view. ") + (owner() ? "48 h offline)." : ""), '<button class="btn sm ghost" id="ad-scsv" type="button">Export CSV</button>') +
       '<div id="ad-sreq"></div><div id="ad-sinbox"></div><div id="ad-skpi" class="ad-kpis"></div><div class="ad-bar2"><input id="ad-sq" type="search" placeholder="Search email or name" value="' + esc(sq) + '" aria-label="Search Studio people"><div class="ad-chips">' +

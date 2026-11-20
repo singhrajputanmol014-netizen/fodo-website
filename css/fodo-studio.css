@@ -1166,3 +1166,4 @@ a.nav{text-decoration:none}
   body:not(.fs-navopen) .side{box-shadow:none}
 }
 .pmodal .box{position:relative}html .pmodal .fs-x{position:absolute!important;right:14px;left:auto;top:14px;z-index:2}.pmodal .box>h2:first-of-type,.pmodal .box>h3:first-of-type{padding-right:48px}
+[hidden]{display:none!important}

@@ -39,6 +39,28 @@ try {
   $s.TargetPath = (Join-Path $dst 'FODO Studio.bat'); $s.WorkingDirectory = $dst; $s.IconLocation = (Join-Path $dst 'fodo.ico'); $s.WindowStyle = 7; $s.Save()
   Write-Host 'Desktop icon made.'
 } catch { Write-Host ('No desktop icon (Windows did not allow it). Open FODO Studio from: ' + $dst + '\FODO Studio.bat') -ForegroundColor Yellow }
+# Uninstall: a local copy of the one-line uninstaller + a "FODO Studio" entry in Settings > Apps (like Setup.exe makes)
+try {
+  $un = Join-Path $dst 'Uninstall FODO Studio.ps1'
+  Invoke-WebRequest -UseBasicParsing -Uri ($base + '/win-uninstall.ps1?x=' + (Get-Random)) -OutFile $un
+  Unblock-File -LiteralPath $un
+  $reg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\FODOStudio'
+  New-Item -Path $reg -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'DisplayName' -Value 'FODO Studio' -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'DisplayVersion' -Value ([string]$app.version) -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'Publisher' -Value 'FODO' -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'DisplayIcon' -Value (Join-Path $dst 'fodo.ico') -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'InstallLocation' -Value $dst -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'UninstallString' -Value ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $un + '"') -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'NoModify' -Value 1 -PropertyType DWord -Force | Out-Null
+  New-ItemProperty -Path $reg -Name 'NoRepair' -Value 1 -PropertyType DWord -Force | Out-Null
+  Write-Host 'Added to Settings > Apps (Uninstall works from there).'
+} catch { Write-Host 'Could not add the Apps entry. To remove FODO Studio later: irm https://www.fodo.co.in/downloads/win-uninstall.ps1 | iex' -ForegroundColor Yellow }
+# Start menu icon (skipped quietly where Windows does not allow it)
+try {
+  $s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\FODO Studio.lnk'))
+  $s.TargetPath = (Join-Path $dst 'FODO Studio.bat'); $s.WorkingDirectory = $dst; $s.IconLocation = (Join-Path $dst 'fodo.ico'); $s.WindowStyle = 7; $s.Save()
+} catch { }
 Write-Host 'Setting up (5 to 15 minutes the first time)...' -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dst 'setup.ps1')
 Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

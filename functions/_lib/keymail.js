@@ -71,7 +71,7 @@ export function keyMail(email, key, msg, name) {
       tile("Inbox, analytics, reports", "All comments in one inbox, numbers and reports you can share.") + tile("Clients and approvals", "Separate projects per client, approval links and link in bio.") + "</tr></table>" +
     gap(20) +
     box(p("Good to know", "font-size:15px;line-height:21px;font-weight:600;color:" + C.text) + gap(8) +
-      p("• One key works on 2 of your own computers.<br>• The app keeps working up to 48 hours without internet.<br>• Please don't share your key: it is tied to your account and FODO can turn it off.", "font-size:14px;line-height:22px;color:" + C.text2), { bg: "#1a1530", line: "#3a3260" }) +
+      p("• One key works on 2 of your own computers.<br>• The app keeps working up to 48 hours without internet.<br>• Please don't share your key: it is tied to your account and FODO can turn it off.<br>• To remove it later: Windows <b>Settings &gt; Apps &gt; FODO Studio &gt; Uninstall</b>, or the one-line uninstall on <a href=\"" + SITE + "/fodo-studio/#uninstall\" target=\"_blank\" style=\"color:" + C.purple + "\">fodo.co.in/fodo-studio</a>.", "font-size:14px;line-height:22px;color:" + C.text2), { bg: "#1a1530", line: "#3a3260" }) +
     gap(20) +
     box(label("FODO · Fear of digitally out ?", C.purple) + gap(10) +
       p("We don't do marketing just to do marketing.", "font-size:19px;line-height:25px;font-weight:700;color:" + C.text) + gap(10) +
@@ -95,7 +95,7 @@ export function keyMail(email, key, msg, name) {
     "3. When the app opens, type " + email + ", paste your key and press Open FODO Studio. On the website, log in at " + LINKS.studio + " with the same email and enter the same key.\n" +
     "Phone: open fodo.co.in/studio, log in, then Add to Home Screen. Normal download: " + LINKS.download + "\n\n" +
     "WHAT YOU CAN DO\n- Plan, schedule and post to every account from one calendar\n- AI clipping with captions on your own computer\n- One inbox for comments, analytics and shareable reports\n- Separate client projects, approval links and link in bio\n\n" +
-    "GOOD TO KNOW\n- One key works on 2 of your own computers\n- The app keeps working up to 48 hours without internet\n- Please don't share your key: it is tied to your account and FODO can turn it off\n\n" +
+    "GOOD TO KNOW\n- One key works on 2 of your own computers\n- The app keeps working up to 48 hours without internet\n- Please don't share your key: it is tied to your account and FODO can turn it off\n- To remove it later: Windows Settings > Apps > FODO Studio > Uninstall, or the one-line uninstall on " + SITE + "/fodo-studio/#uninstall\n\n" +
     "ABOUT FODO\nFODO (Fear Of Digitally Out ?) is a New Delhi digital growth studio by Anmol Singh and Rohit Saini. Strategy, creative, performance, technology and data, connected so every activity has a reason and a measure.\n" +
     LINKS.site + " · WhatsApp +91 78270 07676 · Instagram @fodo.co.in\n\nQuestions? Just reply to this email.\n\nAnmol, FODO\nDon't get left behind.";
   return { html, text };

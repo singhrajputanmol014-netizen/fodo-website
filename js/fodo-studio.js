@@ -10,11 +10,13 @@
   /* the app's sidebar (same sections and order as the FODO Studio app) */
   var NAV = [["dash", "Home", "🏠", "overview"], "Social", ["calendar", "Calendar", "📅", "calendar"], ["posts", "Publish", "🚀", "posts"], ["inbox", "Inbox", "📨", "inbox"], ["clients", "Clients", "👥", "accounts"],
     "Studio", ["clipping", "AI Clipping", "✂", "clipping"], ["editor", "Editor", "🎛", "clipping"], ["captions", "Caption & Font Studio", "Aa", "clipping"],
-    "Marketing", ["planner", "Content Planner", "🧠", "planner"], ["analytics", "Analytics & Reports", "📈", "analytics"], ["bio", "Link in bio", "🔗", "bio"]];
+    "Marketing", ["planner", "Content Planner", "🧠", "planner"], ["analytics", "Analytics & Reports", "📈", "analytics"], ["bio", "Link in bio", "🔗", "bio"],
+    "You", ["control", "Control panel", "🛠", "control"], ["app", "Get the app", "⬇", "app"]];
   var TITLE = { overview: ["Home", "Plan, post, answer and grow every account, for you and your clients, from one place."], calendar: ["Content calendar", "Every scheduled, draft and posted video. Drag a scheduled post to another day to move it (the time stays the same)."],
     posts: ["Publish", "Upload videos, schedule them on one or many accounts, approve drafts and see what went out."], inbox: ["Inbox", "Every comment on your posts, all projects in one list. Leads and questions are tagged so nobody waits."],
     accounts: ["Clients", "Each client project has its own accounts, posting slots and approval links."], clipping: ["AI Clipping", "Clipping, editing and captions run on your own computer with the FODO Studio app, using your computer's power."],
-    planner: ["Content planner", "Plan posts from idea to published. Drag cards between stages."], analytics: ["Analytics & reports", "Real numbers from the platforms. Best time to post, top videos and a client report in one click."], bio: ["Link in bio", "One page with your links, a WhatsApp button and your latest videos. Counts views and clicks."] };
+    planner: ["Content planner", "Plan posts from idea to published. Drag cards between stages."], analytics: ["Analytics & reports", "Real numbers from the platforms. Best time to post, top videos and a client report in one click."], bio: ["Link in bio", "One page with your links, a WhatsApp button and your latest videos. Counts views and clicks."],
+    control: ["Control panel", "Your own FODO Studio: account, computers, connected accounts, storage and recent activity."], app: ["Get the app", "FODO Studio for Windows and Mac, and on your phone's home screen."] };
   var CUR = "overview";
 
   /* ---------- helpers the Social Studio module expects (window.FODO_WS) ---------- */
@@ -62,7 +64,7 @@
   function route() {
     var h = location.hash.slice(1), parts = h.split("?"), q = new URLSearchParams(parts[1] || ""); if (parts[0] && parts[0] !== "social") q = new URLSearchParams("tab=" + parts[0]);
     var tab = q.get("tab") || "overview"; if (!TITLE[tab]) tab = "overview"; CUR = tab;
-    var open = q.get("open"), act = open === "editor" ? "editor" : open === "captions" ? "captions" : ({ overview: "dash", calendar: "calendar", posts: "posts", inbox: "inbox", accounts: "clients", clipping: "clipping", planner: "planner", analytics: "analytics", bio: "bio" })[tab];
+    var open = q.get("open"), act = open === "editor" ? "editor" : open === "captions" ? "captions" : ({ overview: "dash", calendar: "calendar", posts: "posts", inbox: "inbox", accounts: "clients", clipping: "clipping", planner: "planner", analytics: "analytics", bio: "bio", control: "control", app: "app" })[tab];
     $$(".side .nav[data-v]").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-v") === act); });
     document.body.classList.remove("fs-navopen"); document.title = (TITLE[tab] || TITLE.overview)[0] + " · FODO Studio";
     var main = $("#v-main"); main.innerHTML = '<div id="v-' + tab + '"><div class="empty"><span class="spinner"></span></div></div>'; var el = main.firstElementChild;

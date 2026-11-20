@@ -63,6 +63,7 @@ export async function onRequest(ctx) {
     const b = m === "POST" ? (await request.json().catch(() => null)) || {} : {};
 
     if (p0 === "state" && m === "GET") return ok(await S.state(env, u));
+    if (p0 === "control" && m === "GET") return ok(await S.control(env, u));
     /* projects + slots */
     if (p0 === "projects" && !p1 && m === "GET") return ok({ projects: await S.projects(env, u) });
     if (p0 === "projects" && !p1 && m === "POST") return ok({ project: await S.saveProject(env, u, b) });

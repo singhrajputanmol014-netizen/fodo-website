@@ -571,6 +571,31 @@ export async function state(env, u) {
     kpis: { scheduled7: await c("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status='scheduled' AND scheduled_at <= ?2", week), posted7: await c("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status IN ('done','partial') AND finished_at >= ?2", ago), drafts: await c("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status='draft'"), failed: await c("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status IN ('failed','partial')"), inbox: await c("SELECT COUNT(*) n FROM ss_comments WHERE user_id=?1 AND status='new'"), leads: await c("SELECT COUNT(*) n FROM ss_comments WHERE user_id=?1 AND status='new' AND tags LIKE '%\"lead\"%'"), followers: (await one(d, "SELECT COALESCE(SUM(followers),0) n FROM ss_accounts WHERE user_id=?1", u.id)).n },
     upcoming: (await all(d, "SELECT * FROM ss_posts WHERE user_id=?1 AND status IN ('scheduled','draft','publishing') ORDER BY COALESCE(scheduled_at, created_at) LIMIT 8", u.id)).map(postOut), now, owner: isOwner(u) };
 }
+/* Control panel: everything one person has in Social Studio (only their own rows). */
+export async function control(env, u) {
+  const d = await ssdb(env), n = async (sql, ...a) => (await one(d, sql, u.id, ...a)).n || 0;
+  const month = new Date(Date.now() - 30 * 864e5).toISOString(), st = storeKind(env), lim = LIMITS[st] || null;
+  const media = await one(d, "SELECT COALESCE(SUM(size),0) b, COUNT(*) n FROM ss_media WHERE user_id=?1 AND status='ready'", u.id);
+  const byPlat = await all(d, "SELECT platform, COUNT(*) n, SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) bad FROM ss_accounts WHERE user_id=?1 GROUP BY platform", u.id);
+  return {
+    account: { email: u.email, name: u.name || "", owner: isOwner(u) },
+    storage: { kind: st, used: media.b || 0, files: media.n || 0, limit: lim ? lim.user : 0, file_limit: lim ? lim.file : 0 },
+    counts: { projects: await n("SELECT COUNT(*) n FROM ss_projects WHERE user_id=?1"),
+      accounts: byPlat.reduce((a, x) => a + x.n, 0), accounts_with_problems: byPlat.reduce((a, x) => a + (x.bad || 0), 0),
+      posts: await n("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1"),
+      posted_30d: await n("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status IN ('done','partial') AND finished_at >= ?2", month),
+      scheduled: await n("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status='scheduled'"),
+      failed: await n("SELECT COUNT(*) n FROM ss_posts WHERE user_id=?1 AND status IN ('failed','partial')"),
+      comments_new: await n("SELECT COUNT(*) n FROM ss_comments WHERE user_id=?1 AND status='new'"),
+      ideas: await n("SELECT COUNT(*) n FROM ss_ideas WHERE user_id=?1"),
+      links: await n("SELECT COUNT(*) n FROM ss_links WHERE user_id=?1 AND revoked=0 AND expires_at > ?2", nowIso()),
+      bios: await n("SELECT COUNT(*) n FROM ss_bio WHERE user_id=?1") },
+    platforms: byPlat.map((x) => ({ platform: x.platform, n: x.n, bad: x.bad || 0 })),
+    devices: await devices(env, u),
+    connect: { meta: metaOn(env), google: googleOn(env), ai: aiOn(env) },
+    recent: (await all(d, "SELECT * FROM ss_posts WHERE user_id=?1 ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 6", u.id)).map(postOut),
+  };
+}
 /* hourly (GitHub workflow → /api/monitor/jobs): publish due posts, finish unfinished ones, read comments and numbers */
 export async function tick(env, origin) {
   const d = await ssdb(env), out = { posts: [], inbox: 0, numbers: 0 };

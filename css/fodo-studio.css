@@ -1167,3 +1167,5 @@ a.nav{text-decoration:none}
 }
 .pmodal .box{position:relative}html .pmodal .fs-x{position:absolute!important;right:14px;left:auto;top:14px;z-index:2}.pmodal .box>h2:first-of-type,.pmodal .box>h3:first-of-type{padding-right:48px}
 [hidden]{display:none!important}
+/* v52.2: iPhone home-screen app (standalone): keep the top bar clear of the notch */
+@media (max-width:900px){.fs-top{padding-top:calc(10px + env(safe-area-inset-top))!important}.side{padding-top:calc(16px + env(safe-area-inset-top))!important}}

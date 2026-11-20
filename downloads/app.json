@@ -1,0 +1,21 @@
+{
+ "version": "0.15.0",
+ "released": "2026-11-20",
+ "files": {
+  "windows": {
+   "name": "FODO-Studio-Setup.exe",
+   "bytes": 8769116,
+   "sha256": "6eef7248fb11107e1aa01d0040996df6ee5778280bbd30141946337ed26b6f62"
+  },
+  "windows_zip": {
+   "name": "FODO-Studio-Setup.zip",
+   "bytes": 9937287,
+   "sha256": "12e6c13fc74972070761f3e8d25ea41b68c1e7b6847f7a83040f8d8136c803f0"
+  },
+  "mac": {
+   "name": "FODO-Studio-Mac.zip",
+   "bytes": 10031167,
+   "sha256": "1d1af9ae61e6d59ac50f94a5232ade3ea3290b5ab52ced40269f10ef1bebdb04"
+  }
+ }
+}

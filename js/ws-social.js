@@ -6,7 +6,7 @@
   "use strict";
   var W = window.FODO_WS, esc = W.esc, $ = W.$, $$ = W.$$, toast = W.toast, modal = W.modal, head = W.head, empty = W.empty;
   var S = { st: null, tab: "overview", project: "", timer: null, cal: null, el: null };
-  var TABS = [["overview", "Overview"], ["calendar", "Calendar"], ["posts", "Posts"], ["planner", "Planner"], ["inbox", "Inbox"], ["analytics", "Analytics & reports"], ["accounts", "Accounts & clients"], ["bio", "Link in bio"], ["clipping", "AI clipping"]];
+  var TABS = [["overview", "Overview"], ["calendar", "Calendar"], ["posts", "Posts"], ["planner", "Planner"], ["inbox", "Inbox"], ["analytics", "Analytics & reports"], ["accounts", "Accounts & clients"], ["bio", "Link in bio"], ["clipping", "AI clipping"], ["control", "Control panel"], ["app", "Get the app"]];
   var PICON = { instagram: "IG", facebook: "FB", youtube: "YT", tiktok: "TT", x: "X", linkedin: "in", threads: "@", snapchat: "SC", pinterest: "P", whatsapp: "WA", other: "•" };
   var STATUS = { draft: ["Draft", "warn"], scheduled: ["Scheduled", ""], publishing: ["Posting…", ""], done: ["Posted", "ok"], partial: ["Partly posted", "warn"], failed: ["Failed", "st-cancelled"], cancelled: ["Cancelled", ""] };
   function api(p, body, method) {
@@ -320,6 +320,73 @@
       detect(); on(el, "recheck", detect);
       $("#ss-dv", el).onsubmit = function (e) { e.preventDefault(); act(e.submitter, "devices", W.fd(this), function (r) { modal('<h2>Your device key</h2><p class="ws-sub">Copy it now and paste it into the FODO Studio app. It is shown only once.</p><code class="ss-key">' + esc(r.key) + '</code><div class="ws-row"><button type="button" class="ws-btn pri" id="ss-kc">Copy</button></div>', function (m) { $("#ss-kc", m).onclick = function () { (navigator.clipboard ? navigator.clipboard.writeText(r.key) : Promise.reject()).then(function () { toast("Copied."); }, function () {}); }; }); T.clipping(el); }); };
       on(el, "dv-off", function (b) { if (confirm("Remove this device key? That computer can no longer send videos.")) act(b, "devices/" + b.closest("[data-dev]").getAttribute("data-dev"), null, function () { T.clipping(el); }, "DELETE"); });
+    });
+  };
+
+  /* ---------- shared: is the FODO Studio app running on this computer? ---------- */
+  function findApp() {
+    return Promise.race([fetch("http://127.0.0.1:8777/health", { mode: "cors", cache: "no-store", targetAddressSpace: "loopback" }).then(function (r) { return r.json(); }),
+      new Promise(function (_, no) { setTimeout(function () { no(new Error("t")); }, 4000); })]);
+  }
+  function device() {
+    var ua = navigator.userAgent || "", pf = navigator.platform || "";
+    if (/iPhone|iPod/.test(ua)) return "iphone";
+    if (/iPad/.test(ua) || (/Mac/.test(pf) && navigator.maxTouchPoints > 1)) return "ipad";
+    if (/Android/.test(ua)) return "android";
+    if (/Mac/.test(pf) || /Mac OS X/.test(ua)) return "mac";
+    if (/Win/.test(pf) || /Windows/.test(ua)) return "windows";
+    return "other";
+  }
+  var mb = function (b) { b = +b || 0; if (!b) return "0 MB"; return b >= 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : Math.max(0.1, b / 1048576).toFixed(1) + " MB"; };
+  var POWER = { max: "Maximum", balanced: "Balanced", saver: "Saver" }, TIER = { high: "high-end PC", medium: "mid-range PC", low: "light PC" };
+
+  /* ---------- control panel: one person's own FODO Studio ---------- */
+  T.control = function (el) {
+    Promise.all([api("control"), fetch("/api/account/me", { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return {}; })]).then(function (r) {
+      var c = r[0], me = (r[1] && r[1].user) || {};
+      if (!c.ok) return fail(el, c, function () { T.control(el); });
+      var k = c.counts, st = c.storage, pct = st.limit ? Math.min(100, Math.round((st.used / st.limit) * 100)) : 0;
+      var card = function (t, big, sub, href, hot) { return '<a class="ws-card' + (hot ? " ss-hot" : "") + '" href="' + href + '"><small>' + esc(t) + "</small><b>" + big + "</b><span>" + sub + "</span></a>"; };
+      el.innerHTML = frame("Your own FODO Studio: account, computers, connected accounts, storage and what happened lately. Only you see this.") +
+        '<div class="ws-cards">' + card("Projects", nfmt(k.projects), "brands and clients", "#social?tab=accounts") + card("Connected accounts", nfmt(k.accounts), k.accounts_with_problems ? k.accounts_with_problems + " need a reconnect" : "all working", "#social?tab=accounts", k.accounts_with_problems > 0) +
+        card("Posted · 30 days", nfmt(k.posted_30d), nfmt(k.scheduled) + " scheduled", "#social?tab=posts") + card("Needs attention", nfmt(k.failed), "failed or partly posted", "#social?tab=posts", k.failed > 0) +
+        card("Inbox", nfmt(k.comments_new), "new comments", "#social?tab=inbox", k.comments_new > 0) + card("Storage", mb(st.used), st.limit ? pct + "% of " + mb(st.limit) : st.files + " videos", "#social?tab=posts", pct >= 90) + "</div>" +
+        '<div class="ws-g2 ss-g"><section class="ss-box"><h2>Your account</h2><ul class="ws-rows"><li><b>' + esc(me.email || c.account.email || "") + "</b><small>" + esc(me.planName ? "Plan: " + me.planName : "") + (me.planUntil ? " · until " + esc(String(me.planUntil).slice(0, 10)) : "") + '</small></li></ul><div class="ws-row"><a class="ws-btn" href="/plans/">Plans</a><a class="ws-btn" href="/workspace/">FODO Workspace</a></div>' +
+        '<h2 style="margin-top:18px">Storage</h2><div class="ss-prog" aria-label="Storage used"><i style="width:' + pct + '%"></i></div><p class="ws-sub">' + mb(st.used) + " used by " + nfmt(st.files) + " video(s)" + (st.limit ? " of " + mb(st.limit) + " · up to " + mb(st.file_limit) + " per video" : "") + ".</p></section>" +
+        '<section class="ss-box"><h2>This computer</h2><p id="cp-app" class="ws-sub">Looking for the FODO Studio app on this computer…</p><div class="ws-row" id="cp-open" hidden><a class="ws-btn pri" href="http://127.0.0.1:8777/" target="_blank" rel="noopener">Open FODO Studio</a><a class="ws-btn" href="http://127.0.0.1:8777/#panel" target="_blank" rel="noopener">Open its Control Panel</a></div>' +
+        '<div class="ws-row" id="cp-get" hidden><a class="ws-btn pri" href="#social?tab=app">Get the app</a><button type="button" class="ws-btn" data-a="cp-re">Check again</button></div>' +
+        '<h2 style="margin-top:18px">Your computers</h2>' + (c.devices.length ? '<ul class="ws-rows">' + c.devices.map(function (d) { return "<li" + (d.active ? "" : ' class="off"') + "><b>" + esc(d.name) + "</b><small>" + (d.active ? (d.last_seen ? "last used " + esc(ago(d.last_seen)) : "not used yet") : "removed") + "</small></li>"; }).join("") + "</ul>" : '<p class="ws-sub">No computer linked yet.</p>') +
+        '<div class="ws-row"><a class="ws-btn" href="#social?tab=clipping">Manage computers</a></div></section></div>' +
+        '<div class="ws-g2 ss-g"><section class="ss-box"><h2>Connected platforms</h2>' + (c.platforms.length ? '<ul class="ws-rows">' + c.platforms.map(function (x) { return "<li><b>" + esc(PICON[x.platform] || "•") + " " + esc(x.platform) + "</b><small>" + x.n + " account(s)" + (x.bad ? " · " + x.bad + " need a reconnect" : "") + "</small></li>"; }).join("") + "</ul>" : '<p class="ws-sub">Nothing connected yet.</p>') +
+        '<p class="ws-sub">Instagram and Facebook: ' + (c.connect.meta ? "ready" : "not set up by FODO yet") + " · YouTube: " + (c.connect.google ? "ready" : "not set up by FODO yet") + " · AI helpers: " + (c.connect.ai ? "on" : "off") + '</p><div class="ws-row"><a class="ws-btn" href="#social?tab=accounts">Connect accounts</a></div></section>' +
+        '<section class="ss-box"><h2>Recent activity</h2>' + (c.recent.length ? '<ul class="ws-rows">' + c.recent.map(function (p) { var s = STATUS[p.status] || [p.status, ""]; return "<li><b>" + esc(p.title || "Untitled") + '</b><span class="ws-pill ' + s[1] + '">' + esc(s[0]) + "</span><small>" + esc(when(p.scheduled_at || p.created_at)) + "</small></li>"; }).join("") + "</ul>" : '<p class="ws-sub">No posts yet.</p>') +
+        '<p class="ws-sub">' + nfmt(k.ideas) + " ideas in the planner · " + nfmt(k.links) + " active approval link(s) · " + nfmt(k.bios) + " link-in-bio page(s).</p></section></div>";
+      function check() { var s = $("#cp-app", el); s.textContent = "Looking for the FODO Studio app on this computer…";
+        findApp().then(function (h) { s.innerHTML = "<b>Running.</b> FODO Studio " + esc(h.version || "") + (h.power ? " · " + esc(TIER[h.tier] || "") + " · power: " + esc(POWER[h.power] || h.power) : "") + ". Clips are made with this computer's power."; $("#cp-open", el).hidden = false; $("#cp-get", el).hidden = true; },
+          function () { s.textContent = "Not running on this computer (or not installed). Install it once, then open it from its icon. If the browser asks to allow access to this device, press Allow."; $("#cp-open", el).hidden = true; $("#cp-get", el).hidden = false; }); }
+      check(); on(el, "cp-re", check);
+    });
+  };
+
+  /* ---------- get the app: Windows / Mac installers, phones add the website to the home screen ---------- */
+  T.app = function (el) {
+    fetch("/downloads/app.json?x=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (A) {
+      var dv = device(), v = A.version ? "Version " + esc(A.version) : "", f = A.files || {};
+      var dl = function (key, label) { var x = f[key]; return x ? '<a class="ws-btn pri" href="/downloads/' + esc(x.name) + '" download>' + label + " (" + mb(x.bytes) + ")</a>" : '<span class="ws-sub">Download coming soon.</span>'; };
+      var box = function (id, title, body, rec) { return '<section class="ss-box" id="app-' + id + '"><h2>' + title + (rec ? ' <span class="ws-pill ok">For this device</span>' : "") + "</h2>" + body + "</section>"; };
+      var win = box("win", "Windows", '<p class="ws-sub">Windows 10 or 11, 64-bit. 8 GB RAM or more recommended, 5 GB free space, internet for the first setup.</p><div class="ws-row">' + dl("windows", "Download for Windows") + (f.windows_zip ? '<a class="ws-btn" href="/downloads/' + esc(f.windows_zip.name) + '" download>.zip instead</a>' : "") + "</div>" +
+        '<ol class="ss-steps"><li>Open the downloaded <b>FODO-Studio-Setup.exe</b>. If Windows says "Windows protected your PC", press <b>More info</b> then <b>Run anyway</b> (the installer is new and not yet signed).</li><li>Setup checks your PC and installs what it needs: 5 to 15 minutes the first time.</li><li>Open <b>FODO Studio</b> from the desktop icon and create your account. You are the owner, with your own Control Panel.</li></ol>', dv === "windows");
+      var mac = box("mac", "Mac", '<p class="ws-sub">macOS 11 or newer, Apple chip (M1 to M4) or Intel. 8 GB memory or more recommended, 5 GB free space.</p><div class="ws-row">' + dl("mac", "Download for Mac") + "</div>" +
+        '<ol class="ss-steps"><li>Open the downloaded zip. In the <b>FODO Studio</b> folder, right-click <b>Install FODO Studio.command</b> and choose <b>Open</b> (a normal double-click is blocked for new apps).</li><li>If it asks for your Mac password (to install Homebrew, Python and FFmpeg), type it. Setup takes 5 to 15 minutes the first time.</li><li>Open <b>FODO Studio</b> from Applications or Launchpad and create your account.</li></ol>', dv === "mac");
+      var ph = (dv === "iphone" || dv === "ipad") ? '<ol class="ss-steps"><li>Open this page in <b>Safari</b>.</li><li>Tap <b>Share</b> (the square with the arrow), then <b>Add to Home Screen</b>.</li><li>Open <b>FODO Studio</b> from the new icon: it opens full screen like an app.</li></ol>' :
+        dv === "android" ? '<ol class="ss-steps"><li>Open this page in <b>Chrome</b>.</li><li>Tap the <b>⋮</b> menu, then <b>Add to Home screen</b> (or <b>Install app</b>).</li><li>Open <b>FODO Studio</b> from the new icon.</li></ol>' :
+        '<ol class="ss-steps"><li>On your phone, open <b>www.fodo.co.in/studio</b> and log in.</li><li>iPhone: Safari ▸ Share ▸ <b>Add to Home Screen</b>. Android: Chrome ▸ ⋮ ▸ <b>Add to Home screen</b>.</li></ol>';
+      var phone = box("phone", "iPhone, iPad and Android", '<p class="ws-sub">On a phone FODO Studio works as an app from your home screen: calendar, publishing, inbox, analytics, approvals and link in bio. Clipping and editing need a computer: phones cannot run the video engine.</p>' + ph, dv === "iphone" || dv === "ipad" || dv === "android");
+      var order = dv === "mac" ? [mac, win, phone] : (dv === "iphone" || dv === "ipad" || dv === "android") ? [phone, win, mac] : [win, mac, phone];
+      el.innerHTML = frame("Install FODO Studio on your computer. Clipping, editing and captions then run on that computer, with its own power. " + v) +
+        '<div class="ws-g2 ss-g">' + order[0] + order[1] + "</div>" + '<div class="ws-g2 ss-g">' + order[2] +
+        '<section class="ss-box"><h2>Made for your PC</h2><p class="ws-sub">On first start FODO Studio reads the processor, memory and graphics card and picks how hard to work:</p><ul class="ss-steps"><li><b>Maximum</b> on a strong PC (NVIDIA card with 6 GB+, 16+ threads or Apple chip with 16 GB): the best speech models, graphics-card video encoding, best quality.</li><li><b>Balanced</b> on a mid PC: good models, Intel / AMD / NVIDIA encoders when present, leaves room for other apps.</li><li><b>Saver</b> on a light PC: smaller models, fast encodes, runs below normal priority so the PC stays smooth.</li></ul><p class="ws-sub">Change it any time in the app: Control Panel ▸ Power.</p></section></div>' +
+        (A.files && A.files.windows ? '<p class="ws-sub">Checksums (SHA-256): Windows ' + esc((f.windows || {}).sha256 || "").slice(0, 16) + "… · Mac " + esc((f.mac || {}).sha256 || "").slice(0, 16) + "…</p>" : "");
     });
   };
 

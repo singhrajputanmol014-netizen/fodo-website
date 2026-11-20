@@ -51,3 +51,27 @@ user's own computer, never from FODO's servers, and the Studio must look exactly
 - Full runner: 5195 passed, 9 failed; the same 9 fail on the v51.8 baseline in this sandbox (local runtime / network suites,
   `overpass.kumi.systems` connect-src, insights hub count). None is caused by v52.
 - Runtime check on wrangler pages dev: all 9 views on desktop 1440 and phone 390, no horizontal overflow, no console errors.
+
+## v52.1 and v52.2 (same day): the app finds itself, install for everyone, per-person control panel
+
+- **v52.1:** the Studio's AI Clipping tab now finds the FODO Studio app on the visitor's own computer. The app's `/health` answers fodo.co.in only (CORS + `Access-Control-Allow-Private-Network`). The Open buttons stay hidden until the app is found (`[hidden]` fix). Steps text no longer promises a "Send to FODO" button that does not exist yet.
+- **Get the app (`#social?tab=app`):**
+  - Windows installer `downloads/FODO-Studio-Setup.exe` (NSIS, per-user, no admin), plus a `.zip` alternative.
+  - Mac package `downloads/FODO-Studio-Mac.zip` (FODO Studio.app + "Install FODO Studio.command").
+  - Phones: add `/studio/` to the home screen (`studio/manifest.webmanifest`, apple-mobile-web-app tags, icons in `assets/fodo-studio/`). Clipping needs a computer.
+  - The card for the visitor's own device is shown first.
+  - `downloads/app.json` holds the version, sizes and SHA-256. `/downloads/*` is noindex and no-cache; `.exe` and `.zip` are served as attachments; robots.txt disallows `/downloads/`.
+- **Control panel (`#social?tab=control`, `GET /api/social/control`):** one person's own data. It shows:
+  - Account, plan and storage bar.
+  - Projects, connected platforms (and ones needing a reconnect), posts in the last 30 days, scheduled, failed, new comments, ideas, approval links, bio pages.
+  - Their linked computers and recent activity.
+  - "This computer": whether the app runs here, its power mode, and buttons that open the app and its own Control Panel (`127.0.0.1:8777/#panel`).
+- **Installed app (built from the FODO Studio app repo, `tools/build_installer.py`):**
+  - It is the "personal edition" (`edition.json`): the first account made on that PC becomes its owner, with the full Control Panel. Nobody else can sign in unless the owner invites them.
+  - It ships no FODO data, secrets or storage; the build refuses to run if token-like strings are found.
+  - **Power engine:** it reads the CPU, RAM and GPU (NVIDIA / Intel / AMD / Apple chip) and picks Maximum, Balanced or Saver. That sets the speech models, CPU threads, the export quality and the GPU encoder (NVENC, QSV, AMF, VideoToolbox). Saver runs below normal priority so the PC stays smooth. Owner choices win; Control Panel ▸ Power changes it.
+- **Not verified on real hardware yet:**
+  - Mac install: the scripts pass a syntax check, but no real Mac was available.
+  - The NSIS installer has not been run on a Windows PC.
+  - Neither is code-signed: Windows SmartScreen asks "More info ▸ Run anyway"; on a Mac, right-click ▸ Open.
+- **Tests:** v52 100/100 (control panel isolation, downloads, manifest, new tabs). App: 202 passed (power tiers incl. Apple / AMD, personal edition, health CORS).

@@ -165,6 +165,11 @@ X("UPDATE ss_posts SET scheduled_at=?1 WHERE id=?2", new Date(Date.now() - 60e3)
 const tk = await jobsTick({ request: new Request(SITE + "/api/monitor/jobs", { method: "POST", headers: { "x-cron-key": env.CRON_KEY } }), env }); const tj = await tk.json(); ok(tj.ok && tj.social && tj.social.posts.some((p) => p.id === q.id && p.status === "done"), "hourly tick publishes due posts");
 ok((await Z("projects/" + pj.id, undefined, "a", { method: "DELETE" })).status === 400 || true, "projects with scheduled posts are protected");
 ok((await Z("state", undefined, "b")).j.projects.length === 1 && (await Z("posts", undefined, "b")).j.posts.length === 0, "person B sees only their own studio");
+/* ---------- control panel (each person's own) ---------- */
+const ca = (await Z("control")).j, cb = (await Z("control", undefined, "b")).j;
+ok(ca.ok && ca.counts.projects >= 2 && ca.counts.posts >= 1 && ca.counts.ideas >= 1 && ca.storage.files >= 1 && ca.storage.used > 0 && ca.devices.length >= 1 && ca.account.email === "asha@client.in", "control panel: person A sees their own numbers");
+ok(cb.ok && cb.counts.posts === 0 && cb.counts.ideas === 0 && cb.devices.length === 0 && cb.storage.used === 0 && cb.account.email !== ca.account.email, "control panel: person B sees only their own");
+ok((await call("social/control", undefined, { anon: true })).status === 401, "control panel needs a login");
 /* ---------- front end + schema ---------- */
 const WS = fs.readFileSync("js/workspace.js", "utf8"), SS = fs.readFileSync("js/ws-social.js", "utf8"), SC = fs.readFileSync("functions/_lib/schema.js", "utf8");
 ok(/OUT = \{ social: "\/studio\/"/.test(WS) && /VIEWS\.social = function[^\n]*location\.href = "\/studio\/"/.test(WS), "Workspace ▸ Social Studio opens the FODO Studio page");
@@ -174,6 +179,11 @@ ok(/Social · Studio · Marketing/.test(FS) && /"Calendar"/.test(FS) && /"Publis
 ok(/\.side\{/.test(CSS) && /\.kpi\{/.test(CSS) && /html\.ui2/.test(CSS) && /\/assets\/fodo-studio\/fonts\/Geist-Variable\.woff2/.test(CSS) && fs.existsSync("assets/fodo-studio/fonts/Geist-Variable.woff2"), "the app's own CSS and fonts");
 ok(/const ICONS = /.test(U2) && !/\son[a-z]+="/.test(FS + U2), "UI 2.0 icons from the app; no inline handlers");
 ok(/\/studio\/\*\n  X-Robots-Tag: noindex, nofollow\n  Cache-Control: no-store\n  Content-Security-Policy: default-src 'self'; script-src 'self' /.test(fs.readFileSync("_headers", "utf8")) && /Disallow: \/studio\//.test(fs.readFileSync("robots.txt", "utf8")), "/studio/ is private and has the strict app CSP");
+const APPJ = JSON.parse(fs.readFileSync("downloads/app.json", "utf8")), HD = fs.readFileSync("_headers", "utf8"), MF = JSON.parse(fs.readFileSync("studio/manifest.webmanifest", "utf8"));
+ok(["windows", "mac"].every((k) => APPJ.files[k] && fs.existsSync("downloads/" + APPJ.files[k].name) && fs.statSync("downloads/" + APPJ.files[k].name).size === APPJ.files[k].bytes && APPJ.files[k].bytes < 25 * 1048576), "Windows + Mac installers published, sizes match, under the 25 MB Pages limit");
+ok(/\/downloads\/\*\.exe\n  Content-Disposition: attachment/.test(HD) && /Disallow: \/downloads\//.test(fs.readFileSync("robots.txt", "utf8")), "installers download (not open) and stay out of search");
+ok(MF.start_url === "/studio/" && MF.display === "standalone" && MF.icons.every((i) => fs.existsSync(i.src.slice(1))) && /rel="manifest" href="\/studio\/manifest\.webmanifest"/.test(SH) && /apple-mobile-web-app-capable/.test(SH), "iPhone / Android: Studio installs to the home screen");
+ok(/T\.control = function/.test(SS) && /T\.app = function/.test(SS) && /"Control panel"/.test(FS) && /"Get the app"/.test(FS) && /127\.0\.0\.1:8777\/#panel/.test(SS), "Studio has a per-person Control panel and a Get the app page");
 ok(!/\son[a-z]+=["']/.test(SS) && !/<script/i.test(SS), "no inline handlers or scripts in the module (CSP)");
 ok(/"sstudio", \(\) => import\("\.\/sstudio\.js"\)/.test(SC) && /SCHEMA_VERSION = "52\.0"/.test(SC), "schema gate knows the new tables (version 52.0)");
 ok(/"\/l\/\*"/.test(fs.readFileSync("_routes.json", "utf8")) && /"\/approve\/\*"/.test(fs.readFileSync("_routes.json", "utf8")), "public routes reach Functions");

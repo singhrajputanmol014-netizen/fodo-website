@@ -75,12 +75,39 @@
   function login() {
     root.innerHTML = '<div class="fs-login"><div class="card"><div class="brand"><div class="bmark">F</div><div><div class="logo">FODO <span>STUDIO</span></div><div class="tag">Social · Studio · Marketing</div></div></div><h1>Log in to FODO Studio</h1><p class="sub">Plan, post and grow every social account, for you and your clients. Use your FODO account (Google or email).</p><a class="btn" href="/workspace/#social">Log in</a></div></div>';
   }
+  /* ---------- v53: Studio key gate ---------- */
+  function getLic() { return fetch("/api/social/license", { credentials: "same-origin" }).then(function (r) { return r.json(); }); }
+  function gate(u, go) {
+    getLic().then(function (j) {
+      var L = j && j.license; if (j && j.ok && L && L.status === "active") return go();
+      if (!j || !L) { root.innerHTML = '<div class="empty">Couldn\'t check your Studio access. Check your connection and reload.</div>'; return; }
+      var blocked = L.status === "blocked";
+      root.innerHTML = '<div class="fs-login"><div class="card fs-gate"><div class="brand"><div class="bmark">F</div><div><div class="logo">FODO <span>STUDIO</span></div><div class="tag">Social · Studio · Marketing</div></div></div>' +
+        (blocked ? '<h1>Your FODO Studio is blocked</h1><p class="sub">' + esc(L.blocked_reason ? "Reason: " + L.blocked_reason + ". " : "") + "Please contact FODO to turn it back on.</p>" :
+          '<h1>Enter your Studio key</h1><p class="sub">FODO Studio is invite only. FODO gives every person their own key (FODO-XXXX-XXXX-XXXX-XXXX-XXXX). Your key ends in <b>' + esc(L.hint || "") + '</b>. Enter it once to open Studio here; the same key unlocks the desktop app.</p>' +
+          '<form id="fs-kf" class="fs-kf" autocomplete="off"><label for="fs-key">Studio key</label><input id="fs-key" name="key" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="40" placeholder="FODO-XXXX-XXXX-XXXX-XXXX-XXXX" required><button class="btn" type="submit">Open Studio</button><p id="fs-kmsg" class="fs-kmsg" role="status" aria-live="polite"></p></form>' +
+          '<p class="sub small">No key yet? Ask FODO on <a href="https://wa.me/?text=' + encodeURIComponent("Hi FODO, please send my FODO Studio key. My login: " + (u.email || "")) + '" target="_blank" rel="noopener">WhatsApp</a> and share your login email: <b>' + esc(u.email || "") + "</b>.</p>") +
+        '<p class="sub small">Logged in as ' + esc(u.email || "") + ' · <a href="#" id="fs-gout">Log out</a></p></div></div>';
+      $("#fs-gout").addEventListener("click", function (e) { e.preventDefault(); fetch("/api/account/logout", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" }).then(function () { location.href = "/"; }); });
+      var f = $("#fs-kf"); if (!f) return;
+      var inp = $("#fs-key"), msg = $("#fs-kmsg"); inp.focus();
+      inp.addEventListener("input", function () { var c = inp.value.toUpperCase().replace(/[^0-9A-Z]/g, ""); if (c.indexOf("FODO") === 0) c = c.slice(4); var g = c.slice(0, 20).match(/.{1,4}/g) || []; inp.value = g.length ? "FODO-" + g.join("-") : inp.value.toUpperCase(); });
+      f.addEventListener("submit", function (e) {
+        e.preventDefault(); var b = f.querySelector("button"); b.disabled = true; msg.textContent = "Checking…"; msg.className = "fs-kmsg";
+        fetch("/api/social/license", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: inp.value }) }).then(function (r) { return r.json(); }).then(function (k) {
+          b.disabled = false; if (k.ok && k.license && k.license.status === "active") { msg.textContent = "Studio is on. Opening…"; return go(); }
+          msg.textContent = k.reason || "That key didn't work."; msg.className = "fs-kmsg bad";
+        }, function () { b.disabled = false; msg.textContent = "No connection. Try again."; msg.className = "fs-kmsg bad"; });
+      });
+    }, function () { root.innerHTML = '<div class="empty">Couldn\'t check your Studio access. Check your connection and reload.</div>'; });
+  }
   function boot() {
     var sc = document.createElement("script"), v = (document.querySelector('script[src*="/js/fodo-studio.js"]') || {}).src || "", ver = v.indexOf("v=") > -1 ? "?v=" + v.split("v=")[1] : "";
     fetch("/api/account/me", { credentials: "same-origin" }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j._s = r.status; return j; }); }, function () { return { _s: 0 }; }).then(function (me) {
       var u = me && (me.user || me.account || (me.email ? me : null)); if (!u || !u.email) return login();
-      sc.src = "/js/ws-social.js" + ver; sc.onload = function () { shell(u); route(); badge(); window.addEventListener("hashchange", route); };
-      sc.onerror = function () { root.innerHTML = '<div class="empty">Couldn\'t load FODO Studio. Check your connection and reload.</div>'; }; document.head.appendChild(sc);
+      /* v53: Studio opens only after the person's key (given by FODO) is entered */
+      gate(u, function () { sc.src = "/js/ws-social.js" + ver; sc.onload = function () { shell(u); route(); badge(); window.addEventListener("hashchange", route); };
+      sc.onerror = function () { root.innerHTML = '<div class="empty">Couldn\'t load FODO Studio. Check your connection and reload.</div>'; }; document.head.appendChild(sc); });
     });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();

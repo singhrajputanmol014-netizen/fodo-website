@@ -7,6 +7,8 @@ import fs from "node:fs";
 import { onRequest as account } from "../functions/api/account/[[path]].js";
 import { onRequest as bizApi } from "../functions/api/biz/[[path]].js";
 import { onRequest as social } from "../functions/api/social/[[path]].js";
+import { onRequest as adminApi } from "../functions/api/admin/[[path]].js";
+import * as LIC from "../functions/_lib/slicense.js";
 import { onRequest as bioRoute } from "../functions/l/[slug].js";
 import { onRequest as bioGo } from "../functions/l/[slug]/go/[key].js";
 import { onRequest as approveRoute } from "../functions/approve/[token].js";
@@ -21,7 +23,7 @@ function d1() {
   const st = (sql, a = []) => ({ bind: (...x) => st(sql, x.map((v) => v === undefined ? null : v)), run: async () => { const r = db.prepare(sql).run(...a); return { success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } }; }, first: async () => db.prepare(sql).get(...a) || null, all: async () => ({ results: db.prepare(sql).all(...a) }), _x: () => db.prepare(sql).run(...a) });
   return { db, prepare: (s) => st(s), batch: async (l) => l.map((s) => (s._x(), { success: true })) };
 }
-const SITE = "https://www.fodo.co.in", jars = {}, H = { account, biz: bizApi, social };
+const SITE = "https://www.fodo.co.in", jars = {}, H = { account, biz: bizApi, social, admin: adminApi };
 const call = async (path, body, o = {}) => {
   const who = o.as || "a", h = Object.keys(H).filter((k) => path.indexOf(k + "/") === 0)[0] || "account", p = h === "account" ? path : path.slice(h.length + 1);
   const method = o.method || (body !== undefined ? "POST" : "GET"), raw = o.raw;
@@ -54,6 +56,14 @@ globalThis.fetch = async (u, o = {}) => { u = String(u); const J = (x, s, h) => 
   return new Response("x", { status: 599 }); };
 
 await login("asha@client.in", "a"); await login("bobby@other.in", "b");
+/* ---------- v53: nothing works until the Studio key FODO gave is entered ---------- */
+const g0 = await Z("state"); ok(g0.status === 402 && g0.j.license && g0.j.license.status === "waiting", "Studio waits for the key: every route answers 402 until it is entered");
+const lic0 = (await Z("license")).j.license; ok(lic0.status === "waiting" && lic0.hint.length === 4 && lic0.devices.length === 0, "a personal key was made from the account on first login (only the last 4 shown)");
+ok((await Z("license", { key: "FODO-2222-3333-4444-5555" })).status === 400, "a wrong key is refused");
+const keyOf = async (email) => (await import("../functions/_lib/gsc.js")).unseal(env, q1("SELECT key_sealed FROM ss_licenses WHERE user_id=(SELECT id FROM acct_users WHERE email=?1)", email).key_sealed);
+const keyA = await keyOf("asha@client.in"); ok(/^FODO(-[2-9A-HJKMNP-TV-Z]{4}){5}$/.test(keyA), "key format FODO-XXXX-XXXX-XXXX-XXXX (no look-alike letters)");
+ok((await Z("license", { key: keyA.toLowerCase().replace(/-/g, " ") })).j.license.status === "active", "typing the key in any case / spacing unlocks Studio");
+await Z("state", undefined, "b"); await Z("license", { key: await keyOf("bobby@other.in") }, "b");
 /* ---------- session, nav, CSRF ---------- */
 ok((await Z("state", undefined, "a", { anon: true })).status === 401, "Social Studio needs a login");
 const st = await Z("state"); ok(st.j.ok && st.j.projects.length === 1 && st.j.projects[0].main && st.j.on.meta && st.j.on.storage === "kv", "first visit makes the main project; Meta / Google / storage switches reported");
@@ -170,6 +180,43 @@ const ca = (await Z("control")).j, cb = (await Z("control", undefined, "b")).j;
 ok(ca.ok && ca.counts.projects >= 2 && ca.counts.posts >= 1 && ca.counts.ideas >= 1 && ca.storage.files >= 1 && ca.storage.used > 0 && ca.devices.length >= 1 && ca.account.email === "asha@client.in", "control panel: person A sees their own numbers");
 ok(cb.ok && cb.counts.posts === 0 && cb.counts.ideas === 0 && cb.devices.length === 0 && cb.storage.used === 0 && cb.account.email !== ca.account.email, "control panel: person B sees only their own");
 ok((await call("social/control", undefined, { anon: true })).status === 401, "control panel needs a login");
+/* ---------- v53: desktop app activation, signed offline lease, device limit, block, FODO Admin ▸ Studio ---------- */
+{
+const APP = (p, body, o) => call("social/app/" + p, body, Object.assign({ anon: true, headers: { origin: "" } }, o || {}));
+const FP = (c) => c.repeat(64);
+const pk = (await APP("pubkey")).j; ok(pk.ok && pk.alg === "Ed25519" && pk.key.length > 30, "the app's public signing key is published (Ed25519)");
+ok((await APP("activate", { key: "FODO-2222-3333-4444-5555-6666", fp: FP("a") })).status === 404 && (await APP("activate", { key: "hello", fp: FP("a") })).status === 400, "app: a wrong or badly typed key is refused");
+ok((await APP("activate", { key: keyA, fp: "x" })).status === 400, "app: a damaged copy (no fingerprint) is refused");
+const act1 = (await APP("activate", { key: keyA, fp: FP("a"), name: "Asha laptop", platform: "win32", version: "0.15.0" })).j;
+const L1 = await LIC.verifyLease(env, act1.lease);
+ok(act1.ok && /^fsd_/.test(act1.upload_key) && L1 && L1.fp === FP("a") && L1.exp - L1.iat === LIC.LEASE_HOURS * 3600, "app: key + this computer's fingerprint -> lease signed by FODO, bound to the computer, " + LIC.LEASE_HOURS + " h offline");
+ok((await LIC.verifyLease(env, act1.lease.replace(/^./, (c) => (c === "e" ? "f" : "e")))) === null, "app: a changed lease fails the signature check");
+const up1 = (await call("social/agent/me", undefined, { anon: true, headers: { authorization: "Bearer " + act1.upload_key } })).j; ok(up1.ok && up1.user.email === "asha@client.in", "app: activation also gives the 'Send to FODO' upload key");
+ok((await APP("activate", { key: keyA, fp: FP("b"), name: "Office PC" })).j.ok, "a second computer can use the same key");
+const third = await APP("activate", { key: keyA, fp: FP("c") }); ok(third.status === 409 && /limit is 2/.test(third.j.reason), "third computer: device limit (2) is enforced");
+const act1b = (await APP("activate", { key: keyA, fp: FP("a") })).j; ok(act1b.ok && act1b.device === act1.device, "the same computer can activate again (reinstall) without using a slot");
+ok((await call("social/agent/me", undefined, { anon: true, headers: { authorization: "Bearer " + act1.upload_key } })).status === 401, "reinstall: the old upload key stops, only the new one works");
+const rf = (await APP("refresh", { device: act1.device, fp: FP("a"), version: "0.15.1" })).j; ok(rf.ok && (await LIC.verifyLease(env, rf.lease)).dev === act1.device, "app: online renewal gives a fresh lease");
+ok((await APP("refresh", { device: act1.device, fp: FP("z") })).status === 401, "app: a lease copied to another computer can't be renewed");
+ok((await APP("activate", { key: keyA, fp: FP("a") }, { headers: { origin: "", "content-type": "text/plain" } })).status === 400, "app routes take JSON only");
+await login("anmol@fodo.co.in", "o");
+const uidA2 = q1("SELECT id FROM acct_users WHERE email='asha@client.in'").id;
+ok((await call("admin/studio", undefined, { as: "a" })).status === 403, "admin: customers can't open FODO Admin ▸ Studio");
+const ad = (await call("admin/studio", undefined, { as: "o" })).j, rowA = ad.items.filter((x) => x.user_id === uidA2)[0];
+ok(ad.ok && rowA && rowA.status === "active" && rowA.entered_via === "website" && rowA.devices.filter((x) => x.active).length === 2 && ad.counts.active >= 2, "admin: every Studio person, key status, how it was entered and their computers");
+ok((await call("admin/studio/" + uidA2 + "/key", undefined, { as: "o" })).j.key === keyA, "admin: owners can copy a person's key to give it to them");
+await call("admin/studio/" + uidA2, { action: "block", reason: "Payment pending" }, { as: "o" });
+const rb = await APP("refresh", { device: act1.device, fp: FP("a") }); ok(rb.status === 403 && rb.j.blocked && /Payment pending/.test(rb.j.reason), "block: the app's next renewal is refused (it locks), with the reason");
+{ const s1 = await Z("state"), s2 = await call("social/agent/me", undefined, { anon: true, headers: { authorization: "Bearer " + act1b.upload_key } }); ok(s1.j.license && s1.j.license.status === "blocked" && s2.status === 403, "block: website Studio and 'Send to FODO' stop too"); }
+ok((await Z("license", { key: keyA })).status === 403 && (await APP("activate", { key: keyA, fp: FP("a") })).status === 403, "block: entering the key again does not get around it");
+await call("admin/studio/" + uidA2, { action: "unblock" }, { as: "o" }); ok((await APP("refresh", { device: act1.device, fp: FP("a") })).j.ok && (await Z("state")).j.ok, "unblock: everything works again");
+const dB = rowA.devices.filter((x) => x.name === "Office PC")[0]; await call("admin/studio/" + uidA2, { action: "remove_device", device: dB.id }, { as: "o" });
+ok((await APP("refresh", { device: dB.id, fp: FP("b") })).j.removed === true, "admin can remove one computer");
+await call("admin/studio/" + uidA2, { action: "regen" }, { as: "o" });
+ok((await APP("activate", { key: keyA, fp: FP("a") })).status === 404 && (await APP("refresh", { device: act1.device, fp: FP("a") })).status === 401 && (await Z("state")).status === 402, "new key: the old key and every computer stop until the new key is entered");
+const keyA2 = await keyOf("asha@client.in"); ok(keyA2 !== keyA && (await Z("license", { key: keyA2 })).j.license.status === "active", "the new key works");
+const ownerSt = await Z("state", undefined, "o"); ok(ownerSt.j.ok, "FODO owners never need a key");
+}
 /* ---------- front end + schema ---------- */
 const WS = fs.readFileSync("js/workspace.js", "utf8"), SS = fs.readFileSync("js/ws-social.js", "utf8"), SC = fs.readFileSync("functions/_lib/schema.js", "utf8");
 ok(/OUT = \{ social: "\/studio\/"/.test(WS) && /VIEWS\.social = function[^\n]*location\.href = "\/studio\/"/.test(WS), "Workspace ▸ Social Studio opens the FODO Studio page");
@@ -186,7 +233,7 @@ ok(/\/downloads\/\*\.exe\n  Content-Disposition: attachment/.test(HD) && /Disall
 ok(MF.start_url === "/studio/" && MF.display === "standalone" && MF.icons.every((i) => fs.existsSync(i.src.slice(1))) && /rel="manifest" href="\/studio\/manifest\.webmanifest"/.test(SH) && /apple-mobile-web-app-capable/.test(SH), "iPhone / Android: Studio installs to the home screen");
 ok(/T\.control = function/.test(SS) && /T\.app = function/.test(SS) && /"Control panel"/.test(FS) && /"Get the app"/.test(FS) && /127\.0\.0\.1:8777\/#panel/.test(SS), "Studio has a per-person Control panel and a Get the app page");
 ok(!/\son[a-z]+=["']/.test(SS) && !/<script/i.test(SS), "no inline handlers or scripts in the module (CSP)");
-ok(/"sstudio", \(\) => import\("\.\/sstudio\.js"\)/.test(SC) && /SCHEMA_VERSION = "52\.0"/.test(SC), "schema gate knows the new tables (version 52.0)");
+ok(/"sstudio", \(\) => import\("\.\/sstudio\.js"\)/.test(SC) && /SCHEMA_VERSION = "5[3-9]\.\d+"/.test(SC), "schema gate knows the new tables (version 53+)");
 ok(/"\/l\/\*"/.test(fs.readFileSync("_routes.json", "utf8")) && /"\/approve\/\*"/.test(fs.readFileSync("_routes.json", "utf8")), "public routes reach Functions");
 ok(/http:\/\/127\.0\.0\.1:8777/.test(fs.readFileSync("_headers", "utf8")), "the Workspace may talk to the FODO Studio app on the same computer");
 console.log("\n" + pass + " passed, " + fail + " failed"); process.exit(fail ? 1 : 0);

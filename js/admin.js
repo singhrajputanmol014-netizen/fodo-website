@@ -32,6 +32,7 @@
 
   /* ---------- shell ---------- */
   var TABS = [["overview", "Overview", "M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"], ["traffic", "Traffic", "M3 3v18h18M7 15l4-4 3 3 6-6"], ["users", "Users", "M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm0 2c-2.7 0-6 1.3-6 4v2h8v-2c0-1 .4-2 1.1-2.8A9 9 0 0 0 8 13zm8 0c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"],
+    ["studio", "Studio", "M4 5h16v11H4zM8 20h8M12 16v4M10 8.5l4 2.5-4 2.5z"],
     ["xrays", "X-Rays", "M11 2a9 9 0 1 0 5.6 16l4.7 4.7 1.4-1.4-4.7-4.7A9 9 0 0 0 11 2zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"], ["leads", "Leads", "M12 2l2.9 6.9L22 9.3l-5.5 4.7L18.2 21 12 17.3 5.8 21l1.7-7L2 9.3l7.1-.4z"],
     ["payments", "Payments", "M2 6h20v12H2zm2 2v2h16V8zm0 6v2h6v-2z"], ["activity", "Activity", "M3 12h4l3-8 4 16 3-8h4"], ["lab", "Growth Lab", "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"], ["businesses", "Businesses", "M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1"], ["findings", "Findings", "M4 6h16M4 12h10M4 18h7M18 15l3 3-3 3"], ["quality", "Quality", "M9 12l2 2 4-4M12 3l8 4v5c0 5-3.4 8.6-8 9-4.6-.4-8-4-8-9V7z"], ["prompts", "AI prompts", "M4 5h16v11H8l-4 4zM8 9h8M8 12h5"], ["costs", "Costs & profit", "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"], ["monitoring", "Monitoring", "M2 12h4l2-6 4 12 2-6h8"], ["settings", "Prices & tools", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.5-3a8.5 8.5 0 0 0-.1-1.3l2-1.6-2-3.4-2.4 1a8.6 8.6 0 0 0-2.2-1.3L15.5 2h-4l-.4 2.5a8.6 8.6 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.6a8.5 8.5 0 0 0 0 2.6l-2 1.6 2 3.4 2.4-1a8.6 8.6 0 0 0 2.2 1.3l.4 2.5h4l.4-2.5a8.6 8.6 0 0 0 2.2-1.3l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.3z"], ["team", "Team", "M12 1l9 4v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V5z"]];
   // v34 enquiries + website settings
@@ -99,7 +100,7 @@
     root.querySelectorAll(".ad-nav a[data-tab]").forEach(function (a) { var on = a.dataset.tab === tab || (tab === "user" && a.dataset.tab === "users") || (tab === "business" && a.dataset.tab === "businesses") || (tab === "report" && a.dataset.tab === "xrays"); a.classList.toggle("on", on); if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
-    ({ overview: overview, traffic: trafficView, users: usersView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
+    ({ overview: overview, traffic: trafficView, users: usersView, studio: studioView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
       helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
@@ -365,6 +366,52 @@
 
   /* ---------- users ---------- */
   var uq = "", uf = "";
+  /* ---------- v53: FODO Studio keys: who uses Studio, key given or not, computers, block ---------- */
+  var sf = "", sq = "";
+  function studioView() {
+    $("#ad-view").innerHTML = head("Studio", "Everyone who opened FODO Studio. Each person gets a key from their account; Studio (website and app) works only after they enter it. " + (owner() ? "Copy or WhatsApp the key to give access, block anyone (the app stops at its next check-in: within an hour online, at most " : "Read-only view. ") + (owner() ? "48 h offline)." : ""), '<button class="btn sm ghost" id="ad-scsv" type="button">Export CSV</button>') +
+      '<div id="ad-skpi" class="ad-kpis"></div><div class="ad-bar2"><input id="ad-sq" type="search" placeholder="Search email or name" value="' + esc(sq) + '" aria-label="Search Studio people"><div class="ad-chips">' +
+      [["", "All"], ["waiting", "Key not entered"], ["active", "Active"], ["blocked", "Blocked"]].map(function (f) { return '<button type="button" class="chip" data-sf="' + f[0] + '" aria-pressed="' + (sf === f[0]) + '">' + f[1] + "</button>"; }).join("") + '</div></div><div id="ad-slist"><div class="ad-load">Loading…</div></div>';
+    var data = null, t;
+    $("#ad-sq").oninput = function (e) { clearTimeout(t); t = setTimeout(function () { sq = e.target.value.trim().toLowerCase(); draw(); }, 200); };
+    $$("[data-sf]").forEach(function (b) { b.onclick = function () { sf = b.dataset.sf; $$("[data-sf]").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); draw(); }; });
+    $("#ad-scsv").onclick = function () { if (data) csv([["Email", "Name", "Status", "Key ends", "Entered", "Via", "Computers", "Device limit", "Last seen", "Blocked reason", "Note"]].concat(data.items.map(function (x) { return [x.email, x.name, x.status, x.hint, x.entered_at, x.entered_via, x.devices.filter(function (d) { return d.active; }).length, x.max_devices, x.last_seen, x.block_reason, x.note]; })), "fodo-studio-keys"); };
+    var ST = { waiting: ["Key not entered", "mid"], active: ["Active", "ok"], blocked: ["Blocked", "bad"] };
+    function load() { api("studio").then(function (j) { if (!j.ok) return fail(j); data = j; draw(); }); }
+    function draw() {
+      if (!data) return; var c = data.counts;
+      $("#ad-skpi").innerHTML = K(c.total, "People in Studio") + K(c.waiting, "Key not entered yet", "waiting for the key", c.waiting ? "mid" : "") + K(c.active, "Active", "key entered") + K(c.blocked, "Blocked", "", c.blocked ? "bad" : "") + K(c.computers, "Computers with the app");
+      var L = data.items.filter(function (x) { return (!sf || x.status === sf) && (!sq || (x.email + " " + x.name).toLowerCase().indexOf(sq) > -1); });
+      $("#ad-slist").innerHTML = L.length ? '<div class="ad-table"><table><thead><tr><th>Person</th><th>Status</th><th>Key</th><th>Computers</th><th>Last seen</th>' + (owner() ? "<th></th>" : "") + "</tr></thead><tbody>" + L.map(function (x) {
+        var st = ST[x.status] || [x.status, ""], act = x.devices.filter(function (d) { return d.active; });
+        return '<tr data-s="' + esc(x.user_id) + '"><td><div class="ad-who"><span class="ad-av">' + ini(x) + "</span><div><b>" + esc(x.email || "—") + "</b><small>" + esc(x.name || "") + (x.note ? " · " + esc(x.note) : "") + "</small></div></div></td>" +
+          '<td data-l="Status"><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (x.status === "blocked" && x.block_reason ? "<br><small>" + esc(x.block_reason) + "</small>" : "") + (x.entered_at ? "<br><small>entered " + esc(date(x.entered_at)) + (x.entered_via ? " · " + esc(x.entered_via) : "") + "</small>" : "") + "</td>" +
+          '<td data-l="Key"><code>FODO-…-' + esc(x.hint) + "</code>" + (owner() ? '<br><button type="button" class="btn sm ghost" data-k="copy">Copy key</button> <button type="button" class="btn sm ghost" data-k="wa">WhatsApp</button>' : "") + "</td>" +
+          '<td data-l="Computers">' + act.length + " / " + x.max_devices + (act.length ? "<br><small>" + act.map(function (d) { return esc(d.name) + " · " + esc(d.platform || "") + " · " + esc(ago(d.last_seen)) + (owner() ? ' <a href="#" data-dev="' + esc(d.id) + '">remove</a>' : ""); }).join("<br>") + "</small>" : "") + "</td>" +
+          '<td data-l="Last seen">' + esc(ago(x.last_seen)) + "</td>" +
+          (owner() ? '<td class="ad-sacts">' + (x.status === "blocked" ? '<button type="button" class="btn sm" data-k="unblock">Unblock</button>' : '<button type="button" class="btn sm danger" data-k="block">Block</button>') +
+            (x.status === "waiting" ? ' <button type="button" class="btn sm ghost" data-k="activate" title="Turn Studio on without them typing the key">Activate</button>' : "") +
+            ' <button type="button" class="btn sm ghost" data-k="regen">New key</button> <button type="button" class="btn sm ghost" data-k="devices">Limit</button> <button type="button" class="btn sm ghost" data-k="note">Note</button></td>' : "") + "</tr>";
+      }).join("") + "</tbody></table></div>" : '<div class="panel ad-card"><p class="muted">' + (data.items.length ? "Nobody matches." : "Nobody has opened FODO Studio yet.") + "</p></div>";
+      $$("#ad-slist tr[data-s]").forEach(function (r) {
+        var uid = r.dataset.s, x = data.items.filter(function (y) { return y.user_id === uid; })[0];
+        var post = function (b, msg) { return api("studio/" + uid, b).then(function (j) { if (!j.ok) return toast(j.reason || "Could not save.", true); data = j; draw(); toast(msg); }); };
+        var key = function () { return api("studio/" + uid + "/key").then(function (j) { if (!j.ok) { toast(j.reason || "Could not load the key.", true); return null; } return j.key; }); };
+        r.querySelectorAll("[data-k]").forEach(function (b) { b.onclick = function () { var k = b.dataset.k;
+          if (k === "copy") key().then(function (v) { if (!v) return; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { toast("Key copied: " + v); }, function () { ask({ title: "Studio key for " + x.email, text: v, ok: "Done" }); }); });
+          else if (k === "wa") key().then(function (v) { if (!v) return; var msg = "Your FODO Studio key: " + v + "\n\nOpen https://www.fodo.co.in/studio/ (log in with " + x.email + ") and enter the key. For clipping on your computer, download the app from Studio ▸ Get the app and enter the same key there."; window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank", "noopener"); });
+          else if (k === "block") ask({ title: "Block " + x.email + "?", text: "Studio stops on the website at once, and in the app at its next check-in (at most 48 h if the computer stays offline).", input: "Reason (shown to them)", ph: "e.g. Payment pending", ok: "Block", danger: true }).then(function (v) { if (v !== null) post({ action: "block", reason: v }, "Blocked"); });
+          else if (k === "unblock") post({ action: "unblock" }, "Unblocked");
+          else if (k === "activate") ask({ title: "Activate Studio for " + x.email + "?", text: "Turns Studio on for the website without them typing the key. The app still needs the key.", ok: "Activate" }).then(function (v) { if (v) post({ action: "activate" }, "Activated"); });
+          else if (k === "regen") ask({ title: "Make a new key for " + x.email + "?", text: "The old key stops working and every computer is signed out. Give them the new key.", ok: "Make new key", danger: true }).then(function (v) { if (v) post({ action: "regen" }, "New key made: copy it with Copy key"); });
+          else if (k === "devices") ask({ title: "How many computers may " + x.email + " use?", input: "Number of computers (1-20)", ph: String(x.max_devices), ok: "Save" }).then(function (v) { if (v) post({ action: "devices", max: v }, "Saved"); });
+          else if (k === "note") ask({ title: "Note for " + x.email, input: "Note (only FODO sees it)", ph: x.note || "e.g. Paid till March", ok: "Save" }).then(function (v) { if (v !== null) post({ action: "note", note: v }, "Saved"); });
+        }; });
+        r.querySelectorAll("[data-dev]").forEach(function (a) { a.onclick = function (e) { e.preventDefault(); ask({ title: "Remove this computer?", text: "The app on it stops at its next check-in and needs the key again.", ok: "Remove", danger: true }).then(function (v) { if (v) post({ action: "remove_device", device: a.dataset.dev }, "Computer removed"); }); }; });
+      });
+    }
+    load();
+  }
   function usersView() {
     $("#ad-view").innerHTML = head("Users", "Everyone who logged in to the Growth Lab. Tap a person to see what they used" + (owner() ? ", block them or give features free." : "."), '<button class="btn sm ghost" id="ad-ucsv" type="button">Export CSV</button>') +
       '<div class="ad-bar2"><input id="ad-uq" type="search" placeholder="Search email or name" value="' + esc(uq) + '" aria-label="Search users"><div class="ad-chips">' + [["", "All"], ["paid", "Paying"], ["gifted", "Given free"], ["blocked", "Blocked"]].map(function (f) { return '<button type="button" class="chip" data-f="' + f[0] + '" aria-pressed="' + (uf === f[0]) + '">' + f[1] + "</button>"; }).join("") + '</div></div><div id="ad-ulist"><div class="ad-load">Loading…</div></div>';

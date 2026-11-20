@@ -12,9 +12,12 @@
         GET analytics?project&days · POST numbers/sync · GET report/<project>?days (printable HTML) · GET report/<project>/csv
         GET links?project · POST links · DELETE links/<token> · GET bio/<project> · POST bio/<project> · GET bio/<project>/export
         GET devices · POST devices · DELETE devices/<id>
+   v53: GET license · POST license {key} · DELETE license/devices/<id>; app/pubkey · POST app/activate · POST app/refresh (desktop app, no session).
+        Every other session route answers 402 until the person's Studio key is entered (see _lib/slicense.js).
    Writes need same-origin + JSON (CSRF); raw uploads need x-fodo-upload: 1. Every query is scoped to the signed-in person. */
 import { json, accountsOn, sessionUser, sameOrigin, count } from "../../_lib/accounts.js";
 import * as S from "../../_lib/sstudio.js";
+import * as LIC from "../../_lib/slicense.js";
 import * as SCH from "../../_lib/schema.js";
 
 const HTML_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' https: data:; media-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
@@ -37,9 +40,22 @@ export async function onRequest(ctx) {
       if (m === "POST" && p2 === "decide") { if (!sameOrigin(request) || !/json/.test(request.headers.get("content-type") || "")) return json({ ok: false, reason: "Bad request." }, 403); return ok(await S.decide(env, p1, (await request.json().catch(() => null)) || {})); }
       return json({ ok: false, reason: "Not found." }, 404);
     }
+    /* ---- v53: the FODO Studio app activates with the person's Studio key (no website session) ---- */
+    if (p0 === "app") {
+      if (p1 === "pubkey" && m === "GET") return ok({ alg: "Ed25519", key: await LIC.publicKey(env), lease_hours: LIC.LEASE_HOURS });
+      if (m !== "POST" || !/json/.test(request.headers.get("content-type") || "")) return json({ ok: false, reason: "Bad request." }, 400);
+      if (await count(env, "ssapp:" + ip, p1 === "activate" ? 30 : 600, 3600)) return json({ ok: false, reason: "Too many tries, wait an hour." }, 429);
+      const ab = (await request.json().catch(() => null)) || {};
+      try {
+        if (p1 === "activate") return ok(await LIC.activate(env, ab, ip));
+        if (p1 === "refresh") return ok(await LIC.refresh(env, ab, ip));
+      } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Something went wrong, please try again.", blocked: !!e.blocked, removed: !!e.removed }, e.status || 500); }
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
     /* ---- the FODO Studio app on the person's own computer (device key) ---- */
     if (p0 === "agent") {
-      const du = await S.deviceUser(env, request); if (!du) return json({ ok: false, reason: "This device key is not valid. Create a new one in FODO Studio ▸ AI Clipping on fodo.co.in." }, 401);
+      const du = await S.deviceUser(env, request); if (!du) return json({ ok: false, reason: "This device key is not valid. Activate FODO Studio again with your key." }, 401);
+      if (!LIC.isActive(await LIC.ensure(env, du))) return json({ ok: false, reason: "Your FODO Studio key is not active (waiting for the key, or blocked by FODO)." }, 403);
       if (await count(env, "ssag:" + du.id, 3000, 3600)) return json({ ok: false, reason: "Too many requests this hour." }, 429);
       if (p1 === "me" && m === "GET") return ok({ user: { email: du.email, name: du.name || "" } });
       if (p1 === "projects" && m === "GET") return ok({ projects: await S.projects(env, du) });
@@ -49,6 +65,17 @@ export async function onRequest(ctx) {
       return json({ ok: false, reason: "Not found." }, 404);
     }
     const u = await sessionUser(env, request); if (!u) return p0 === "oauth" ? Response.redirect(origin + "/studio/", 302) : json({ ok: false, reason: "Log in to use Social Studio.", login: true }, 401);
+    /* ---- v53: Studio key. Nothing else works until the person entered the key FODO gave them ---- */
+    if (p0 === "license") {
+      try {
+        if (m === "GET" && !p1) return ok({ license: await LIC.mine(env, u) });
+        if (m !== "GET" && !sameOrigin(request)) return json({ ok: false, reason: "Bad request." }, 403);
+        if (m === "POST" && !p1) { if (await count(env, "sslk:" + u.id, 20, 3600)) return json({ ok: false, reason: "Too many tries, wait an hour." }, 429); return ok({ license: await LIC.enterKey(env, u, ((await request.json().catch(() => null)) || {}).key) }); }
+        if (m === "DELETE" && p1 === "devices" && p2) return ok({ license: await LIC.removeOwnDevice(env, u, p2) });
+      } catch (e) { return bad(e); }
+      return json({ ok: false, reason: "Not found." }, 404);
+    }
+    { const L = await LIC.ensure(env, u); if (!LIC.isActive(L)) return p0 === "oauth" ? Response.redirect(origin + "/studio/", 302) : json({ ok: false, license: { status: L.status, blocked_reason: L.status === "blocked" ? L.block_reason || "" : undefined }, reason: L.status === "blocked" ? "Your FODO Studio is blocked. Please contact FODO." : "Enter your FODO Studio key to start." }, 402); }
     /* ---- OAuth callback (a top-level navigation from Facebook / Google) ---- */
     if (p0 === "oauth" && m === "GET") { const back = (t, good) => Response.redirect(origin + "/studio/#social?tab=accounts&" + (good ? "connected=" : "error=") + encodeURIComponent(t), 302);
       if (q.error) return back(q.error_description || q.error_reason || "The sign-in was cancelled.");

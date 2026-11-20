@@ -28,6 +28,7 @@ import { engines as aiEngines } from "../../_lib/aivis.js";
 import { gscOn } from "../../_lib/gsc.js";
 import { DEFAULTS as PROMPTS, getPrompt, savePrompt, resetPrompt, activatePrompt, pdb } from "../../_lib/prompts.js";
 import { istDay } from "../../_lib/traffic.js";
+import * as LIC from "../../_lib/slicense.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
@@ -48,6 +49,8 @@ export async function onRequest(ctx) {
       if (["help", "mail", "mailone", "chats", "chat"].indexOf(p0) > -1) { const hr = await helpGet(env, path, q, role); if (hr) return hr; }   // v20 help desk
       if (p0 === "me") return json({ ok: true, role, email: u.email, name: u.name, plans: ORDER.map((id) => ({ id, name: PLANS[id].name, price: PLANS[id].price })), features: Object.keys(FEATURE_INFO).map((id) => ({ id, label: FEATURE_INFO[id].label })) });
       if (p0 === "overview") return json(Object.assign({ ok: true, role }, await overview(d)));
+      if (p0 === "studio" && !path[1]) return json(Object.assign({ ok: true, role, canEdit }, await LIC.adminList(env)));   // v53 Studio keys
+      if (p0 === "studio" && path[1] && path[2] === "key") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can see keys." }, 403); return json(Object.assign({ ok: true }, await LIC.adminKey(env, path[1]))); }
       if (p0 === "users") return json({ ok: true, role, items: (await users(d, clean(q.get("q"), 80), Math.max(0, +q.get("offset") || 0), q.get("filter"), q.get("all") === "1")).map((x) => Object.assign(x, { owner: isOwner(x) })) });
       if (p0 === "user" && path[1]) return userDetail(d, String(path[1]), role);
       if (p0 === "runs") { const s = clean(q.get("q"), 80); const r = await d.prepare("SELECT r.job_id, r.domain, r.tier, r.credit, r.score, r.completeness, r.status, r.created_at, r.client_id, u.email, u.id AS uid FROM acct_runs r LEFT JOIN acct_users u ON u.id = r.user_id" + (s ? " WHERE r.domain LIKE ?1 OR u.email LIKE ?1" : "") + " ORDER BY r.created_at DESC LIMIT 200").bind(...(s ? ["%" + s + "%"] : [])).all(); return json({ ok: true, items: r.results || [] }); }
@@ -75,6 +78,7 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "studio" && path[1] && m === "POST") { const b = await request.json().catch(() => ({})); try { const r = await LIC.adminAction(env, path[1], b, u.email); await logEvent(env, u.id, "studio_" + clean(b.action, 20), path[1]); return json(Object.assign({ ok: true }, r)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 500); } }
     if (p0 === "security" && path[1] === "clear" && m === "POST") { await d.prepare("DELETE FROM csp_reports").run().catch(() => {}); return json({ ok: true }); }
     if (p0 === "site-settings" && m === "POST") { const b = await request.json().catch(() => ({})); const r = await saveSiteCfg(env, b, u.email); if (r.ok) await logEvent(env, u.id, "site_settings", Object.keys(b).join(",")).catch(() => {}); return json(r, r.ok ? 200 : 400); }
     if (p0 === "enquiries" && path[1] && m === "POST") { const b = await request.json().catch(() => ({})); try { return json(await updateLead(env, path[1], b)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 400); } }

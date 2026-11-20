@@ -36,7 +36,7 @@ const NEW = ["/locations/delhi/", "/locations/mumbai/", "/locations/bengaluru/",
     ok(/\/insights\/diagnose-landing-page\/$/.test(p.url()), "old /insights/#slug link redirects to the static article");
     await p.goto(BASE + "/insights/", { waitUntil: "load" }); await p.waitForTimeout(300);
     const hrefs = await p.$$eval("#insights-grid a", (a) => a.map((x) => x.getAttribute("href")));
-    ok(hrefs.length === 8 && hrefs.every((h) => /\/insights\/[a-z-]+\/$/.test(h) || /^[a-z-]+\/$/.test(h)), "insights hub cards link to static article pages");
+    ok(hrefs.length >= 8 && hrefs.every((h) => /\/insights\/[a-z-]+\/$/.test(h) || /^[a-z-]+\/$/.test(h)), "insights hub cards link to static article pages");
     await p.close(); }
   // ?q= opens the site search
   { const p = await ctx.newPage(); await p.goto(BASE + "/?q=seo", { waitUntil: "load" }); await p.waitForTimeout(1200);

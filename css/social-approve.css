@@ -1,0 +1,11 @@
+/* FODO v52 Social Studio client approval page */
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 Manrope,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#101114;color:#eee}
+header.ap-h{display:flex;gap:14px;align-items:center;padding:22px;max-width:1100px;margin:auto}.ap-dot{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-weight:800;font-size:22px;color:#fff;flex:none;background:var(--c,#4C3BCF)}
+h1{font-size:20px;margin:0}header p{margin:4px 0 0;color:#aaa;font-size:14px}.ap-name{max-width:1100px;margin:0 auto 10px;padding:0 22px;color:#aaa;font-size:13px}
+input,textarea{background:#17171c;border:1px solid #2a2a33;color:#eee;border-radius:10px;padding:8px 10px;font:inherit}textarea{width:100%;min-height:60px;margin-top:8px}
+.ap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;max-width:1100px;margin:auto;padding:0 22px 40px}
+.ap-card{background:#16171b;border:1px solid #26262e;border-radius:16px;overflow:hidden}.ap-card video,.ap-card img{width:100%;max-height:520px;background:#000;display:block;object-fit:contain}
+.ap-b{padding:14px}h3{margin:6px 0;font-size:16px}.ap-meta{color:#aaa;font-size:13px}pre{white-space:pre-wrap;font:inherit;font-size:13.5px;color:#ddd;margin:6px 0 0}
+.ap-st{display:inline-block;font-size:12px;padding:3px 9px;border-radius:99px;background:#26262e;color:#ccc}.ap-st.ok{background:rgba(34,197,94,.15);color:#4ade80}.ap-st.chg{background:rgba(234,179,8,.15);color:#facc15}
+.ap-btns{display:flex;gap:8px;margin-top:10px}button{flex:1;border:0;border-radius:10px;padding:10px;font:600 14px system-ui;cursor:pointer}button.ok{background:var(--c,#4C3BCF);color:#fff}button.chg{background:#26262e;color:#eee}button:disabled{opacity:.6}
+.ap-empty,.ap-load{text-align:center;color:#aaa;padding:60px 20px;grid-column:1/-1}.ap-note{font-size:13px;color:#facc15;margin-top:6px}footer{text-align:center;color:#666;font-size:12px;padding:20px}footer a{color:inherit}

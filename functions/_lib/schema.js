@@ -12,7 +12,7 @@
 
    RULE (CLAUDE.md): any change to a DDL list, a MIG / MIGRATE list, a seed, or a new module with tables → bump SCHEMA_VERSION
    and add the module's set-up to SETUPS below. tests/v511.test.mjs checks that every file with CREATE TABLE is in SETUPS. */
-export const SCHEMA_VERSION = "51.1";
+export const SCHEMA_VERSION = "52.0";
 
 const st = new WeakMap();   // per D1 binding (never a shared promise, see accounts.js): { cur: null|bool, done: Set, all: bool }
 const S = (d) => { let s = st.get(d); if (!s) { s = { cur: null, done: new Set(), all: false }; st.set(d, s); } return s; };
@@ -57,6 +57,7 @@ const SETUPS = [
   ["products", () => import("./products.js").then((m) => m.tdb)],
   ["usage", () => import("./usage.js").then((m) => m.usageDb)],
   ["gsc", () => import("./gsc.js").then((m) => m.gdb)],
+  ["sstudio", () => import("./sstudio.js").then((m) => m.ssdb)],
   ["monitor", () => import("./monitor.js").then((m) => m.mdb)],
   ["bg", () => import("./bg.js").then((m) => m.bdb)],
   ["prompts", () => import("./prompts.js").then((m) => m.pdb)],

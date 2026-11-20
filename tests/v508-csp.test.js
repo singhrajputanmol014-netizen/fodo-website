@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, ".."), BASE = "http://localhost:8788", F = "ht
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 const sh = (cmd, args, env) => spawnSync(cmd, args, { env: Object.assign({}, process.env, env || {}), encoding: "utf8" });
 const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 8788|[w]orkerd serve'); do kill $p; done; sleep 1; pkill -f '[x]ray-fixtures/server.js'; true"]);
-const APP = ["admin", "workspace", "fodo-pros", "website-builder", "owner-brain", "tests", "node_modules", "functions", "sites", ".wrangler", "templates/_"];
+const APP = ["admin", "workspace", "studio", "fodo-pros", "website-builder", "owner-brain", "tests", "node_modules", "functions", "sites", ".wrangler", "templates/_"];
 function pages(dir, out) { for (const n of fs.readdirSync(dir)) { const f = path.join(dir, n), rel = path.relative(ROOT, f); if (APP.some((a) => rel === a || rel.indexOf(a + path.sep) === 0)) continue; const st = fs.statSync(f); if (st.isDirectory()) pages(f, out); else if (n.endsWith(".html")) out.push(rel); } return out; }
 
 (async () => {

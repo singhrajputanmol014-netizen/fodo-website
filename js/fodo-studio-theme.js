@@ -1,0 +1,2 @@
+/* FODO v52 Studio: theme before first paint (the app's Light / Dark / Auto), formerly an inline script in the app. */
+try{var m=localStorage.getItem("fodo-studio-theme")||"dark",t=m==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):m;document.documentElement.setAttribute("data-theme",t);document.documentElement.classList.add("ui2")}catch(e){document.documentElement.setAttribute("data-theme","dark")}

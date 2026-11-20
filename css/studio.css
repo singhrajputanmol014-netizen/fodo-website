@@ -1867,3 +1867,9 @@ html[data-theme="dark"] .bb-card:hover{box-shadow:0 16px 34px rgba(0,0,0,.5)}
 @media (max-width:640px){.bb-card{height:76px;min-width:120px;padding:12px 18px}.bb-card img{max-height:42px;max-width:130px}}
 .bb-card.bb-inv{background:#132a1b;border-color:#132a1b}
 .bb-card.bb-inv:hover{box-shadow:0 16px 34px rgba(19,42,27,.35)}
+/* v53.6 cookie card: the same card as on phones at every width (text on top, buttons in a row), never the stretched pill */
+@media(min-width:768px){html body .cookie{border-radius:18px!important;flex-wrap:wrap;width:min(460px,calc(100% - 24px));max-width:none;padding:16px 18px!important;gap:12px;bottom:20px!important}html body .cookie p{flex-basis:100%;font-size:13.5px;line-height:1.5}html body .cookie .cookie-actions{width:100%;flex-wrap:nowrap}html body .cookie .cookie-actions .btn{flex:1 1 0;justify-content:center;min-height:40px}}
+/* v53.6 open chat header: the FODO "F" logo instead of the white O tile */
+html body .bot-panel header .bot-av-logo{width:40px!important;height:40px!important;background:transparent!important;border:0!important;border-radius:12px!important;overflow:hidden;padding:0!important;box-shadow:0 0 0 1px rgba(255,255,255,.12)!important;flex:none}
+html body .bot-panel header .bot-av-logo img{width:100%;height:100%;display:block;border-radius:12px;object-fit:cover}
+html body .bot-panel header .bot-av-logo::after,html body .bot-panel header .bot-av-logo::before{display:none!important}

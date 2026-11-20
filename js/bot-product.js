@@ -49,6 +49,8 @@
   var COACH = /\b(fix first|pehle kya (fix|theek|karu|karun)|kya fix kar|what (should|do) i fix|what should i do first|where do i start|kahan se shuru|explain my (report|x-?ray)|(report|x-?ray) samjhao|meri report|my report|my x-?ray|mera x-?ray|improve my (score|growth health))\b/i;
   var FREEW = /\b(free tools?|free me|free mein|muft|free kya|without (paying|login)|bina paise)\b/i;
   var ARTW = /\b(x-?ray|growth lab|refund|renew|auto.?renew|cancel (my )?(plan|subscription)|invoice|gst bill|receipt|log ?in|otp|login code|monitor(ing)?|search console|gsc|white.?label|bulk x-?ray|team seats?|client folders?|ticket|help desk|support|data completeness|data unavailable|ai visibility|fodo edge|competitor finder|share (link|report)|download (report|pdf)|pdf report|excel|compare (with )?(last|previous)|background)\b/i;
+  // v53.6: FODO Studio (app, key, install, uninstall) and FODO Pros questions answer from their help articles
+  var STUDIOW = /\b(fodo studio|studio app|studio key|(access|licen[cs]e|personal|my|meri|mera|app (ka|ki)) key|key (kaise|kahan|kaha|nahi|not|chahiye|milegi|milega|request)|request access|clipping app|clip(s|ping)? app|desktop app|windows app|mac app|smart app control|win-install|app install\w*|install (the |fodo )?(app|studio)\w*|installer|uninstall|remove (the )?app|delete (the )?app|app (hatana|delete|remove|install)|powershell (line|command|install)|fodo pros?|become a pro|join as (a )?(freelancer|pro)|freelancers?)\b/i;
   var WHERE = /\b(where|kahan|kaha|which page|kis page|link)\b/i;
   var TOOLS = [["revenue-leak", /revenue leak/], ["conversion-xray", /conversion x-?ray/], ["website-health", /website health/], ["war-room", /war ?room/],
     ["why-winning", /why (are )?they winning|why.?winning/], ["market-position", /market position/], ["ai-visibility", /ai visibility (audit|tool)/], ["search-visibility", /search visibility/],
@@ -62,7 +64,7 @@
     var t = toolOf(n); if (t) return "tool:" + t;
     if (FREEW.test(n) && /tools?|kya|what|which/.test(n)) return "free";
     if (LABW.test(n) && (PRICEW.test(n) || ASKW.test(n)) && !/\b(marketing|content|90.?day|30.?60.?90|business|social|ad|ads|media) plans?\b/.test(n)) return /x-?ray kya|what is (a |the )?(business )?x-?ray|x-?ray (kya|what)/.test(n) ? "article" : "plans";
-    if (ARTW.test(n)) return "article";
+    if (ARTW.test(n) || STUDIOW.test(n)) return "article";
     return null;
   }
 

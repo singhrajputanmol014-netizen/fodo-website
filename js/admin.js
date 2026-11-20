@@ -370,7 +370,7 @@
   var sf = "", sq = "";
   function studioView() {
     $("#ad-view").innerHTML = head("Studio", "Everyone who opened FODO Studio. Each person gets a key from their account; Studio (website and app) works only after they enter it. " + (owner() ? "Copy or WhatsApp the key to give access, block anyone (the app stops at its next check-in: within an hour online, at most " : "Read-only view. ") + (owner() ? "48 h offline)." : ""), '<button class="btn sm ghost" id="ad-scsv" type="button">Export CSV</button>') +
-      '<div id="ad-sreq"></div><div id="ad-skpi" class="ad-kpis"></div><div class="ad-bar2"><input id="ad-sq" type="search" placeholder="Search email or name" value="' + esc(sq) + '" aria-label="Search Studio people"><div class="ad-chips">' +
+      '<div id="ad-sreq"></div><div id="ad-sinbox"></div><div id="ad-skpi" class="ad-kpis"></div><div class="ad-bar2"><input id="ad-sq" type="search" placeholder="Search email or name" value="' + esc(sq) + '" aria-label="Search Studio people"><div class="ad-chips">' +
       [["", "All"], ["waiting", "Key not entered"], ["active", "Active"], ["blocked", "Blocked"]].map(function (f) { return '<button type="button" class="chip" data-sf="' + f[0] + '" aria-pressed="' + (sf === f[0]) + '">' + f[1] + "</button>"; }).join("") + '</div></div><div id="ad-slist"><div class="ad-load">Loading…</div></div>';
     var data = null, t;
     $("#ad-sq").oninput = function (e) { clearTimeout(t); t = setTimeout(function () { sq = e.target.value.trim().toLowerCase(); draw(); }, 200); };
@@ -444,6 +444,67 @@
       });
     }
     load();
+    if (owner()) inbox();
+    /* v53.3: FODO's own Gmail (anmol@fodo.co.in) inside Admin ▸ Studio: read, reply, reply with the sender's key */
+    var ibq = "in:inbox", ibAcc = "", ibData = null;
+    var KS = { none: ["No key yet", ""], account: ["No key yet", ""], waiting: ["Key not entered", "mid"], active: ["Has a key", "ok"], blocked: ["Blocked", "bad"], me: ["You", ""] };
+    function ibDate(x) { var d = new Date(x.at || Date.parse(x.date) || 0); return isNaN(d) ? "" : (Date.now() - d < 864e5 ? d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })); }
+    function ibName(f) { var m = /^\s*"?([^"<]+?)"?\s*</.exec(f || ""); return m ? m[1] : String(f || "").replace(/[<>]/g, ""); }
+    function inbox(page) {
+      var el = $("#ad-sinbox"); if (!el) return;
+      if (!page) el.innerHTML = '<div class="panel ad-card ad-mbx"><div class="ad-ch"><h2>Inbox</h2><span class="muted">Loading the mailbox…</span></div></div>';
+      api("studio/inbox?q=" + encodeURIComponent(ibq) + (ibAcc ? "&account=" + encodeURIComponent(ibAcc) : "") + (page ? "&page=" + encodeURIComponent(page) : "")).then(function (j) {
+        if (!$("#ad-sinbox")) return;
+        if (!j.ok) { el.innerHTML = '<div class="panel ad-card ad-mbx"><div class="ad-ch"><h2>Inbox</h2></div><p class="cf-status warn">' + esc(j.reason || "Could not open the mailbox.") + '</p><a class="btn sm" href="/api/admin/studio/connect">Log in with Google again</a></div>'; return; }
+        var st = j.status || {};
+        if (!st.available) { el.innerHTML = '<div class="panel ad-card ad-mbx"><div class="ad-ch"><h2>Inbox</h2></div><p class="muted">Google login is not set up on the website (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET), so the mailbox can\'t be opened here.</p></div>'; return; }
+        if (!st.connected) { el.innerHTML = '<div class="panel ad-card ad-mbx ad-mbx0"><div><h2>Inbox · ' + esc(st.want) + '</h2><p class="muted">Log in with Google once to read FODO\'s mail here, reply to anyone, and reply with their FODO Studio key in one click. Replies go from your real mailbox and stay in the same Gmail thread.' + (st.others && st.others.length ? " Connected without Gmail: " + esc(st.others.join(", ")) + "." : "") + '</p></div><a class="btn" href="/api/admin/studio/connect">Log in with Google</a></div>'; return; }
+        if (page && ibData) { ibData.items = ibData.items.concat(j.items); ibData.next = j.next; } else ibData = j;
+        ibDraw();
+      });
+      function ibDraw() {
+        var j = ibData, st = j.status || {};
+        var chips = [["in:inbox", "Inbox"], ["in:inbox is:unread", "Unread"], ["in:inbox (key OR studio OR access OR login)", "Key requests"], ["in:sent", "Sent"]];
+        el.innerHTML = '<div class="panel ad-card ad-mbx"><div class="ad-ch"><h2>Inbox · ' + esc(j.account) + "</h2>" +
+          (st.accounts.length > 1 ? '<select id="ad-ibacc" aria-label="Mailbox">' + st.accounts.map(function (a) { return '<option' + (a === j.account ? " selected" : "") + ">" + esc(a) + "</option>"; }).join("") + "</select>" : "") +
+          '<span class="ad-ibb"><button type="button" class="btn sm" id="ad-ibkey">Send key to any email</button> <button type="button" class="btn sm ghost" id="ad-ibre">Refresh</button></span></div>' +
+          '<div class="ad-bar2"><input id="ad-ibq" type="search" value="' + esc(ibq) + '" placeholder="Search mail (like Gmail: from:ravi, is:unread)" aria-label="Search mail"><div class="ad-chips">' + chips.map(function (c) { return '<button type="button" class="chip" data-ibq="' + esc(c[0]) + '" aria-pressed="' + (ibq === c[0]) + '">' + c[1] + "</button>"; }).join("") + "</div></div>" +
+          (j.items.length ? '<ul class="ad-ibl">' + j.items.map(function (x, i) { var k = KS[x.key] || KS.none;
+            return '<li data-ib="' + i + '" class="' + (x.unread ? "un" : "") + '"><span class="ad-av">' + esc((ibName(x.from) || "?").charAt(0).toUpperCase()) + '</span><div class="ad-ibm"><div class="ad-ibt"><b>' + esc(ibName(x.from)) + "</b><small>" + esc(x.email) + '</small><time>' + esc(ibDate(x)) + "</time></div><p><b>" + esc(x.subject || "(no subject)") + "</b> · " + esc(x.snippet) + '</p></div><div class="ad-iba">' + (x.key === "me" ? "" : '<span class="ad-tag ' + k[1] + '">' + k[0] + "</span>") +
+              '<button type="button" class="btn sm ghost" data-iba="open">Open</button>' + (x.key !== "me" && x.key !== "blocked" && x.email ? '<button type="button" class="btn sm" data-iba="key">Reply with key</button>' : "") + "</div></li>"; }).join("") + "</ul>" + (j.next ? '<button type="button" class="btn sm ghost" id="ad-ibmore">Load more</button>' : "")
+            : '<p class="muted">No mail matches.</p>') + "</div>";
+        var acc = $("#ad-ibacc"); if (acc) acc.onchange = function () { ibAcc = acc.value; inbox(); };
+        var t; $("#ad-ibq").onkeydown = function (e) { if (e.key === "Enter") { ibq = e.target.value.trim() || "in:inbox"; inbox(); } };
+        $$("[data-ibq]").forEach(function (b) { b.onclick = function () { ibq = b.dataset.ibq; inbox(); }; });
+        $("#ad-ibre").onclick = function () { inbox(); };
+        var more = $("#ad-ibmore"); if (more) more.onclick = function () { more.disabled = true; inbox(j.next); };
+        $("#ad-ibkey").onclick = function () { ask({ title: "Send a FODO Studio key", text: "Type their email. Their account and key are made if needed, and the key goes from " + j.account + ".", input: "Email address", ph: "name@gmail.com", ok: "Next" }).then(function (to) { if (!to) return; keyTo({ email: to }, to); }); };
+        $$("#ad-sinbox [data-ib]").forEach(function (li) { var x = j.items[+li.dataset.ib];
+          li.querySelectorAll("[data-iba]").forEach(function (b) { b.onclick = function () { if (b.dataset.iba === "open") openMail(x); else keyTo({ id: x.id }, x.email); }; }); });
+      }
+      function keyTo(target, who) {
+        ask({ title: "Send the FODO Studio key to " + who + "?", text: "Sent from " + ibData.account + (target.id ? " as a reply in the same Gmail thread" : "") + ". It has their key and the steps for the app and the website. Add a message on top if you like.", input: "Your message (optional)", area: true, ph: "e.g. Hi, welcome to FODO Studio!", ok: "Send the key" }).then(function (v) {
+          if (v === null) return; toast("Sending…");
+          api(target.id ? "studio/inbox/" + encodeURIComponent(target.id) : "studio/sendkey", Object.assign({ action: "key", message: v === true ? "" : v, account: ibData.account }, target.email ? { email: target.email } : {})).then(function (r) {
+            if (!r.ok) return ask({ title: "The key was not sent", text: r.reason || "Gmail did not send it.", ok: "OK" });
+            toast("Key sent to " + r.mail.to + " from " + r.mail.from); if (r.items) { data = r; draw(); } inbox(); });
+        });
+      }
+      function openMail(x) {
+        var w = document.createElement("div"); w.className = "cfx ad-dlg ad-ibdlg";
+        w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box" role="dialog" aria-modal="true" aria-labelledby="ad-ibh"><h3 id="ad-ibh">' + esc(x.subject || "(no subject)") + '</h3><p class="muted">' + esc(x.from) + " · " + esc(x.date) + '</p><div class="ad-ibtx">Loading…</div>' +
+          '<label class="ad-dl2" for="ad-ibr">Reply to ' + esc(x.email) + '</label><textarea id="ad-ibr" class="ad-in ad-ta" rows="5" maxlength="20000" placeholder="Write your reply"></textarea>' +
+          '<div class="btn-row"><button type="button" class="btn" data-ibs>Send reply</button>' + (x.key !== "me" && x.key !== "blocked" ? '<button type="button" class="btn ghost" data-ibk>Reply with key</button>' : "") + '<button type="button" class="btn ghost" data-x>Close</button></div></div>';
+        document.body.appendChild(w); var close = function () { w.remove(); };
+        w.querySelectorAll("[data-x]").forEach(function (b) { b.onclick = close; }); w.onkeydown = function (e) { if (e.key === "Escape") close(); };
+        api("studio/inbox/" + encodeURIComponent(x.id) + "?account=" + encodeURIComponent(ibData.account)).then(function (r) { var tx = w.querySelector(".ad-ibtx"); if (!tx) return; tx.textContent = r.ok ? r.mail.text || "(empty)" : r.reason || "Could not open it."; });
+        w.querySelector("[data-ibs]").onclick = function () { var b = this, t = w.querySelector("#ad-ibr").value.trim(); if (!t) return toast("Write the reply first.", true); b.disabled = true;
+          api("studio/inbox/" + encodeURIComponent(x.id), { action: "reply", text: t, account: ibData.account }).then(function (r) { b.disabled = false; if (!r.ok) return toast(r.reason || "Not sent.", true); close(); toast("Reply sent to " + r.mail.to); inbox(); }); };
+        var kb = w.querySelector("[data-ibk]"); if (kb) kb.onclick = function () { close(); keyTo({ id: x.id }, x.email); };
+        setTimeout(function () { w.querySelector("#ad-ibr").focus(); }, 30);
+      }
+    }
+    if (/[?&]google=/.test(location.search)) { var gq = /[?&]google=([^&]*)/.exec(location.search)[1]; toast(gq === "ok" ? "Google connected: the mailbox is open below" : "Google login: " + decodeURIComponent(gq), gq !== "ok"); try { history.replaceState(null, "", "/admin/#studio"); } catch (e) {} }
   }
   function usersView() {
     $("#ad-view").innerHTML = head("Users", "Everyone who logged in to the Growth Lab. Tap a person to see what they used" + (owner() ? ", block them or give features free." : "."), '<button class="btn sm ghost" id="ad-ucsv" type="button">Export CSV</button>') +

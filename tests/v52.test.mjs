@@ -38,6 +38,7 @@ const env = { XRAY_DB: d1(), CHAT_KV, ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1"
 const q1 = (sql, ...a) => env.XRAY_DB.db.prepare(sql).get(...a), X = (sql, ...a) => env.XRAY_DB.db.prepare(sql).run(...a);
 /* platform mocks */
 const calls = []; let replyDenied = true, mailDown = false;
+const GM = [{ id: "m1", thread: "t1", from: "Ravi K <ravi.k@gmail.com>", subject: "FODO Studio access", text: "Hi Anmol, please send my key.", unread: true }, { id: "m2", thread: "t2", from: "\"Zoya Khan\" <zoya@studio.in>", subject: "Want to try FODO Studio", text: "Hello, can I get access?", unread: false }];
 globalThis.fetch = async (u, o = {}) => { u = String(u); const J = (x, s, h) => new Response(JSON.stringify(x), { status: s || 200, headers: Object.assign({ "content-type": "application/json" }, h || {}) }); calls.push({ u, m: o.method || "GET", body: o.body });
   if (/graph\.facebook\.com\/v[\d.]+\/IG1\/media$/.test(u)) return J({ id: "CONT1" });
   if (/graph\.facebook\.com\/v[\d.]+\/CONT1\?fields=status_code/.test(u)) return J({ status_code: "FINISHED" });
@@ -53,6 +54,10 @@ globalThis.fetch = async (u, o = {}) => { u = String(u); const J = (x, s, h) => 
   if (/youtube\/v3\/commentThreads/.test(u)) return J({ items: [] });
   if (/youtube\/v3\/videos\?part=statistics/.test(u)) return J({ items: [{ statistics: { viewCount: "900" }, status: { uploadStatus: "processed" } }] });
   if (/youtube\/v3\/channels\?part=statistics/.test(u)) return J({ items: [{ statistics: { subscriberCount: "200" } }] });
+  if (/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\/send/.test(u)) return J({ id: "sent" + calls.length, threadId: (JSON.parse(o.body).threadId) || "tnew" });
+  if (/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\?/.test(u)) return J({ messages: GM.map((m) => ({ id: m.id })), nextPageToken: null });
+  { const mm = /gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\/([^?]+)\?format=(\w+)/.exec(u); if (mm) { const m = GM.filter((x) => x.id === decodeURIComponent(mm[1]))[0]; if (!m) return J({ error: { message: "Not found" } }, 404);
+    return J({ id: m.id, threadId: m.thread, labelIds: m.unread ? ["UNREAD", "INBOX"] : ["INBOX"], snippet: m.text.slice(0, 80), internalDate: String(Date.now()), payload: { mimeType: "text/plain", headers: [{ name: "From", value: m.from }, { name: "Subject", value: m.subject }, { name: "Date", value: "Fri, 20 Nov 2026 10:00:00 +0530" }, { name: "Message-ID", value: "<" + m.id + "@mail.gmail.com>" }], body: mm[2] === "full" ? { data: Buffer.from(m.text).toString("base64url") } : {} } }); } }
   if (/api\.resend\.com\/emails/.test(u)) return mailDown ? J({ message: "domain not verified" }, 403) : J({ id: "re_" + calls.length });
   return new Response("x", { status: 599 }); };
 
@@ -257,9 +262,37 @@ ok(ig.requests.filter((x) => x.id === rq4.request)[0].status === "ignored" && (a
 const wr = (await Z("license/request", {}, "b")).j; ok(wr.ok && wr.email === "bobby@other.in" && q1("SELECT src FROM ss_lic_requests WHERE id=?1", wr.request).src === "web", "website: Request access sends the login email");
 ok((await call("social/license/request", {}, { anon: true })).status === 401, "website request needs a login");
 let lim = 0; for (let i = 0; i < 12; i++) if ((await APP("request", { email: "x" + i + "@flood.io" }, { headers: { origin: "", "cf-connecting-ip": "6.6.6.6" } })).status === 429) lim++; ok(lim >= 2, "request: limited per network (no flooding FODO's inbox)");
+/* ---------- v53.3: FODO's Gmail inside Admin ▸ Studio: read, reply, reply with key, key to any email ---------- */
+{
+const sentRaw = () => calls.filter((c) => /messages\/send/.test(c.u)).map((c) => { const b = JSON.parse(c.body), raw = Buffer.from(b.raw, "base64url").toString("utf8");
+  const parts = raw.split(/\r\n\r\n/).slice(1).map((p) => { const t = p.split(/\r\n--/)[0].replace(/\r\n/g, ""); try { const d = Buffer.from(t, "base64").toString("utf8"); return /[\x00-\x08]/.test(d) ? "" : d; } catch (e) { return ""; } }).join("\n");
+  return { raw, body: parts, threadId: b.threadId }; });
+const st0 = (await call("admin/studio/inbox", undefined, { as: "o" })).j; ok(st0.ok && st0.status.available && !st0.status.connected && st0.status.want === "anmol@fodo.co.in", "inbox: before Google login, Admin shows 'Log in with Google' for anmol@fodo.co.in");
+const cn = await call("admin/studio/connect", undefined, { as: "o" }); ok(cn.status === 302 && /accounts\.google\.com/.test(cn.h.get("location")) && /state=brainadm\./.test(cn.h.get("location")) && /login_hint=anmol%40fodo\.co\.in/.test(cn.h.get("location")) && /gmail\.send/.test(decodeURIComponent(cn.h.get("location"))), "Log in with Google: opens Google for anmol@fodo.co.in and comes back to Admin");
+ok((await call("admin/studio/inbox", undefined, { as: "a" })).status === 403, "customers can't open the mailbox");
+{ const BS = await import("../functions/_lib/brain/store.js"); const bd = await BS.brainDb(env);
+  await bd.prepare("INSERT INTO brain_connectors (id, data, scopes, account, connected_at, last_used) VALUES (?1,?2,?3,?4,?5,?5)").bind("google:anmol@fodo.co.in", await seal(env, "1//refresh"), "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send openid email", "anmol@fodo.co.in", new Date().toISOString()).run(); }
+const ib = (await call("admin/studio/inbox", undefined, { as: "o" })).j, r1 = ib.items && ib.items.filter((x) => x.id === "m1")[0], r2 = ib.items && ib.items.filter((x) => x.id === "m2")[0];
+ok(ib.ok && ib.account === "anmol@fodo.co.in" && ib.items.length === 2 && r1.email === "ravi.k@gmail.com" && r1.unread && r1.subject === "FODO Studio access", "inbox: after login, FODO's mail is listed in Admin");
+ok(r1.key === "active" && r2.key === "none", "inbox: each sender shows whether they already have a Studio key");
+const op = (await call("admin/studio/inbox/m1", undefined, { as: "o" })).j; ok(op.ok && /please send my key/.test(op.mail.text) && op.mail.thread === "t1", "open a mail: full text");
+const rp = (await call("admin/studio/inbox/m1", { action: "reply", text: "Hi Ravi, sending it now." }, { as: "o" })).j, s1 = sentRaw().pop();
+ok(rp.ok && rp.mail.via === "Gmail" && s1.threadId === "t1" && /To: ravi\.k@gmail\.com/.test(s1.raw) && /Subject: Re: FODO Studio access/.test(s1.raw) && /In-Reply-To: <m1@mail\.gmail\.com>/.test(s1.raw) && /From: Anmol from FODO <anmol@fodo\.co\.in>/.test(s1.raw) && /sending it now/.test(s1.body), "Reply: sent from anmol@fodo.co.in in the same Gmail thread");
+ok((await call("admin/studio/inbox/m1", { action: "reply", text: "" }, { as: "o" })).status === 400, "an empty reply is refused");
+const rk = (await call("admin/studio/inbox/m2", { action: "key", message: "Welcome Zoya!" }, { as: "o" })).j, s2 = sentRaw().pop(), keyZ = await keyOf("zoya@studio.in");
+ok(rk.ok && keyZ && s2.threadId === "t2" && /To: zoya@studio\.in/.test(s2.raw) && s2.body.indexOf(keyZ) > -1 && /Welcome Zoya!/.test(s2.body) && /Subject: Re: Want to try FODO Studio/.test(s2.raw), "Reply with key: account + key made for the sender, key sent in the same thread");
+ok(rk.items && rk.items.some((x) => x.email === "zoya@studio.in"), "the new person shows up in the Studio list");
+const sk = (await call("admin/studio/sendkey", { email: "Kabir@Mail.com", message: "" }, { as: "o" })).j, s3 = sentRaw().pop(), keyK = await keyOf("kabir@mail.com");
+ok(sk.ok && /To: kabir@mail\.com/.test(s3.raw) && s3.body.indexOf(keyK) > -1 && !s3.threadId, "Send key to any email: new mail with the key");
+ok((await call("admin/studio/sendkey", { email: "nope" }, { as: "o" })).status === 400 && (await call("admin/studio/sendkey", { email: "anmol@fodo.co.in" }, { as: "o" })).status === 400, "bad address / FODO's own address refused");
+const rq5 = (await call("social/app/request", { email: "meera@cafe.in", name: "Meera" }, { anon: true, headers: { origin: "", "cf-connecting-ip": "5.5.5.5" } })).j;
+const before = sentRaw().length, ek2 = (await call("admin/studio/req/" + rq5.request, { action: "send" }, { as: "o" })).j, s4 = sentRaw();
+ok(ek2.ok && ek2.mail.sent && ek2.mail.via === "gmail" && s4.length === before + 1 && /To: meera@cafe\.in/.test(s4[s4.length - 1].raw) && ek2.requests.filter((x) => x.id === rq5.request)[0].status === "sent", "Email the key now goes from the real Gmail mailbox when it is connected");
+}
 delete env.RESEND_API_KEY;
 const AJ = fs.readFileSync("js/admin.js", "utf8"), FJ = fs.readFileSync("js/fodo-studio.js", "utf8");
 ok(/\["Customers", \[[^\]]*"studio"/.test(AJ), "admin: Studio is in the sidebar (Customers group)");
+ok(/Log in with Google/.test(AJ) && /studio\/inbox/.test(AJ) && /Reply with key/.test(AJ) && /Send key to any email/.test(AJ), "front end: Inbox panel (Log in with Google, Reply, Reply with key, Send key to any email)");
 ok(/Access requests/.test(AJ) && /studio\/req\//.test(AJ) && /Email the key/.test(AJ) && /data-k="email"/.test(AJ) && /fs-req/.test(FJ) && /license\/request/.test(FJ), "front end: Admin ▸ Studio Access requests + Email key; website gate Request access");
 }
 /* ---------- front end + schema ---------- */

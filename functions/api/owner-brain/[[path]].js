@@ -143,7 +143,8 @@ export async function onRequest(ctx) {
         catch (e) { return json({ ok: false, reason: e.message }, 503); } }
       if (p0 === "ga" && path[1] === "properties") { try { return json({ ok: true, items: await GO.gaProperties(env) }); } catch (e) { return json({ ok: true, items: [], reason: e.message }); } }
       if (p0 === "connect" && path[1] === "google" && path[2] === "callback") {
-        const back = (h) => Response.redirect(new URL(request.url).origin + "/owner-brain/#connectors" + h, 302);
+        const toAdmin = /^brainadm\./.test(q.get("state") || "");   // v53.3: "Log in with Google" from FODO Admin ▸ Studio
+        const back = (h) => Response.redirect(new URL(request.url).origin + (toAdmin ? "/admin/" + h + "#studio" : "/owner-brain/#connectors" + h), 302);
         if (q.get("error")) return back("?google=denied");
         try { const r = await GO.finishConnect(env, origin, u.id, q.get("code"), q.get("state")); await audit(env, { owner: u.email, kind: "connector", tool: "google", status: "connected", detail: r.account }); return back("?google=ok&account=" + encodeURIComponent(r.account)); }
         catch (e) { await audit(env, { owner: u.email, kind: "connector", tool: "google", status: "error", detail: e.message }); return back("?google=" + encodeURIComponent(String(e.message).slice(0, 120))); }

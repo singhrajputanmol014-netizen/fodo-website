@@ -29,6 +29,7 @@ import { gscOn } from "../../_lib/gsc.js";
 import { DEFAULTS as PROMPTS, getPrompt, savePrompt, resetPrompt, activatePrompt, pdb } from "../../_lib/prompts.js";
 import { istDay } from "../../_lib/traffic.js";
 import * as LIC from "../../_lib/slicense.js";
+import * as IB from "../../_lib/sinbox.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
@@ -49,6 +50,14 @@ export async function onRequest(ctx) {
       if (["help", "mail", "mailone", "chats", "chat"].indexOf(p0) > -1) { const hr = await helpGet(env, path, q, role); if (hr) return hr; }   // v20 help desk
       if (p0 === "me") return json({ ok: true, role, email: u.email, name: u.name, plans: ORDER.map((id) => ({ id, name: PLANS[id].name, price: PLANS[id].price })), features: Object.keys(FEATURE_INFO).map((id) => ({ id, label: FEATURE_INFO[id].label })) });
       if (p0 === "overview") return json(Object.assign({ ok: true, role }, await overview(d)));
+      if (p0 === "studio" && ["inbox", "connect"].indexOf(path[1]) > -1) {   // v53.3 FODO's Gmail inside Admin ▸ Studio (owners only: a personal mailbox)
+        if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can open the mailbox." }, 403);
+        try {
+          if (path[1] === "connect") { const GO = await import("../../_lib/brain/google.js"); if (!GO.googleOn(env)) return json({ ok: false, reason: "Google login is not set up on the website (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)." }, 400); return Response.redirect(await GO.connectUrl(env, new URL(request.url).origin, u.id, (await import("../../_lib/slicense.js")).STUDIO_REPLY(env), "admin"), 302); }
+          if (!path[2]) { const st = await IB.status(env); if (!st.connected || q.get("status") === "1") return json({ ok: true, status: st }); return json(Object.assign({ ok: true, status: st }, await IB.list(env, { account: q.get("account"), q: q.get("q"), page: q.get("page") }))); }
+          return json(Object.assign({ ok: true }, { mail: await IB.read(env, path[2], q.get("account")) }));
+        } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Gmail did not answer: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 502); }
+      }
       if (p0 === "studio" && !path[1]) return json(Object.assign({ ok: true, role, canEdit }, await LIC.adminList(env)));   // v53 Studio keys
       if (p0 === "studio" && path[1] && path[2] === "key") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can see keys." }, 403); return json(Object.assign({ ok: true }, await LIC.adminKey(env, path[1]))); }
       if (p0 === "users") return json({ ok: true, role, items: (await users(d, clean(q.get("q"), 80), Math.max(0, +q.get("offset") || 0), q.get("filter"), q.get("all") === "1")).map((x) => Object.assign(x, { owner: isOwner(x) })) });
@@ -78,6 +87,19 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "studio" && (path[1] === "inbox" || path[1] === "sendkey") && m === "POST") {
+      if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can send from the mailbox." }, 403);
+      const b = await request.json().catch(() => ({}));
+      try {
+        let r;
+        if (path[1] === "sendkey") r = await IB.sendKey(env, { email: b.email, message: b.message, account: b.account }, u.email);
+        else if (path[2] && b.action === "key") r = await IB.sendKey(env, { id: path[2], message: b.message, account: b.account }, u.email);
+        else if (path[2] && b.action === "reply") r = await IB.reply(env, path[2], { text: b.text, account: b.account }, u.email);
+        else return json({ ok: false, reason: "Unknown action." }, 400);
+        await logEvent(env, u.id, "studio_mail_" + (path[1] === "sendkey" ? "key" : clean(b.action, 10)), r.to || "");
+        return json(Object.assign({ ok: true, mail: r }, await LIC.adminList(env)));
+      } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Gmail did not send it: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 502); }
+    }
     if (p0 === "studio" && path[1] === "req" && path[2] && m === "POST") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can give keys." }, 403); const b = await request.json().catch(() => ({})); try { const r = await LIC.adminRequest(env, path[2], b, u.email); await logEvent(env, u.id, "studio_req_" + clean(b.action, 12), path[2]); return json(Object.assign({ ok: true }, r)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 500); } }
     if (p0 === "studio" && path[1] && m === "POST") { const b = await request.json().catch(() => ({})); try { const r = await LIC.adminAction(env, path[1], b, u.email); await logEvent(env, u.id, "studio_" + clean(b.action, 20), path[1]); return json(Object.assign({ ok: true }, r)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 500); } }
     if (p0 === "security" && path[1] === "clear" && m === "POST") { await d.prepare("DELETE FROM csp_reports").run().catch(() => {}); return json({ ok: true }); }

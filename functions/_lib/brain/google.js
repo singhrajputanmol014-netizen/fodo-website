@@ -17,8 +17,8 @@ export const SCOPE_LABELS = { "gmail.readonly": "Read Gmail", "gmail.send": "Sen
 export const googleOn = (env) => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 export const redirect = (origin) => origin + "/api/owner-brain/connect/google/callback";
 const KEY = (email) => "google:" + String(email || "").toLowerCase();
-export async function connectUrl(env, origin, userId, hint) {
-  return "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams(Object.assign({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: redirect(origin), response_type: "code", scope: SCOPES.join(" "), access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state: "brain." + (await makeState(env, userId)) }, hint ? { login_hint: hint } : {})).toString();
+export async function connectUrl(env, origin, userId, hint, back) {   // back "admin": Google returns to FODO Admin ▸ Studio (v53.3)
+  return "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams(Object.assign({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: redirect(origin), response_type: "code", scope: SCOPES.join(" "), access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state: (back === "admin" ? "brainadm." : "brain.") + (await makeState(env, userId)) }, hint ? { login_hint: hint } : {})).toString();
 }
 async function token(env, params) {
   const r = await outbound(env)("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(Object.assign({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET }, params)).toString(), signal: AbortSignal.timeout(12000) });
@@ -28,7 +28,7 @@ async function token(env, params) {
 async function migrate(d) { const old = await d.prepare("SELECT * FROM brain_connectors WHERE id='google'").first(); if (!old) return; if (old.account) await d.prepare("INSERT OR IGNORE INTO brain_connectors (id, data, scopes, account, connected_at, last_used) VALUES (?1,?2,?3,?4,?5,?6)").bind(KEY(old.account), old.data, old.scopes, old.account, old.connected_at, old.last_used).run(); await d.prepare("DELETE FROM brain_connectors WHERE id='google'").run(); }
 export async function accounts(env) { const d = await brainDb(env); await migrate(d); return ((await d.prepare("SELECT id, scopes, account, connected_at, last_used FROM brain_connectors WHERE id LIKE 'google:%' ORDER BY connected_at").all()).results || []); }
 export async function finishConnect(env, origin, userId, code, state, by) {
-  if (!(await checkState(env, String(state || "").replace(/^brain\./, ""), userId))) throw new Error("The Google sign-in link expired, try Connect again.");
+  if (!(await checkState(env, String(state || "").replace(/^brain(adm)?\./, ""), userId))) throw new Error("The Google sign-in link expired, try Connect again.");
   const t = await token(env, { code, redirect_uri: redirect(origin), grant_type: "authorization_code" });
   if (!t.refresh_token) throw new Error("Google did not return offline access, remove FODO from your Google account's third-party access and connect again.");
   let account = ""; try { account = JSON.parse(atob(String(t.id_token || "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email || ""; } catch (e) {}

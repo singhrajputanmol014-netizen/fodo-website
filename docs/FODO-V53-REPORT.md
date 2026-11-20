@@ -27,3 +27,8 @@
 - FODO Admin ▸ Studio ▸ **Access requests**: Email the key (optional message), Ignore / Undo, Send again, answered history. Rows also have **Email key**.
 - The key email goes from `STUDIO_MAIL_FROM` (default "Anmol from FODO <anmol@fodo.co.in>"), reply-to anmol@fodo.co.in, through the existing Resend setup. If sending fails the request shows "Email failed" with the reason and the key can still be copied.
 - New table `ss_lic_requests`; SCHEMA_VERSION 53.2. Tests in v52.test.mjs (152 pass).
+
+## v53.3: FODO's Gmail inside Admin ▸ Studio (2026-11-20)
+- Admin ▸ Studio ▸ **Inbox** (owners only): **Log in with Google** (`/api/admin/studio/connect`, reuses the Owner Brain Google connection; Google returns to /admin/#studio). Lists the mailbox (search like Gmail, chips Inbox / Unread / Key requests / Sent), shows if each sender has a Studio key, Open a mail, **Reply** (same Gmail thread), **Reply with key** (account + key made for the sender), **Send key to any email**.
+- "Email the key" on Access requests / rows now goes from the real Gmail mailbox when connected (falls back to Resend).
+- New `functions/_lib/sinbox.js`; routes GET studio/inbox[/<id>], GET studio/connect, POST studio/inbox/<id> {action reply|key}, POST studio/sendkey. Tests in v52.test.mjs (167 pass).

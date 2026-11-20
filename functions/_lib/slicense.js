@@ -179,7 +179,7 @@ export async function requestAccess(env, b, ip, src) {
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 /* the account + licence for an email (made if needed), then the key mailed to it */
 async function userFor(env, email) { return (await userByEmail(env, email)) || (await createUser(env, { email })); }
-function keyMail(email, key, msg) {
+export function keyMail(email, key, msg) {
   const studio = "https://www.fodo.co.in/studio/", app = "https://www.fodo.co.in/fodo-studio/";
   const html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#111">' + (msg ? "<p>" + esc(msg).replace(/\n/g, "<br>") + "</p>" : "<p>Hi,</p><p>Your FODO Studio access is ready.</p>") +
     '<p style="margin:18px 0 6px">Your FODO Studio key:</p><p style="font:700 20px Consolas,Menlo,monospace;letter-spacing:.06em;background:#f4f1ec;border-radius:10px;padding:14px 16px;display:inline-block">' + esc(key) + "</p>" +
@@ -190,6 +190,17 @@ function keyMail(email, key, msg) {
     "\nOn the website: log in at " + studio + " with " + email + " and enter the same key.\n\nOne key works on your own computers (2 by default). Please don't share it. Questions? Just reply to this email.\n\nAnmol\nFODO";
   return { html, text };
 }
+/* the account + key for an email (made if needed); blocked people get nothing */
+export async function keyFor(env, email) {
+  const e = cleanEmail(email); if (!e) throw err("Not a correct email.", 400);
+  const u = await userFor(env, e), L = await ensure(env, u);
+  if (L.status === "blocked") throw err("This person is blocked. Unblock them first.", 409);
+  return { key: await unseal(env, L.key_sealed), user_id: L.user_id, email: e };
+}
+export async function markRequests(env, email, sent, error, by) {
+  const now = nowIso();
+  await run(await ldb(env), "UPDATE ss_lic_requests SET status=?2, sent_at=?3, sent_by=?4, error=?5, updated_at=?3 WHERE email=?1 AND status IN ('new','failed')", String(email).toLowerCase(), sent ? "sent" : "failed", now, clip(by, 120), error);
+}
 export async function emailKey(env, uidOrEmail, msg, by) {
   const d = await ldb(env); let u = null;
   if (/@/.test(String(uidOrEmail))) { const e = cleanEmail(uidOrEmail); if (!e) throw err("Not a correct email.", 400); u = await userFor(env, e); }
@@ -197,13 +208,18 @@ export async function emailKey(env, uidOrEmail, msg, by) {
   if (!u || !u.email) throw err("This person has no email address. Copy the key and send it another way.", 400);
   const L = await ensure(env, u);
   if (L.status === "blocked") throw err("This person is blocked. Unblock them first.", 409);
-  const key = await unseal(env, L.key_sealed), m = keyMail(u.email, key, String(msg || "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").trim().slice(0, 1500));
-  let sent = true, error = null;
-  try { await sendMail(env, u.email, "Your FODO Studio key", m.html, m.text, { from: STUDIO_FROM(env), replyTo: STUDIO_REPLY(env), kind: "studio_key", by }); }
-  catch (e) { sent = false; error = /not configured/.test(e.message) ? "Email is not set up on the website (RESEND_API_KEY). Copy the key and send it yourself." : "The email could not be sent (" + e.message + "). Copy the key and send it yourself."; }
-  const now = nowIso();
-  await run(d, "UPDATE ss_lic_requests SET status=?2, sent_at=?3, sent_by=?4, error=?5, updated_at=?3 WHERE email=?1 AND status IN ('new','failed')", u.email, sent ? "sent" : "failed", now, clip(by, 120), error);
-  return { sent, error, email: u.email, user_id: L.user_id };
+  const note = String(msg || "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").trim().slice(0, 1500);
+  let sent = true, error = null, via = "email";
+  /* v53.3: from the real mailbox (Gmail) when it is connected in Admin ▸ Studio ▸ Inbox, else through Resend */
+  let gm = null; try { const IB = await import("./sinbox.js"); if ((await IB.status(env)).connected) gm = IB; } catch (e) { gm = null; }
+  if (gm) { try { await gm.sendKeyMail(env, u.email, note, by); via = "gmail"; } catch (e) { gm = null; } }
+  if (!gm) {
+    const key = await unseal(env, L.key_sealed), m = keyMail(u.email, key, note);
+    try { await sendMail(env, u.email, "Your FODO Studio key", m.html, m.text, { from: STUDIO_FROM(env), replyTo: STUDIO_REPLY(env), kind: "studio_key", by }); }
+    catch (e) { sent = false; error = /not configured/.test(e.message) ? "Email is not set up on the website (RESEND_API_KEY). Copy the key and send it yourself." : "The email could not be sent (" + e.message + "). Copy the key and send it yourself."; }
+  }
+  await markRequests(env, u.email, sent, error, by);
+  return { sent, error, email: u.email, user_id: L.user_id, via };
 }
 export async function adminRequest(env, id, b, by) {
   const d = await ldb(env), r = await one(d, "SELECT * FROM ss_lic_requests WHERE id=?1", String(id)); if (!r) throw err("Not found.", 404);

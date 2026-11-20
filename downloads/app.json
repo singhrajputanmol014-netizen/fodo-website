@@ -15,8 +15,8 @@
   },
   "mac": {
    "name": "FODO-Studio-Mac.zip",
-   "bytes": 10035037,
-   "sha256": "44d03ed28566f948a659dffabf7117905e21c0482fd2303cf5f147e3e96ba4d3"
+   "bytes": 10035711,
+   "sha256": "e71570c06d8784628895368a269e5ad7d5a0fe4945bb3164cc2bccb49b5ef11d"
   },
   "mac_installer": {
    "name": "mac-install.sh",

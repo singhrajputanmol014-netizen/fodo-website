@@ -1169,3 +1169,4 @@ a.nav{text-decoration:none}
 [hidden]{display:none!important}
 /* v52.2: iPhone home-screen app (standalone): keep the top bar clear of the notch */
 @media (max-width:900px){.fs-top{padding-top:calc(10px + env(safe-area-inset-top))!important}.side{padding-top:calc(16px + env(safe-area-inset-top))!important}}
+.ss-alt{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}.ss-alt summary{cursor:pointer;color:var(--mut);font-size:13.5px}.ss-alt[open] summary{margin-bottom:6px}

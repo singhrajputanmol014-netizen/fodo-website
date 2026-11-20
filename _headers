@@ -48,6 +48,8 @@
   Content-Disposition: attachment
 /downloads/*.sh
   Content-Type: text/plain; charset=utf-8
+/downloads/*.ps1
+  Content-Type: text/plain; charset=utf-8
 /admin/*
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store

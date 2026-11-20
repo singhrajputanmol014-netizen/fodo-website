@@ -1,22 +1,22 @@
 {
-  "version": "0.18.0",
+  "version": "0.18.1",
   "released": "2026-11-20",
   "mac_min": "15.0",
   "files": {
     "windows": {
       "name": "FODO-Studio-Setup.exe",
-      "bytes": 9186931,
-      "sha256": "c947cf920845ea3669b78aab449e062773e16a7eeabc2073a741c4918b1b6314"
+      "bytes": 9184292,
+      "sha256": "3a880684772a87cc911c7fee6a26aea798db70b0af956d54dc787a4ebdb84f0f"
     },
     "windows_zip": {
       "name": "FODO-Studio-Setup.zip",
-      "bytes": 10517530,
-      "sha256": "fc6bf6e9539cd5482876e3e96b94437ed9496c9f35d078339b23e69a3874329b"
+      "bytes": 10517701,
+      "sha256": "74eadc83bfd5d11a301f8e806126a23d59165d3cef4dc44cf08836f2c653a08f"
     },
     "mac": {
       "name": "FODO-Studio-Mac.zip",
-      "bytes": 10629694,
-      "sha256": "bf532ac6f106e480856dfa4550b8471fb9231fc3c922847ae031717ad05f53c4"
+      "bytes": 10629696,
+      "sha256": "94c603e46fc8c383924e62777764b119e6b6c30cbfe32ce4d54506e1a3e60f51"
     },
     "mac_installer": {
       "name": "mac-install.sh",

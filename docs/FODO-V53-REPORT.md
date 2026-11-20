@@ -32,3 +32,8 @@
 - Admin ▸ Studio ▸ **Inbox** (owners only): **Log in with Google** (`/api/admin/studio/connect`, reuses the Owner Brain Google connection; Google returns to /admin/#studio). Lists the mailbox (search like Gmail, chips Inbox / Unread / Key requests / Sent), shows if each sender has a Studio key, Open a mail, **Reply** (same Gmail thread), **Reply with key** (account + key made for the sender), **Send key to any email**.
 - "Email the key" on Access requests / rows now goes from the real Gmail mailbox when connected (falls back to Resend).
 - New `functions/_lib/sinbox.js`; routes GET studio/inbox[/<id>], GET studio/connect, POST studio/inbox/<id> {action reply|key}, POST studio/sendkey. Tests in v52.test.mjs (167 pass).
+
+## v53.4: Windows Smart App Control (2026-11-20)
+- Smart App Control blocks unsigned .exe files and downloaded .bat/.cmd files, with no Run anyway. New one-line install: PowerShell `irm https://www.fodo.co.in/downloads/win-install.ps1 | iex` (downloads the zip, checks SHA-256 from app.json, unpacks with Windows' tar.exe, installs to %LOCALAPPDATA%\FODO Studio, runs setup, opens the app). Works in Constrained Language Mode (tested with PowerShell 7.5 on Linux in both modes). App 0.18.1: setup.ps1 has no .NET calls that Constrained Language Mode would stop.
+- Shown in Studio ▸ Get the app (Windows ▸ "Smart App Control blocked an app?") and on /fodo-studio/.
+- Permanent fix still open: a code-signing certificate (paid) or the Microsoft Store.

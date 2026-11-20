@@ -5,18 +5,18 @@
  "files": {
   "windows": {
    "name": "FODO-Studio-Setup.exe",
-   "bytes": 9163060,
-   "sha256": "ccde3f33c812b6fd096be754838603ddd534bb6e29e47a67a19508288518d404"
+   "bytes": 9166693,
+   "sha256": "86d59eac9f8e9e5670fba6eff18de5d2c0642155f019f0f6925d9bc18cd7b709"
   },
   "windows_zip": {
    "name": "FODO-Studio-Setup.zip",
-   "bytes": 10486182,
-   "sha256": "aca3993ac962fd7a26f488c24bbeadaebd7995c3b156e4a35ebb8662f00d35b0"
+   "bytes": 10489533,
+   "sha256": "20d28f533f4c2e747ec4ec591d4218280bb2d253cb10ebbcf23c0a8eca2bfd6d"
   },
   "mac": {
    "name": "FODO-Studio-Mac.zip",
-   "bytes": 10597788,
-   "sha256": "1d0e1fcc64afc933f59c25d74b8bcb007568d507f2bd5fe937468b42eafe6123"
+   "bytes": 10601153,
+   "sha256": "ed26dd6677fa698b49baa06d385fd0660f85d717181497f9a8f077d7fc42dcfe"
   },
   "mac_installer": {
    "name": "mac-install.sh",

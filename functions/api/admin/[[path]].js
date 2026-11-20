@@ -78,6 +78,7 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "studio" && path[1] === "req" && path[2] && m === "POST") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can give keys." }, 403); const b = await request.json().catch(() => ({})); try { const r = await LIC.adminRequest(env, path[2], b, u.email); await logEvent(env, u.id, "studio_req_" + clean(b.action, 12), path[2]); return json(Object.assign({ ok: true }, r)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 500); } }
     if (p0 === "studio" && path[1] && m === "POST") { const b = await request.json().catch(() => ({})); try { const r = await LIC.adminAction(env, path[1], b, u.email); await logEvent(env, u.id, "studio_" + clean(b.action, 20), path[1]); return json(Object.assign({ ok: true }, r)); } catch (e) { return json({ ok: false, reason: e.message }, e.status || 500); } }
     if (p0 === "security" && path[1] === "clear" && m === "POST") { await d.prepare("DELETE FROM csp_reports").run().catch(() => {}); return json({ ok: true }); }
     if (p0 === "site-settings" && m === "POST") { const b = await request.json().catch(() => ({})); const r = await saveSiteCfg(env, b, u.email); if (r.ok) await logEvent(env, u.id, "site_settings", Object.keys(b).join(",")).catch(() => {}); return json(r, r.ok ? 200 : 400); }

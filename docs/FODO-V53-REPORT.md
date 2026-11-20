@@ -20,3 +20,10 @@
 
 ## Tests
 `tests/v52.test.mjs` now unlocks its users with their keys and covers the v53 gate: 402 before the key, wrong key, key format, any-case entry, app activation, lease signature and tamper check, upload key, device limit, reinstall on the same computer, renewal from another computer refused, admin permissions, block (app, website, upload, re-entering the key), unblock, remove computer, new key, owners need no key (130 checks). App: `tests/test_v22_license.py` (signed lease, forged lease, other computer, expiry, clock back, block, offline, 402 gate); full app suite 211 passed.
+
+## v53.2: email screen and Access requests (2026-11-20)
+- The app (0.18.0) opens on an email screen: name, email, optional message, **Request access**. `POST /api/social/app/request` (limited per network and per email). Logged-in website users get a **Request access** button on the key gate (`POST /api/social/license/request`).
+- FODO (anmol@fodo.co.in, `STUDIO_NOTIFY`) gets an email for each new request.
+- FODO Admin ▸ Studio ▸ **Access requests**: Email the key (optional message), Ignore / Undo, Send again, answered history. Rows also have **Email key**.
+- The key email goes from `STUDIO_MAIL_FROM` (default "Anmol from FODO <anmol@fodo.co.in>"), reply-to anmol@fodo.co.in, through the existing Resend setup. If sending fails the request shows "Email failed" with the reason and the key can still be copied.
+- New table `ss_lic_requests`; SCHEMA_VERSION 53.2. Tests in v52.test.mjs (152 pass).

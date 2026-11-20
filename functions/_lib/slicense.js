@@ -9,7 +9,7 @@
    fingerprint). The app renews the lease every hour while online (POST app/refresh); a lease lasts LEASE_HOURS,
    so a blocked person's app stops at the next renewal, and a computer kept offline stops when its lease runs out.
    The signing key is made once and stored AES-GCM sealed in D1 (gsc.js seal): no new secret to configure. */
-import { nowIso, randId, isOwner } from "./accounts.js";
+import { nowIso, randId, isOwner, sendMail, cleanEmail, userByEmail, createUser } from "./accounts.js";
 import { err } from "./biz.js";
 import { seal, unseal } from "./gsc.js";
 import { ssdb, newDevice } from "./sstudio.js";
@@ -22,6 +22,9 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS ss_lic_devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, fp_hash TEXT NOT NULL, name TEXT, platform TEXT, version TEXT, activated_at TEXT, last_seen TEXT, last_ip TEXT, revoked INTEGER DEFAULT 0, upload_device_id TEXT)",
   "CREATE INDEX IF NOT EXISTS ss_lic_dev_user ON ss_lic_devices (user_id, revoked)",
   "CREATE TABLE IF NOT EXISTS ss_lic_meta (k TEXT PRIMARY KEY, v TEXT)",
+  // v53.2: "Request access" from the app's email screen (or the website gate). FODO answers from Admin ▸ Studio by emailing the key.
+  "CREATE TABLE IF NOT EXISTS ss_lic_requests (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT, note TEXT, src TEXT, device_name TEXT, platform TEXT, version TEXT, fp_hash TEXT, ip TEXT, status TEXT, tries INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT, sent_at TEXT, sent_by TEXT, error TEXT)",
+  "CREATE INDEX IF NOT EXISTS ss_lic_req_email ON ss_lic_requests (email, status)",
 ];
 export async function ldb(env) { const d = await ssdb(env); await SCH.setup(d, "slicense", () => SCH.ddl(d, DDL)); return d; }
 
@@ -145,6 +148,73 @@ export async function removeOwnDevice(env, u, id) {
   return mine(env, u);
 }
 
+/* ---- v53.2: access requests + the key by email ----
+   The app opens on an email screen: the person types their email (and name, optional message) and presses
+   Request access. FODO sees it in Admin ▸ Studio ▸ Access requests and presses "Email the key": the account for that
+   email is made if needed, and the key is emailed from STUDIO_MAIL_FROM (default anmol@fodo.co.in, replies come back
+   to the same address). The person then types the key into the app. Receiving the key proves the email is theirs. */
+export const STUDIO_FROM = (env) => (env && env.STUDIO_MAIL_FROM) || "Anmol from FODO <anmol@fodo.co.in>";
+export const STUDIO_REPLY = (env) => (env && env.STUDIO_MAIL_REPLY) || "anmol@fodo.co.in";
+const NOTIFY = (env) => cleanEmail((env && env.STUDIO_NOTIFY) || "anmol@fodo.co.in");
+const reqOut = (r) => ({ id: r.id, email: r.email, name: r.name || "", note: r.note || "", src: r.src || "app", device_name: r.device_name || "", platform: r.platform || "", version: r.version || "",
+  status: r.status, tries: r.tries || 1, created_at: r.created_at, updated_at: r.updated_at, sent_at: r.sent_at, sent_by: r.sent_by || "", error: r.error || "" });
+export async function requestAccess(env, b, ip, src) {
+  const email = cleanEmail(b.email);
+  if (!email) throw err("Type a correct email address, for example name@gmail.com.", 400);
+  const d = await ldb(env), now = nowIso(), name = clip(b.name, 80), note = clip(b.note, 500), fp = /^[a-f0-9]{64}$/.test(String(b.fp || "")) ? String(b.fp) : null;
+  const open = await one(d, "SELECT * FROM ss_lic_requests WHERE email=?1 AND status='new' ORDER BY created_at DESC LIMIT 1", email);
+  if (open) {
+    await run(d, "UPDATE ss_lic_requests SET name=COALESCE(NULLIF(?2,''), name), note=COALESCE(NULLIF(?3,''), note), tries=tries+1, updated_at=?4, device_name=COALESCE(?5, device_name), platform=COALESCE(?6, platform), version=COALESCE(?7, version), fp_hash=COALESCE(?8, fp_hash) WHERE id=?1",
+      open.id, name, note, now, b.device_name ? clip(b.device_name, 60) : null, b.platform ? clip(b.platform, 30) : null, b.version ? clip(b.version, 20) : null, fp);
+    return { ok: true, request: open.id, email, again: true };
+  }
+  const id = "lr_" + randId(14);
+  await run(d, "INSERT INTO ss_lic_requests (id, email, name, note, src, device_name, platform, version, fp_hash, ip, status, tries, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'new',1,?11,?11)",
+    id, email, name, note, src === "web" ? "web" : "app", clip(b.device_name, 60), clip(b.platform, 30), clip(b.version, 20), fp, clip(ip, 60), now);
+  const to = NOTIFY(env);
+  if (to) await sendMail(env, to, "FODO Studio access request: " + email, "<p><b>" + esc(email) + "</b>" + (name ? " (" + esc(name) + ")" : "") + " asked for a FODO Studio key" + (src === "web" ? " on fodo.co.in/studio" : " from the app" + (b.device_name ? " on " + esc(clip(b.device_name, 60)) : "")) + ".</p>" + (note ? "<p>Message: " + esc(note) + "</p>" : "") + '<p><a href="https://www.fodo.co.in/admin/#studio">Open FODO Admin ▸ Studio</a> and press <b>Email the key</b> to give access.</p>',
+    email + (name ? " (" + name + ")" : "") + " asked for a FODO Studio key." + (note ? "\nMessage: " + note : "") + "\n\nGive access: https://www.fodo.co.in/admin/#studio", { kind: "studio", replyTo: email }).catch(() => {});
+  return { ok: true, request: id, email };
+}
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+/* the account + licence for an email (made if needed), then the key mailed to it */
+async function userFor(env, email) { return (await userByEmail(env, email)) || (await createUser(env, { email })); }
+function keyMail(email, key, msg) {
+  const studio = "https://www.fodo.co.in/studio/", app = "https://www.fodo.co.in/fodo-studio/";
+  const html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#111">' + (msg ? "<p>" + esc(msg).replace(/\n/g, "<br>") + "</p>" : "<p>Hi,</p><p>Your FODO Studio access is ready.</p>") +
+    '<p style="margin:18px 0 6px">Your FODO Studio key:</p><p style="font:700 20px Consolas,Menlo,monospace;letter-spacing:.06em;background:#f4f1ec;border-radius:10px;padding:14px 16px;display:inline-block">' + esc(key) + "</p>" +
+    "<p><b>On your computer:</b> open the FODO Studio app, type this email (" + esc(email) + ") and paste the key. Don't have the app? Download it here: <a href=\"" + app + "\">" + app + "</a></p>" +
+    "<p><b>On the website:</b> log in at <a href=\"" + studio + "\">" + studio + "</a> with " + esc(email) + " and enter the same key.</p>" +
+    '<p style="color:#666;font-size:13px">One key works on your own computers (2 by default). Please don\'t share it. Questions? Just reply to this email.</p><p>Anmol<br>FODO</p></div>';
+  const text = (msg ? msg + "\n\n" : "Hi,\n\nYour FODO Studio access is ready.\n\n") + "Your FODO Studio key: " + key + "\n\nOn your computer: open the FODO Studio app, type this email (" + email + ") and paste the key. Download: " + app +
+    "\nOn the website: log in at " + studio + " with " + email + " and enter the same key.\n\nOne key works on your own computers (2 by default). Please don't share it. Questions? Just reply to this email.\n\nAnmol\nFODO";
+  return { html, text };
+}
+export async function emailKey(env, uidOrEmail, msg, by) {
+  const d = await ldb(env); let u = null;
+  if (/@/.test(String(uidOrEmail))) { const e = cleanEmail(uidOrEmail); if (!e) throw err("Not a correct email.", 400); u = await userFor(env, e); }
+  else u = await one(d, "SELECT * FROM acct_users WHERE id=?1", String(uidOrEmail));
+  if (!u || !u.email) throw err("This person has no email address. Copy the key and send it another way.", 400);
+  const L = await ensure(env, u);
+  if (L.status === "blocked") throw err("This person is blocked. Unblock them first.", 409);
+  const key = await unseal(env, L.key_sealed), m = keyMail(u.email, key, String(msg || "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").trim().slice(0, 1500));
+  let sent = true, error = null;
+  try { await sendMail(env, u.email, "Your FODO Studio key", m.html, m.text, { from: STUDIO_FROM(env), replyTo: STUDIO_REPLY(env), kind: "studio_key", by }); }
+  catch (e) { sent = false; error = /not configured/.test(e.message) ? "Email is not set up on the website (RESEND_API_KEY). Copy the key and send it yourself." : "The email could not be sent (" + e.message + "). Copy the key and send it yourself."; }
+  const now = nowIso();
+  await run(d, "UPDATE ss_lic_requests SET status=?2, sent_at=?3, sent_by=?4, error=?5, updated_at=?3 WHERE email=?1 AND status IN ('new','failed')", u.email, sent ? "sent" : "failed", now, clip(by, 120), error);
+  return { sent, error, email: u.email, user_id: L.user_id };
+}
+export async function adminRequest(env, id, b, by) {
+  const d = await ldb(env), r = await one(d, "SELECT * FROM ss_lic_requests WHERE id=?1", String(id)); if (!r) throw err("Not found.", 404);
+  const a = String(b.action || "");
+  if (a === "send") { const x = await emailKey(env, r.email, b.message, by); return Object.assign({ mail: x }, await adminList(env)); }
+  if (a === "ignore") await run(d, "UPDATE ss_lic_requests SET status='ignored', updated_at=?2, sent_by=?3 WHERE id=?1", r.id, nowIso(), clip(by, 120));
+  else if (a === "reopen") await run(d, "UPDATE ss_lic_requests SET status='new', updated_at=?2 WHERE id=?1", r.id, nowIso());
+  else throw err("Unknown action.", 400);
+  return adminList(env);
+}
+
 /* ---- FODO Admin ▸ Studio ---- */
 export async function adminList(env) {
   const d = await ldb(env);
@@ -154,7 +224,9 @@ export async function adminList(env) {
   const items = rows.map((r) => ({ user_id: r.user_id, email: r.email || r.phone || "", name: r.name || "", status: r.status, hint: r.key_hint, created_at: r.created_at, entered_at: r.entered_at, entered_via: r.entered_via,
     blocked_at: r.blocked_at, block_reason: r.block_reason || "", max_devices: r.max_devices || DEFAULT_DEVICES, last_seen: r.last_seen, note: r.note || "", devices: by[r.user_id] || [] }));
   const c = (s) => items.filter((x) => x.status === s).length;
-  return { items, counts: { total: items.length, waiting: c("waiting"), active: c("active"), blocked: c("blocked"), computers: devs.filter((x) => !x.revoked).length }, lease_hours: LEASE_HOURS };
+  const requests = (await all(d, "SELECT * FROM ss_lic_requests ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END, updated_at DESC LIMIT 300")).map(reqOut);
+  return { items, requests, counts: { total: items.length, waiting: c("waiting"), active: c("active"), blocked: c("blocked"), computers: devs.filter((x) => !x.revoked).length, requests: requests.filter((x) => x.status === "new" || x.status === "failed").length },
+    lease_hours: LEASE_HOURS, mail_from: STUDIO_FROM(env), mail_on: !!env.RESEND_API_KEY };
 }
 export async function adminKey(env, uid) {
   const L = await one(await ldb(env), "SELECT key_sealed FROM ss_licenses WHERE user_id=?1", String(uid)); if (!L) throw err("Not found.", 404);
@@ -171,6 +243,7 @@ export async function adminAction(env, uid, b, by) {
     await run(d, "UPDATE ss_licenses SET key_hash=?2, key_sealed=?3, key_hint=?4, status=CASE WHEN status='blocked' THEN 'blocked' ELSE 'waiting' END, entered_at=NULL, entered_via=NULL, updated_at=?5 WHERE user_id=?1", L.user_id, await sha(key), await seal(env, key), key.slice(-4), now);
     for (const x of await all(d, "SELECT * FROM ss_lic_devices WHERE user_id=?1 AND revoked=0", L.user_id)) { await run(d, "UPDATE ss_lic_devices SET revoked=1 WHERE id=?1", x.id); if (x.upload_device_id) await run(d, "UPDATE ss_devices SET revoked=1 WHERE id=?1", x.upload_device_id); }
   } else if (a === "devices") await run(d, "UPDATE ss_licenses SET max_devices=?2, updated_at=?3 WHERE user_id=?1", L.user_id, Math.max(1, Math.min(20, Math.round(+b.max) || DEFAULT_DEVICES)), now);
+  else if (a === "email") { const x = await emailKey(env, L.user_id, b.message, by); return Object.assign({ mail: x }, await adminList(env)); }
   else if (a === "note") await run(d, "UPDATE ss_licenses SET note=?2, updated_at=?3 WHERE user_id=?1", L.user_id, clip(b.note, 300), now);
   else if (a === "remove_device") {
     const x = await one(d, "SELECT * FROM ss_lic_devices WHERE id=?1 AND user_id=?2", String(b.device || ""), L.user_id); if (!x) throw err("Not found.", 404);

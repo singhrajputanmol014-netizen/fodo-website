@@ -47,6 +47,10 @@ export async function onRequest(ctx) {
       if (await count(env, "ssapp:" + ip, p1 === "activate" ? 30 : 600, 3600)) return json({ ok: false, reason: "Too many tries, wait an hour." }, 429);
       const ab = (await request.json().catch(() => null)) || {};
       try {
+        if (p1 === "request") {   // v53.2: the app's email screen asks FODO for a key
+          if (await count(env, "ssreq:" + ip, 10, 3600) || await count(env, "ssreqe:" + String(ab.email || "").toLowerCase().slice(0, 120), 5, 86400)) return json({ ok: false, reason: "Too many requests. FODO already has yours, please wait for the email." }, 429);
+          return ok(await LIC.requestAccess(env, ab, ip, "app"));
+        }
         if (p1 === "activate") return ok(await LIC.activate(env, ab, ip));
         if (p1 === "refresh") return ok(await LIC.refresh(env, ab, ip));
       } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Something went wrong, please try again.", blocked: !!e.blocked, removed: !!e.removed }, e.status || 500); }
@@ -72,6 +76,7 @@ export async function onRequest(ctx) {
         if (m !== "GET" && !sameOrigin(request)) return json({ ok: false, reason: "Bad request." }, 403);
         if (m === "POST" && !p1) { if (await count(env, "sslk:" + u.id, 20, 3600)) return json({ ok: false, reason: "Too many tries, wait an hour." }, 429); return ok({ license: await LIC.enterKey(env, u, ((await request.json().catch(() => null)) || {}).key) }); }
         if (m === "DELETE" && p1 === "devices" && p2) return ok({ license: await LIC.removeOwnDevice(env, u, p2) });
+        if (m === "POST" && p1 === "request") { if (await count(env, "ssrequ:" + u.id, 5, 86400)) return json({ ok: false, reason: "FODO already has your request. The key comes to " + (u.email || "your email") + "." }, 429); if (!u.email) return json({ ok: false, reason: "Your account has no email. Ask FODO on WhatsApp." }, 400); const b = (await request.json().catch(() => null)) || {}; return ok(await LIC.requestAccess(env, { email: u.email, name: u.name || b.name, note: b.note }, ip, "web")); }
       } catch (e) { return bad(e); }
       return json({ ok: false, reason: "Not found." }, 404);
     }

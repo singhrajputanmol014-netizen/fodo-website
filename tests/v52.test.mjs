@@ -37,7 +37,7 @@ const KV = new Map(), CHAT_KV = { get: async (k, t) => { const v = KV.has(k) ? K
 const env = { XRAY_DB: d1(), CHAT_KV, ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", MAIL_FROM: "FODO <hello@fodo.co.in>", META_APP_ID: "m1", META_APP_SECRET: "msec", GOOGLE_CLIENT_ID: "g1", GOOGLE_CLIENT_SECRET: "gsec", CRON_KEY: "k".repeat(20) };
 const q1 = (sql, ...a) => env.XRAY_DB.db.prepare(sql).get(...a), X = (sql, ...a) => env.XRAY_DB.db.prepare(sql).run(...a);
 /* platform mocks */
-const calls = []; let replyDenied = true;
+const calls = []; let replyDenied = true, mailDown = false;
 globalThis.fetch = async (u, o = {}) => { u = String(u); const J = (x, s, h) => new Response(JSON.stringify(x), { status: s || 200, headers: Object.assign({ "content-type": "application/json" }, h || {}) }); calls.push({ u, m: o.method || "GET", body: o.body });
   if (/graph\.facebook\.com\/v[\d.]+\/IG1\/media$/.test(u)) return J({ id: "CONT1" });
   if (/graph\.facebook\.com\/v[\d.]+\/CONT1\?fields=status_code/.test(u)) return J({ status_code: "FINISHED" });
@@ -53,6 +53,7 @@ globalThis.fetch = async (u, o = {}) => { u = String(u); const J = (x, s, h) => 
   if (/youtube\/v3\/commentThreads/.test(u)) return J({ items: [] });
   if (/youtube\/v3\/videos\?part=statistics/.test(u)) return J({ items: [{ statistics: { viewCount: "900" }, status: { uploadStatus: "processed" } }] });
   if (/youtube\/v3\/channels\?part=statistics/.test(u)) return J({ items: [{ statistics: { subscriberCount: "200" } }] });
+  if (/api\.resend\.com\/emails/.test(u)) return mailDown ? J({ message: "domain not verified" }, 403) : J({ id: "re_" + calls.length });
   return new Response("x", { status: 599 }); };
 
 await login("asha@client.in", "a"); await login("bobby@other.in", "b");
@@ -216,6 +217,49 @@ await call("admin/studio/" + uidA2, { action: "regen" }, { as: "o" });
 ok((await APP("activate", { key: keyA, fp: FP("a") })).status === 404 && (await APP("refresh", { device: act1.device, fp: FP("a") })).status === 401 && (await Z("state")).status === 402, "new key: the old key and every computer stop until the new key is entered");
 const keyA2 = await keyOf("asha@client.in"); ok(keyA2 !== keyA && (await Z("license", { key: keyA2 })).j.license.status === "active", "the new key works");
 const ownerSt = await Z("state", undefined, "o"); ok(ownerSt.j.ok, "FODO owners never need a key");
+}
+/* ---------- v53.2: the app's email screen -> Access requests in FODO Admin ▸ Studio -> key emailed from anmol@fodo.co.in ---------- */
+{
+env.RESEND_API_KEY = "re_test";
+const APP = (p, body, o) => call("social/app/" + p, body, Object.assign({ anon: true, headers: { origin: "", "cf-connecting-ip": "7.7.7.7" } }, o || {}));
+const mails = () => calls.filter((c) => /api\.resend\.com/.test(c.u)).map((c) => JSON.parse(c.body));
+ok((await APP("request", { email: "not-an-email" })).status === 400, "request: a wrong email is refused");
+const n0 = mails().length;
+const rq1 = (await APP("request", { email: "Ravi.K@Gmail.com", name: "Ravi", note: "Need it for my agency", fp: "d".repeat(64), device_name: "RAVI-PC", platform: "win32", version: "0.18.0" })).j;
+ok(rq1.ok && rq1.email === "ravi.k@gmail.com" && /^lr_/.test(rq1.request), "request: the app sends the typed email to FODO");
+const nm = mails().slice(n0); ok(nm.length === 1 && nm[0].to[0] === "anmol@fodo.co.in" && /ravi\.k@gmail\.com/.test(nm[0].subject) && nm[0].reply_to === "ravi.k@gmail.com", "request: FODO (anmol@fodo.co.in) gets an email about it");
+const rq2 = (await APP("request", { email: "ravi.k@gmail.com" })).j; ok(rq2.ok && rq2.again && rq2.request === rq1.request && mails().length === n0 + 1 && q1("SELECT tries FROM ss_lic_requests WHERE id=?1", rq1.request).tries === 2, "request: asking again updates the same request (no second notification)");
+ok(!q1("SELECT id FROM acct_users WHERE email='ravi.k@gmail.com'"), "request: no account is made until FODO gives the key");
+ok((await call("admin/studio/req/" + rq1.request, { action: "send" }, { as: "a" })).status === 403, "request: customers can't give keys");
+const adr = (await call("admin/studio", undefined, { as: "o" })).j, rr = adr.requests.filter((x) => x.id === rq1.request)[0];
+ok(adr.counts.requests >= 1 && rr && rr.status === "new" && rr.name === "Ravi" && rr.note === "Need it for my agency" && rr.device_name === "RAVI-PC" && rr.tries === 2 && /anmol@fodo\.co\.in/.test(adr.mail_from) && adr.mail_on, "admin: Access requests list (email, name, message, computer, times asked)");
+const n1 = mails().length;
+const sent = (await call("admin/studio/req/" + rq1.request, { action: "send", message: "Hi Ravi,\nwelcome to FODO Studio!" }, { as: "o" })).j;
+const km = mails().slice(n1)[0], ravi = q1("SELECT id FROM acct_users WHERE email='ravi.k@gmail.com'"), keyR = ravi && await keyOf("ravi.k@gmail.com");
+ok(sent.ok && sent.mail.sent && ravi && keyR && km && km.to[0] === "ravi.k@gmail.com" && /anmol@fodo\.co\.in/.test(km.from) && km.reply_to === "anmol@fodo.co.in" && km.subject === "Your FODO Studio key", "admin: Email the key makes the account and mails the key from anmol@fodo.co.in (replies come back)");
+ok(km.text.indexOf(keyR) > -1 && km.html.indexOf(keyR) > -1 && /welcome to FODO Studio/.test(km.text) && /<br>/.test(km.html) && /fodo\.co\.in\/fodo-studio\//.test(km.text), "the email has the key, FODO's message and the download link");
+ok(sent.requests.filter((x) => x.id === rq1.request)[0].status === "sent" && sent.counts.requests === adr.counts.requests - 1, "request is marked: key sent");
+ok(q1("SELECT status, to_addr, kind FROM help_mail WHERE subject='Your FODO Studio key' ORDER BY id DESC LIMIT 1").status === "sent" && q1("SELECT kind FROM help_mail WHERE subject='Your FODO Studio key' LIMIT 1").kind === "studio_key", "the sent email is in the admin Mail log");
+const ra = (await APP("activate", { key: keyR, fp: "d".repeat(64), name: "RAVI-PC" })).j; ok(ra.ok && ra.email === "ravi.k@gmail.com", "the emailed key opens the app on that computer");
+/* email down: FODO is told, the key can still be copied */
+const rq3 = (await APP("request", { email: "neha@shop.in", name: "Neha" })).j; mailDown = true;
+const fl = (await call("admin/studio/req/" + rq3.request, { action: "send" }, { as: "o" })).j; mailDown = false;
+const r3 = fl.requests.filter((x) => x.id === rq3.request)[0]; ok(fl.ok && fl.mail.sent === false && /could not be sent/.test(fl.mail.error) && r3.status === "failed" && /Copy the key/.test(r3.error), "email down: the request shows 'Email failed' with the reason, nothing is lost");
+const nUid = q1("SELECT id FROM acct_users WHERE email='neha@shop.in'").id; ok((await call("admin/studio/" + nUid + "/key", undefined, { as: "o" })).j.key === await keyOf("neha@shop.in"), "email down: the key can still be copied");
+const re = (await call("admin/studio/req/" + rq3.request, { action: "send" }, { as: "o" })).j; ok(re.mail.sent && re.requests.filter((x) => x.id === rq3.request)[0].status === "sent", "Send again works once email is back");
+/* Email key on any person in the list */
+const n2 = mails().length; const ek = (await call("admin/studio/" + nUid, { action: "email" }, { as: "o" })).j; ok(ek.ok && ek.mail.sent && mails().length === n2 + 1 && mails()[n2].to[0] === "neha@shop.in", "admin: Email key on a person's row");
+await call("admin/studio/" + nUid, { action: "block", reason: "x" }, { as: "o" }); ok((await call("admin/studio/" + nUid, { action: "email" }, { as: "o" })).status === 409, "a blocked person's key is not emailed");
+/* ignore + undo */
+const rq4 = (await APP("request", { email: "spam@spam.io" })).j; const ig = (await call("admin/studio/req/" + rq4.request, { action: "ignore" }, { as: "o" })).j;
+ok(ig.requests.filter((x) => x.id === rq4.request)[0].status === "ignored" && (await call("admin/studio/req/" + rq4.request, { action: "reopen" }, { as: "o" })).j.requests.filter((x) => x.id === rq4.request)[0].status === "new", "Ignore and Undo");
+/* website gate: Request access with the login email */
+const wr = (await Z("license/request", {}, "b")).j; ok(wr.ok && wr.email === "bobby@other.in" && q1("SELECT src FROM ss_lic_requests WHERE id=?1", wr.request).src === "web", "website: Request access sends the login email");
+ok((await call("social/license/request", {}, { anon: true })).status === 401, "website request needs a login");
+let lim = 0; for (let i = 0; i < 12; i++) if ((await APP("request", { email: "x" + i + "@flood.io" }, { headers: { origin: "", "cf-connecting-ip": "6.6.6.6" } })).status === 429) lim++; ok(lim >= 2, "request: limited per network (no flooding FODO's inbox)");
+delete env.RESEND_API_KEY;
+const AJ = fs.readFileSync("js/admin.js", "utf8"), FJ = fs.readFileSync("js/fodo-studio.js", "utf8");
+ok(/Access requests/.test(AJ) && /studio\/req\//.test(AJ) && /Email the key/.test(AJ) && /data-k="email"/.test(AJ) && /fs-req/.test(FJ) && /license\/request/.test(FJ), "front end: Admin ▸ Studio Access requests + Email key; website gate Request access");
 }
 /* ---------- front end + schema ---------- */
 const WS = fs.readFileSync("js/workspace.js", "utf8"), SS = fs.readFileSync("js/ws-social.js", "utf8"), SC = fs.readFileSync("functions/_lib/schema.js", "utf8");

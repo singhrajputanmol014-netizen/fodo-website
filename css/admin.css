@@ -172,3 +172,11 @@ body.ad-menu-on{overflow:hidden}
 #ad-slist td small a{color:inherit;text-decoration:underline}
 .ad-tag.mid{background:color-mix(in srgb,#E8A317 18%,transparent);color:#A86F00}html[data-theme=dark] .ad-tag.mid{color:#F4C35A}
 @media (max-width:760px){.ad-sacts{white-space:normal;text-align:left}}
+/* v53.2 Studio access requests */
+.ad-req{margin-bottom:16px}.ad-req .ad-ch{flex-wrap:wrap;gap:8px}.ad-req .bad{color:var(--err,#ff6b6b)}
+.ad-rqs{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:10px}
+.ad-rqs li{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:12px 14px;border:1px solid var(--line,#ffffff1a);border-radius:14px}
+.ad-rqn{margin:6px 0 2px;font-size:13.5px;line-height:1.5;white-space:pre-wrap}.ad-rqn.bad{color:var(--err,#ff6b6b)}
+.ad-rqa{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.ad-ta{min-height:110px;resize:vertical;font:inherit;line-height:1.5}
+@media (max-width:720px){.ad-rqs li{flex-direction:column}.ad-rqa{justify-content:flex-start}}

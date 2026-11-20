@@ -23,10 +23,10 @@
   function ask(o) {
     return new Promise(function (res) {
       var w = document.createElement("div"); w.className = "cfx ad-dlg"; w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box" role="dialog" aria-modal="true" aria-labelledby="ad-dt"><h3 id="ad-dt">' + esc(o.title) + "</h3>" + (o.text ? '<p class="muted">' + esc(o.text) + "</p>" : "") +
-        (o.input ? '<label class="ad-dl2" for="ad-di">' + esc(o.input) + '</label><input id="ad-di" class="ad-in" maxlength="200" placeholder="' + esc(o.ph || "") + '">' : "") + '<div class="btn-row"><button type="button" class="btn ' + (o.danger ? "danger" : "") + '" data-ok>' + esc(o.ok || "OK") + '</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
+        (o.input ? '<label class="ad-dl2" for="ad-di">' + esc(o.input) + '</label>' + (o.area ? '<textarea id="ad-di" class="ad-in ad-ta" rows="5" maxlength="1500" placeholder="' + esc(o.ph || "") + '"></textarea>' : '<input id="ad-di" class="ad-in" maxlength="200" placeholder="' + esc(o.ph || "") + '">') : "") + '<div class="btn-row"><button type="button" class="btn ' + (o.danger ? "danger" : "") + '" data-ok>' + esc(o.ok || "OK") + '</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
       document.body.appendChild(w); var done = function (v) { w.remove(); res(v); }, inp = w.querySelector("#ad-di");
       w.querySelector("[data-ok]").onclick = function () { done(inp ? inp.value.trim() : true); }; w.querySelectorAll("[data-x]").forEach(function (b) { b.onclick = function () { done(null); }; });
-      w.onkeydown = function (e) { if (e.key === "Escape") done(null); if (e.key === "Enter" && inp) done(inp.value.trim()); }; setTimeout(function () { (inp || w.querySelector("[data-ok]")).focus(); }, 30);
+      w.onkeydown = function (e) { if (e.key === "Escape") done(null); if (e.key === "Enter" && inp && !o.area) done(inp.value.trim()); }; setTimeout(function () { (inp || w.querySelector("[data-ok]")).focus(); }, 30);
     });
   }
 
@@ -370,7 +370,7 @@
   var sf = "", sq = "";
   function studioView() {
     $("#ad-view").innerHTML = head("Studio", "Everyone who opened FODO Studio. Each person gets a key from their account; Studio (website and app) works only after they enter it. " + (owner() ? "Copy or WhatsApp the key to give access, block anyone (the app stops at its next check-in: within an hour online, at most " : "Read-only view. ") + (owner() ? "48 h offline)." : ""), '<button class="btn sm ghost" id="ad-scsv" type="button">Export CSV</button>') +
-      '<div id="ad-skpi" class="ad-kpis"></div><div class="ad-bar2"><input id="ad-sq" type="search" placeholder="Search email or name" value="' + esc(sq) + '" aria-label="Search Studio people"><div class="ad-chips">' +
+      '<div id="ad-sreq"></div><div id="ad-skpi" class="ad-kpis"></div><div class="ad-bar2"><input id="ad-sq" type="search" placeholder="Search email or name" value="' + esc(sq) + '" aria-label="Search Studio people"><div class="ad-chips">' +
       [["", "All"], ["waiting", "Key not entered"], ["active", "Active"], ["blocked", "Blocked"]].map(function (f) { return '<button type="button" class="chip" data-sf="' + f[0] + '" aria-pressed="' + (sf === f[0]) + '">' + f[1] + "</button>"; }).join("") + '</div></div><div id="ad-slist"><div class="ad-load">Loading…</div></div>';
     var data = null, t;
     $("#ad-sq").oninput = function (e) { clearTimeout(t); t = setTimeout(function () { sq = e.target.value.trim().toLowerCase(); draw(); }, 200); };
@@ -378,9 +378,40 @@
     $("#ad-scsv").onclick = function () { if (data) csv([["Email", "Name", "Status", "Key ends", "Entered", "Via", "Computers", "Device limit", "Last seen", "Blocked reason", "Note"]].concat(data.items.map(function (x) { return [x.email, x.name, x.status, x.hint, x.entered_at, x.entered_via, x.devices.filter(function (d) { return d.active; }).length, x.max_devices, x.last_seen, x.block_reason, x.note]; })), "fodo-studio-keys"); };
     var ST = { waiting: ["Key not entered", "mid"], active: ["Active", "ok"], blocked: ["Blocked", "bad"] };
     function load() { api("studio").then(function (j) { if (!j.ok) return fail(j); data = j; draw(); }); }
+    var rqAll = false;
+    /* v53.2: "Request access" from the app's email screen. FODO answers by emailing the key (from anmol@fodo.co.in). */
+    function sendKey(call, email) {
+      ask({ title: "Email the FODO Studio key to " + email + "?", text: "Sent from " + (data.mail_from || "anmol@fodo.co.in") + ". The email has their key and the steps for the app and the website; replies come back to you. Add a message on top if you like.", input: "Your message (optional)", area: true, ph: "e.g. Hi Ravi, welcome to FODO Studio! Your plan runs till 31 Dec.", ok: "Send the key" }).then(function (v) {
+        if (v === null) return; toast("Sending…");
+        call({ action: "email", message: v === true ? "" : v }).then(function (j) {
+          if (!j.ok) return toast(j.reason || "Could not send.", true);
+          data = j; draw();
+          if (j.mail && j.mail.sent) toast("Key emailed to " + j.mail.email);
+          else ask({ title: "The email did not go out", text: (j.mail && j.mail.error) || "Copy the key and send it yourself.", ok: "OK" });
+        });
+      });
+    }
+    function drawReq() {
+      var R = data.requests || [], open = R.filter(function (r) { return r.status === "new" || r.status === "failed"; }), done = R.filter(function (r) { return r.status !== "new" && r.status !== "failed"; });
+      var show = rqAll ? R : open;
+      var RS = { "new": ["New", "mid"], failed: ["Email failed", "bad"], sent: ["Key sent", "ok"], ignored: ["Ignored", ""] };
+      $("#ad-sreq").innerHTML = '<div class="panel ad-card ad-req"><div class="ad-ch"><h2>Access requests' + (open.length ? ' <span class="ad-tag mid">' + open.length + " waiting</span>" : "") + '</h2><span class="muted">People who typed their email in the app (or on the website) and asked for a key. ' + (owner() ? "Press <b>Email the key</b> to give access." : "") + (data.mail_on === false ? ' <b class="bad">Email is not set up on the website, keys can only be copied.</b>' : "") + "</span>" +
+        (done.length ? '<button type="button" class="btn sm ghost" id="ad-rqall">' + (rqAll ? "Hide answered" : "Show answered (" + done.length + ")") + "</button>" : "") + "</div>" +
+        (show.length ? '<ul class="ad-rqs">' + show.map(function (r) { var st = RS[r.status] || [r.status, ""];
+          return '<li data-rq="' + esc(r.id) + '"><div class="ad-who"><span class="ad-av">' + esc((r.name || r.email).charAt(0).toUpperCase()) + "</span><div><b>" + esc(r.email) + "</b><small>" + esc(r.name || "") + (r.name ? " · " : "") + (r.src === "web" ? "website" : "app" + (r.device_name ? " on " + esc(r.device_name) : "") + (r.platform ? " (" + esc(r.platform) + ")" : "") + (r.version ? " · " + esc(r.version) : "")) + " · " + esc(ago(r.updated_at)) + (r.tries > 1 ? " · asked " + r.tries + "×" : "") + "</small>" +
+            (r.note ? '<p class="ad-rqn">“' + esc(r.note) + "”</p>" : "") + (r.error ? '<p class="ad-rqn bad">' + esc(r.error) + "</p>" : "") + (r.sent_at ? "<small>" + esc(st[0]) + " " + esc(ago(r.sent_at)) + (r.sent_by ? " by " + esc(r.sent_by) : "") + "</small>" : "") + "</div></div>" +
+            '<div class="ad-rqa"><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (owner() ? (r.status === "ignored" ? '<button type="button" class="btn sm ghost" data-r="reopen">Undo</button>' : '<button type="button" class="btn sm" data-r="send">' + (r.status === "sent" ? "Send again" : "Email the key") + "</button>" + (r.status === "new" || r.status === "failed" ? ' <button type="button" class="btn sm ghost" data-r="ignore">Ignore</button>' : "")) : "") + "</div></li>"; }).join("") + "</ul>"
+          : '<p class="muted">' + (R.length ? "No new requests." : "No requests yet. When someone opens the app and types their email, it shows here.") + "</p>") + "</div>";
+      var all = $("#ad-rqall"); if (all) all.onclick = function () { rqAll = !rqAll; drawReq(); };
+      $$("#ad-sreq [data-rq]").forEach(function (li) { var id = li.dataset.rq, r = R.filter(function (y) { return y.id === id; })[0];
+        li.querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { var k = b.dataset.r, call = function (body) { return api("studio/req/" + id, body); };
+          if (k === "send") sendKey(function (body) { return call({ action: "send", message: body.message }); }, r.email);
+          else call({ action: k }).then(function (j) { if (!j.ok) return toast(j.reason || "Could not save.", true); data = j; draw(); toast(k === "ignore" ? "Ignored" : "Back in the list"); }); }; }); });
+    }
     function draw() {
       if (!data) return; var c = data.counts;
       $("#ad-skpi").innerHTML = K(c.total, "People in Studio") + K(c.waiting, "Key not entered yet", "waiting for the key", c.waiting ? "mid" : "") + K(c.active, "Active", "key entered") + K(c.blocked, "Blocked", "", c.blocked ? "bad" : "") + K(c.computers, "Computers with the app");
+      drawReq();
       var L = data.items.filter(function (x) { return (!sf || x.status === sf) && (!sq || (x.email + " " + x.name).toLowerCase().indexOf(sq) > -1); });
       $("#ad-slist").innerHTML = L.length ? '<div class="ad-table"><table><thead><tr><th>Person</th><th>Status</th><th>Key</th><th>Computers</th><th>Last seen</th>' + (owner() ? "<th></th>" : "") + "</tr></thead><tbody>" + L.map(function (x) {
         var st = ST[x.status] || [x.status, ""], act = x.devices.filter(function (d) { return d.active; });
@@ -391,6 +422,7 @@
           '<td data-l="Last seen">' + esc(ago(x.last_seen)) + "</td>" +
           (owner() ? '<td class="ad-sacts">' + (x.status === "blocked" ? '<button type="button" class="btn sm" data-k="unblock">Unblock</button>' : '<button type="button" class="btn sm danger" data-k="block">Block</button>') +
             (x.status === "waiting" ? ' <button type="button" class="btn sm ghost" data-k="activate" title="Turn Studio on without them typing the key">Activate</button>' : "") +
+            (x.email && /@/.test(x.email) && x.status !== "blocked" ? ' <button type="button" class="btn sm ghost" data-k="email" title="Email the key from ' + esc(data.mail_from || "") + '">Email key</button>' : "") +
             ' <button type="button" class="btn sm ghost" data-k="regen">New key</button> <button type="button" class="btn sm ghost" data-k="devices">Limit</button> <button type="button" class="btn sm ghost" data-k="note">Note</button></td>' : "") + "</tr>";
       }).join("") + "</tbody></table></div>" : '<div class="panel ad-card"><p class="muted">' + (data.items.length ? "Nobody matches." : "Nobody has opened FODO Studio yet.") + "</p></div>";
       $$("#ad-slist tr[data-s]").forEach(function (r) {
@@ -401,6 +433,7 @@
           if (k === "copy") key().then(function (v) { if (!v) return; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { toast("Key copied: " + v); }, function () { ask({ title: "Studio key for " + x.email, text: v, ok: "Done" }); }); });
           else if (k === "wa") key().then(function (v) { if (!v) return; var msg = "Your FODO Studio key: " + v + "\n\nOpen https://www.fodo.co.in/studio/ (log in with " + x.email + ") and enter the key. For clipping on your computer, download the app from Studio ▸ Get the app and enter the same key there."; window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank", "noopener"); });
           else if (k === "block") ask({ title: "Block " + x.email + "?", text: "Studio stops on the website at once, and in the app at its next check-in (at most 48 h if the computer stays offline).", input: "Reason (shown to them)", ph: "e.g. Payment pending", ok: "Block", danger: true }).then(function (v) { if (v !== null) post({ action: "block", reason: v }, "Blocked"); });
+          else if (k === "email") sendKey(function (b) { return api("studio/" + uid, b); }, x.email);
           else if (k === "unblock") post({ action: "unblock" }, "Unblocked");
           else if (k === "activate") ask({ title: "Activate Studio for " + x.email + "?", text: "Turns Studio on for the website without them typing the key. The app still needs the key.", ok: "Activate" }).then(function (v) { if (v) post({ action: "activate" }, "Activated"); });
           else if (k === "regen") ask({ title: "Make a new key for " + x.email + "?", text: "The old key stops working and every computer is signed out. Give them the new key.", ok: "Make new key", danger: true }).then(function (v) { if (v) post({ action: "regen" }, "New key made: copy it with Copy key"); });

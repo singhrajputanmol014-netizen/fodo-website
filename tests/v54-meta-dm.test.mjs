@@ -77,6 +77,17 @@ await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ se
 await post(igMsg("u2", "hello", "m4"));
 ok(sent.length === n + 1, "the bot's own echo does not pause the chat");
 
+/* 8b. a Meta inbox automation (Instant reply / FAQ) answers within seconds: it is NOT a human, the bot keeps replying */
+const t0 = Date.now();
+await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "u5" }, recipient: { id: env.META_IG_ID }, timestamp: t0, message: { mid: "a1", text: "hi" } }] }] });
+await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: env.META_IG_ID }, recipient: { id: "u5" }, timestamp: t0 + 2000, message: { mid: "a2", is_echo: true, app_id: "263902037430900", text: "Thanks for messaging FODO!" } }] }] });
+const s5 = sent.length;
+await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "u5" }, recipient: { id: env.META_IG_ID }, timestamp: t0 + 9000, message: { mid: "a3", text: "website ka price kya hai?" } }] }] });
+ok(sent.length === s5 + 1, "an instant Meta auto-reply echo does not pause the bot");
+await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: env.META_IG_ID }, recipient: { id: "u5" }, timestamp: t0 + 600000, message: { mid: "a4", is_echo: true, app_id: "263902037430900", text: "Anmol here, call me" } }] }] });
+await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "u5" }, recipient: { id: env.META_IG_ID }, timestamp: t0 + 700000, message: { mid: "a5", text: "ok" } }] }] });
+ok(sent.length === s5 + 1, "a slow (human) reply still pauses the bot");
+
 /* 9. AI down: friendly bilingual fallback, never silence */
 aiFail = true; await post(igMsg("u3", "hello?", "m5")); aiFail = false;
 const fb = sent[sent.length - 1].message.text;

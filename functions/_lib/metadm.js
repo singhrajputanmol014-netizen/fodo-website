@@ -12,6 +12,9 @@
  *   META_BOT_AUTO_ECHO_SECONDS an echo this soon after the person's message is a Meta inbox automation
  *                              (Instant reply / FAQ / keyword), not a human, so it does NOT pause the bot. Default 45.
  *   META_BOT_AUTOMATION_APP_IDS comma list of app ids whose echoes never pause the bot (extra safety).
+ *   META_BOT_ENGINE            "groq" (default when GROQ_API_KEY is set: best Hindi/Hinglish) or "workers" (Workers AI only).
+ * Leads (v54.2): when a person shares a phone number or email in the DM, the chat is saved as an enquiry in
+ *   Admin → Enquiries (D1 fodo_leads, source "instagram-dm" / "facebook-dm") and the team gets the usual enquiry email.
  * Storage: CHAT_KV (history per person, dedupe, human-takeover pause). Without KV it still replies, without memory.
  *
  * Rules: only answers messages people send to FODO (never starts a chat), only inside Meta's 24 h window
@@ -19,6 +22,8 @@
  */
 import { SYSTEM_PROMPT, generate } from "../api/chat.js";
 import { productBrief, productDetail, PRODUCT_RE } from "./sitekb.js";
+import { groqChat } from "./aivis.js";
+import { saveLead, updateLead } from "./sitecfg.js";
 
 const SITE_ORIGIN = "https://www.fodo.co.in";
 const MAX_IN = 600, MAX_OUT = 950, HISTORY_TURNS = 10, HISTORY_TTL = 7 * 86400, DEDUPE_TTL = 2 * 86400;
@@ -27,14 +32,35 @@ const enc = new TextEncoder();
 const DM_RULES = `
 
 # THIS CHAT IS A DIRECT MESSAGE ON INSTAGRAM OR FACEBOOK (not the website)
-- Reply like a real person from the FODO team typing in DMs: short, warm, natural. Usually 20-80 words, max about 120.
-- Language: reply in the SAME language and script the person used. Hindi (Devanagari) gets Hindi, Hinglish (Roman Hindi) gets Hinglish, English gets English. If they mix, you mix the same way.
-- Plain text only: no Markdown, no **bold**, no bullet symbols, no headings. At most 3 short lines of list, each starting with a number like "1)".
-- Links: write full links only, for example https://www.fodo.co.in/contact/ . Never Markdown links.
-- WhatsApp / call: +91 78270 07676. Email: anmol@fodo.co.in.
-- If they want a quote, a call, or to start work: ask for their business name, city and what they want first, then say Anmol or Rohit will reach out. Never promise a price, date or result that is not in the FODO FACTS.
-- If they are rude, spam, or just say thanks, reply in one short friendly line.
-- Never say you are a bot unless they ask directly whether they are talking to a human. Then say honestly that this is FODO's AI assistant and a human from the team can take over on WhatsApp +91 78270 07676.`;
+You are typing as the FODO team in DMs. Your two jobs: (1) answer ANY message helpfully, like a smart, friendly human, and (2) gently turn interested people into leads for Anmol (founder) and Rohit (co-founder).
+
+HOW TO WRITE
+- Short and natural, like a real person on Instagram: usually 15-70 words, 1-3 short lines. Never a wall of text.
+- Language: reply ONLY in the language and script the person used. Hinglish (Roman Hindi) gets natural Hinglish, Hindi (Devanagari) gets Hindi, English gets English. Never add a translation in brackets. Never mix two languages in one reply unless they did.
+- Natural Hinglish example: "Bilkul! Aapka business kis cheez ka hai aur kis city mein hai?" (not stiff textbook Hindi).
+- Use their first name sometimes if you know it. At most one emoji, only if they use emojis.
+- Plain text only: no Markdown, no **bold**, no bullets, no headings. Full links only, e.g. https://www.fodo.co.in/services/ . Never Markdown links.
+- Never start with "As an AI". Never repeat the same question or offer twice in a chat.
+
+ANSWER FIRST, THEN ONE QUESTION
+- Always answer what they actually asked first, in 1-2 lines, using the FODO FACTS. Then ask at most ONE short question that moves the chat forward.
+- Price / cost / charges / "kitna lagega": FODO has no fixed price list. Say it depends on what they need (for example a website, ads, SEO or social media) and that Anmol gives a fixed quote after a quick free call, ad spend is paid by them. Then ask what they need and for which business. Never invent a number, package, discount or guarantee.
+- General questions (marketing tips, Instagram growth, anything else): give a genuinely useful short answer, then a soft link to how FODO can help only if it fits.
+- Greetings ("hi", "hello", "hii"): greet back warmly in one line and ask what they need help with for their business. Do not dump the services list.
+- Photos, voice notes, videos or reels you cannot see: say you can't open it here and ask them to type the main point.
+- Story mentions or shares: thank them warmly in one line.
+- Complaints or angry messages: apologise briefly, take it seriously, and ask for their WhatsApp number so Anmol can sort it personally.
+- Jobs, internships, collaborations: thank them and share anmol@fodo.co.in.
+
+LEAD FLOW (natural, never pushy)
+- Learn these over the chat, ONE question per reply, only what you don't know yet: what they need, their business / niche, city, rough monthly budget or timeline.
+- Once they show real interest (they asked about price, a service, or said they want something), ask for their name and WhatsApp number so Anmol can send a custom plan and quote, for example: "Aapka naam aur WhatsApp number share kar dijiye, Anmol aaj hi aapko custom plan bhej denge."
+- If they don't want to share a number, that's fine: give WhatsApp +91 78270 07676 and the Free Growth Audit link https://www.fodo.co.in/contact/?mode=audit , and keep helping.
+- Never promise a price, a result, a delivery date or a call time.
+
+CONTACT
+- WhatsApp / call: +91 78270 07676. Email: anmol@fodo.co.in. Website: https://www.fodo.co.in
+- Only if they directly ask whether they are talking to a human or a bot: say honestly this is FODO's AI assistant and Anmol can take over on WhatsApp +91 78270 07676.`;
 
 /* ---------- helpers ---------- */
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -70,6 +96,11 @@ export function parseEvents(env, body) {
   const own = new Set([env.META_PAGE_ID, env.META_IG_ID].filter(Boolean).map(String));
   for (const entry of body.entry || []) {
     for (const ev of entry.messaging || []) {
+      if (ev.postback && !ev.message) {   // ice breakers / buttons: treat the button title as the message
+        const from = String((ev.sender || {}).id || ""), t = String(ev.postback.title || ev.postback.payload || "").trim();
+        if (from && t && !own.has(from)) out.push({ kind: "message", platform, sender: from, text: t.slice(0, MAX_IN), mid: "pb:" + from + ":" + (ev.timestamp || ""), ts: Number(ev.timestamp) || 0 });
+        continue;
+      }
       const msg = ev.message; if (!msg) continue;
       const from = String((ev.sender || {}).id || ""), to = String((ev.recipient || {}).id || "");
       if (msg.is_echo) {
@@ -80,31 +111,115 @@ export function parseEvents(env, body) {
         continue;
       }
       if (own.has(from)) continue;
-      const text = typeof msg.text === "string" ? msg.text.trim() : "";
-      if (!from || !text) continue; // stickers, images, reactions: the Meta inbox automations / a human handle those
+      let text = typeof msg.text === "string" ? msg.text.trim() : "";
+      if (!text && Array.isArray(msg.attachments) && msg.attachments.length) text = describeAttachment(msg.attachments[0]);
+      if (!from || !text) continue; // reactions, deleted or unsupported messages
       out.push({ kind: "message", platform, sender: from, text: text.slice(0, MAX_IN), mid: msg.mid || "", ts: Number(ev.timestamp) || 0 });
     }
   }
   return out;
 }
 
+function describeAttachment(a) {
+  const t = String((a && a.type) || "").toLowerCase();
+  if (t === "like_heart") return "";   // a heart is a reaction, not a question
+  if (t === "story_mention") return "(The person mentioned FODO in their Instagram story.)";
+  if (t === "image") return "(The person sent a photo you cannot see.)";
+  if (t === "audio") return "(The person sent a voice note you cannot hear.)";
+  if (t === "video") return "(The person sent a video you cannot watch.)";
+  if (t === "share" || t === "ig_reel" || t === "reel" || t === "ig_post" || t === "template") return "(The person shared a post or reel with FODO.)";
+  if (t === "file") return "(The person sent a file you cannot open.)";
+  if (t === "sticker") return "(The person sent a sticker.)";
+  return t ? "(The person sent a " + t.replace(/[^a-z_]/g, "") + ".)" : "";
+}
+
 async function history(env, platform, sender) {
   try { const v = await kvGet(env, "dm:h:" + platform + ":" + sender); const a = v ? JSON.parse(v) : []; return Array.isArray(a) ? a : []; } catch (e) { return []; }
 }
 
-export async function replyFor(env, platform, sender, text) {
+/* Best model for DMs: Groq (gpt-oss, strong Hindi/Hinglish) first, Workers AI as the fallback. */
+async function dmGenerate(env, messages) {
+  const eng = String(env.META_BOT_ENGINE || "").toLowerCase();
+  if (env.GROQ_API_KEY && eng !== "workers") {
+    try { const g = await groqChat(env, messages, 500, 20000); const t = String(g.text || "").trim(); if (t) return t; } catch (e) { console.error("fodo-dm groq:", String((e && e.message) || e).slice(0, 120)); }
+  }
+  const { text } = await generate(env, messages, 380);
+  return text;
+}
+
+export async function replyFor(env, platform, sender, text, lead) {
   const past = await history(env, platform, sender);
   const knowledge = "\n\n" + productBrief() + (PRODUCT_RE.test(text) ? productDetail(text) : "");
+  const state = lead && lead.saved
+    ? "\n\n# LEAD STATUS\nThis person has ALREADY shared their contact details (saved for the team). Do NOT ask for name or number again. If they just shared it, thank them by name if known and say Anmol will WhatsApp them soon with a custom plan, then ask one useful question about their requirement if still unknown."
+    : "";
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT + knowledge + DM_RULES },
+    { role: "system", content: SYSTEM_PROMPT + knowledge + DM_RULES + state },
     ...past.slice(-HISTORY_TURNS * 2),
     { role: "user", content: text },
   ];
-  const { text: raw } = await generate(env, messages, 380);
-  const reply = toDmText(raw);
+  const reply = toDmText(await dmGenerate(env, messages));
   const next = [...past, { role: "user", content: text.slice(0, 600) }, { role: "assistant", content: reply.slice(0, 900) }].slice(-HISTORY_TURNS * 2);
   await kvPut(env, "dm:h:" + platform + ":" + sender, JSON.stringify(next), HISTORY_TTL);
   return reply;
+}
+
+/* ---------- leads from DMs ---------- */
+const PHONE_RE = /(?:\+?91[\s-]?|0)?([6-9]\d{4}[\s-]?\d{5})(?!\d)/;
+const EMAIL_RE = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/i;
+export function findContact(text) {
+  const t = String(text || "");
+  const m = PHONE_RE.exec(t), e = EMAIL_RE.exec(t);
+  const phone = m ? "+91" + m[1].replace(/\D/g, "") : "";
+  const email = e ? e[0].replace(/[.,;:!?]+$/, "").toLowerCase() : "";
+  return phone || email ? { phone, email } : null;
+}
+let leadSaver = saveLead, leadUpdater = updateLead;
+export function _setLeadStore(save, update) { leadSaver = save || saveLead; leadUpdater = update || updateLead; }   // tests
+
+async function profileName(env, platform, id) {
+  try {
+    const v = env.META_GRAPH_VERSION || "v23.0";
+    const f = platform === "instagram" ? "name,username" : "first_name,last_name";
+    const r = await fetch("https://graph.facebook.com/" + v + "/" + encodeURIComponent(id) + "?fields=" + f + "&access_token=" + encodeURIComponent(env.META_PAGE_TOKEN));
+    if (!r.ok) return { name: "", username: "" };
+    const j = await r.json();
+    return { name: String(j.name || [j.first_name, j.last_name].filter(Boolean).join(" ") || "").slice(0, 80), username: String(j.username || "").slice(0, 60) };
+  } catch (e) { return { name: "", username: "" }; }
+}
+
+/* Ask the model to pull the lead details out of the chat (JSON). Never throws. */
+async function extractLead(env, convo) {
+  const sys = "Extract lead details from this Instagram/Facebook DM chat between a person and the FODO digital marketing agency. Reply with ONLY a JSON object with these string keys: name (the person's own name if they said it), business (their business name or niche), city, need (what they want from FODO, short), budget (if mentioned), summary (one line in English: who they are and what they want). Use empty strings for anything unknown. Do not guess.";
+  const msgs = [{ role: "system", content: sys }, { role: "user", content: convo.slice(-3000) }];
+  try {
+    let raw = "";
+    if (env.GROQ_API_KEY) { try { raw = (await groqChat(env, msgs, 400, 15000)).text; } catch (e) { raw = ""; } }
+    if (!raw) raw = (await generate(env, msgs, 300)).text;
+    const m = /\{[\s\S]*\}/.exec(String(raw || "")); const j = m ? JSON.parse(m[0]) : {};
+    const c = (k, n) => String(j[k] == null ? "" : j[k]).trim().slice(0, n);
+    return { name: c("name", 80), business: c("business", 100), city: c("city", 60), need: c("need", 200), budget: c("budget", 80), summary: c("summary", 400) };
+  } catch (e) { return { name: "", business: "", city: "", need: "", budget: "", summary: "" }; }
+}
+
+/* Save (or update) the enquiry once a phone / email shows up. Returns "saved" | "updated" | "" */
+async function captureLead(env, ev, contact) {
+  const key = "dm:lead:" + ev.platform + ":" + ev.sender;
+  const past = await history(env, ev.platform, ev.sender);
+  const convo = past.map((m) => (m.role === "user" ? "Person: " : "FODO: ") + m.content).join("\n");
+  const info = await extractLead(env, convo);
+  const prof = await profileName(env, ev.platform, ev.sender);
+  const handle = prof.username ? "@" + prof.username : "";
+  const name = info.name || prof.name || handle || (ev.platform === "instagram" ? "Instagram lead" : "Facebook lead");
+  const src = ev.platform + "-dm";
+  const lines = [info.summary, info.need && "Need: " + info.need, info.budget && "Budget: " + info.budget, handle && "Instagram: " + handle, "Last message: " + ev.text.slice(0, 300)].filter(Boolean).join("\n");
+  const existing = await kvGet(env, key);
+  if (existing) {
+    try { await leadUpdater(env, existing, { notes: ("Update " + new Date().toISOString().slice(0, 16) + ": " + [contact.phone, contact.email].filter(Boolean).join(" ") + "\n" + lines).slice(0, 2000) }); return "updated"; } catch (e) { return ""; }
+  }
+  const r = await leadSaver(env, { mode: "contact", name, phone: contact.phone, email: contact.email, business: info.business, city: info.city, goal: info.need, budget: info.budget, message: lines, page: "/dm/" + ev.platform, source: src, campaign: "fodo-bot-dm" }, "");
+  if (r && r.id) { await kvPut(env, key, r.id, 180 * 86400); return "saved"; }
+  return "";
 }
 
 export async function sendDm(env, recipient, text) {
@@ -142,6 +257,7 @@ async function handleEventInner(env, ev) {
   const pauseKey = "dm:hp:" + ev.platform + ":" + ev.sender;
   const lastKey = "dm:last:" + ev.platform + ":" + ev.sender;
   if (ev.kind === "human_echo") {
+    if (ev.mid && (await kvGet(env, "dm:mine:" + ev.mid))) return "own_echo";
     const ignore = String(env.META_BOT_AUTOMATION_APP_IDS || "").split(",").map((x) => x.trim()).filter(Boolean);
     if (ev.appId && ignore.includes(ev.appId)) return "automation_echo";
     // Meta inbox automations (Instant reply, FAQ, keywords) answer within seconds; a human takes longer.
@@ -157,9 +273,14 @@ async function handleEventInner(env, ev) {
   if (!env.META_PAGE_TOKEN) return "no_token";
   if (ev.mid) { const k = "dm:seen:" + ev.mid; if (await kvGet(env, k)) return "duplicate"; await kvPut(env, k, "1", DEDUPE_TTL); }
   if (await kvGet(env, pauseKey)) return "human_active";
+  const contact = findContact(ev.text);
+  const leadKnown = !!contact || !!(await kvGet(env, "dm:lead:" + ev.platform + ":" + ev.sender));
   let reply;
-  try { reply = await replyFor(env, ev.platform, ev.sender, ev.text); } catch (e) { console.error("fodo-dm ai error:", String((e && e.message) || e).slice(0, 160)); reply = FALLBACK; }
+  try { reply = await replyFor(env, ev.platform, ev.sender, ev.text, { saved: leadKnown }); } catch (e) { console.error("fodo-dm ai error:", String((e && e.message) || e).slice(0, 160)); reply = FALLBACK; }
   if (!reply) reply = FALLBACK;
-  await sendDm(env, ev.sender, reply);
-  return reply === FALLBACK ? "sent_fallback" : "sent";
+  const res = await sendDm(env, ev.sender, reply);
+  if (res && res.message_id) await kvPut(env, "dm:mine:" + res.message_id, "1", DEDUPE_TTL);
+  let lead = "";
+  if (contact) { try { lead = await captureLead(env, ev, contact); } catch (e) { console.error("fodo-dm lead:", String((e && e.message) || e).slice(0, 120)); lead = "lead_error"; } }
+  return (reply === FALLBACK ? "sent_fallback" : "sent") + (lead ? "+lead_" + lead : "");
 }

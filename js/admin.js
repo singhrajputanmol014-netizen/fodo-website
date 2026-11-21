@@ -393,7 +393,7 @@
   function orCfg() {
     var c = OR.cfg;
     return c.configured ? '<p class="muted ad-or-cfg">Sends with <b>' + esc(c.provider) + "</b> from <b>" + esc(c.from) + "</b>, replies go to <b>" + esc(c.replyTo) + "</b>. This hour: " + c.used + " of " + c.hourly + " client emails. The same email type to the same client is blocked for " + c.dupMinutes + " minutes.</p>"
-      : '<div class="panel ad-card"><p class="cf-status warn">Email sending is not set up yet: add <b>RESEND_API_KEY</b> in Cloudflare Pages ▸ Settings ▸ Variables and secrets, then redeploy. You can still add clients, write emails and preview them.</p></div>';
+      : '<div class="panel ad-card"><p class="cf-status warn">Email sending is not connected yet. Open <a href="#studio">Studio ▸ Inbox</a> and log in with Google as anmol@fodo.co.in, then come back. You can still add clients, write emails and preview them.</p></div>';
   }
   function orDraw() {
     var c = orClient(), t = orType();

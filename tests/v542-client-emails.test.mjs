@@ -7,7 +7,7 @@ import { onRequest as account } from "../functions/api/account/[[path]].js";
 import { onRequest as adminApi } from "../functions/api/admin/[[path]].js";
 import { onRequest as optout } from "../functions/api/optout.js";
 import * as T from "../functions/_lib/clientmail.js";
-import { optOutUrl } from "../functions/_lib/outreach.js";
+import { optOutUrl, mimeOf } from "../functions/_lib/outreach.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 console.log = ((orig) => (...a) => { if (typeof a[0] === "string" && a[0].charAt(0) === "{" && !process.env.DBG) return; orig(...a); })(console.log);
 console.error = () => {};
@@ -128,6 +128,9 @@ const k = env.RESEND_API_KEY; delete env.RESEND_API_KEY;
 const nc2 = await OR("send", { client_id: "cl_shagun", type: "custom", test: true }); env.RESEND_API_KEY = k;
 ok(nc2.status === 503 && nc2.j.setup && /RESEND_API_KEY/.test(nc2.j.reason), "without the provider key: clear set-up message, nothing sent");
 
+/* Gmail path: one proper MIME message from the mailbox */
+const mm = mimeOf("FODO <anmol@fodo.co.in>", "x@y.in", { id: "cm_1", subject: "Proposal for Shagun × FODO", html: "<p>Hi</p>", text: "Hi", optOut: "https://www.fodo.co.in/api/optout?e=x&t=y" }, "anmol@fodo.co.in");
+ok(/^From: FODO <anmol@fodo\.co\.in>\r\nTo: x@y\.in\r\nSubject: =\?UTF-8\?B\?/.test(mm) && /Reply-To: anmol@fodo\.co\.in/.test(mm) && /List-Unsubscribe-Post: List-Unsubscribe=One-Click/.test(mm) && /multipart\/alternative/.test(mm) && (mm.match(/\r\nTo: /g) || []).length === 1, "Gmail send builds one MIME mail (From anmol@, Reply-To, unsubscribe headers, text + HTML)");
 /* admin UI */
 const AJ = fs.readFileSync("js/admin.js", "utf8"), i0 = AJ.indexOf("function outreachView"), blk2 = AJ.slice(i0 - 400, AJ.indexOf("/* ---------- v53.8 Email campaigns"));
 ok(/"outreach", "Client Emails"/.test(AJ) && /"outreach", "campaigns"/.test(AJ) && /outreach: outreachView/.test(AJ) && !/\son[a-z]+=["']/.test(blk2) && /Yes, send it/.test(blk2) && /data-retry/.test(blk2) && /sandbox=""/.test(blk2), "Admin has the Client Emails page (confirm dialog, retry, sandboxed preview, no inline handlers)");

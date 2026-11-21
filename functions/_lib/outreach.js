@@ -3,7 +3,7 @@
    project update, report, custom) in the one fixed FODO design (_lib/clientmail.js). Content blocks and the subject change per
    client and per email; {variables} fill from the client record.
 
-   Sending: Resend (RESEND_API_KEY, set as a Cloudflare secret, never in code). From CLIENT_MAIL_FROM, replies to CLIENT_MAIL_REPLY_TO.
+   Sending: FODO's Gmail (anmol@fodo.co.in, connected in Admin ▸ Studio ▸ Inbox) or else Resend (RESEND_API_KEY secret). Replies to CLIENT_MAIL_REPLY_TO.
    Safety: the server needs confirm:true for a real send; at most CLIENT_MAIL_HOURLY (default 20) real sends per hour; the same email
    type to the same client within 10 minutes is refused unless the admin overrides; a failed send stays "failed" (Retry re-sends
    the exact same email); marketing types carry an opt-out link and are never sent to someone on the opt-out list (camp_unsub,
@@ -114,15 +114,41 @@ export async function compose(env, b, opts) {
 }
 export async function preview(env, b) { const c = await compose(env, b); return { subject: c.subject, html: c.html, text: c.text, empty: c.empty, marketing: c.marketing, to: c.client.email }; }
 
-/* ---------------- sending ---------------- */
+/* ---------------- sending ----------------
+   FODO's own Gmail mailbox (anmol@fodo.co.in, Google Workspace, the same Google connection as Admin ▸ Studio ▸ Inbox) when it is
+   connected: the mail goes out from the real mailbox, sits in Sent and replies come back to it. Otherwise Resend (RESEND_API_KEY). */
+const b64e = (s) => { const u = new TextEncoder().encode(s); let b = ""; for (let i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(b); };
+const wrap = (s) => { const out = []; for (let i = 0; i < s.length; i += 76) out.push(s.slice(i, i + 76)); return out.join("\r\n"); };
+const hdrEnc = (s) => (/^[\x20-\x7e]*$/.test(s) ? s : "=?UTF-8?B?" + b64e(s) + "?=");
+export function mimeOf(from, to, o, replyAddr) {
+  const m = /^(.*?)\s*<([^>]+)>$/.exec(String(from)), name = m ? m[1].trim() : "", addr = m ? m[2] : String(from), alt = "fodo_c_" + randId(12);
+  const L = ["From: " + (name ? hdrEnc(name) + " " : "") + "<" + addr + ">", "To: " + to, "Subject: " + hdrEnc(o.subject), "MIME-Version: 1.0", "Reply-To: " + replyAddr, "X-FODO-Mail: " + o.id];
+  if (o.optOut) L.push("List-Unsubscribe: <" + o.optOut + ">, <mailto:" + replyAddr + "?subject=unsubscribe>", "List-Unsubscribe-Post: List-Unsubscribe=One-Click");
+  return L.concat(["Content-Type: multipart/alternative; boundary=\"" + alt + "\"", "", "--" + alt, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap(b64e(o.text)),
+    "--" + alt, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap(b64e(o.html)), "--" + alt + "--", ""]).join("\r\n");
+}
+export async function provider(env) {
+  try { const IB = await import("./sinbox.js"), s = await IB.status(env); if (s.connected && s.account) return { via: "gmail", account: s.account }; } catch (e) {}
+  if (env.RESEND_API_KEY) return { via: "resend", account: "" };
+  return { via: "", account: "" };
+}
 async function resend(env, o) {
-  if (!env.RESEND_API_KEY) throw err("Email sending is not set up yet. Add RESEND_API_KEY in Cloudflare (see docs/CLIENT-EMAILS.md).", 503, { setup: true });
+  const how = o.how || (await provider(env));
+  if (!how.via) throw err("Email sending is not connected yet. Open Admin ▸ Studio ▸ Inbox and log in with Google as anmol@fodo.co.in (or add RESEND_API_KEY in Cloudflare).", 503, { setup: true });
+  if (how.via === "gmail") {
+    try {
+      const GO = await import("./brain/google.js"), name = (/^(.*?)\s*</.exec(fromAddr(env)) || [])[1] || "FODO";
+      const r = await GO.g(env, how.account, "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media", { method: "POST", raw: true, headers: { "content-type": "message/rfc822" }, body: mimeOf(name + " <" + how.account + ">", o.to, o, replyTo(env)) });
+      if (!r || !r.id) return { ok: false, error: "Gmail did not confirm the send" };
+      return { ok: true, id: "gmail:" + r.id, via: "gmail" };
+    } catch (e) { return { ok: false, error: "Gmail: " + String((e && e.message) || e).slice(0, 180) }; }
+  }
   const body = { from: fromAddr(env), to: [o.to], subject: o.subject, html: o.html, text: o.text, reply_to: replyTo(env), headers: Object.assign({ "X-FODO-Mail": o.id }, o.optOut ? { "List-Unsubscribe": "<" + o.optOut + ">, <mailto:" + replyTo(env) + "?subject=unsubscribe>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) };
   let r, j = {};
   try { r = await outbound(env)("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + env.RESEND_API_KEY, "content-type": "application/json", "idempotency-key": o.id + "-" + (o.attempt || 1) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }); j = await r.json().catch(() => ({})); }
   catch (e) { return { ok: false, error: "Could not reach the email provider (" + String((e && e.message) || e).slice(0, 80) + ")" }; }
   if (!r.ok || !j.id) return { ok: false, error: "Resend " + r.status + (j.message ? ": " + String(j.message).slice(0, 180) : "") };
-  return { ok: true, id: j.id };
+  return { ok: true, id: j.id, via: "resend" };
 }
 const pubSend = (r) => r && { id: r.id, at: r.at, last_at: r.last_at, admin: r.admin, client_id: r.client_id, email: r.email, type: r.type, type_label: (T.TYPES[r.type] || { label: r.type }).label, subject: r.subject, status: r.status, provider_id: r.provider_id, error: r.error, test: !!r.test, marketing: !!r.marketing, attempts: r.attempts || 1 };
 export async function usedThisHour(env) { const d = await cmDb(env); const r = await one(d, "SELECT COUNT(*) AS n FROM cm_sends WHERE test=0 AND last_at > ?1", new Date(Date.now() - 3600e3).toISOString()); return (r && r.n) || 0; }
@@ -179,5 +205,5 @@ export async function sends(env, f) {
 export async function sendHtml(env, id) { const d = await cmDb(env), s = await one(d, "SELECT html, subject FROM cm_sends WHERE id=?1", String(id || "")); if (!s) throw err("Not found.", 404); return s; }
 export async function overview(env, q) {
   return { clients: await listClients(env, q), types: T.typeList().map((t) => ({ id: t.id, label: t.label, marketing: t.marketing, subject: t.subject, blocks: T.BLOCKS.reduce((o, k) => { o[k] = t[k]; return o; }, {}) })),
-    statuses: STATUSES, sends: await sends(env, {}), config: { configured: !!env.RESEND_API_KEY, provider: "Resend", from: fromAddr(env), replyTo: replyTo(env), hourly: hourly(env), used: await usedThisHour(env), dupMinutes: DUP_MIN } };
+    statuses: STATUSES, sends: await sends(env, {}), config: await (async () => { const p = await provider(env); return { configured: !!p.via, provider: p.via === "gmail" ? "Gmail (" + p.account + ")" : p.via === "resend" ? "Resend" : "", from: p.via === "gmail" ? ((/^(.*?)\s*</.exec(fromAddr(env)) || [])[1] || "FODO") + " <" + p.account + ">" : fromAddr(env), replyTo: replyTo(env), hourly: hourly(env), used: await usedThisHour(env), dupMinutes: DUP_MIN }; })() };
 }

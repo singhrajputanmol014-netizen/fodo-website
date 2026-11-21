@@ -13,9 +13,9 @@ fodo.co.in/admin/#outreach (sidebar: Customers ▸ Client Emails). Owners and ad
 - **Send log**: every send (test or real): time, admin, client, type, subject, status, provider message id, tries. Filter by client and status; "View" opens the exact email.
 
 ## Setup (one time)
-1. Cloudflare Pages ▸ fodo-website ▸ Settings ▸ Variables and secrets: make sure `RESEND_API_KEY` is set (secret). Optional: `CLIENT_MAIL_FROM`, `CLIENT_MAIL_REPLY_TO`, `CLIENT_MAIL_HOURLY`, `OPTOUT_SECRET`. See `docs/client-emails.env.example`.
-2. In Resend, the domain fodo.co.in must be verified (it already sends login codes). The From address must be on that domain.
-3. Make sure the reply-to mailbox (anmol@fodo.co.in, the default sender too) exists, so client replies arrive.
+1. Sending goes from FODO's own Gmail (anmol@fodo.co.in, Google Workspace): Admin ▸ Studio ▸ Inbox ▸ **Log in with Google** as anmol@fodo.co.in. Mails then sit in that mailbox's Sent folder and replies come back to it. No API key is needed for this.
+2. Fallback only: if Gmail is not connected, `RESEND_API_KEY` (Cloudflare secret, domain verified in Resend) is used. Optional: `CLIENT_MAIL_FROM` (display name), `CLIENT_MAIL_REPLY_TO`, `CLIENT_MAIL_HOURLY`, `OPTOUT_SECRET`. See `docs/client-emails.env.example`.
+3. Replies go to anmol@fodo.co.in (default).
 4. Redeploy. The tables (`cm_clients`, `cm_sends`) are created on the first request (SCHEMA_VERSION 54.2).
 
 ## Add a new email type
@@ -37,7 +37,7 @@ fodo.co.in/admin/#outreach (sidebar: Customers ▸ Client Emails). Owners and ad
 
 ## Files
 - `functions/_lib/clientmail.js` email design + types + variables
-- `functions/_lib/outreach.js` clients, preview, send (Resend), retry, log, limits, opt-out signing
+- `functions/_lib/outreach.js` clients, preview, send (Gmail, else Resend), retry, log, limits, opt-out signing
 - `functions/api/admin/[[path]].js` routes `/api/admin/outreach/*`
 - `functions/api/optout.js` public unsubscribe page
 - `js/admin.js` (`outreachView`), `css/admin.css` (`.ad-or-*`)

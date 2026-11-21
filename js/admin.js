@@ -39,9 +39,10 @@
   TABS.push(["security", "Security reports", "M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"], ["enquiries", "Enquiries", "M4 4h16v12H5.2L4 17.2zM8 8h8M8 11h5"], ["sitesettings", "Website settings", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7.5-2.2-1.9-1.1-1.6 1.6L14 8.5 13 6.5h-2l-1 2-2 .9-1.6-1.6-1.9 1.1.5 2.2L3 12l2.1.7-.5 2.2 1.9 1.1 1.6-1.6 2 .9 1 2h2l1-2 2-.9 1.6 1.6 1.9-1.1-.5-2.2z"]);
   // v20 help desk
   TABS.push(["campaigns", "Email campaigns", "M3 6h18v12H3zm0 0 9 7 9-7M17 3l4 3"]);   // v53.8
+  TABS.push(["outreach", "Client Emails", "M4 5h16v14H4zm0 0 8 7 8-7M8 15h4"]);   // v54.2
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -102,7 +103,7 @@
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, studio: studioView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      campaigns: function () { campaignsView(parts[1]); }, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -369,6 +370,132 @@
   var uq = "", uf = "";
   /* ---------- v53: FODO Studio keys: who uses Studio, key given or not, computers, block ---------- */
   var sf = "", sq = "";
+
+  /* ---------- v54.2 Client Emails (owners + Full-control admins): any email type to any client, one fixed FODO design ---------- */
+  var OR = null, orPt = null;
+  var OR_ST = { sent: ["Sent", "ok"], failed: ["Failed", "bad"], sending: ["Sending", "mid"] };
+  var OR_F = [["name", "Name"], ["business", "Business name"], ["email", "Email"], ["phone", "Phone"], ["city", "City"], ["industry", "Industry"], ["service", "Service"], ["amount", "Amount (e.g. ₹50,000 one-time)"]];
+  var OR_B = [["eyebrow", "Eyebrow label", 1], ["headline", "Headline (*words* = serif italic accent)", 1], ["intro", "Intro (blank line = new paragraph, **bold**)", 6], ["items", "List rows (one per line, Label | value)", 4], ["stats", "Stat boxes (one per line, Value | label)", 2], ["cta_text", "Button text (optional)", 1], ["cta_link", "Button link (https://, mailto: or tel:)", 1], ["closing", "Closing", 3]];
+  var OR_V = [["amount", "{amount}"], ["date", "{date}"], ["next_step", "{next_step}"], ["link", "{link}"]];
+  function outreachView() {
+    if (ME && !owner()) { $("#ad-view").innerHTML = head("Client Emails", "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners and Full-control admins can open Client Emails.</p></div>'; return; }
+    api("outreach").then(function (j) {
+      if (!j.ok) return fail(j);
+      var prev = OR || {};
+      OR = { clients: j.clients, types: j.types, statuses: j.statuses, sends: j.sends, cfg: j.config, me: j.me, q: prev.q || "", sel: prev.sel || (j.clients[0] && j.clients[0].id) || "", type: prev.type || "proposal", blocks: prev.blocks || null, subject: prev.subject != null ? prev.subject : null, vars: prev.vars || {}, lf: prev.lf || { client: "", status: "" } };
+      if (!OR.blocks) orReset();
+      orDraw();
+    });
+  }
+  var orType = function () { return OR.types.filter(function (t) { return t.id === OR.type; })[0] || OR.types[0]; };
+  var orClient = function () { return OR.clients.filter(function (c) { return c.id === OR.sel; })[0] || null; };
+  function orReset() { var t = orType(); OR.blocks = {}; Object.keys(t.blocks).forEach(function (k) { OR.blocks[k] = t.blocks[k] || ""; }); OR.subject = t.subject; OR.edited = false; }
+  function orCfg() {
+    var c = OR.cfg;
+    return c.configured ? '<p class="muted ad-or-cfg">Sends with <b>' + esc(c.provider) + "</b> from <b>" + esc(c.from) + "</b>, replies go to <b>" + esc(c.replyTo) + "</b>. This hour: " + c.used + " of " + c.hourly + " client emails. The same email type to the same client is blocked for " + c.dupMinutes + " minutes.</p>"
+      : '<div class="panel ad-card"><p class="cf-status warn">Email sending is not set up yet: add <b>RESEND_API_KEY</b> in Cloudflare Pages ▸ Settings ▸ Variables and secrets, then redeploy. You can still add clients, write emails and preview them.</p></div>';
+  }
+  function orDraw() {
+    var c = orClient(), t = orType();
+    $("#ad-view").innerHTML = head("Client Emails", "Pick a client, pick an email type, edit the content and preview it in the FODO design. Then send a test to yourself, or send it to the client.", '<button type="button" class="btn sm" id="or-new">+ New client</button>') + orCfg() +
+      '<div class="ad-or-grid">' +
+      '<section class="panel ad-card ad-or-cl" aria-label="Clients"><input id="or-q" type="search" class="ad-in" placeholder="Search clients…" value="' + esc(OR.q) + '" aria-label="Search clients"><div class="ad-or-list">' +
+        (OR.clients.length ? OR.clients.map(function (x) { return '<button type="button" class="ad-or-ci' + (x.id === OR.sel ? " on" : "") + '" data-ci="' + esc(x.id) + '"><b>' + esc(x.business || x.name) + "</b><small>" + esc([x.name !== x.business ? x.name : "", x.city, x.status].filter(Boolean).join(" · ")) + "</small><small>" + esc(x.email) + "</small></button>"; }).join("") : '<p class="muted">No clients found.</p>') +
+      "</div></section>" +
+      '<section class="panel ad-card ad-or-ed" aria-label="Write the email">' +
+        (c ? '<div class="ad-or-to"><div><b>' + esc(c.business || c.name) + "</b> <span class=\"ad-tag\">" + esc(c.status) + '</span><br><small class="muted">' + esc([c.name, c.email, c.phone, c.city, c.industry].filter(Boolean).join(" · ")) + "</small>" + (c.service ? '<br><small class="muted">Service: ' + esc(c.service) + (c.amount ? " · " + esc(c.amount) : "") + "</small>" : "") + '</div><button type="button" class="btn sm ghost" id="or-edit">Edit client</button></div>' : '<p class="muted">Add or pick a client on the left.</p>') +
+        '<label class="ad-dl2" for="or-type">Email type</label><select id="or-type" class="ad-in">' + OR.types.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === OR.type ? " selected" : "") + ">" + esc(x.label) + (x.marketing ? " (marketing, has unsubscribe link)" : "") + "</option>"; }).join("") + "</select>" +
+        '<label class="ad-dl2" for="or-subj">Subject (variables allowed)</label><input id="or-subj" class="ad-in" maxlength="300" value="' + esc(OR.subject || "") + '">' +
+        '<div class="ad-or-vars">' + OR_V.map(function (v) { return '<label><span class="ad-dl2">' + v[1] + '</span><input class="ad-in" data-ov="' + v[0] + '" maxlength="400" placeholder="' + (v[0] === "amount" && c && c.amount ? esc(c.amount) : v[0] === "date" ? "e.g. 30 Nov 2026" : v[0] === "link" ? "https://…" : "") + '" value="' + esc(OR.vars[v[0]] || "") + '"></label>'; }).join("") + "</div>" +
+        OR_B.map(function (b) { return '<label class="ad-dl2" for="or-b-' + b[0] + '">' + b[1] + "</label>" + (b[2] > 1 ? '<textarea id="or-b-' + b[0] + '" class="ad-in ad-ta" rows="' + b[2] + '" data-ob="' + b[0] + '" maxlength="6000">' + esc(OR.blocks[b[0]] || "") + "</textarea>" : '<input id="or-b-' + b[0] + '" class="ad-in" data-ob="' + b[0] + '" maxlength="400" value="' + esc(OR.blocks[b[0]] || "") + '">'); }).join("") +
+        '<p class="muted ad-or-hint">Variables: {client_name} {first_name} {business_name} {city} {industry} {service} {amount} {pricing} {date} {next_step} {link} {phone} {email}. The design, header, "Rohit · FODO" sign-off and footer are fixed.</p>' +
+        '<p id="or-empty" class="cf-status warn" hidden></p>' +
+        '<div class="btn-row"><button type="button" class="btn ghost" id="or-test"' + (c ? "" : " disabled") + '>Send a test to me</button><button type="button" class="btn" id="or-send"' + (c ? "" : " disabled") + '>Send to client…</button><button type="button" class="btn ghost" id="or-reset">Reset to the ' + esc(t.label.toLowerCase()) + " template</button></div>" +
+      "</section>" +
+      '<section class="panel ad-card ad-or-pvw" aria-label="Preview"><p class="ad-dl2">Live preview <span id="or-pvs" class="muted"></span></p><iframe id="or-pv" class="ad-cp-pv" title="Email preview" sandbox=""></iframe></section>' +
+      "</div>" + orLog();
+    var on = function (sel, fn) { var el = $(sel); if (el) el.onclick = fn; };
+    on("#or-new", function () { orClientForm(null); });
+    on("#or-edit", function () { orClientForm(orClient()); });
+    $$("[data-ci]").forEach(function (b) { b.onclick = function () { OR.sel = b.dataset.ci; orDraw(); }; });
+    var qt; $("#or-q").oninput = function () { var v = this.value; clearTimeout(qt); qt = setTimeout(function () { api("outreach/clients?q=" + encodeURIComponent(v)).then(function (j) { if (j.ok) { OR.q = v; OR.clients = j.clients; orDraw(); var el = $("#or-q"); el.focus(); el.setSelectionRange(v.length, v.length); } }); }, 300); };
+    $("#or-type").onchange = function () { var v = this.value, go = function () { OR.type = v; orReset(); orDraw(); };
+      if (!OR.edited) return go(); ask({ title: "Switch the email type?", text: "Your edits to the content blocks will be replaced by the new type's template.", ok: "Switch" }).then(function (x) { if (x) go(); else this.value = OR.type; }.bind(this)); };
+    $("#or-subj").oninput = function () { OR.subject = this.value; OR.edited = true; orPreview(); };
+    $$("[data-ob]").forEach(function (el) { el.oninput = function () { OR.blocks[el.dataset.ob] = el.value; OR.edited = true; orPreview(); }; });
+    $$("[data-ov]").forEach(function (el) { el.oninput = function () { OR.vars[el.dataset.ov] = el.value; orPreview(); }; });
+    on("#or-reset", function () { ask({ title: "Reset the content?", text: "Subject and all content blocks go back to the template.", ok: "Reset" }).then(function (x) { if (x) { orReset(); orDraw(); } }); });
+    on("#or-test", function () { orSend(true); });
+    on("#or-send", function () { orSend(false); });
+    orLogWire(); orPreview(true);
+  }
+  var orBody = function () { return { client_id: OR.sel, type: OR.type, subject: OR.subject, blocks: OR.blocks, vars: OR.vars }; };
+  function orPreview(now) {
+    clearTimeout(orPt); if (!OR.sel) { var f = $("#or-pv"); if (f) f.srcdoc = ""; return; }
+    orPt = setTimeout(function () { api("outreach/preview", orBody()).then(function (j) { var f = $("#or-pv"), e = $("#or-empty"), s = $("#or-pvs"); if (!f) return;
+      if (!j.ok) { if (s) s.textContent = "· " + (j.reason || "Could not build the preview."); return; }
+      f.srcdoc = j.html; if (s) s.textContent = "· To " + j.to + " · " + j.subject;
+      if (e) { e.hidden = !j.empty.length; e.textContent = j.empty.length ? "Still empty: " + j.empty.map(function (x) { return "{" + x + "}"; }).join(", ") + ". Fill these in (above, or in the client record) before sending." : ""; } }); }, now ? 0 : 450);
+  }
+  function orSend(test) {
+    var c = orClient(), t = orType(); if (!c) return;
+    var go = function (override, to) {
+      toast(test ? "Sending the test…" : "Sending…");
+      api("outreach/send", Object.assign(orBody(), test ? { test: true, to: to || OR.me } : { confirm: true, override: !!override })).then(function (j) {
+        if (j.ok) { toast(test ? "Test sent to " + j.send.email : "Sent to " + j.send.email); OR.cfg.used = j.used; return orReloadLog(); }
+        if (j.duplicate) return ask({ title: "Send it again?", text: j.reason, ok: "Send again", danger: true }).then(function (x) { if (x) go(true); });
+        toast(j.reason || "Could not send.", true); orReloadLog();
+      });
+    };
+    if (test) return ask({ title: "Send a test email", text: "You get exactly what " + (c.business || c.name) + " would get, with [TEST] in the subject. Nothing goes to the client.", input: "Send the test to", ph: OR.me, ok: "Send test" }).then(function (v) { if (v === null) return; go(false, v === true || !v ? OR.me : v); });
+    api("outreach/preview", orBody()).then(function (j) {
+      if (!j.ok) return toast(j.reason || "Could not build the email.", true);
+      var w = document.createElement("div"); w.className = "cfx ad-dlg";
+      w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box" role="dialog" aria-modal="true" aria-labelledby="or-ct"><h3 id="or-ct">Send this email to the client?</h3>' +
+        '<dl class="ad-or-conf"><dt>To</dt><dd>' + esc(j.to) + " (" + esc(c.business || c.name) + ")</dd><dt>Subject</dt><dd>" + esc(j.subject) + "</dd><dt>Email type</dt><dd>" + esc(t.label) + (j.marketing ? " · marketing (includes an unsubscribe link)" : " · transactional") + "</dd></dl>" +
+        (j.empty.length ? '<p class="cf-status warn">Still empty: ' + esc(j.empty.map(function (x) { return "{" + x + "}"; }).join(", ")) + "</p>" : "") +
+        '<p class="muted">This sends a real email now. It cannot be unsent.</p><div class="btn-row"><button type="button" class="btn" data-ok>Yes, send it</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
+      document.body.appendChild(w); var close = function () { w.remove(); };
+      $$("[data-x]", w).forEach(function (b) { b.onclick = close; }); w.onkeydown = function (e) { if (e.key === "Escape") close(); };
+      $("[data-ok]", w).onclick = function () { close(); go(false); }; setTimeout(function () { $("[data-x].btn", w).focus(); }, 30);
+    });
+  }
+  function orLog() {
+    var opts = function (list, cur) { return list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join(""); };
+    var name = function (id) { var c = OR.clients.filter(function (x) { return x.id === id; })[0]; return c ? c.business || c.name : ""; };
+    return '<h2 class="ad-or-h2">Send log</h2><div class="ad-bar2"><select id="or-lc" class="ad-in" aria-label="Filter by client">' + opts([["", "All clients"]].concat(OR.clients.map(function (c) { return [c.id, c.business || c.name]; })), OR.lf.client) + '</select><select id="or-ls" class="ad-in" aria-label="Filter by status">' + opts([["", "Any status"], ["sent", "Sent"], ["failed", "Failed"]], OR.lf.status) + "</select></div>" +
+      (OR.sends.length ? '<div class="ad-table"><table><thead><tr><th>When</th><th>Client</th><th>Type</th><th>Subject</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>' + OR.sends.map(function (s) { var st = OR_ST[s.status] || [s.status, ""];
+        return "<tr><td>" + date(s.at, true) + "</td><td>" + esc(name(s.client_id) || "-") + '<br><small class="muted">' + esc(s.email) + "</small></td><td>" + esc(s.type_label) + (s.test ? ' <span class="ad-tag">test</span>' : "") + "</td><td>" + esc(s.subject) + '</td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (s.attempts > 1 ? ' <small class="muted">' + s.attempts + " tries</small>" : "") + (s.error ? '<br><small class="muted">' + esc(s.error) + "</small>" : "") + (s.provider_id ? '<br><small class="muted">id ' + esc(s.provider_id) + "</small>" : "") + "</td><td><small>" + esc(s.admin || "") + "</small></td>" +
+          '<td class="ad-cp-act"><a class="btn sm ghost" href="/api/admin/outreach/sends/' + encodeURIComponent(s.id) + '/html" target="_blank" rel="noopener">View</a>' + (s.status === "failed" ? '<button type="button" class="btn sm" data-retry="' + esc(s.id) + '">Retry</button>' : "") + "</td></tr>"; }).join("") + "</tbody></table></div>"
+        : '<div class="panel ad-card"><p class="muted">Nothing sent yet.</p></div>');
+  }
+  function orLogWire() {
+    var ch = function () { OR.lf = { client: $("#or-lc").value, status: $("#or-ls").value }; orReloadLog(); };
+    $("#or-lc").onchange = ch; $("#or-ls").onchange = ch;
+    $$("[data-retry]").forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = "Retrying…"; api("outreach/sends/" + encodeURIComponent(b.dataset.retry) + "/retry", {}).then(function (j) { toast(j.ok ? "Sent to " + j.send.email : j.reason || "Still not sent.", !j.ok); orReloadLog(); }); }; });
+  }
+  function orReloadLog() {
+    return api("outreach/sends?client=" + encodeURIComponent(OR.lf.client) + "&status=" + encodeURIComponent(OR.lf.status)).then(function (j) {
+      if (!j.ok) return; OR.sends = j.sends; var h = $(".ad-or-h2"); if (!h) return;
+      var box = document.createElement("div"); box.innerHTML = orLog(); while (h.nextSibling) h.parentNode.removeChild(h.nextSibling); h.parentNode.removeChild(h);
+      while (box.firstChild) $("#ad-view").appendChild(box.firstChild); orLogWire(); var cf = $(".ad-or-cfg"); if (cf && OR.cfg.configured) cf.outerHTML = orCfg();
+    });
+  }
+  function orClientForm(c) {
+    var x = c || { status: "lead" }, w = document.createElement("div"); w.className = "cfx ad-dlg";
+    w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box ad-cp-dlg" role="dialog" aria-modal="true" aria-labelledby="or-ft"><h3 id="or-ft">' + (c ? "Edit client" : "New client") + '</h3><div class="ad-or-form">' +
+      OR_F.map(function (f) { return '<label><span class="ad-dl2">' + f[1] + '</span><input class="ad-in" data-cf="' + f[0] + '" maxlength="' + (f[0] === "email" ? 254 : 160) + '"' + (f[0] === "email" ? ' type="email"' : "") + ' value="' + esc(x[f[0]] || "") + '"></label>'; }).join("") +
+      '<label><span class="ad-dl2">Status</span><select class="ad-in" data-cf="status">' + OR.statuses.map(function (s) { return '<option value="' + s + '"' + (s === x.status ? " selected" : "") + ">" + s + "</option>"; }).join("") + "</select></label></div>" +
+      '<label class="ad-dl2" for="or-fp">Pricing rows for {pricing} (one per line, Label | value)</label><textarea id="or-fp" class="ad-in ad-ta" rows="3" data-cf="pricing" maxlength="2000">' + esc(x.pricing || "") + "</textarea>" +
+      '<label class="ad-dl2" for="or-fn">Notes</label><textarea id="or-fn" class="ad-in ad-ta" rows="3" data-cf="notes" maxlength="4000">' + esc(x.notes || "") + "</textarea>" +
+      '<p id="or-fe" class="cf-status warn" hidden></p><div class="btn-row"><button type="button" class="btn" data-ok>Save client</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
+    document.body.appendChild(w); var close = function () { w.remove(); };
+    $$("[data-x]", w).forEach(function (b) { b.onclick = close; }); w.onkeydown = function (e) { if (e.key === "Escape") close(); };
+    $("[data-ok]", w).onclick = function () { var b = { id: c ? c.id : undefined }; $$("[data-cf]", w).forEach(function (el) { b[el.dataset.cf] = el.value; });
+      api("outreach/clients", b).then(function (j) { if (!j.ok) { var e = $("#or-fe", w); e.hidden = false; e.textContent = j.reason || "Could not save."; return; }
+        close(); toast("Saved " + (j.client.business || j.client.name)); OR.sel = j.client.id; OR.q = ""; api("outreach/clients").then(function (k) { if (k.ok) { OR.clients = k.clients; orDraw(); } }); }); };
+    setTimeout(function () { $("[data-cf]", w).focus(); }, 30);
+  }
 
   /* ---------- v53.8 Email campaigns (owners): Excel/CSV list → one personal email each, from FODO's Gmail, with an attachment ---------- */
   var CP_BODY = "Hi {first_name},\n\nI'm Anmol from FODO (fodo.co.in), a digital growth studio in New Delhi.\n\nWe built FODO Studio for our own client work, and now we're opening it up: one calendar for every social account, one inbox for comments, client approval links and reports, plus AI clipping that turns long videos into captioned short clips on your own computer.\n\nI've attached a short PDF with what it does and how to install it (one line on Windows or Mac).\n\nIf you'd like to try it, just reply to this email and I'll send your personal key. Pricing is on request.\n\nAnmol Singh\nFODO · www.fodo.co.in · WhatsApp +91 78270 07676";

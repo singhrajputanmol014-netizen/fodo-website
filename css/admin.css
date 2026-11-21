@@ -211,3 +211,19 @@ body.ad-menu-on{overflow:hidden}
 .sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media(max-width:900px){.ad-cp-rvg{grid-template-columns:1fr}.ad-cp-pv{height:520px}}
 .cfx .cfx-box.ad-cp-rv{width:min(1100px,96vw)!important;max-width:min(1100px,96vw)!important}.cfx .cfx-box.ad-cp-dlg{width:min(720px,94vw)!important;max-width:min(720px,94vw)!important}
+
+/* v54.2 Client Emails */
+.ad-or-cfg{margin:0 0 14px;font-size:13px}
+.ad-or-grid{display:grid;grid-template-columns:minmax(220px,.75fr) minmax(0,1.3fr) minmax(0,1.25fr);gap:16px;align-items:start}
+.ad-or-cl .ad-in{width:100%;margin-bottom:10px}.ad-or-list{display:flex;flex-direction:column;gap:6px;max-height:720px;overflow:auto}
+.ad-or-ci{display:flex;flex-direction:column;gap:2px;text-align:left;padding:10px 12px;border:1px solid var(--line-3,var(--line));border-radius:12px;background:transparent;color:var(--text);cursor:pointer;font:inherit}
+.ad-or-ci small{color:var(--muted);font-size:12px;word-break:break-all}.ad-or-ci:hover,.ad-or-ci:focus-visible{border-color:var(--text)}.ad-or-ci.on{border-color:var(--xr-acc,#7B61FF);background:color-mix(in srgb,var(--xr-acc,#7B61FF) 10%,transparent)}
+.ad-or-ed .ad-in{width:100%;margin-bottom:10px}.ad-or-ed textarea{font:14px/1.5 var(--font-body,inherit)}
+.ad-or-to{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:0 0 12px;margin:0 0 12px;border-bottom:1px solid var(--line-3,var(--line))}
+.ad-or-vars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}.ad-or-hint{font-size:12px}.ad-or-ed .btn-row{flex-wrap:wrap}
+.ad-or-pvw{position:sticky;top:12px}.ad-or-pvw .ad-cp-pv{height:760px;background:#0B0B0C}
+.ad-or-h2{margin:28px 0 10px;font-size:20px}.ad-bar2 select.ad-in{max-width:260px}
+.ad-or-conf{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:6px 0 12px}.ad-or-conf dt{color:var(--muted)}.ad-or-conf dd{margin:0;word-break:break-word}
+.ad-or-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}.ad-or-form .ad-in,.ad-cp-dlg textarea.ad-in{width:100%;margin-bottom:10px}
+@media(max-width:1200px){.ad-or-grid{grid-template-columns:minmax(200px,.7fr) minmax(0,1.3fr)}.ad-or-pvw{grid-column:1/-1;position:static}}
+@media(max-width:760px){.ad-or-grid,.ad-or-vars,.ad-or-form{grid-template-columns:1fr}.ad-or-list{max-height:280px}}

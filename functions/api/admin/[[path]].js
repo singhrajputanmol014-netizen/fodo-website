@@ -31,6 +31,7 @@ import { istDay } from "../../_lib/traffic.js";
 import * as LIC from "../../_lib/slicense.js";
 import * as IB from "../../_lib/sinbox.js";
 import * as CP from "../../_lib/campaigns.js";
+import * as OR from "../../_lib/outreach.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
@@ -67,6 +68,15 @@ export async function onRequest(ctx) {
         }
         catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 500); }
       }
+      if (p0 === "outreach") {   // v54.2 Client Emails (owners and Full-control admins only)
+        if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and Full-control admins can open Client Emails." }, 403);
+        try {
+          if (path[1] === "sends" && path[2] && path[3] === "html") { const s = await OR.sendHtml(env, path[2]); return new Response(s.html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; sandbox" } }); }
+          if (path[1] === "sends") return json({ ok: true, sends: await OR.sends(env, { client: q.get("client"), status: q.get("status"), test: q.get("test") }) });
+          if (path[1] === "clients") return json({ ok: true, clients: await OR.listClients(env, q.get("q")) });
+          return json(Object.assign({ ok: true, role, me: u.email }, await OR.overview(env, q.get("q"))));
+        } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 500); }
+      }
       if (p0 === "studio" && !path[1]) return json(Object.assign({ ok: true, role, canEdit }, await LIC.adminList(env)));   // v53 Studio keys
       if (p0 === "studio" && path[1] && path[2] === "key") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can see keys." }, 403); return json(Object.assign({ ok: true }, await LIC.adminKey(env, path[1]))); }
       if (p0 === "users") return json({ ok: true, role, items: (await users(d, clean(q.get("q"), 80), Math.max(0, +q.get("offset") || 0), q.get("filter"), q.get("all") === "1")).map((x) => Object.assign(x, { owner: isOwner(x) })) });
@@ -96,6 +106,18 @@ export async function onRequest(ctx) {
     }
     if (m !== "POST") return json({ ok: false }, 405);
     if (!canEdit) return json({ ok: false, readOnly: true, reason: "View-only access: ask a FODO owner or admin to make the change." }, 403);
+    if (p0 === "outreach") {   // v54.2 Client Emails: canEdit = owner or Full-control admin
+      const b = await request.json().catch(() => ({}));
+      try {
+        let r;
+        if (path[1] === "clients") { r = { client: await OR.saveClient(env, b) }; await logEvent(env, u.id, "outreach_client", r.client.id); }
+        else if (path[1] === "preview") r = await OR.preview(env, b);
+        else if (path[1] === "send") { r = await OR.send(env, b, u.email); await logEvent(env, u.id, b.test ? "outreach_test" : "outreach_send", r.send.id + " · " + r.send.type); }
+        else if (path[1] === "sends" && path[2] && path[3] === "retry") { r = await OR.retry(env, path[2], u.email); await logEvent(env, u.id, "outreach_retry", path[2]); }
+        else return json({ ok: false, reason: "Unknown action." }, 400);
+        return json(Object.assign({ ok: true }, r));
+      } catch (e) { const st = e.status || 502; return json(Object.assign({ ok: false, reason: st < 500 || e.send || e.setup ? e.message : "Could not do that: " + String(e.message || e).slice(0, 220) }, e.duplicate ? { duplicate: true } : {}, e.needConfirm ? { needConfirm: true } : {}, e.optedOut ? { optedOut: true } : {}, e.limit ? { limit: true } : {}, e.setup ? { setup: true } : {}, e.send ? { send: e.send } : {}), st); }
+    }
     if (p0 === "campaigns") {
       if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can send email campaigns." }, 403);
       const b = await request.json().catch(() => ({}));

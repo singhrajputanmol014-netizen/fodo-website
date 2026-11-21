@@ -18,7 +18,7 @@ const all = async (d, sql, ...a) => (await d.prepare(sql).bind(...a).all()).resu
 const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
 const SITE = "https://www.fodo.co.in";
-export const DUP_MIN = 10;
+export const DUP_MIN = 10, MAX_FILE = 10 * 1048576, MAX_TOTAL = 15 * 1048576, MAX_FILES = 5;
 export const hourly = (env) => Math.max(1, Math.min(200, +((env && env.CLIENT_MAIL_HOURLY) || 20)));
 export const fromAddr = (env) => (env && env.CLIENT_MAIL_FROM) || "FODO <anmol@fodo.co.in>";
 export const replyTo = (env) => cleanEmail((env && env.CLIENT_MAIL_REPLY_TO) || "anmol@fodo.co.in") || "anmol@fodo.co.in";
@@ -32,6 +32,8 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS cm_sends_ct ON cm_sends(client_id, type, at)",
   "CREATE TABLE IF NOT EXISTS camp_unsub (email TEXT PRIMARY KEY, at TEXT, why TEXT)",
 ];
+/* v54.5: files attached to a send (JSON [{id,name,mime,size}]); the file bytes live in CHAT_KV under cm:att:<id> */
+const MIG = ["ALTER TABLE cm_sends ADD COLUMN atts TEXT"];
 /* the first client, added once (and again only if the table is emptied and the seed row was never made) */
 export const SEED = { id: "cl_shagun", name: "", business: "Shagun Banquet Hall", email: "singhrajputanmol014@gmail.com", phone: "", city: "Motihari", industry: "Banquet hall / events",
   service: "AI Digital Growth System", amount: "₹50,000 one-time", status: "proposal",
@@ -40,7 +42,7 @@ export const SEED = { id: "cl_shagun", name: "", business: "Shagun Banquet Hall"
 export async function cmDb(env) {
   const d = await adb(env);
   await SCH.setup(d, "outreach", async () => {
-    await SCH.ddl(d, DDL);
+    await SCH.ddl(d, DDL); await SCH.alters(d, MIG);
     if (!(await one(d, "SELECT id FROM cm_clients WHERE id=?1", SEED.id))) { const t = nowIso(); const s = SEED;
       await run(d, "INSERT INTO cm_clients (id,name,business,email,phone,city,industry,service,amount,pricing,status,notes,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13)", s.id, s.name, s.business, s.email, s.phone, s.city, s.industry, s.service, s.amount, s.pricing, s.status, s.notes, t); }
   });
@@ -88,6 +90,36 @@ export async function optOutUrl(env, email) { return SITE + "/api/optout?e=" + e
 export async function optOutCheck(env, email, token) { email = cleanEmail(email); return !!email && !!token && (await hmac(env, email)) === String(token); }
 export async function optOut(env, email, why) { const d = await cmDb(env); email = cleanEmail(email); if (!email) return false; await run(d, "INSERT OR IGNORE INTO camp_unsub (email, at, why) VALUES (?1,?2,?3)", email, nowIso(), T.plain(why || "unsubscribe link", 120)); return true; }
 
+/* ---------------- attachments: any file (PDF, image, doc, sheet, zip), up to 5 files, 10 MB each, 15 MB together ---------------- */
+const attKey = (id) => "cm:att:" + id;
+const wrap76 = (s) => { const out = []; for (let i = 0; i < s.length; i += 76) out.push(s.slice(i, i + 76)); return out.join("\r\n"); };
+const MIMES = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", csv: "text/csv", txt: "text/plain", zip: "application/zip", mp4: "video/mp4" };
+export async function attach(env, b) {
+  if (!env.CHAT_KV) throw err("Attachments need the CHAT_KV storage on the website.", 503);
+  b = b || {}; const b64 = String(b.file || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+  if (!b64 || !/^[A-Za-z0-9+/]+=*$/.test(b64)) throw err("The file could not be read. Choose it again.");
+  const size = Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0);
+  if (size > MAX_FILE) throw err("Each file can be up to 10 MB.");
+  const name = T.plain(b.name || "attachment", 140).replace(/["\\\r\n\/]/g, "").trim() || "attachment", ext = (name.split(".").pop() || "").toLowerCase();
+  const mime = /^[a-z]+\/[a-z0-9.+-]{1,80}$/i.test(b.mime || "") ? String(b.mime) : MIMES[ext] || "application/octet-stream";
+  const id = "ca_" + randId(16), meta = { name, mime, size };
+  await env.CHAT_KV.put(attKey(id), wrap76(b64), { metadata: meta, expirationTtl: 180 * 86400 });
+  return { attachment: Object.assign({ id }, meta) };
+}
+const cleanIds = (ids) => [...new Set((Array.isArray(ids) ? ids : []).map(String).filter((x) => /^ca_[a-z0-9]{16}$/.test(x)))];
+/* metadata only (for the email's attachment card and checks) */
+async function attMeta(env, ids) {
+  ids = cleanIds(ids); if (!ids.length) return [];
+  if (ids.length > MAX_FILES) throw err("Attach up to " + MAX_FILES + " files.");
+  if (!env.CHAT_KV) throw err("Attachments need the CHAT_KV storage on the website.", 503);
+  const out = [];
+  for (const id of ids) { const r = await env.CHAT_KV.getWithMetadata(attKey(id)); if (!r || r.value == null || !r.metadata) throw err("An attached file is no longer available. Remove it and attach it again.", 410); out.push(Object.assign({ id }, r.metadata)); }
+  if (out.reduce((a, x) => a + (x.size || 0), 0) > MAX_TOTAL) throw err("Attachments can be up to 15 MB together.");
+  return out;
+}
+async function attData(env, list) { const out = []; for (const a of list || []) { const v = await env.CHAT_KV.get(attKey(a.id)); if (v == null) throw err("An attached file is no longer available: " + a.name, 410); out.push(Object.assign({}, a, { data: v })); } return out; }
+
 /* ---------------- building one email ---------------- */
 /* fill {vars}; inside the button link the values are URL-encoded (so a mailto subject stays one valid link), unless the whole link is one variable */
 function fillBlocks(blocks, v) {
@@ -109,10 +141,11 @@ export async function compose(env, b, opts) {
   const filled = fillBlocks(blocks, v), subject = T.fill(subjT, v).replace(/\s+/g, " ").trim().slice(0, 200);
   if (filled.cta_text && filled.cta_link && !T.safeUrl(filled.cta_link)) throw err("The button link must start with https://, mailto: or tel:.");
   const ou = marketing ? await optOutUrl(env, client.email) : "";
-  const r = T.renderMail({ subject, blocks: filled, optOutUrl: (opts && opts.test) ? ou || "" : ou });
-  return { type, marketing, client, subject, blocks, html: r.html, text: r.text, empty: T.emptyVars(blocks, subjT, v), optOut: ou };
+  const atts = await attMeta(env, b.attachments);
+  const r = T.renderMail({ subject, blocks: filled, optOutUrl: ou, attachments: atts });
+  return { type, marketing, client, subject, blocks, html: r.html, text: r.text, empty: T.emptyVars(blocks, subjT, v), optOut: ou, atts };
 }
-export async function preview(env, b) { const c = await compose(env, b); return { subject: c.subject, html: c.html, text: c.text, empty: c.empty, marketing: c.marketing, to: c.client.email }; }
+export async function preview(env, b) { const c = await compose(env, b); return { subject: c.subject, html: c.html, text: c.text, empty: c.empty, marketing: c.marketing, to: c.client.email, attachments: c.atts.map((a) => ({ id: a.id, name: a.name, size: a.size })) }; }
 
 /* ---------------- sending ----------------
    FODO's own Gmail mailbox (anmol@fodo.co.in, Google Workspace, the same Google connection as Admin ▸ Studio ▸ Inbox) when it is
@@ -120,12 +153,17 @@ export async function preview(env, b) { const c = await compose(env, b); return 
 const b64e = (s) => { const u = new TextEncoder().encode(s); let b = ""; for (let i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(b); };
 const wrap = (s) => { const out = []; for (let i = 0; i < s.length; i += 76) out.push(s.slice(i, i + 76)); return out.join("\r\n"); };
 const hdrEnc = (s) => (/^[\x20-\x7e]*$/.test(s) ? s : "=?UTF-8?B?" + b64e(s) + "?=");
+const fileHdr = (s) => (/^[\x20-\x7e]*$/.test(s) ? '"' + s + '"' : "UTF-8''" + encodeURIComponent(s));
 export function mimeOf(from, to, o, replyAddr) {
-  const m = /^(.*?)\s*<([^>]+)>$/.exec(String(from)), name = m ? m[1].trim() : "", addr = m ? m[2] : String(from), alt = "fodo_c_" + randId(12);
+  const m = /^(.*?)\s*<([^>]+)>$/.exec(String(from)), name = m ? m[1].trim() : "", addr = m ? m[2] : String(from), alt = "fodo_c_" + randId(12), mix = "fodo_x_" + randId(12), files = o.files || [];
   const L = ["From: " + (name ? hdrEnc(name) + " " : "") + "<" + addr + ">", "To: " + to, "Subject: " + hdrEnc(o.subject), "MIME-Version: 1.0", "Reply-To: " + replyAddr, "X-FODO-Mail: " + o.id];
   if (o.optOut) L.push("List-Unsubscribe: <" + o.optOut + ">, <mailto:" + replyAddr + "?subject=unsubscribe>", "List-Unsubscribe-Post: List-Unsubscribe=One-Click");
-  return L.concat(["Content-Type: multipart/alternative; boundary=\"" + alt + "\"", "", "--" + alt, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap(b64e(o.text)),
-    "--" + alt, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap(b64e(o.html)), "--" + alt + "--", ""]).join("\r\n");
+  const altPart = ["Content-Type: multipart/alternative; boundary=\"" + alt + "\"", "", "--" + alt, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap(b64e(o.text)),
+    "--" + alt, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap(b64e(o.html)), "--" + alt + "--"];
+  if (!files.length) return L.concat(altPart, [""]).join("\r\n");
+  const parts = ["Content-Type: multipart/mixed; boundary=\"" + mix + "\"", "", "--" + mix].concat(altPart);
+  files.forEach((f) => { parts.push("--" + mix, "Content-Type: " + f.mime + "; name=" + fileHdr(f.name), "Content-Disposition: attachment; filename" + (/^[\x20-\x7e]*$/.test(f.name) ? "=" : "*=") + fileHdr(f.name), "Content-Transfer-Encoding: base64", "", f.data); });
+  return L.concat(parts, ["--" + mix + "--", ""]).join("\r\n");
 }
 export async function provider(env) {
   try { const IB = await import("./sinbox.js"), s = await IB.status(env); if (s.connected && s.account) return { via: "gmail", account: s.account }; } catch (e) {}
@@ -143,14 +181,14 @@ async function resend(env, o) {
       return { ok: true, id: "gmail:" + r.id, via: "gmail" };
     } catch (e) { return { ok: false, error: "Gmail: " + String((e && e.message) || e).slice(0, 180) }; }
   }
-  const body = { from: fromAddr(env), to: [o.to], subject: o.subject, html: o.html, text: o.text, reply_to: replyTo(env), headers: Object.assign({ "X-FODO-Mail": o.id }, o.optOut ? { "List-Unsubscribe": "<" + o.optOut + ">, <mailto:" + replyTo(env) + "?subject=unsubscribe>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) };
+  const body = { from: fromAddr(env), to: [o.to], subject: o.subject, html: o.html, text: o.text, reply_to: replyTo(env), attachments: (o.files || []).length ? o.files.map((f) => ({ filename: f.name, content: f.data.replace(/\r\n/g, "") })) : undefined, headers: Object.assign({ "X-FODO-Mail": o.id }, o.optOut ? { "List-Unsubscribe": "<" + o.optOut + ">, <mailto:" + replyTo(env) + "?subject=unsubscribe>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) };
   let r, j = {};
-  try { r = await outbound(env)("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + env.RESEND_API_KEY, "content-type": "application/json", "idempotency-key": o.id + "-" + (o.attempt || 1) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }); j = await r.json().catch(() => ({})); }
+  try { r = await outbound(env)("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + env.RESEND_API_KEY, "content-type": "application/json", "idempotency-key": o.id + "-" + (o.attempt || 1) }, body: JSON.stringify(body), signal: AbortSignal.timeout((o.files || []).length ? 30000 : 15000) }); j = await r.json().catch(() => ({})); }
   catch (e) { return { ok: false, error: "Could not reach the email provider (" + String((e && e.message) || e).slice(0, 80) + ")" }; }
   if (!r.ok || !j.id) return { ok: false, error: "Resend " + r.status + (j.message ? ": " + String(j.message).slice(0, 180) : "") };
   return { ok: true, id: j.id, via: "resend" };
 }
-const pubSend = (r) => r && { id: r.id, at: r.at, last_at: r.last_at, admin: r.admin, client_id: r.client_id, email: r.email, type: r.type, type_label: (T.TYPES[r.type] || { label: r.type }).label, subject: r.subject, status: r.status, provider_id: r.provider_id, error: r.error, test: !!r.test, marketing: !!r.marketing, attempts: r.attempts || 1 };
+const pubSend = (r) => r && { id: r.id, at: r.at, last_at: r.last_at, admin: r.admin, client_id: r.client_id, email: r.email, type: r.type, type_label: (T.TYPES[r.type] || { label: r.type }).label, subject: r.subject, status: r.status, provider_id: r.provider_id, error: r.error, test: !!r.test, marketing: !!r.marketing, attempts: r.attempts || 1, attachments: (() => { try { return JSON.parse(r.atts || "[]").map((a) => ({ name: a.name, size: a.size })); } catch (e) { return []; } })() };
 export async function usedThisHour(env) { const d = await cmDb(env); const r = await one(d, "SELECT COUNT(*) AS n FROM cm_sends WHERE test=0 AND last_at > ?1", new Date(Date.now() - 3600e3).toISOString()); return (r && r.n) || 0; }
 
 /* b: { client_id | client, type, subject, blocks, vars, marketing, test, to (test only), confirm, override } */
@@ -169,8 +207,9 @@ export async function send(env, b, admin) {
     if (dup) throw err("A " + T.TYPES[c.type].label.toLowerCase() + " email went to this client " + Math.max(1, Math.round((Date.now() - Date.parse(dup.at)) / 60e3)) + " min ago. Send again anyway?", 409, { duplicate: true });
   }
   const id = "cm_" + randId(14), t = nowIso(), subject = (test ? "[TEST] " : "") + c.subject;
-  await run(d, "INSERT INTO cm_sends (id,at,last_at,admin,client_id,email,type,subject,status,test,marketing,attempts,html,text) VALUES (?1,?2,?2,?3,?4,?5,?6,?7,'sending',?8,?9,1,?10,?11)", id, t, T.plain(admin, 254), c.client.id || "", to, c.type, subject, test ? 1 : 0, c.marketing ? 1 : 0, c.html, c.text);
-  const r = await resend(env, { id, to, subject, html: c.html, text: c.text, optOut: c.marketing && !test ? c.optOut : "" }).catch((e) => { if (e.setup) throw e; return { ok: false, error: String(e.message || e).slice(0, 200) }; })
+  const files = await attData(env, c.atts);
+  await run(d, "INSERT INTO cm_sends (id,at,last_at,admin,client_id,email,type,subject,status,test,marketing,attempts,html,text,atts) VALUES (?1,?2,?2,?3,?4,?5,?6,?7,'sending',?8,?9,1,?10,?11,?12)", id, t, T.plain(admin, 254), c.client.id || "", to, c.type, subject, test ? 1 : 0, c.marketing ? 1 : 0, c.html, c.text, JSON.stringify(c.atts));
+  const r = await resend(env, { id, to, subject, html: c.html, text: c.text, files, optOut: c.marketing && !test ? c.optOut : "" }).catch((e) => { if (e.setup) throw e; return { ok: false, error: String(e.message || e).slice(0, 200) }; })
     .catch(async (e) => { await run(d, "UPDATE cm_sends SET status='failed', error=?2 WHERE id=?1", id, e.message); throw e; });
   await run(d, "UPDATE cm_sends SET status=?2, provider_id=?3, error=?4, last_at=?5 WHERE id=?1", id, r.ok ? "sent" : "failed", r.ok ? r.id : null, r.ok ? null : r.error, nowIso());
   await mailLog(env, { kind: "client_" + c.type, from: fromAddr(env), to, subject, text: c.text.slice(0, 20000), status: r.ok ? "sent" : "failed", providerId: r.ok ? r.id : null, error: r.ok ? null : r.error, by: admin }).catch(() => {});
@@ -186,8 +225,9 @@ export async function retry(env, id, admin) {
   if (s.status === "sent") throw err("This email was already sent.", 409);
   if (!s.test && (await usedThisHour(env)) >= hourly(env)) throw err("Hourly limit reached (" + hourly(env) + " client emails per hour). Try again a bit later.", 429, { limit: true });
   if (!s.test && s.marketing && (await one(d, "SELECT email FROM camp_unsub WHERE email=?1", s.email))) throw err(s.email + " has unsubscribed from marketing emails.", 409, { optedOut: true });
-  const attempt = (s.attempts || 1) + 1;
-  const r = await resend(env, { id: s.id, attempt, to: s.email, subject: s.subject, html: s.html, text: s.text, optOut: s.marketing && !s.test ? await optOutUrl(env, s.email) : "" });
+  const attempt = (s.attempts || 1) + 1; let list = []; try { list = JSON.parse(s.atts || "[]"); } catch (e) { list = []; }
+  const files = list.length ? await attData(env, list) : [];
+  const r = await resend(env, { id: s.id, attempt, to: s.email, subject: s.subject, html: s.html, text: s.text, files, optOut: s.marketing && !s.test ? await optOutUrl(env, s.email) : "" });
   await run(d, "UPDATE cm_sends SET status=?2, provider_id=?3, error=?4, attempts=?5, last_at=?6, admin=?7 WHERE id=?1", s.id, r.ok ? "sent" : "failed", r.ok ? r.id : null, r.ok ? null : r.error, attempt, nowIso(), T.plain(admin, 254));
   await mailLog(env, { kind: "client_" + s.type, from: fromAddr(env), to: s.email, subject: s.subject, text: String(s.text || "").slice(0, 20000), status: r.ok ? "sent" : "failed", providerId: r.ok ? r.id : null, error: r.ok ? null : r.error, by: admin }).catch(() => {});
   const row = pubSend(await one(d, "SELECT * FROM cm_sends WHERE id=?1", s.id));
@@ -199,11 +239,11 @@ export async function sends(env, f) {
   if (f.client) { a.push(String(f.client)); w.push("client_id=?" + a.length); }
   if (["sent", "failed", "sending"].indexOf(f.status) > -1) { a.push(f.status); w.push("status=?" + a.length); }
   if (f.test === "0" || f.test === "1") { a.push(+f.test); w.push("test=?" + a.length); }
-  const rows = await all(d, "SELECT id,at,last_at,admin,client_id,email,type,subject,status,provider_id,error,test,marketing,attempts FROM cm_sends" + (w.length ? " WHERE " + w.join(" AND ") : "") + " ORDER BY at DESC LIMIT 200", ...a);
+  const rows = await all(d, "SELECT id,at,last_at,admin,client_id,email,type,subject,status,provider_id,error,test,marketing,attempts,atts FROM cm_sends" + (w.length ? " WHERE " + w.join(" AND ") : "") + " ORDER BY at DESC LIMIT 200", ...a);
   return rows.map(pubSend);
 }
 export async function sendHtml(env, id) { const d = await cmDb(env), s = await one(d, "SELECT html, subject FROM cm_sends WHERE id=?1", String(id || "")); if (!s) throw err("Not found.", 404); return s; }
 export async function overview(env, q) {
   return { clients: await listClients(env, q), types: T.typeList().map((t) => ({ id: t.id, label: t.label, marketing: t.marketing, subject: t.subject, blocks: T.BLOCKS.reduce((o, k) => { o[k] = t[k]; return o; }, {}) })),
-    statuses: STATUSES, sends: await sends(env, {}), config: await (async () => { const p = await provider(env); return { configured: !!p.via, provider: p.via === "gmail" ? "Gmail (" + p.account + ")" : p.via === "resend" ? "Resend" : "", from: p.via === "gmail" ? ((/^(.*?)\s*</.exec(fromAddr(env)) || [])[1] || "FODO") + " <" + p.account + ">" : fromAddr(env), replyTo: replyTo(env), hourly: hourly(env), used: await usedThisHour(env), dupMinutes: DUP_MIN }; })() };
+    statuses: STATUSES, sends: await sends(env, {}), config: await (async () => { const p = await provider(env); return { configured: !!p.via, provider: p.via === "gmail" ? "Gmail (" + p.account + ")" : p.via === "resend" ? "Resend" : "", from: p.via === "gmail" ? ((/^(.*?)\s*</.exec(fromAddr(env)) || [])[1] || "FODO") + " <" + p.account + ">" : fromAddr(env), replyTo: replyTo(env), hourly: hourly(env), used: await usedThisHour(env), dupMinutes: DUP_MIN, attach: !!env.CHAT_KV, maxFiles: MAX_FILES, maxFileMB: 10, maxTotalMB: 15 }; })() };
 }

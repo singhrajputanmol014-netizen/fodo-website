@@ -17,7 +17,8 @@ function d1() {
   return { db, prepare: (s) => st(s), batch: async (l) => l.map((s) => (s._x(), { success: true })) };
 }
 const SITE = "https://www.fodo.co.in", jars = {};
-const env = { XRAY_DB: d1(), ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", RESEND_API_KEY: "re_test_x", CLIENT_MAIL_HOURLY: "5" };
+const KV = new Map(), KVM = new Map(), CHAT_KV = { get: async (k) => (KV.has(k) ? KV.get(k) : null), put: async (k, v, o) => { KV.set(k, v); KVM.set(k, (o && o.metadata) || null); }, getWithMetadata: async (k) => ({ value: KV.has(k) ? KV.get(k) : null, metadata: KVM.get(k) || null }), delete: async (k) => { KV.delete(k); KVM.delete(k); } };
+const env = { XRAY_DB: d1(), CHAT_KV, ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", RESEND_API_KEY: "re_test_x", CLIENT_MAIL_HOURLY: "5" };
 const q1 = (sql, ...a) => env.XRAY_DB.db.prepare(sql).get(...a), X = (sql, ...a) => env.XRAY_DB.db.prepare(sql).run(...a);
 const mails = []; let resendDown = false;
 globalThis.fetch = async (u, o = {}) => { u = String(u);
@@ -123,6 +124,26 @@ ok(tr.ok, "transactional emails (invoice reminder) still reach them");
 const mk = (await OR("send", { client_id: "cl_shagun", type: "follow_up", confirm: true, vars: { next_step: "call" } })).j, lm = mails[mails.length - 1];
 ok(mk.ok && /^<https:\/\/www\.fodo\.co\.in\/api\/optout\?e=/.test(lm.body.headers["List-Unsubscribe"]) && lm.body.headers["List-Unsubscribe-Post"] === "List-Unsubscribe=One-Click", "marketing sends carry List-Unsubscribe (one-click) headers");
 
+/* attachments: any file, shown in the email, sent with it, kept for Retry */
+env.CLIENT_MAIL_HOURLY = "50"; X("DELETE FROM cm_sends");
+const PDF = Buffer.from("%PDF-1.4 fodo proposal").toString("base64"), IMG = Buffer.from("fakepng").toString("base64");
+const a1 = (await OR("attach", { file: PDF, name: "Shagun Proposal.pdf", mime: "application/pdf" })).j, a2 = (await OR("attach", { file: IMG, name: "plan.png" })).j;
+ok(a1.ok && a1.attachment.id && a1.attachment.size === 22 && a1.attachment.mime === "application/pdf" && a2.attachment.mime === "image/png", "any file can be attached (PDF, image), type guessed from the name");
+ok((await OR("attach", { file: "not base64!!", name: "x.pdf" })).status === 400 && (await OR("attach", { file: Buffer.alloc(10 * 1048576 + 10).toString("base64"), name: "big.pdf" })).status === 400, "bad or over-10-MB files are refused");
+const ids = [a1.attachment.id, a2.attachment.id];
+const ap = (await OR("preview", { client_id: "cl_shagun", type: "proposal", attachments: ids })).j;
+ok(ap.ok && ap.attachments.length === 2 && /Shagun Proposal\.pdf/.test(ap.html) && /Attached to this email/.test(ap.html) && />PDF</.test(ap.html) && /\[Attached: plan\.png\]/.test(ap.text), "preview shows an attachment card per file (and the plain text lists them)");
+const as = (await OR("send", { client_id: "cl_shagun", type: "proposal", confirm: true, attachments: ids, vars: { date: "1 Dec", next_step: "call" } })).j, am = mails[mails.length - 1];
+ok(as.ok && am.body.attachments.length === 2 && am.body.attachments[0].filename === "Shagun Proposal.pdf" && am.body.attachments[0].content === PDF && as.send.attachments.length === 2, "the files go out with the email and the log lists them");
+resendDown = true; const af = await OR("send", { client_id: nc.client.id, type: "invoice_reminder", confirm: true, attachments: [a1.attachment.id], vars: { amount: "₹1", date: "x", link: "https://pay.example/y" } }); resendDown = false;
+const ar = (await OR("sends/" + af.j.send.id + "/retry", {})).j, arm = mails[mails.length - 1];
+ok(ar.ok && arm.body.attachments.length === 1 && arm.body.attachments[0].content === PDF, "Retry re-sends the same attachment");
+const gm = mimeOf("FODO <anmol@fodo.co.in>", "x@y.in", { id: "cm_2", subject: "s", html: "<p>h</p>", text: "h", files: [{ name: "Shagun Proposal.pdf", mime: "application/pdf", data: PDF }] }, "anmol@fodo.co.in");
+ok(/multipart\/mixed/.test(gm) && /Content-Disposition: attachment; filename="Shagun Proposal\.pdf"/.test(gm) && gm.indexOf(PDF) > 0, "Gmail mail carries the file as a real attachment");
+ok((await OR("preview", { client_id: "cl_shagun", type: "custom", attachments: ["ca_aaaaaaaaaaaaaaaa"] })).status === 410, "a missing file gives a clear error");
+const six = []; for (let i = 0; i < 6; i++) six.push((await OR("attach", { file: IMG, name: "f" + i + ".png" })).j.attachment.id);
+ok((await OR("preview", { client_id: "cl_shagun", type: "custom", attachments: six })).status === 400, "at most 5 files per email");
+
 /* not configured */
 const k = env.RESEND_API_KEY; delete env.RESEND_API_KEY;
 const nc2 = await OR("send", { client_id: "cl_shagun", type: "custom", test: true }); env.RESEND_API_KEY = k;
@@ -133,7 +154,7 @@ const mm = mimeOf("FODO <anmol@fodo.co.in>", "x@y.in", { id: "cm_1", subject: "P
 ok(/^From: FODO <anmol@fodo\.co\.in>\r\nTo: x@y\.in\r\nSubject: =\?UTF-8\?B\?/.test(mm) && /Reply-To: anmol@fodo\.co\.in/.test(mm) && /List-Unsubscribe-Post: List-Unsubscribe=One-Click/.test(mm) && /multipart\/alternative/.test(mm) && (mm.match(/\r\nTo: /g) || []).length === 1, "Gmail send builds one MIME mail (From anmol@, Reply-To, unsubscribe headers, text + HTML)");
 /* admin UI */
 const AJ = fs.readFileSync("js/admin.js", "utf8"), i0 = AJ.indexOf("function outreachView"), blk2 = AJ.slice(i0 - 400, AJ.indexOf("/* ---------- v53.8 Email campaigns"));
-ok(/"outreach", "Client Emails"/.test(AJ) && /"outreach", "campaigns"/.test(AJ) && /outreach: outreachView/.test(AJ) && !/\son[a-z]+=["']/.test(blk2) && /Yes, send it/.test(blk2) && /data-retry/.test(blk2) && /sandbox=""/.test(blk2), "Admin has the Client Emails page (confirm dialog, retry, sandboxed preview, no inline handlers)");
+ok(/"outreach", "Client Emails"/.test(AJ) && /or-attf/.test(AJ) && /outreach\/attach/.test(AJ) && /"outreach", "campaigns"/.test(AJ) && /outreach: outreachView/.test(AJ) && !/\son[a-z]+=["']/.test(blk2) && /Yes, send it/.test(blk2) && /data-retry/.test(blk2) && /sandbox=""/.test(blk2), "Admin has the Client Emails page (confirm dialog, retry, sandboxed preview, no inline handlers)");
 ok(fs.existsSync("docs/CLIENT-EMAILS.md") && fs.existsSync("docs/client-emails.env.example") && !/re_[A-Za-z0-9]{10,}/.test(fs.readFileSync("docs/client-emails.env.example", "utf8")), "README and env config file exist, with no real keys");
 
 console.log("\n" + pass + " passed, " + fail + " failed"); if (fail) process.exit(1);

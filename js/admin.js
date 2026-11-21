@@ -382,7 +382,7 @@
     api("outreach").then(function (j) {
       if (!j.ok) return fail(j);
       var prev = OR || {};
-      OR = { clients: j.clients, types: j.types, statuses: j.statuses, sends: j.sends, cfg: j.config, me: j.me, q: prev.q || "", sel: prev.sel || (j.clients[0] && j.clients[0].id) || "", type: prev.type || "proposal", blocks: prev.blocks || null, subject: prev.subject != null ? prev.subject : null, vars: prev.vars || {}, lf: prev.lf || { client: "", status: "" } };
+      OR = { clients: j.clients, types: j.types, statuses: j.statuses, sends: j.sends, cfg: j.config, me: j.me, q: prev.q || "", sel: prev.sel || (j.clients[0] && j.clients[0].id) || "", type: prev.type || "proposal", blocks: prev.blocks || null, subject: prev.subject != null ? prev.subject : null, vars: prev.vars || {}, atts: prev.atts || [], lf: prev.lf || { client: "", status: "" } };
       if (!OR.blocks) orReset();
       orDraw();
     });
@@ -408,6 +408,9 @@
         '<label class="ad-dl2" for="or-subj">Subject (variables allowed)</label><input id="or-subj" class="ad-in" maxlength="300" value="' + esc(OR.subject || "") + '">' +
         '<div class="ad-or-vars">' + OR_V.map(function (v) { return '<label><span class="ad-dl2">' + v[1] + '</span><input class="ad-in" data-ov="' + v[0] + '" maxlength="400" placeholder="' + (v[0] === "amount" && c && c.amount ? esc(c.amount) : v[0] === "date" ? "e.g. 30 Nov 2026" : v[0] === "link" ? "https://…" : "") + '" value="' + esc(OR.vars[v[0]] || "") + '"></label>'; }).join("") + "</div>" +
         OR_B.map(function (b) { return '<label class="ad-dl2" for="or-b-' + b[0] + '">' + b[1] + "</label>" + (b[2] > 1 ? '<textarea id="or-b-' + b[0] + '" class="ad-in ad-ta" rows="' + b[2] + '" data-ob="' + b[0] + '" maxlength="6000">' + esc(OR.blocks[b[0]] || "") + "</textarea>" : '<input id="or-b-' + b[0] + '" class="ad-in" data-ob="' + b[0] + '" maxlength="400" value="' + esc(OR.blocks[b[0]] || "") + '">'); }).join("") +
+        '<div class="ad-or-att"><p class="ad-dl2">Attachments <span class="muted">(any file: PDF, image, Word, Excel, PPT, zip · up to ' + (OR.cfg.maxFiles || 5) + ' files, 10 MB each, 15 MB together)</span></p>' +
+          '<div class="ad-or-atl">' + OR.atts.map(function (a) { return '<span class="ad-or-chip">📎 ' + esc(a.name) + ' <small class="muted">' + kb(a.size) + '</small><button type="button" class="ad-ib" data-ax="' + esc(a.id) + '" aria-label="Remove ' + esc(a.name) + '">×</button></span>'; }).join("") + "</div>" +
+          (OR.cfg.attach === false ? '<p class="muted">Attachments need CHAT_KV storage on the website.</p>' : '<label class="btn sm ghost" for="or-attf">+ Attach file</label><input type="file" id="or-attf" class="sr-only" multiple>') + "</div>" +
         '<p class="muted ad-or-hint">Variables: {client_name} {first_name} {business_name} {city} {industry} {service} {amount} {pricing} {date} {next_step} {link} {phone} {email}. The design, header, "Anmol · FODO" sign-off and footer are fixed.</p>' +
         '<p id="or-empty" class="cf-status warn" hidden></p>' +
         '<div class="btn-row"><button type="button" class="btn ghost" id="or-test"' + (c ? "" : " disabled") + '>Send a test to me</button><button type="button" class="btn" id="or-send"' + (c ? "" : " disabled") + '>Send to client…</button><button type="button" class="btn ghost" id="or-reset">Reset to the ' + esc(t.label.toLowerCase()) + " template</button></div>" +
@@ -425,11 +428,29 @@
     $$("[data-ob]").forEach(function (el) { el.oninput = function () { OR.blocks[el.dataset.ob] = el.value; OR.edited = true; orPreview(); }; });
     $$("[data-ov]").forEach(function (el) { el.oninput = function () { OR.vars[el.dataset.ov] = el.value; orPreview(); }; });
     on("#or-reset", function () { ask({ title: "Reset the content?", text: "Subject and all content blocks go back to the template.", ok: "Reset" }).then(function (x) { if (x) { orReset(); orDraw(); } }); });
+    $$("[data-ax]").forEach(function (b) { b.onclick = function () { OR.atts = OR.atts.filter(function (a) { return a.id !== b.dataset.ax; }); orDraw(); }; });
+    var af = $("#or-attf"); if (af) af.onchange = function () { orAttach([].slice.call(this.files || [])); this.value = ""; };
     on("#or-test", function () { orSend(true); });
     on("#or-send", function () { orSend(false); });
     orLogWire(); orPreview(true);
   }
-  var orBody = function () { return { client_id: OR.sel, type: OR.type, subject: OR.subject, blocks: OR.blocks, vars: OR.vars }; };
+  var orBody = function () { return { client_id: OR.sel, type: OR.type, subject: OR.subject, blocks: OR.blocks, vars: OR.vars, attachments: OR.atts.map(function (a) { return a.id; }) }; };
+  function orAttach(files) {
+    if (!files.length) return;
+    var max = OR.cfg.maxFiles || 5, total = OR.atts.reduce(function (s, a) { return s + a.size; }, 0);
+    if (OR.atts.length + files.length > max) return toast("Attach up to " + max + " files.", true);
+    for (var i = 0; i < files.length; i++) { if (files[i].size > 10 * 1048576) return toast(files[i].name + " is over 10 MB.", true); total += files[i].size; }
+    if (total > 15 * 1048576) return toast("Attachments can be up to 15 MB together.", true);
+    var next = function (k) {
+      if (k >= files.length) { orDraw(); return; }
+      var f = files[k]; toast("Uploading " + f.name + "…");
+      readB64(f).then(function (b64) { return api("outreach/attach", { file: b64, name: f.name, mime: f.type || "" }); }).then(function (j) {
+        if (!j.ok) { toast(j.reason || "Could not attach " + f.name, true); return orDraw(); }
+        OR.atts.push(j.attachment); next(k + 1);
+      }).catch(function () { toast("Could not read " + f.name, true); orDraw(); });
+    };
+    next(0);
+  }
   function orPreview(now) {
     clearTimeout(orPt); if (!OR.sel) { var f = $("#or-pv"); if (f) f.srcdoc = ""; return; }
     orPt = setTimeout(function () { api("outreach/preview", orBody()).then(function (j) { var f = $("#or-pv"), e = $("#or-empty"), s = $("#or-pvs"); if (!f) return;
@@ -447,12 +468,12 @@
         toast(j.reason || "Could not send.", true); orReloadLog();
       });
     };
-    if (test) return ask({ title: "Send a test email", text: "You get exactly what " + (c.business || c.name) + " would get, with [TEST] in the subject. Nothing goes to the client.", input: "Send the test to", ph: OR.me, ok: "Send test" }).then(function (v) { if (v === null) return; go(false, v === true || !v ? OR.me : v); });
+    if (test) return ask({ title: "Send a test email", text: "You get exactly what " + (c.business || c.name) +  " would get" + (OR.atts.length ? ", with the " + OR.atts.length + " attached file" + (OR.atts.length > 1 ? "s" : "") : "") + ", with [TEST] in the subject. Nothing goes to the client.", input: "Send the test to", ph: OR.me, ok: "Send test" }).then(function (v) { if (v === null) return; go(false, v === true || !v ? OR.me : v); });
     api("outreach/preview", orBody()).then(function (j) {
       if (!j.ok) return toast(j.reason || "Could not build the email.", true);
       var w = document.createElement("div"); w.className = "cfx ad-dlg";
       w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box" role="dialog" aria-modal="true" aria-labelledby="or-ct"><h3 id="or-ct">Send this email to the client?</h3>' +
-        '<dl class="ad-or-conf"><dt>To</dt><dd>' + esc(j.to) + " (" + esc(c.business || c.name) + ")</dd><dt>Subject</dt><dd>" + esc(j.subject) + "</dd><dt>Email type</dt><dd>" + esc(t.label) + (j.marketing ? " · marketing (includes an unsubscribe link)" : " · transactional") + "</dd></dl>" +
+        '<dl class="ad-or-conf"><dt>To</dt><dd>' + esc(j.to) + " (" + esc(c.business || c.name) + ")</dd><dt>Subject</dt><dd>" + esc(j.subject) + "</dd><dt>Email type</dt><dd>" + esc(t.label) + (j.marketing ? " · marketing (includes an unsubscribe link)" : " · transactional") + "</dd><dt>Attachments</dt><dd>" + (j.attachments && j.attachments.length ? j.attachments.map(function (a) { return "📎 " + esc(a.name) + " (" + kb(a.size) + ")"; }).join("<br>") : "None") + "</dd></dl>" +
         (j.empty.length ? '<p class="cf-status warn">Still empty: ' + esc(j.empty.map(function (x) { return "{" + x + "}"; }).join(", ")) + "</p>" : "") +
         '<p class="muted">This sends a real email now. It cannot be unsent.</p><div class="btn-row"><button type="button" class="btn" data-ok>Yes, send it</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
       document.body.appendChild(w); var close = function () { w.remove(); };
@@ -465,7 +486,7 @@
     var name = function (id) { var c = OR.clients.filter(function (x) { return x.id === id; })[0]; return c ? c.business || c.name : ""; };
     return '<h2 class="ad-or-h2">Send log</h2><div class="ad-bar2"><select id="or-lc" class="ad-in" aria-label="Filter by client">' + opts([["", "All clients"]].concat(OR.clients.map(function (c) { return [c.id, c.business || c.name]; })), OR.lf.client) + '</select><select id="or-ls" class="ad-in" aria-label="Filter by status">' + opts([["", "Any status"], ["sent", "Sent"], ["failed", "Failed"]], OR.lf.status) + "</select></div>" +
       (OR.sends.length ? '<div class="ad-table"><table><thead><tr><th>When</th><th>Client</th><th>Type</th><th>Subject</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>' + OR.sends.map(function (s) { var st = OR_ST[s.status] || [s.status, ""];
-        return "<tr><td>" + date(s.at, true) + "</td><td>" + esc(name(s.client_id) || "-") + '<br><small class="muted">' + esc(s.email) + "</small></td><td>" + esc(s.type_label) + (s.test ? ' <span class="ad-tag">test</span>' : "") + "</td><td>" + esc(s.subject) + '</td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (s.attempts > 1 ? ' <small class="muted">' + s.attempts + " tries</small>" : "") + (s.error ? '<br><small class="muted">' + esc(s.error) + "</small>" : "") + (s.provider_id ? '<br><small class="muted">id ' + esc(s.provider_id) + "</small>" : "") + "</td><td><small>" + esc(s.admin || "") + "</small></td>" +
+        return "<tr><td>" + date(s.at, true) + "</td><td>" + esc(name(s.client_id) || "-") + '<br><small class="muted">' + esc(s.email) + "</small></td><td>" + esc(s.type_label) + (s.test ? ' <span class="ad-tag">test</span>' : "") + "</td><td>" + esc(s.subject) + (s.attachments && s.attachments.length ? '<br><small class="muted">📎 ' + s.attachments.map(function (a) { return esc(a.name); }).join(", ") + "</small>" : "") + '</td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (s.attempts > 1 ? ' <small class="muted">' + s.attempts + " tries</small>" : "") + (s.error ? '<br><small class="muted">' + esc(s.error) + "</small>" : "") + (s.provider_id ? '<br><small class="muted">id ' + esc(s.provider_id) + "</small>" : "") + "</td><td><small>" + esc(s.admin || "") + "</small></td>" +
           '<td class="ad-cp-act"><a class="btn sm ghost" href="/api/admin/outreach/sends/' + encodeURIComponent(s.id) + '/html" target="_blank" rel="noopener">View</a>' + (s.status === "failed" ? '<button type="button" class="btn sm" data-retry="' + esc(s.id) + '">Retry</button>' : "") + "</td></tr>"; }).join("") + "</tbody></table></div>"
         : '<div class="panel ad-card"><p class="muted">Nothing sent yet.</p></div>');
   }

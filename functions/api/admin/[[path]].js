@@ -112,6 +112,7 @@ export async function onRequest(ctx) {
         let r;
         if (path[1] === "clients") { r = { client: await OR.saveClient(env, b) }; await logEvent(env, u.id, "outreach_client", r.client.id); }
         else if (path[1] === "preview") r = await OR.preview(env, b);
+        else if (path[1] === "attach") r = await OR.attach(env, b);
         else if (path[1] === "send") { r = await OR.send(env, b, u.email); await logEvent(env, u.id, b.test ? "outreach_test" : "outreach_send", r.send.id + " · " + r.send.type); }
         else if (path[1] === "sends" && path[2] && path[3] === "retry") { r = await OR.retry(env, path[2], u.email); await logEvent(env, u.id, "outreach_retry", path[2]); }
         else return json({ ok: false, reason: "Unknown action." }, 400);

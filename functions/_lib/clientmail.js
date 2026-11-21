@@ -150,7 +150,17 @@ const MQ = "<style>@media only screen and (max-width:660px){.cm-outer{padding:0!
   ".cm-px{padding-left:22px!important;padding-right:22px!important}.cm-h1{font-size:28px!important;line-height:34px!important}" +
   ".cm-stats{margin:0 0 14px 0!important;width:100%!important}.cm-stat{display:block!important;width:100%!important;padding:0 0 10px 0!important}.cm-btn{display:block!important;text-align:center!important}}</style>";
 
-/* o = { subject, blocks (filled), optOutUrl (marketing only), preheader } → { html, text } */
+const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+function attCards(list) {
+  if (!list || !list.length) return "";
+  return '<tr><td class="cm-px" style="padding:0 40px 18px 40px">' + list.map((a) => { const ext = String(a.name || "").split(".").pop().slice(0, 4).toUpperCase() || "FILE";
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 0 10px 0"><tr><td bgcolor="' + C.card + '" style="background:' + C.card + ";border:1px solid " + C.line + ';border-radius:14px;padding:14px 16px">' +
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle" width="56" style="width:56px"><div style="width:44px;height:44px;border-radius:11px;background:#1d1d21;border:1px solid ' + C.line + ";text-align:center;font-family:" + FONT + ";font-size:11px;font-weight:800;line-height:44px;color:" + C.violet + '">' + esc(ext) + "</div></td>" +
+      '<td valign="middle"><p style="margin:0;font-family:' + FONT + ";font-size:15px;line-height:20px;font-weight:700;color:" + C.text + ';word-break:break-all">' + esc(a.name) + "</p>" +
+      '<p style="margin:3px 0 0 0;font-family:' + FONT + ";font-size:12px;line-height:17px;color:" + C.dim + '">Attached to this email' + (a.size ? " · " + kb(a.size) : "") + "</p></td></tr></table></td></tr></table>"; }).join("") + "</td></tr>";
+}
+
+/* o = { subject, blocks (filled), optOutUrl (marketing only), preheader, attachments: [{name,size}] } → { html, text } */
 export function renderMail(o) {
   const b = o.blocks || {}, cta = safeUrl(b.cta_link), sign = "Anmol · FODO";
   const pre = plain(o.preheader || String(b.intro || "").replace(/\*\*/g, "").replace(/\s+/g, " "), 140);
@@ -172,6 +182,7 @@ export function renderMail(o) {
       (b.cta_text && cta ? '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 26px 0"><tr><td><a class="cm-btn" href="' + esc(cta) + '" target="_blank" style="display:inline-block;padding:14px 26px;border-radius:999px;background:' + C.violet + ";color:#0B0B0C;font-family:" + FONT + ';font-size:15px;font-weight:700;line-height:18px;text-decoration:none">' + esc(b.cta_text) + "</a></td></tr></table>" : "") +
       paras(b.closing) +
     "</td></tr>" +
+    attCards(o.attachments) +
     /* sign-off (fixed) */
     '<tr><td class="cm-px" style="padding:4px 40px 34px 40px"><p style="margin:0;font-family:' + FONT + ";font-size:15px;line-height:22px;color:" + C.muted + '">Regards,</p>' +
       '<p style="margin:4px 0 0 0;font-family:' + FONT + ";font-size:18px;line-height:24px;font-weight:700;color:" + C.text + '">' + esc(sign) + "</p>" +
@@ -186,7 +197,7 @@ export function renderMail(o) {
   const text = [b.eyebrow ? String(b.eyebrow).toUpperCase() : "", String(b.headline || "").replace(/\*([^*\n]+)\*/g, "$1"), "", tx(b.intro).trim(),
     lines(b.items).map((l) => { const [a, c] = split(l); return "- " + a + (c ? ": " + c : ""); }).join("\n"),
     lines(b.stats).map((l) => { const [a, c] = split(l); return c + ": " + a; }).join("\n"),
-    b.cta_text && cta ? b.cta_text + ": " + cta : "", tx(b.closing).trim(), "Regards,\n" + sign + "\nfodo.co.in · +91 78270 07676",
+    b.cta_text && cta ? b.cta_text + ": " + cta : "", tx(b.closing).trim(), (o.attachments || []).map((a) => "[Attached: " + a.name + "]").join("\n"), "Regards,\n" + sign + "\nfodo.co.in · +91 78270 07676",
     "--\nFODO, New Delhi, India" + (o.optOutUrl ? "\nUnsubscribe: " + o.optOutUrl : "")].filter((x) => x !== undefined && x !== null && String(x).trim() !== "" || x === "").join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
   return { html, text };
 }

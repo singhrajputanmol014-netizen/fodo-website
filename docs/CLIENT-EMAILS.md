@@ -7,6 +7,7 @@ fodo.co.in/admin/#outreach (sidebar: Customers ▸ Client Emails). Owners and ad
 - **Email types**: Proposal, Follow-up, Welcome / onboarding, Invoice reminder, Project update, Report delivery, Custom.
 - **Content**: each type is a template of named blocks (eyebrow, headline, intro, list rows, stat boxes, button text + link, closing). Every block and the subject can be edited before sending. Variables fill from the client: `{client_name} {first_name} {business_name} {city} {industry} {service} {amount} {pricing} {phone} {email}`, plus per-email `{date} {next_step} {link}` (and `{amount}` can be overridden). Empty variables are shown before sending.
 - **Design**: one fixed FODO design for every email (`functions/_lib/clientmail.js`): page #0B0B0C, card #151517, border #2A2A2F, text #F4F4F2, muted #B4B4BB / #8A8A92, violet #8F7BFF, Inter Tight (Arial fallback), logo + "FEAR OF DIGITALLY OUT ?" header, "Anmol · FODO" sign-off, footer. Table-based HTML, inline styles, 640px. Only the content blocks change. Plain-text version is generated automatically.
+- **Attachments** (v54.5): "+ Attach file" adds any file (PDF, image, Word, Excel, PPT, zip): up to 5 files, 10 MB each, 15 MB together. Each file shows as a card in the email and goes out as a real attachment (Gmail and Resend). Files are kept in CHAT_KV for 180 days so Retry re-sends them.
 - **Preview**: live, in the real design (sandboxed frame).
 - **Sending**: "Send a test to me" (marked [TEST], goes only to you), then "Send to client…" with a confirmation dialog (recipient, subject, type). The server also refuses a real send without that confirmation.
 - **Safety**: max `CLIENT_MAIL_HOURLY` (20) real sends per hour; the same type to the same client within 10 minutes is blocked unless you choose "Send again"; failed sends stay "Failed" with the error and a **Retry** button (re-sends the exact same email); marketing types (Follow-up, Custom) carry an Unsubscribe link and List-Unsubscribe headers and are never sent to anyone who opted out (shared list with Email campaigns). Transactional types (Proposal, Invoice reminder, Project update, Welcome, Report) have no unsubscribe link.
@@ -16,7 +17,7 @@ fodo.co.in/admin/#outreach (sidebar: Customers ▸ Client Emails). Owners and ad
 1. Sending goes from FODO's own Gmail (anmol@fodo.co.in, Google Workspace): Admin ▸ Studio ▸ Inbox ▸ **Log in with Google** as anmol@fodo.co.in. Mails then sit in that mailbox's Sent folder and replies come back to it. No API key is needed for this.
 2. Fallback only: if Gmail is not connected, `RESEND_API_KEY` (Cloudflare secret, domain verified in Resend) is used. Optional: `CLIENT_MAIL_FROM` (display name), `CLIENT_MAIL_REPLY_TO`, `CLIENT_MAIL_HOURLY`, `OPTOUT_SECRET`. See `docs/client-emails.env.example`.
 3. Replies go to anmol@fodo.co.in (default).
-4. Redeploy. The tables (`cm_clients`, `cm_sends`) are created on the first request (SCHEMA_VERSION 54.2).
+4. Redeploy. The tables (`cm_clients`, `cm_sends`) are created on the first request (SCHEMA_VERSION 54.5).
 
 ## Add a new email type
 1. Open `functions/_lib/clientmail.js` and add one entry to `TYPES`:
@@ -41,5 +42,5 @@ fodo.co.in/admin/#outreach (sidebar: Customers ▸ Client Emails). Owners and ad
 - `functions/api/admin/[[path]].js` routes `/api/admin/outreach/*`
 - `functions/api/optout.js` public unsubscribe page
 - `js/admin.js` (`outreachView`), `css/admin.css` (`.ad-or-*`)
-- `functions/_lib/schema.js` SCHEMA_VERSION 54.2
+- `functions/_lib/schema.js` SCHEMA_VERSION 54.5
 - `tests/v542-client-emails.test.mjs`

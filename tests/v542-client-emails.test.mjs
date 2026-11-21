@@ -52,7 +52,7 @@ ok(!JSON.stringify(ov.j).match(/re_test_x/), "the provider API key never reaches
 const pv = (await OR("preview", { client_id: "cl_shagun", type: "proposal", vars: { date: "30 Nov 2026", next_step: "a 20-minute call on Monday" } })).j;
 ok(pv.ok && pv.subject === "Proposal for Shagun Banquet Hall: AI Digital Growth System" && pv.to === "singhrajputanmol014@gmail.com", "subject variables filled from the client record");
 const H = pv.html;
-ok(/#0B0B0C/.test(H) && /#151517/.test(H) && /#2A2A2F/.test(H) && /#F4F4F2/.test(H) && /#8F7BFF/.test(H) && /Inter Tight/.test(H) && /max-width:640px/.test(H) && /FEAR OF DIGITALLY OUT \?/.test(H) && /favicon-192\.png/.test(H) && /Rohit · FODO/.test(H), "fixed design: colours, Inter Tight, 640px, logo + tagline, 'Rohit · FODO' sign-off");
+ok(/#0B0B0C/.test(H) && /#151517/.test(H) && /#2A2A2F/.test(H) && /#F4F4F2/.test(H) && /#8F7BFF/.test(H) && /Inter Tight/.test(H) && /max-width:640px/.test(H) && /FEAR OF DIGITALLY OUT \?/.test(H) && /favicon-192\.png/.test(H) && /Anmol · FODO/.test(H), "fixed design: colours, Inter Tight, 640px, logo + tagline, 'Anmol · FODO' sign-off");
 ok(/font-style:italic;font-weight:400;white-space:nowrap[^>]*>× FODO<\/span>/.test(H) && /Shagun Banquet Hall/.test(H) && /₹4,300 to ₹12,800 \/ month/.test(H) && /₹50,000 one-time/.test(H) && /30 Nov 2026/.test(H) && /a 20-minute call on Monday/.test(H), "proposal: serif italic '× FODO' accent, pricing rows, stat boxes, next step");
 ok(!/<script/i.test(H) && !/ on[a-z]+=/i.test(H) && !/—/.test(H) && !/\bfree\b/i.test(H), "email has no script, no inline handlers, no long dash, no 'free' wording");
 ok(!/Unsubscribe/.test(H) && pv.marketing === false, "proposal is transactional: no unsubscribe link");
@@ -66,7 +66,7 @@ ok(s1 === s2 && H.slice(H.indexOf("Regards,")) .replace(/Unsubscribe[^]*$/, "").
 const xs = (await OR("preview", { client_id: "cl_shagun", type: "custom", subject: "<b>Hi</b> {first_name}", blocks: { headline: "<img src=x onerror=alert(1)>Hello", intro: "<script>alert(1)</script>Plain **bold** text", items: "A | <i>b</i>" } })).j;
 ok(xs.ok && !/<script|onerror|<img src=x|<i>b<\/i>/.test(xs.html) && /<b style="[^"]*">bold<\/b>/.test(xs.html) && xs.subject === "Hi Shagun Banquet Hall", "HTML in user fields is stripped; **bold** still works");
 ok((await OR("preview", { client_id: "cl_shagun", type: "custom", blocks: { cta_text: "Go", cta_link: "javascript:alert(1)" } })).status === 400, "javascript: button links are refused");
-const plainText = T.renderMail({ subject: "s", blocks: T.blocksFor("proposal", {}) }).text; ok(/Regards,\nRohit · FODO/.test(plainText) && !/<[a-z]/i.test(plainText), "plain-text version is generated automatically");
+const plainText = T.renderMail({ subject: "s", blocks: T.blocksFor("proposal", {}) }).text; ok(/Regards,\nAnmol · FODO/.test(plainText) && !/<[a-z]/i.test(plainText), "plain-text version is generated automatically");
 
 /* clients: add, edit, search, validate */
 ok((await OR("clients", { name: "X", email: "not-an-email" })).status === 400 && (await OR("clients", { email: "a@b.co" })).status === 400, "client needs a name and a valid email");

@@ -152,7 +152,7 @@ const MQ = "<style>@media only screen and (max-width:660px){.cm-outer{padding:0!
 
 /* o = { subject, blocks (filled), optOutUrl (marketing only), preheader } → { html, text } */
 export function renderMail(o) {
-  const b = o.blocks || {}, cta = safeUrl(b.cta_link), sign = "Rohit · FODO";
+  const b = o.blocks || {}, cta = safeUrl(b.cta_link), sign = "Anmol · FODO";
   const pre = plain(o.preheader || String(b.intro || "").replace(/\*\*/g, "").replace(/\s+/g, " "), 140);
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>' + esc(o.subject) + "</title>" + MQ + "</head>" +
     '<body style="margin:0;padding:0;background:' + C.page + '" bgcolor="' + C.page + '">' +

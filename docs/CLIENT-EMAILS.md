@@ -15,7 +15,7 @@ fodo.co.in/admin/#outreach (sidebar: Customers ▸ Client Emails). Owners and ad
 ## Setup (one time)
 1. Cloudflare Pages ▸ fodo-website ▸ Settings ▸ Variables and secrets: make sure `RESEND_API_KEY` is set (secret). Optional: `CLIENT_MAIL_FROM`, `CLIENT_MAIL_REPLY_TO`, `CLIENT_MAIL_HOURLY`, `OPTOUT_SECRET`. See `docs/client-emails.env.example`.
 2. In Resend, the domain fodo.co.in must be verified (it already sends login codes). The From address must be on that domain.
-3. Make sure the reply-to mailbox (rohit@fodo.co.in) exists, so client replies arrive.
+3. Make sure the reply-to mailbox (anmol@fodo.co.in, the default sender too) exists, so client replies arrive.
 4. Redeploy. The tables (`cm_clients`, `cm_sends`) are created on the first request (SCHEMA_VERSION 54.2).
 
 ## Add a new email type

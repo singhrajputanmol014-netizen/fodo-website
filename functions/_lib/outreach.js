@@ -20,8 +20,8 @@ const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
 const SITE = "https://www.fodo.co.in";
 export const DUP_MIN = 10;
 export const hourly = (env) => Math.max(1, Math.min(200, +((env && env.CLIENT_MAIL_HOURLY) || 20)));
-export const fromAddr = (env) => (env && env.CLIENT_MAIL_FROM) || "Rohit · FODO <rohit@fodo.co.in>";
-export const replyTo = (env) => cleanEmail((env && env.CLIENT_MAIL_REPLY_TO) || "rohit@fodo.co.in") || "rohit@fodo.co.in";
+export const fromAddr = (env) => (env && env.CLIENT_MAIL_FROM) || "FODO <anmol@fodo.co.in>";
+export const replyTo = (env) => cleanEmail((env && env.CLIENT_MAIL_REPLY_TO) || "anmol@fodo.co.in") || "anmol@fodo.co.in";
 const STATUSES = ["lead", "proposal", "active", "paused", "won", "lost", "archived"];
 
 const DDL = [

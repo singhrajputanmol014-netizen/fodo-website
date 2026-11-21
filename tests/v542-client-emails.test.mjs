@@ -56,7 +56,7 @@ ok(/#0B0B0C/.test(H) && /#151517/.test(H) && /#2A2A2F/.test(H) && /#F4F4F2/.test
 ok(/font-style:italic;font-weight:400;white-space:nowrap[^>]*>× FODO<\/span>/.test(H) && /Shagun Banquet Hall/.test(H) && /₹4,300 to ₹12,800 \/ month/.test(H) && /₹50,000 one-time/.test(H) && /30 Nov 2026/.test(H) && /a 20-minute call on Monday/.test(H), "proposal: serif italic '× FODO' accent, pricing rows, stat boxes, next step");
 ok(!/<script/i.test(H) && !/ on[a-z]+=/i.test(H) && !/—/.test(H) && !/\bfree\b/i.test(H), "email has no script, no inline handlers, no long dash, no 'free' wording");
 ok(!/Unsubscribe/.test(H) && pv.marketing === false, "proposal is transactional: no unsubscribe link");
-ok(/mailto:rohit@fodo\.co\.in\?subject=Confirm%20proposal%20for%20Shagun%20Banquet%20Hall/.test(H), "button link variables are URL-encoded");
+ok(/mailto:anmol@fodo\.co\.in\?subject=Confirm%20proposal%20for%20Shagun%20Banquet%20Hall/.test(H), "button link variables are URL-encoded");
 const fu = (await OR("preview", { client_id: "cl_shagun", type: "follow_up" })).j;
 ok(fu.marketing === true && /Unsubscribe<\/a>/.test(fu.html) && /\/api\/optout\?e=singhrajputanmol014%40gmail\.com&amp;t=/.test(fu.html) && /next_step/.test(fu.empty.join(",")), "follow-up is marketing: unsubscribe link; empty {next_step} is reported");
 const s1 = /<td valign="middle" align="right"[^]*?<\/td>/.exec(H)[0], s2 = /<td valign="middle" align="right"[^]*?<\/td>/.exec(fu.html)[0];
@@ -83,7 +83,7 @@ const ts = (await OR("send", { client_id: "cl_shagun", type: "proposal", test: t
 ok(ts.ok && mails.length === 1 && mails[0].body.to[0] === "anmol@fodo.co.in" && /^\[TEST\] Proposal for Shagun/.test(mails[0].body.subject) && ts.send.test, "test send goes to the admin only, marked [TEST]");
 const rs = (await OR("send", { client_id: "cl_shagun", type: "proposal", confirm: true, vars: { date: "30 Nov 2026", next_step: "call" } }, "adm")).j;
 const m2 = mails[1];
-ok(rs.ok && m2.body.to.length === 1 && m2.body.to[0] === "singhrajputanmol014@gmail.com" && m2.body.reply_to === "rohit@fodo.co.in" && /Rohit · FODO <rohit@fodo\.co\.in>/.test(m2.body.from) && m2.body.text.length > 50 && /Bearer re_test_x/.test(m2.headers.authorization) && !m2.body.headers["List-Unsubscribe"], "real send: one recipient, from/reply-to from config, plain text included, key only in the server header");
+ok(rs.ok && m2.body.to.length === 1 && m2.body.to[0] === "singhrajputanmol014@gmail.com" && m2.body.reply_to === "anmol@fodo.co.in" && m2.body.from === "FODO <anmol@fodo.co.in>" && m2.body.text.length > 50 && /Bearer re_test_x/.test(m2.headers.authorization) && !m2.body.headers["List-Unsubscribe"], "real send: one recipient, from/reply-to from config, plain text included, key only in the server header");
 const lg = q1("SELECT * FROM cm_sends WHERE id=?1", rs.send.id);
 ok(lg && lg.status === "sent" && lg.provider_id === "re_2" && lg.admin === "rohit@fodo.co.in" && lg.client_id === "cl_shagun" && lg.type === "proposal" && lg.at, "logged: time, admin, client, type, subject, status, provider message id");
 const dup = await OR("send", { client_id: "cl_shagun", type: "proposal", confirm: true });

@@ -38,7 +38,7 @@ export const TYPES = {
     intro: "Hi {first_name},\n\nThank you for your time. Here is our proposal for **{business_name}** in {city}. We set up and run the {service} for you, so you can run the business from your phone while every enquiry is answered and followed up.",
     items: "{pricing}",
     stats: "{amount} | One-time setup\n{date} | Proposal valid till",
-    cta_text: "Reply to confirm", cta_link: "mailto:rohit@fodo.co.in?subject=Confirm%20proposal%20for%20{business_name}",
+    cta_text: "Reply to confirm", cta_link: "mailto:anmol@fodo.co.in?subject=Confirm%20proposal%20for%20{business_name}",
     closing: "Next step: {next_step}\n\n" + SIGN_Q },
   follow_up: { label: "Follow-up", marketing: true,
     subject: "{first_name}, a quick follow-up on {business_name}",

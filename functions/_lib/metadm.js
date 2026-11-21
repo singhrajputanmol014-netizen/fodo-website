@@ -9,6 +9,9 @@
  *   META_IG_ID                 Instagram account id (17841476681882495). Optional, used to ignore our own messages.
  *   META_BOT_DISABLED          "1" = kill switch: webhook still answers Meta, the bot sends nothing.
  *   META_BOT_HUMAN_PAUSE_HOURS hours the bot stays quiet in a chat after a human (Anmol / Rohit) replies there. Default 12.
+ *   META_BOT_AUTO_ECHO_SECONDS an echo this soon after the person's message is a Meta inbox automation
+ *                              (Instant reply / FAQ / keyword), not a human, so it does NOT pause the bot. Default 45.
+ *   META_BOT_AUTOMATION_APP_IDS comma list of app ids whose echoes never pause the bot (extra safety).
  * Storage: CHAT_KV (history per person, dedupe, human-takeover pause). Without KV it still replies, without memory.
  *
  * Rules: only answers messages people send to FODO (never starts a chat), only inside Meta's 24 h window
@@ -73,13 +76,13 @@ export function parseEvents(env, body) {
         // An echo is a message FODO sent. If no app sent it (or another app did), a human replied: pause the bot in that chat.
         const byUs = msg.app_id && env.META_APP_ID && String(msg.app_id) === String(env.META_APP_ID);
         const automated = msg.metadata === "fodo-bot";
-        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, mid: msg.mid });
+        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
         continue;
       }
       if (own.has(from)) continue;
       const text = typeof msg.text === "string" ? msg.text.trim() : "";
       if (!from || !text) continue; // stickers, images, reactions: the Meta inbox automations / a human handle those
-      out.push({ kind: "message", platform, sender: from, text: text.slice(0, MAX_IN), mid: msg.mid || "" });
+      out.push({ kind: "message", platform, sender: from, text: text.slice(0, MAX_IN), mid: msg.mid || "", ts: Number(ev.timestamp) || 0 });
     }
   }
   return out;
@@ -116,14 +119,40 @@ export async function sendDm(env, recipient, text) {
 
 const FALLBACK = "Thanks for your message! Our team will reply soon. For a quick chat, WhatsApp +91 78270 07676.\nमैसेज के लिए धन्यवाद! हमारी टीम जल्दी जवाब देगी। WhatsApp: +91 78270 07676";
 
+/* Small, privacy-safe diagnostics (no ids, no text) shown on GET /api/meta/webhook. */
+async function diag(env, platform, kind, result, appId) {
+  try {
+    const v = await kvGet(env, "dm:diag"); const a = v ? JSON.parse(v) : [];
+    a.unshift({ t: new Date().toISOString(), platform, kind, result, app: appId || "" });
+    await kvPut(env, "dm:diag", JSON.stringify(a.slice(0, 15)), 7 * 86400);
+  } catch (e) { /* diagnostics never block a reply */ }
+}
+export async function readDiag(env) { try { const v = await kvGet(env, "dm:diag"); return v ? JSON.parse(v) : []; } catch (e) { return []; } }
+
 /* Handle one parsed event. Returns what happened (for logs and tests). */
 export async function handleEvent(env, ev) {
-  const pauseKey = "dm:pause:" + ev.platform + ":" + ev.sender;
+  let r;
+  try { r = await handleEventInner(env, ev); }
+  catch (e) { await diag(env, ev.platform, ev.kind, "error: " + String((e && e.message) || e).replace(/access_token=[^&\s]+/g, "").slice(0, 160), ev.appId); throw e; }
+  await diag(env, ev.platform, ev.kind, r, ev.appId);
+  return r;
+}
+
+async function handleEventInner(env, ev) {
+  const pauseKey = "dm:hp:" + ev.platform + ":" + ev.sender;
+  const lastKey = "dm:last:" + ev.platform + ":" + ev.sender;
   if (ev.kind === "human_echo") {
+    const ignore = String(env.META_BOT_AUTOMATION_APP_IDS || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (ev.appId && ignore.includes(ev.appId)) return "automation_echo";
+    // Meta inbox automations (Instant reply, FAQ, keywords) answer within seconds; a human takes longer.
+    const win = Math.max(5, parseInt(env.META_BOT_AUTO_ECHO_SECONDS || "45", 10) || 45) * 1000;
+    const last = Number(await kvGet(env, lastKey)) || 0;
+    if (last && ev.ts && ev.ts - last >= 0 && ev.ts - last < win) return "automation_echo";
     const hrs = Math.max(1, parseInt(env.META_BOT_HUMAN_PAUSE_HOURS || "12", 10) || 12);
     await kvPut(env, pauseKey, "1", hrs * 3600);
     return "paused";
   }
+  if (ev.ts) await kvPut(env, lastKey, String(ev.ts), 86400);
   if (String(env.META_BOT_DISABLED || "") === "1") return "disabled";
   if (!env.META_PAGE_TOKEN) return "no_token";
   if (ev.mid) { const k = "dm:seen:" + ev.mid; if (await kvGet(env, k)) return "duplicate"; await kvPut(env, k, "1", DEDUPE_TTL); }

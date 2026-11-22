@@ -33,7 +33,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS camp_unsub (email TEXT PRIMARY KEY, at TEXT, why TEXT)",
 ];
 /* v54.5: files attached to a send (JSON [{id,name,mime,size}]); the file bytes live in CHAT_KV under cm:att:<id> */
-const MIG = ["ALTER TABLE cm_sends ADD COLUMN atts TEXT"];
+const MIG = ["ALTER TABLE cm_sends ADD COLUMN atts TEXT", "ALTER TABLE cm_sends ADD COLUMN campaign_id TEXT"];   /* v54.6: campaign_id = a Bulk pitch campaign (pitch.js) */
 /* the first client, added once (and again only if the table is emptied and the seed row was never made) */
 export const SEED = { id: "cl_shagun", name: "", business: "Shagun Banquet Hall", email: "singhrajputanmol014@gmail.com", phone: "", city: "Motihari", industry: "Banquet hall / events",
   service: "AI Digital Growth System", amount: "₹50,000 one-time", status: "proposal",
@@ -235,7 +235,7 @@ export async function retry(env, id, admin) {
   return { send: row, used: await usedThisHour(env), hourly: hourly(env) };
 }
 export async function sends(env, f) {
-  const d = await cmDb(env); f = f || {}; const w = [], a = [];
+  const d = await cmDb(env); f = f || {}; const w = ["(campaign_id IS NULL OR campaign_id='')"], a = [];   /* Bulk pitch sends have their own page */
   if (f.client) { a.push(String(f.client)); w.push("client_id=?" + a.length); }
   if (["sent", "failed", "sending"].indexOf(f.status) > -1) { a.push(f.status); w.push("status=?" + a.length); }
   if (f.test === "0" || f.test === "1") { a.push(+f.test); w.push("test=?" + a.length); }
@@ -247,3 +247,5 @@ export async function overview(env, q) {
   return { clients: await listClients(env, q), types: T.typeList().map((t) => ({ id: t.id, label: t.label, marketing: t.marketing, subject: t.subject, blocks: T.BLOCKS.reduce((o, k) => { o[k] = t[k]; return o; }, {}) })),
     statuses: STATUSES, sends: await sends(env, {}), config: await (async () => { const p = await provider(env); return { configured: !!p.via, provider: p.via === "gmail" ? "Gmail (" + p.account + ")" : p.via === "resend" ? "Resend" : "", from: p.via === "gmail" ? ((/^(.*?)\s*</.exec(fromAddr(env)) || [])[1] || "FODO") + " <" + p.account + ">" : fromAddr(env), replyTo: replyTo(env), hourly: hourly(env), used: await usedThisHour(env), dupMinutes: DUP_MIN, attach: !!env.CHAT_KV, maxFiles: MAX_FILES, maxFileMB: 10, maxTotalMB: 15 }; })() };
 }
+/* v54.6: used by Bulk pitch (pitch.js) to send through the same Gmail / Resend path */
+export { resend as deliver };

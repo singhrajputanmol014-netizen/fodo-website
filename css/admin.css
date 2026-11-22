@@ -229,3 +229,15 @@ body.ad-menu-on{overflow:hidden}
 @media(max-width:760px){.ad-or-grid,.ad-or-vars,.ad-or-form{grid-template-columns:1fr}.ad-or-list{max-height:280px}}
 
 .ad-or-att{margin:4px 0 12px}.ad-or-atl{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.ad-or-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 6px 6px 10px;border:1px solid var(--line-3,var(--line));border-radius:999px;font-size:13px;max-width:100%;word-break:break-all}.ad-or-chip .ad-ib{min-width:26px;height:26px}
+/* v54.6 Bulk pitch */
+.ad-or-h3{margin:22px 0 6px;font-size:15px;font-weight:700;letter-spacing:.2px}
+.ad-or-ed .ad-or-h3:first-child{margin-top:0}
+.ad-pi-ben{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:8px;margin:0 0 8px}
+.ad-pi-ck{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted,#8C8C8C)}
+.ad-pi-counts{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.ad-pi-sum{display:flex;flex-wrap:wrap;gap:8px 18px;margin:6px 0 10px;font-size:13px;color:var(--muted,#8C8C8C)}
+.ad-pi-sum b{color:var(--text,#F4F4F2);font-size:16px;margin-right:3px}
+.ad-pi-bar{height:8px;border-radius:99px;background:#222;overflow:hidden;margin:0 0 8px}
+.ad-pi-bar i{display:block;height:100%;background:#8F7BFF;border-radius:99px;transition:width .3s}
+.ad-pi-pvs{display:inline-block;width:auto;max-width:260px;padding:4px 8px;font-size:12px}
+@media (max-width:700px){.ad-pi-ben{grid-template-columns:1fr}}

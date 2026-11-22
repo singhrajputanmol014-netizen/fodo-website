@@ -32,6 +32,7 @@ import * as LIC from "../../_lib/slicense.js";
 import * as IB from "../../_lib/sinbox.js";
 import * as CP from "../../_lib/campaigns.js";
 import * as OR from "../../_lib/outreach.js";
+import * as PI from "../../_lib/pitch.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
@@ -77,6 +78,11 @@ export async function onRequest(ctx) {
           return json(Object.assign({ ok: true, role, me: u.email }, await OR.overview(env, q.get("q"))));
         } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 500); }
       }
+      if (p0 === "pitch") {   // v54.6 Bulk pitch (owners and Full-control admins only)
+        if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and Full-control admins can open Bulk pitch." }, 403);
+        try { if (path[1]) return json({ ok: true, campaign: await PI.campaign(env, path[1]) }); return json(Object.assign({ ok: true, role, me: u.email }, await PI.list(env))); }
+        catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load Bulk pitch." }, e.status || 500); }
+      }
       if (p0 === "studio" && !path[1]) return json(Object.assign({ ok: true, role, canEdit }, await LIC.adminList(env)));   // v53 Studio keys
       if (p0 === "studio" && path[1] && path[2] === "key") { if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and admins can see keys." }, 403); return json(Object.assign({ ok: true }, await LIC.adminKey(env, path[1]))); }
       if (p0 === "users") return json({ ok: true, role, items: (await users(d, clean(q.get("q"), 80), Math.max(0, +q.get("offset") || 0), q.get("filter"), q.get("all") === "1")).map((x) => Object.assign(x, { owner: isOwner(x) })) });
@@ -118,6 +124,22 @@ export async function onRequest(ctx) {
         else return json({ ok: false, reason: "Unknown action." }, 400);
         return json(Object.assign({ ok: true }, r));
       } catch (e) { const st = e.status || 502; return json(Object.assign({ ok: false, reason: st < 500 || e.send || e.setup ? e.message : "Could not do that: " + String(e.message || e).slice(0, 220) }, e.duplicate ? { duplicate: true } : {}, e.needConfirm ? { needConfirm: true } : {}, e.optedOut ? { optedOut: true } : {}, e.limit ? { limit: true } : {}, e.setup ? { setup: true } : {}, e.send ? { send: e.send } : {}), st); }
+    }
+    if (p0 === "pitch") {   // v54.6 Bulk pitch: canEdit = owner or Full-control admin
+      const b = await request.json().catch(() => ({}));
+      try {
+        let r; const id = path[1], act = path[2];
+        if (id === "save") { r = await PI.saveCampaign(env, b, u.email); await logEvent(env, u.id, "pitch_save", r.campaign.id); }
+        else if (id === "pres") r = await PI.savePres(env, b);
+        else if (id === "preview") r = await PI.preview(env, "", b);
+        else if (id && act === "recipients") { r = await PI.loadRecipients(env, id, b); await logEvent(env, u.id, "pitch_list", id + " · " + r.counts.queued); }
+        else if (id && act === "preview") r = await PI.preview(env, id, b);
+        else if (id && act === "test") { r = await PI.testSend(env, id, b, u.email); await logEvent(env, u.id, "pitch_test", id); }
+        else if (id && act === "send") { r = await PI.sendBatch(env, id, b, u.email); await logEvent(env, u.id, "pitch_send", id + " · " + r.done.map((x) => x.status).join(",")); }
+        else if (id && act === "retry") { r = await PI.retryFailed(env, id); await logEvent(env, u.id, "pitch_retry", id + " · " + r.requeued); }
+        else return json({ ok: false, reason: "Unknown action." }, 400);
+        return json(Object.assign({ ok: true }, r));
+      } catch (e) { const st = e.status || 502; return json(Object.assign({ ok: false, reason: st < 500 || e.setup ? e.message : "Could not do that: " + String(e.message || e).slice(0, 220) }, e.needConfirm ? { needConfirm: true } : {}, e.needTest ? { needTest: true } : {}, e.limit ? { limit: true } : {}, e.setup ? { setup: true } : {}), st); }
     }
     if (p0 === "campaigns") {
       if (role !== "owner") return json({ ok: false, readOnly: true, reason: "Only FODO owners can send email campaigns." }, 403);

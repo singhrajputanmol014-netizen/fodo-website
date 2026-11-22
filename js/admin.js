@@ -40,9 +40,10 @@
   // v20 help desk
   TABS.push(["campaigns", "Email campaigns", "M3 6h18v12H3zm0 0 9 7 9-7M17 3l4 3"]);   // v53.8
   TABS.push(["outreach", "Client Emails", "M4 5h16v14H4zm0 0 8 7 8-7M8 15h4"]);   // v54.2
+  TABS.push(["pitch", "Bulk pitch", "M3 11l18-7-7 18-2-8zM12 14l9-10"]);   // v54.6
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "pitch", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -103,7 +104,7 @@
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, studio: studioView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, pitch: pitchView, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -501,6 +502,130 @@
       var box = document.createElement("div"); box.innerHTML = orLog(); while (h.nextSibling) h.parentNode.removeChild(h.nextSibling); h.parentNode.removeChild(h);
       while (box.firstChild) $("#ad-view").appendChild(box.firstChild); orLogWire(); var cf = $(".ad-or-cfg"); if (cf && OR.cfg.configured) cf.outerHTML = orCfg();
     });
+  }
+  /* ---------- v54.6 Bulk pitch: one presentation + one email design to many prospects (owners and Full-control admins) ---------- */
+  var PI = null, piPt = null;
+  var PI_ST = { queued: ["Queued", "mid"], sent: ["Sent", "ok"], failed: ["Failed", "bad"], opted_out: ["Opted out", ""] };
+  function pitchView() {
+    if (ME && !owner()) { $("#ad-view").innerHTML = head("Bulk pitch", "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners and Full-control admins can open Bulk pitch.</p></div>'; return; }
+    api("pitch").then(function (j) {
+      if (!j.ok) return fail(j);
+      var prev = PI || {};
+      PI = { list: j.campaigns, defaults: j.defaults, cfg: j.config, me: j.me, sel: prev.sel || (j.campaigns[0] && j.campaigns[0].id) || "", c: null, draft: null, pvEmail: prev.pvEmail || "", load: null, busy: false };
+      if (PI.sel) return piOpen(PI.sel); piNew();
+    });
+  }
+  function piNew() { var d = PI.defaults; PI.sel = ""; PI.c = null; PI.load = null; PI.draft = { name: "", subject: d.subject, copy: JSON.parse(JSON.stringify(d.copy)), pres: null, pres_link: "" }; piDraw(); }
+  function piOpen(id) {
+    api("pitch/" + encodeURIComponent(id)).then(function (j) {
+      if (!j.ok) { toast(j.reason || "Could not open the campaign.", true); return piNew(); }
+      PI.sel = id; PI.c = j.campaign; PI.draft = { id: id, name: j.campaign.name, subject: j.campaign.subject, copy: JSON.parse(JSON.stringify(j.campaign.copy)), pres: j.campaign.pres, pres_link: j.campaign.pres_link }; piDraw();
+    });
+  }
+  function piCfg() {
+    var c = PI.cfg;
+    return c.configured ? '<p class="muted ad-or-cfg">Sends with <b>' + esc(c.provider) + "</b>, " + c.batch + " emails per batch, " + (c.delayMs / 1000) + " s between emails. Shared hourly cap with Client Emails: " + c.used + " of " + c.hourly + " used this hour (CLIENT_MAIL_HOURLY). Every email has an unsubscribe link; opted-out addresses are skipped.</p>"
+      : '<div class="panel ad-card"><p class="cf-status warn">Email sending is not connected yet. Open <a href="#studio">Studio ▸ Inbox</a> and log in with Google as anmol@fodo.co.in. You can still build the campaign and preview it.</p></div>';
+  }
+  function piDraw() {
+    var D = PI.draft, c = PI.c, s = c ? c.summary : null, cp = D.copy;
+    var fld = function (id, label, val, max, rows) { return '<label class="ad-dl2" for="pi-' + id + '">' + label + "</label>" + (rows ? '<textarea id="pi-' + id + '" class="ad-in ad-ta" rows="' + rows + '" data-pc="' + id + '" maxlength="' + max + '">' + esc(val || "") + "</textarea>" : '<input id="pi-' + id + '" class="ad-in" data-pc="' + id + '" maxlength="' + max + '" value="' + esc(val || "") + '">'); };
+    var rc = c ? c.recipients : [];
+    $("#ad-view").innerHTML = head("Bulk pitch", "Pitch FODO Studio to many prospects at once: one presentation, one email in the FODO design, filled per person with {first_name}, {business_name} and {city}. Test to yourself first, then send in batches.", '<button type="button" class="btn sm" id="pi-new">+ New campaign</button>') + piCfg() +
+      '<div class="ad-or-grid">' +
+      '<section class="panel ad-card ad-or-cl" aria-label="Campaigns"><div class="ad-or-list">' + (PI.list.length ? PI.list.map(function (x) { return '<button type="button" class="ad-or-ci' + (x.id === PI.sel ? " on" : "") + '" data-pi="' + esc(x.id) + '"><b>' + esc(x.name) + "</b><small>" + x.sent + " of " + x.total + " sent" + (x.failed ? " · " + x.failed + " failed" : "") + "</small><small>" + date(x.updated_at, true) + "</small></button>"; }).join("") : '<p class="muted">No campaigns yet.</p>') + "</div></section>" +
+      '<section class="panel ad-card ad-or-ed" aria-label="Campaign">' +
+        '<h2 class="ad-or-h3">1 · Campaign</h2>' + fld("name", "Campaign name", D.name, 120) + fld("subject", "Subject (variables allowed)", D.subject, 300) +
+        '<div class="ad-or-att"><p class="ad-dl2">Presentation <span class="muted">(PDF up to 10 MB, attached to every email, or a link)</span></p>' +
+          (D.pres ? '<div class="ad-or-atl"><span class="ad-or-chip">📎 ' + esc(D.pres.name) + ' <small class="muted">' + kb(D.pres.size) + '</small><button type="button" class="ad-ib" id="pi-px" aria-label="Remove the PDF">×</button></span></div>' : "") +
+          (PI.cfg.attach === false ? '<p class="muted">PDF upload needs CHAT_KV storage.</p>' : '<label class="btn sm ghost" for="pi-pf">' + (D.pres ? "Replace PDF" : "+ Upload PDF") + '</label><input type="file" id="pi-pf" class="sr-only" accept="application/pdf,.pdf">') +
+          fld("pres_link", "or presentation link (https://)", D.pres_link, 500) + "</div>" +
+        '<h2 class="ad-or-h3">Pitch copy</h2>' + fld("eyebrow", "Eyebrow label", cp.eyebrow, 80) + fld("headline", "Headline (*words* = serif italic accent)", cp.headline, 160) + fld("intro", "Intro (blank line = new paragraph, **bold**)", cp.intro, 3000, 5) +
+        '<p class="ad-dl2">3 benefit rows</p>' + cp.benefits.map(function (b, i) { return '<div class="ad-pi-ben"><input class="ad-in" data-pb="' + i + '" data-pk="title" maxlength="80" placeholder="Title" aria-label="Benefit ' + (i + 1) + ' title" value="' + esc(b.title) + '"><input class="ad-in" data-pb="' + i + '" data-pk="text" maxlength="200" placeholder="Text" aria-label="Benefit ' + (i + 1) + ' text" value="' + esc(b.text) + '"></div>'; }).join("") +
+        fld("stats", "Stat boxes (one per line, Value | label)", cp.stats, 600, 2) + fld("cta_text", "Button text", cp.cta_text, 60) + fld("cta_link", "Button link (https://, mailto: or tel:)", cp.cta_link, 500) + fld("closing", "Closing", cp.closing, 2000, 3) +
+        '<p class="muted ad-or-hint">Variables: {first_name} {business_name} {city}. The design, header, "Anmol · FODO" sign-off, footer and unsubscribe link are fixed.</p>' +
+        '<div class="btn-row"><button type="button" class="btn" id="pi-save">' + (c ? "Save changes" : "Save campaign") + "</button>" + (c && !c.tested ? '<span class="ad-tag mid">Needs a test send</span>' : c ? '<span class="ad-tag ok">Tested</span>' : "") + "</div>" +
+        (c ? '<h2 class="ad-or-h3">2 · Recipients</h2><p class="muted">Paste a list or upload a CSV with columns <b>name, business, email, city</b> (email required). Invalid emails, duplicates and opted-out addresses are skipped. Loading again replaces everyone not yet sent.</p>' +
+          '<textarea id="pi-csv" class="ad-in ad-ta" rows="5" maxlength="2000000" placeholder="name,business,email,city&#10;Rahul Mehta,Rahul Gaming,rahul@example.com,Delhi" aria-label="Recipient list"></textarea>' +
+          '<div class="btn-row"><label class="btn sm ghost" for="pi-cf">Upload CSV</label><input type="file" id="pi-cf" class="sr-only" accept=".csv,text/csv,text/plain"><label class="ad-pi-ck"><input type="checkbox" id="pi-ov"> Also re-send to people who already got this campaign</label><button type="button" class="btn sm" id="pi-load">Load list</button></div>' +
+          (PI.load ? '<p class="ad-pi-counts"><span class="ad-tag ok">' + PI.load.counts.valid + " valid</span> <span class=\"ad-tag bad\">" + PI.load.counts.invalid + " invalid</span> <span class=\"ad-tag\">" + PI.load.counts.duplicate + " duplicate</span> <span class=\"ad-tag\">" + PI.load.counts.opted_out + " opted out</span> <span class=\"ad-tag\">" + PI.load.counts.already_sent + " already sent</span> <span class=\"ad-tag mid\">" + PI.load.counts.queued + " queued</span></p>" +
+            (PI.load.invalid.length ? '<p class="muted">Invalid: ' + PI.load.invalid.slice(0, 12).map(function (x) { return "line " + x.line + " (" + esc(x.value || "empty") + ")"; }).join(", ") + "</p>" : "") : "") +
+          '<h2 class="ad-or-h3">3 · Send</h2><div class="ad-pi-sum"><span><b>' + s.total + "</b> on the list</span><span><b>" + s.queued + "</b> queued</span><span><b>" + s.sent + "</b> sent</span><span><b>" + s.failed + "</b> failed</span><span><b>" + s.opted_out + "</b> opted out</span><span><b>" + s.unsubscribed + "</b> unsubscribed after</span><span><b>" + (s.opened == null ? "n/a" : s.opened) + "</b> opened</span></div>" +
+          (s.total ? '<div class="ad-pi-bar" role="progressbar" aria-label="Sent" aria-valuemin="0" aria-valuemax="' + s.total + '" aria-valuenow="' + s.sent + '"><i style="width:' + Math.round(100 * s.sent / Math.max(1, s.total)) + '%"></i></div>' : "") +
+          '<p id="pi-prog" class="muted" aria-live="polite"></p>' +
+          '<div class="btn-row"><button type="button" class="btn ghost" id="pi-test">Send a test to me</button><button type="button" class="btn" id="pi-send"' + (c.tested && s.queued && PI.cfg.configured ? "" : " disabled") + ">Send to " + s.queued + " people…</button>" + (s.failed ? '<button type="button" class="btn ghost" id="pi-retry">Retry ' + s.failed + " failed</button>" : "") + "</div>" +
+          (c.tested ? "" : '<p class="muted">The real send unlocks after a test to your own email (and again after any change).</p>') : '<p class="muted">Save the campaign to add recipients.</p>') +
+      "</section>" +
+      '<section class="panel ad-card ad-or-pvw" aria-label="Preview"><p class="ad-dl2">Preview for <select id="pi-pvsel" class="ad-in ad-pi-pvs" aria-label="Preview for recipient">' + (rc.length ? rc.slice(0, 300).map(function (r) { return '<option value="' + esc(r.email) + '"' + (r.email === PI.pvEmail ? " selected" : "") + ">" + esc((r.business || r.name || r.email) + " · " + r.email) + "</option>"; }).join("") : '<option value="">Sample prospect</option>') + '</select> <span id="pi-pvs" class="muted"></span></p><p id="pi-empty" class="cf-status warn" hidden></p><iframe id="pi-pv" class="ad-cp-pv" title="Email preview" sandbox=""></iframe></section>' +
+      "</div>" + piLog(rc);
+    var on = function (sel, fn) { var el = $(sel); if (el) el.onclick = fn; };
+    on("#pi-new", piNew);
+    $$("[data-pi]").forEach(function (b) { b.onclick = function () { PI.load = null; piOpen(b.dataset.pi); }; });
+    $$("[data-pc]").forEach(function (el) { el.oninput = function () { var k = el.dataset.pc; if (k === "name" || k === "subject" || k === "pres_link") D[k] = el.value; else D.copy[k] = el.value; piPreview(); }; });
+    $$("[data-pb]").forEach(function (el) { el.oninput = function () { D.copy.benefits[+el.dataset.pb][el.dataset.pk] = el.value; piPreview(); }; });
+    on("#pi-px", function () { D.pres = null; piDraw(); });
+    var pf = $("#pi-pf"); if (pf) pf.onchange = function () { var f = this.files && this.files[0]; this.value = ""; if (!f) return;
+      if (!/\.pdf$/i.test(f.name)) return toast("The presentation must be a PDF.", true); if (f.size > 10 * 1048576) return toast(f.name + " is over 10 MB.", true);
+      toast("Uploading " + f.name + "…"); readB64(f).then(function (b64) { return api("pitch/pres", { file: b64, name: f.name, mime: "application/pdf" }); }).then(function (j) { if (!j.ok) return toast(j.reason || "Could not upload the PDF.", true); D.pres = j.attachment; toast("PDF ready. Save the campaign to keep it."); piDraw(); }); };
+    on("#pi-save", function () { api("pitch/save", { id: D.id, name: D.name, subject: D.subject, copy: D.copy, pres: D.pres ? { id: D.pres.id } : null, pres_link: D.pres_link }).then(function (j) {
+      if (!j.ok) return toast(j.reason || "Could not save.", true); toast("Saved" + (j.campaign.tested ? "" : ". Send a test before the real send.")); PI.sel = j.campaign.id;
+      api("pitch").then(function (k) { if (k.ok) { PI.list = k.campaigns; PI.cfg = k.config; } piOpen(PI.sel); }); }); });
+    var cf = $("#pi-cf"); if (cf) cf.onchange = function () { var f = this.files && this.files[0]; this.value = ""; if (!f) return; if (f.size > 2 * 1048576) return toast("The CSV can be up to 2 MB.", true); var r = new FileReader(); r.onload = function () { $("#pi-csv").value = String(r.result || ""); toast(f.name + " read. Press Load list."); }; r.readAsText(f); };
+    on("#pi-load", function () { var v = $("#pi-csv").value; if (!v.trim()) return toast("Paste a list or upload a CSV first.", true);
+      api("pitch/" + encodeURIComponent(PI.sel) + "/recipients", { csv: v, override: $("#pi-ov").checked }).then(function (j) { if (!j.ok) return toast(j.reason || "Could not load the list.", true); PI.load = j; PI.c = j.campaign; toast(j.counts.queued + " queued"); piDraw(); }); });
+    var ps = $("#pi-pvsel"); if (ps) ps.onchange = function () { PI.pvEmail = this.value; piPreview(true); };
+    on("#pi-test", piTest); on("#pi-send", piSend);
+    on("#pi-retry", function () { api("pitch/" + encodeURIComponent(PI.sel) + "/retry", {}).then(function (j) { if (!j.ok) return toast(j.reason || "Could not retry.", true); PI.c = j.campaign; toast(j.requeued + " back in the queue. Press Send to continue."); piDraw(); }); });
+    piPreview(true);
+  }
+  function piPreview(now) {
+    clearTimeout(piPt);
+    piPt = setTimeout(function () { var D = PI.draft, c = PI.c, dirty = !c || JSON.stringify([D.name, D.subject, D.copy, D.pres && D.pres.id, D.pres_link]) !== JSON.stringify([c.name, c.subject, c.copy, c.pres && c.pres.id, c.pres_link]);
+      var req = dirty ? api("pitch/preview", { subject: D.subject, copy: D.copy, pres: D.pres, pres_link: D.pres_link }) : api("pitch/" + encodeURIComponent(PI.sel) + "/preview", { email: PI.pvEmail || "" });
+      req.then(function (j) { var f = $("#pi-pv"), s = $("#pi-pvs"), e = $("#pi-empty"); if (!f) return;
+        if (!j.ok) { if (s) s.textContent = "· " + (j.reason || "Could not build the preview."); return; }
+        f.srcdoc = j.html; if (s) s.textContent = "· " + j.subject + (dirty && c ? " (unsaved changes, sample prospect)" : "");
+        if (e) { e.hidden = !j.empty.length; e.textContent = j.empty.length ? "Empty for this person: " + j.empty.map(function (x) { return "{" + x + "}"; }).join(", ") : ""; } }); }, now ? 0 : 450);
+  }
+  function piTest() {
+    ask({ title: "Send a test email", text: "You get exactly what a prospect gets, filled for the person picked in the preview, with the presentation attached and [TEST] in the subject. Nobody on the list gets anything.", input: "Send the test to", ph: PI.me, ok: "Send test" }).then(function (v) {
+      if (v === null) return; toast("Sending the test…");
+      api("pitch/" + encodeURIComponent(PI.sel) + "/test", { to: v === true || !v ? PI.me : v, email: PI.pvEmail || "" }).then(function (j) { if (!j.ok) return toast(j.reason || "The test was not sent.", true); PI.c = j.campaign; toast("Test sent to " + j.test.to + ". The real send is now unlocked."); piDraw(); });
+    });
+  }
+  function piSend() {
+    var c = PI.c, n = c.summary.queued; if (!n) return;
+    api("pitch/" + encodeURIComponent(PI.sel) + "/preview", { email: PI.pvEmail || "" }).then(function (j) {
+      if (!j.ok) return toast(j.reason || "Could not build the email.", true);
+      var w = document.createElement("div"); w.className = "cfx ad-dlg";
+      w.innerHTML = '<div class="cfx-back" data-x></div><div class="cfx-box" role="dialog" aria-modal="true" aria-labelledby="pi-ct"><h3 id="pi-ct">Send this pitch?</h3>' +
+        '<dl class="ad-or-conf"><dt>Recipients</dt><dd>' + n + " people</dd><dt>Subject</dt><dd>" + esc(c.subject) + '<br><small class="muted">e.g. ' + esc(j.subject) + "</small></dd><dt>Attachments</dt><dd>" + (j.attachments.length ? j.attachments.map(function (a) { return "📎 " + esc(a.name) + " (" + kb(a.size) + ")"; }).join("<br>") : "None (presentation link in the email)") + "</dd><dt>Type</dt><dd>Marketing · unsubscribe link and List-Unsubscribe header on every email</dd></dl>" +
+        '<p class="cf-status warn">This sends to ' + n + " people and cannot be unsent.</p><p class=\"muted\">Goes out in batches of " + PI.cfg.batch + ", " + (PI.cfg.delayMs / 1000) + " s apart. Keep this page open; if the hourly cap is reached the rest waits in the queue.</p>" +
+        '<div class="btn-row"><button type="button" class="btn" data-ok>Yes, send to ' + n + ' people</button><button type="button" class="btn ghost" data-x>Cancel</button></div></div>';
+      document.body.appendChild(w); var close = function () { w.remove(); };
+      $$("[data-x]", w).forEach(function (b) { b.onclick = close; }); w.onkeydown = function (e) { if (e.key === "Escape") close(); };
+      $("[data-ok]", w).onclick = function () { close(); piRun(); }; setTimeout(function () { $("[data-x].btn", w).focus(); }, 30);
+    });
+  }
+  function piRun() {
+    if (PI.busy) return; PI.busy = true; var id = PI.sel, b = $("#pi-send"); if (b) b.disabled = true;
+    var step = function () {
+      api("pitch/" + encodeURIComponent(id) + "/send", { confirm: true }).then(function (j) {
+        if (!j.ok) { PI.busy = false; toast(j.reason || "Sending stopped.", true); return piOpen(id); }
+        PI.c = j.campaign; if (j.used != null) PI.cfg.used = j.used; var s = j.campaign.summary, p = $("#pi-prog");
+        if (PI.sel === id) { var bar = $(".ad-pi-bar i"); if (bar) bar.style.width = Math.round(100 * s.sent / Math.max(1, s.total)) + "%"; if (p) p.textContent = "Queued " + s.queued + " · sent " + s.sent + " · failed " + s.failed; }
+        if (j.paused) { PI.busy = false; toast(j.reason, true); return piOpen(id); }
+        if (j.more) return step();
+        PI.busy = false; toast("Done: " + s.sent + " sent" + (s.failed ? ", " + s.failed + " failed" : "")); api("pitch").then(function (k) { if (k.ok) { PI.list = k.campaigns; PI.cfg = k.config; } piOpen(id); });
+      });
+    };
+    step();
+  }
+  function piLog(rc) {
+    if (!PI.c) return "";
+    return '<h2 class="ad-or-h2">Send log</h2>' + (rc.length ? '<div class="ad-table"><table><thead><tr><th>Recipient</th><th>Business</th><th>City</th><th>Status</th><th>When</th></tr></thead><tbody>' + rc.map(function (r) { var st = PI_ST[r.status] || [r.status, ""];
+      return "<tr><td>" + esc(r.name || "-") + '<br><small class="muted">' + esc(r.email) + "</small></td><td>" + esc(r.business || "-") + "</td><td>" + esc(r.city || "-") + '</td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (r.error ? '<br><small class="muted">' + esc(r.error) + "</small>" : "") + (r.provider_id ? '<br><small class="muted">id ' + esc(r.provider_id) + "</small>" : "") + "</td><td>" + (r.at ? date(r.at, true) : "") + (r.send_id ? ' <a class="btn sm ghost" href="/api/admin/outreach/sends/' + encodeURIComponent(r.send_id) + '/html" target="_blank" rel="noopener">View</a>' : "") + "</td></tr>"; }).join("") + "</tbody></table></div>"
+      : '<div class="panel ad-card"><p class="muted">No recipients yet.</p></div>');
   }
   function orClientForm(c) {
     var x = c || { status: "lead" }, w = document.createElement("div"); w.className = "cfx ad-dlg";

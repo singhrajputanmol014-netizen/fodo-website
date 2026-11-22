@@ -10,7 +10,7 @@ const FONT = "'Geist','Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif", MON
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 export const WIN_CMD = "irm https://www.fodo.co.in/downloads/win-install.ps1 | iex";
 export const MAC_CMD = "curl -fsSL https://www.fodo.co.in/downloads/mac-install.sh | bash";
-export const LINKS = { site: SITE + "/", lab: SITE + "/growth-lab/", wa: "https://wa.me/917827007676", ig: "https://instagram.com/fodo.co.in", li: "https://www.linkedin.com/company/fodo_co_in/", download: SITE + "/fodo-studio/#fs-download", studio: SITE + "/studio/" };
+export const LINKS = { site: SITE + "/", lab: SITE + "/growth-lab/", wa: "https://wa.me/917827007676", ig: "https://www.instagram.com/fodo.co.in/", li: "https://www.linkedin.com/company/fodo_co_in/", download: SITE + "/fodo-studio/#fs-download", studio: SITE + "/studio/" };
 export const copyUrl = (key) => SITE + "/studio/key/#" + encodeURIComponent(key);
 /* phones (Gmail app, Apple Mail, Outlook mobile read this): edge-to-edge card, smaller title and key on one line,
    full-width buttons, the 4 feature tiles stacked. Without it the email still fits (fluid widths, the key wraps). */

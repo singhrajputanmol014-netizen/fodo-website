@@ -21,7 +21,7 @@ EMAIL = "anmol@fodo.co.in"
 PHONE = "+917827007676"
 ADDRESS = {"@type": "PostalAddress", "streetAddress": "65 M Block, New Roshanpura, Najafgarh", "addressLocality": "New Delhi",
            "addressRegion": "Delhi", "postalCode": "110043", "addressCountry": "IN"}
-INSTAGRAM = "https://instagram.com/fodo.co.in"
+INSTAGRAM = "https://www.instagram.com/fodo.co.in/"   # v54.7: canonical profile URL (no redirect)
 X_PROFILE = "https://x.com/fodo_media"   # v51.4: FODO brand account on X
 LINKEDIN_COMPANY = "https://www.linkedin.com/company/fodo_co_in/"   # v51.5: FODO company page
 FACEBOOK_PAGE = "https://www.facebook.com/profile.php?id=61576317054529"   # v51.5: FODO Facebook Page
@@ -44,7 +44,7 @@ KNOWS_ABOUT = ["Digital marketing", "Search engine optimisation", "Local SEO", "
 def org_graph():
     """Organization + ProfessionalService + WebSite + founder Person, the home page's entity graph."""
     org = {"@type": "Organization", "@id": ORG_ID, "name": BRAND, "legalName": LEGAL_NAME, "alternateName": ["Fear Of Digitally Out", "FODO Digital"],
-           "slogan": TAGLINE, "url": SITE + "/", "logo": {"@type": "ImageObject", "url": LOGO}, "image": OG_IMAGE, "email": EMAIL,
+           "slogan": TAGLINE, "url": SITE + "/", "mainEntityOfPage": SITE + "/", "logo": {"@type": "ImageObject", "url": LOGO}, "image": OG_IMAGE, "email": EMAIL,
            "telephone": PHONE, "address": ADDRESS, "founder": [{"@id": FOUNDER_ID}, {"@id": COFOUNDER_ID}], "sameAs": [INSTAGRAM, X_PROFILE, LINKEDIN_COMPANY, FACEBOOK_PAGE],
            "contactPoint": [{"@type": "ContactPoint", "contactType": "sales", "email": EMAIL, "telephone": PHONE,
                              "availableLanguage": ["English", "Hindi"], "areaServed": "Worldwide"},
@@ -54,6 +54,7 @@ def org_graph():
     biz = {"@type": "ProfessionalService", "@id": BIZ_ID, "name": LEGAL_NAME, "url": SITE + "/", "image": OG_IMAGE, "logo": LOGO,
            "email": EMAIL, "telephone": PHONE, "address": ADDRESS, "parentOrganization": {"@id": ORG_ID},
            "description": "Remote-first digital growth agency headquartered in New Delhi, India: SEO, paid media, content, social, brand, web and automation for brands in India and worldwide.",
+           "sameAs": [INSTAGRAM, X_PROFILE, LINKEDIN_COMPANY, FACEBOOK_PAGE],   # v54.7: same profiles on the business node
            "areaServed": AREA_SERVED, "knowsAbout": KNOWS_ABOUT}
     web = {"@type": "WebSite", "@id": SITE_ID, "name": BRAND, "alternateName": LEGAL_NAME, "url": SITE + "/", "inLanguage": "en",
            "publisher": {"@id": ORG_ID},

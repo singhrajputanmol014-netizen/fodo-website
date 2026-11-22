@@ -3,7 +3,7 @@
    Email-safe: tables + inline styles, one <style> block only for phones (clients that drop it still get a fluid layout).
    Designed in Figma (file p18tQaBDyE64sWrAy5RV1X, page Emails, frame "Email · FODO campaign (600)"). */
 const SITE = "https://www.fodo.co.in";
-export const LINKS = { site: SITE + "/", studio: SITE + "/fodo-studio/", wa: "https://wa.me/917827007676", ig: "https://instagram.com/fodo.co.in", li: "https://www.linkedin.com/company/fodo_co_in/", x: "https://x.com/fodo_media" };
+export const LINKS = { site: SITE + "/", studio: SITE + "/fodo-studio/", wa: "https://wa.me/917827007676", ig: "https://www.instagram.com/fodo.co.in/", li: "https://www.linkedin.com/company/fodo_co_in/", x: "https://x.com/fodo_media" };
 const C = { page: "#050505", card: "#111111", raised: "#171717", line: "#222222", text: "#F5F3EE", body: "#C9C7C1", muted: "#8C8C8C", dot: "#7B61FF" };
 const FONT = "'Inter Tight','Inter','Segoe UI',Helvetica,Arial,sans-serif";
 const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

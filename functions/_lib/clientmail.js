@@ -18,7 +18,7 @@
 const SITE = "https://www.fodo.co.in";
 export const C = { page: "#0B0B0C", card: "#151517", line: "#2A2A2F", text: "#F4F4F2", muted: "#B4B4BB", dim: "#8A8A92", violet: "#8F7BFF" };
 const FONT = "'Inter Tight',Arial,Helvetica,sans-serif", SERIF = "Georgia,'Times New Roman',Times,serif";
-export const LINKS = { site: SITE + "/", wa: "https://wa.me/917827007676", ig: "https://instagram.com/fodo.co.in", li: "https://www.linkedin.com/company/fodo_co_in/" };
+export const LINKS = { site: SITE + "/", wa: "https://wa.me/917827007676", ig: "https://www.instagram.com/fodo.co.in/", li: "https://www.linkedin.com/company/fodo_co_in/" };
 
 export const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 /* plain text only: drop tags and control characters, keep line breaks */

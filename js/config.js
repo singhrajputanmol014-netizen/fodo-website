@@ -12,7 +12,7 @@ window.FODO = {
   address: "65 M Block, New Roshanpura, Najafgarh, New Delhi – 110043, India",
   hq: "HQ New Delhi, India · working worldwide",
   instagramHandle: "@fodo.co.in",
-  instagramUrl: "https://instagram.com/fodo.co.in",
+  instagramUrl: "https://www.instagram.com/fodo.co.in/",
   xHandle: "@fodo_media",
   xUrl: "https://x.com/fodo_media",
   linkedinCompanyUrl: "https://www.linkedin.com/company/fodo_co_in/",

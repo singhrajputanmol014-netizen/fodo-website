@@ -161,7 +161,7 @@ const ig2 = (await LP("drafts/" + lid2, { channel: "instagram" })).j; console.lo
 ok(ig2.text.length <= 1000 && LI.gapsOf((await LP("lead/" + lid2)).j).every((g) => ig2.text.indexOf(g.what) > -1) && /No WhatsApp number listed/.test(ig2.text), "Instagram message keeps every gap within 1000 characters; no-website business is not told about a WhatsApp button");
 const wd = (await LP("drafts/" + lid, { channel: "instagram" })).j; ok(wd.ok && wd.text, "per-platform drafts (Instagram)");
 const AIb = env.AI; env.AI = undefined; const dt = (await LP("drafts/" + lid, { channel: "whatsapp" })).j; env.AI = AIb;
-ok(dt.ok && dt.template && /Anmol from FODO/.test(dt.text) && !/\bfree\b/i.test(dt.text) && !/—/.test(dt.text), "without AI a clearly marked template is used");
+ok(dt.ok && dt.template && /I run FODO, a (digital )?marketing agency/.test(dt.text) && !/small|studio/i.test(dt.text) && !/\bfree\b/i.test(dt.text) && !/—/.test(dt.text), "without AI a clearly marked template is used");
 /* outreach desk */
 ok(LI.waNumber("+91 98000 00001") === "919800000001" && LI.waNumber("098000 00001") === "919800000001" && LI.waNumber("011 4000 0002") === "" && LI.waNumber("https://wa.me/919800000001") === "919800000001", "WhatsApp numbers: Indian mobiles only, landlines skipped");
 X("UPDATE li_businesses SET status='not_contacted' WHERE id=?", lid2);

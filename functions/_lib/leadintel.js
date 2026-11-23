@@ -670,7 +670,7 @@ const STYLE = { whatsapp: "a WhatsApp message of 50 to 80 words. Mention the 2 o
   instagram: "an Instagram DM of 30 to 50 words. Mention the 1 or 2 most important missing things and why", facebook: "a Facebook Page message of 40 to 60 words. Mention 2 missing things and why",
   linkedin: "a LinkedIn connection note under 280 characters to the owner. One missing thing and why", x: "an X direct message under 240 characters. One missing thing",
   followup: "a short follow-up email of 50 to 80 words with 'Subject: ...' as the first line, referring back to the missing things", opener: "three different one-sentence opening lines, one per line, each about a different missing thing" };
-const SYS = "You are Anmol, who runs FODO, a small digital growth studio in New Delhi. You are typing a message yourself, by hand, to a local business owner. " +
+const SYS = "You are Anmol, who runs FODO, a digital marketing agency in New Delhi. Never call FODO small, tiny or a studio. You are typing a message yourself, by hand, to a local business owner. " +
   "Sound like a real person: short simple sentences, everyday words, contractions (I'm, you're), Indian English is fine. Say what you saw (\"I checked\", \"I couldn't find\") and in a few words why it matters to their customers. " +
   "Start with one honest positive only if a good fact is given. Use ONLY the facts given: never invent numbers, results, clients or claims. " +
   "Never use these words or phrases: impressive, enhance, elevate, leverage, unlock, seamless, boost, digital presence, online presence, take your business to the next level, testament, game changer, I hope this message finds you well, reach out, synergy, cutting-edge, robust, delve, journey, solution(s). " +
@@ -704,7 +704,7 @@ const capF = (t) => String(t || "").charAt(0).toUpperCase() + String(t || "").sl
 export function fullMessage(F, ch, w) {
   w = w || {}; const wa = ch === "whatsapp", b = (t) => (wa ? "*" + t + "*" : t), dot = "• ";
   const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";
-  const opening = w.opening || (ch === "instagram" || ch === "x" ? hi + ", Anmol from FODO (New Delhi) here. I had a look at " + F.name + " online." : hi + ", I'm Anmol from FODO, a small digital growth studio in New Delhi. I came across " + F.name + (F.place && F.name.toLowerCase().indexOf(F.place.toLowerCase()) < 0 ? " in " + F.place : "") + " and spent some time checking how you show up for people online.");
+  const opening = w.opening || (ch === "instagram" || ch === "x" ? hi + ", I'm Anmol, I run FODO, a marketing agency in New Delhi. I had a look at " + F.name + " online." : hi + ", I'm Anmol, I run FODO, a digital marketing agency in New Delhi. I came across " + F.name + (F.place && F.name.toLowerCase().indexOf(F.place.toLowerCase()) < 0 ? " in " + F.place : "") + " and spent some time checking how you show up for people online.");
   const parts = [opening];
   if (F.strengths.length) parts.push(b("What's already working") + "\n" + F.strengths.map((g) => dot + capF(g)).join("\n"));
   const compact = ch === "instagram" || ch === "x";   // Instagram DMs stop at 1000 characters: one line per gap
@@ -725,7 +725,7 @@ export function emailBlocks(F, w) {
   const rows = F.gaps.slice(0, 8).map((g) => clip(g.what, 70) + " | " + capF(clip(g.fix, 140)) + ". " + capF(clip(g.why, 110)) + ".");
   const good = F.strengths.length ? "\n\nWhat's already working: " + F.strengths.join("; ") + "." : "";
   return { eyebrow: "For " + F.name + (F.place ? " · " + F.place : ""), headline: clip(F.name, 34) + ", *what we noticed*",
-    intro: (String(w.intro || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 900) || (hi + ",\n\nI'm Anmol from FODO, a small digital growth studio in New Delhi. I came across " + F.name + " and checked how it shows up for people searching online.")) + good +
+    intro: (String(w.intro || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 900) || (hi + ",\n\nI'm Anmol, I run FODO, a digital marketing agency in New Delhi. I came across " + F.name + " and checked how it shows up for people searching online.")) + good +
       (F.gaps.length ? "\n\nHere is what's missing, and how we'd fix each one:" : ""),
     items: rows.join("\n"), stats: stats.slice(0, 2).join("\n"), cta_text: "Book a 15-minute call",
     cta_link: "https://wa.me/917827007676?text=" + encodeURIComponent("Hi Anmol, about " + F.name),
@@ -735,7 +735,7 @@ export function emailBlocks(F, w) {
 async function openClose(env, F, facts, ch) {
   const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";
   const a = await aiRun(env, SYS + " Reply with JSON only: {\"opening\": \"...\", \"closing\": \"...\"}.", facts + "\n\nThis is a " + ({ whatsapp: "WhatsApp message", instagram: "Instagram DM", facebook: "Facebook message", linkedin: "LinkedIn message", x: "X message" }[ch] || "message") +
-    ". A list of what's working and what's missing with fixes is added automatically between your two lines, so do not list them. opening: starts with '" + hi + ",', then 1 or 2 short sentences: you are Anmol from FODO in New Delhi and one honest, specific line about why you looked at them. closing: 1 or 2 short sentences asking for 10 minutes this week, no pressure, NO sign-off or name.", 220);
+    ". A list of what's working and what's missing with fixes is added automatically between your two lines, so do not list them. opening: starts with '" + hi + ",', then 1 or 2 short sentences: you are Anmol and you run FODO, a digital marketing agency in New Delhi, and one honest, specific line about why you looked at them. closing: 1 or 2 short sentences asking for 10 minutes this week, no pressure, NO sign-off or name.", 220);
   if (!a) return null; const raw = String(a.text).replace(/```(json)?/g, ""); let w = null;
   try { w = JSON.parse(raw.replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) { const g = (k) => ((raw.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"\\s*(,\\s*"[a-z]+"\\s*:|}\\s*$)')) || [])[1] || "").trim(); w = g("opening") ? { opening: g("opening"), closing: g("closing") } : null; }
   if (!w || !w.opening) return null;
@@ -750,7 +750,7 @@ export async function drafts(env, id, b) {
   const F = factsOf(L), facts = factText(F);
   if (ch === "email") {
     const ai = await aiRun(env, SYS + " Reply with JSON only: {\"subject\": \"...\", \"intro\": \"...\", \"closing\": \"...\"}.",
-      facts + "\n\nWrite an email to this business. The email already shows the list of missing things as rows, so do not repeat the list. subject: under 55 characters, plain and specific, like a person would write it (for example '" + F.name + ": a few things I noticed'). intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, then 2 or 3 short sentences: who you are, one honest positive if given, then that a few things are missing and are probably costing them enquiries. closing: 1 or 2 short sentences offering a 15-minute call, no pressure, NO sign-off or name.", 380);
+      facts + "\n\nWrite an email to this business. The email already shows the list of missing things as rows, so do not repeat the list. subject: under 55 characters, plain and specific, like a person would write it (for example '" + F.name + ": a few things I noticed'). intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, then 2 or 3 short sentences: who you are (Anmol, you run FODO, a digital marketing agency in New Delhi), one honest positive if given, then that a few things are missing and are probably costing them enquiries. closing: 1 or 2 short sentences offering a 15-minute call, no pressure, NO sign-off or name.", 380);
     let w = null; if (ai) { const raw = String(ai.text).replace(/```(json)?/g, "");
       try { w = JSON.parse(raw.replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) {   // models often put raw line breaks inside the strings
         const g = (k) => ((raw.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"\\s*(,\\s*"[a-z]+"\\s*:|}\\s*$)')) || [])[1] || "").replace(/\\n/g, "\n").trim();

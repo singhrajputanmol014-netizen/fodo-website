@@ -154,6 +154,11 @@ ok(dr.blocks.items.split("\n").every((l) => / \| /.test(l)) && /people|customers
 ok(LI.soundsAI("Boost your digital presence with our solutions!") && LI.soundsAI("I noticed your impressive reviews") && !LI.soundsAI("Hi Dr. Priya, I checked your site and couldn't find a WhatsApp button."), "marketing-bot wording is detected and rewritten");
 const AIx = env.AI; env.AI = undefined; const nw = (await LP("drafts/" + lid2, { channel: "whatsapp" })).j; env.AI = AIx;
 ok(nw.template && /no website/i.test(nw.text) && /Google Maps|services/.test(nw.text) && !LI.soundsAI(nw.text), "hand-written fallback names what is missing and why, in plain words");
+const fm = (await LP("drafts/" + lid, { channel: "whatsapp" })).j, gl = (await LP("lead/" + lid)).j;
+ok(LI.gapsOf(gl).every((g) => fm.text.indexOf(g.what) > -1) && /\*What's already working\*/.test(fm.text) && /212 Google reviews/.test(fm.text) && /how we'd fix/.test(fm.text) && /AI assistant that answers/.test(fm.text), "every platform message lists what's good, every gap, why it matters and how we fix it (WhatsApp uses *bold* headings)");
+const li2 = (await LP("drafts/" + lid, { channel: "linkedin" })).j; ok(li2.note && li2.note.length <= 300 && li2.text.length > li2.note.length && !/\*/.test(li2.text), "LinkedIn: full message plus a short connection note");
+const ig2 = (await LP("drafts/" + lid2, { channel: "instagram" })).j; console.log("SAMPLE\n" + ig2.text + "\nLEN " + ig2.text.length);
+ok(ig2.text.length <= 1000 && LI.gapsOf((await LP("lead/" + lid2)).j).every((g) => ig2.text.indexOf(g.what) > -1) && /No WhatsApp number listed/.test(ig2.text), "Instagram message keeps every gap within 1000 characters; no-website business is not told about a WhatsApp button");
 const wd = (await LP("drafts/" + lid, { channel: "instagram" })).j; ok(wd.ok && wd.text, "per-platform drafts (Instagram)");
 const AIb = env.AI; env.AI = undefined; const dt = (await LP("drafts/" + lid, { channel: "whatsapp" })).j; env.AI = AIb;
 ok(dt.ok && dt.template && /Anmol from FODO/.test(dt.text) && !/\bfree\b/i.test(dt.text) && !/—/.test(dt.text), "without AI a clearly marked template is used");

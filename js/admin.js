@@ -780,7 +780,7 @@
   var lfind = function (x, ch) { return "https://www.google.com/search?q=" + encodeURIComponent([String(x.name).split(/\s[|\-–]\s|,/)[0], x.locality || x.city, { whatsapp: "whatsapp number", email: "email", instagram: "instagram", facebook: "facebook", linkedin: "linkedin owner", x: "twitter" }[ch]].filter(Boolean).join(" ")); };
   function liMsgPanel(j) {
     var x = j.lead, blocked = x.status === "dnc" || j.opted_out;
-    return '<div class="panel ad-card ad-li-msg"><h2>Message this business <small class="muted">each platform gets its own message, written from what research found</small></h2>' +
+    return '<div class="panel ad-card ad-li-msg"><h2>Message this business <small class="muted">one complete message for every platform: what works, what is missing and how FODO fixes it</small></h2>' +
       (blocked ? '<p class="cf-status warn">Do not contact. Messaging is switched off for this business.</p>' :
       '<div class="ad-li-plat" role="group" aria-label="Platforms">' + liChans(j).map(function (c, i) { return '<button type="button" class="ad-li-pb' + (c.missing ? " miss" : "") + '" data-mc="' + i + '" aria-pressed="false"><b>' + esc(c.missing ? LPLAT.find(function (p) { return p[0] === c.channel; })[1] : c.label) + "</b><small>" + esc(c.missing ? "not found yet" : String(c.target).replace(/^https?:\/\/(www\.)?/, "").slice(0, 34)) + "</small></button>"; }).join("") + "</div>" +
       '<div id="ll-mw" hidden></div><p class="muted ad-li-more">More: <button type="button" class="ad-li-lnk" data-dr="followup">follow-up email text</button> · <button type="button" class="ad-li-lnk" data-dr="opener">3 opening lines</button></p>') + "</div>";
@@ -815,10 +815,11 @@
         if (!r.ok) { w.innerHTML = '<p class="cf-status warn">' + esc(r.reason) + "</p>"; return; }
         if (c && c.channel === "email") { w.innerHTML = liEmailBox(x, r, c.target); return leWire(w, x.id, function () { reload(); }); }
         w.innerHTML = '<p class="muted" id="ll-drm">' + (c ? (c.missing ? "Not found in research. " : "To " + esc(c.target) + (c.note ? " (" + esc(c.note) + ")" : "") + ". ") : "") + (r.ai ? "AI draft from the research, check before sending." : "Template draft, edit before sending.") + "</p>" +
-          '<textarea id="ll-dr" class="ad-in ad-ta" rows="7" aria-label="Message">' + esc(r.text) + "</textarea>" +
+          '<textarea id="ll-dr" class="ad-in ad-ta" rows="14" aria-label="Message">' + esc(r.text) + "</textarea>" + (r.note ? '<p class="muted">LinkedIn connection requests allow about 300 characters. Send this short note with the request, and the full message once they accept: <button type="button" class="ad-li-lnk" id="ll-note">Copy connection note</button></p>' : "") +
           '<div class="ad-acts">' + (c && !c.missing ? '<button type="button" class="btn sm" id="ll-open">' + LOPEN[c.channel] + "</button>" : "") + (c && c.missing ? '<a class="btn sm ghost" href="' + esc(lfind(x, c.channel)) + '" target="_blank" rel="noopener">Find on Google</a>' : "") + '<button type="button" class="btn sm ghost" id="ll-cp">Copy</button></div>' +
           '<div class="ad-acts ad-li-ok2" id="ll-did" hidden><span>Did you send it?</span><button type="button" class="btn sm" id="ll-yes">Yes, mark as sent</button><button type="button" class="btn sm ghost" id="ll-no">Not sent</button></div>';
         var o = $("#ll-open"); if (o) o.onclick = function () { var t = $("#ll-dr").value.trim(); if (t) { liOpen(cur, t); $("#ll-did").hidden = false; } };
+        var nb = $("#ll-note"); if (nb) nb.onclick = function () { liCopy(r.note).then(function (ok) { toast(ok ? "Connection note copied" : r.note); }); };
         $("#ll-cp").onclick = function () { var t = $("#ll-dr").value; liCopy(t).then(function (ok) { if (ok) toast("Copied"); else $("#ll-dr").select(); }); if (cur && cur.missing) $("#ll-did") && ($("#ll-did").hidden = false); };
         var y = $("#ll-yes"); if (y) y.onclick = function () { liSent(x.id, cur.channel, "Sent on " + (cur.label || cur.channel)).then(function (rr) { toast(rr.ok ? "Logged as sent" : rr.reason, !rr.ok); if (rr.ok) reload(); }); };
         var n = $("#ll-no"); if (n) n.onclick = function () { $("#ll-did").hidden = true; };
@@ -856,7 +857,7 @@
           }
           w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box ad-li-qb" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + " sent · " + skipped.length + ' skipped</p>' +
             '<h3 id="lq-t">' + esc(q.name) + '</h3><p class="muted">' + esc(q.c.label + ": " + q.c.target) + (q.c.note ? " · " + esc(q.c.note) : "") + (q.err ? '<br><span class="ad-li-bad">' + esc(q.err) + "</span>" : "") + "</p>" +
-            '<textarea class="ad-in ad-ta" rows="8" id="lq-tx" aria-label="Message">' + esc(q.text) + '</textarea>' +
+            '<textarea class="ad-in ad-ta" rows="14" id="lq-tx" aria-label="Message">' + esc(q.text) + '</textarea>' +
             '<div class="ad-acts"><button type="button" class="btn" id="lq-open">' + LOPEN[q.c.channel] + '</button><button type="button" class="btn ghost" id="lq-sent" disabled>Sent, next</button><button type="button" class="btn sm ghost" id="lq-skip">Skip</button><button type="button" class="btn sm ghost" id="lq-stop">Stop</button></div>' +
             '<p class="muted">' + (q.ai ? "AI draft, check it before sending." : "Template draft, edit before sending.") + "</p></div>";
           $("#lq-open", w).onclick = function () { var t = $("#lq-tx", w).value.trim(); if (!t) return; liOpen(q.c, t); $("#lq-sent", w).disabled = false; $("#lq-sent", w).classList.remove("ghost"); };

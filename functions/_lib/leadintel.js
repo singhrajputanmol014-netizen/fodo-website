@@ -243,7 +243,7 @@ async function webSearch(env, d, q) {
     const r = prov === "serper"
       ? await outbound(env)("https://google.serper.dev/search", { method: "POST", headers: { "x-api-key": env.SERPER_API_KEY, "content-type": "application/json" }, body: JSON.stringify({ q, num: 10, gl: "in", hl: "en" }), signal: AbortSignal.timeout(12000) })
       : await outbound(env)("https://api.search.brave.com/res/v1/web/search?count=10&q=" + encodeURIComponent(q), { headers: { accept: "application/json", "x-subscription-token": env.BRAVE_API_KEY }, signal: AbortSignal.timeout(12000) });
-    await usage(d, prov, r.ok); if (!r.ok) return { error: prov + " " + r.status };
+    await usage(d, prov, r.ok); if (!r.ok) return { error: prov + " " + r.status + " " + clip(await r.text().catch(() => ""), 120) };
     return normSearch(prov, await r.json(), q);
   } catch (e) { await usage(d, prov, false); return { error: prov + ": " + String(e.message || e).slice(0, 120) }; }
 }
@@ -279,9 +279,10 @@ export function emailsInResults(res, b) {
 }
 async function emailsFromSearch(env, d, b) {
   if (!providers(env).search) return { error: "search API not configured" };
-  const dom = b.domain || siteDomain(b.website), qs = (dom ? ['"@' + dom + '"'] : []).concat(['"' + b.name.split(/\s[|\-\u2013]\s/)[0].slice(0, 60) + '" ' + (b.locality || b.city || "") + " email"]), all = [];
-  for (const q of qs) { const res = await webSearch(env, d, q); if (res && res.error) return { error: res.error, emails: all }; emailsInResults(res, b).forEach((e) => { if (!all.some((x) => x.email === e.email)) all.push(e); }); if (all.length) break; }
-  return { emails: all };
+  const dom = b.domain || siteDomain(b.website), qs = (dom ? [dom + " email contact"] : []).concat(['"' + b.name.split(/\s[|\-\u2013]\s|,/)[0].trim().slice(0, 60) + '" ' + (b.locality || b.city || "") + " email"]), all = [];
+  let lastErr = "";
+  for (const q of qs) { const res = await webSearch(env, d, q); if (res && res.error) { lastErr = res.error; continue; } emailsInResults(res, b).forEach((e) => { if (!all.some((x) => x.email === e.email)) all.push(e); }); if (all.length) break; }
+  return all.length || !lastErr ? { emails: all } : { error: lastErr, emails: all };
 }
 async function mxCheck(env, d, domain) {
   try {

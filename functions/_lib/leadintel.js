@@ -667,12 +667,13 @@ export async function drafts(env, id, b) {
   const F = factsOf(L), facts = factText(F);
   if (ch === "email") {
     const ai = await aiRun(env, SYS + " Reply with JSON only: {\"subject\": \"...\", \"intro\": \"...\", \"closing\": \"...\"}.",
-      facts + "\n\nWrite an email to this business. subject: under 60 characters, specific to them, no clickbait. intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, 2 or 3 short sentences: who Anmol is, one genuine positive fact if given, then lead into 'here is what I noticed'. closing: 1 or 2 sentences offering a 15-minute call, no pressure.", 380);
+      facts + "\n\nWrite an email to this business. subject: under 60 characters, specific to them, no clickbait. intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, 2 or 3 short sentences: who Anmol is, one genuine positive fact if given, then lead into 'here is what I noticed'. closing: 1 or 2 sentences offering a 15-minute call, no pressure, with NO sign-off or name (the email template adds the signature).", 380);
     let w = null; if (ai) { const raw = String(ai.text).replace(/```(json)?/g, "");
       try { w = JSON.parse(raw.replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) {   // models often put raw line breaks inside the strings
         const g = (k) => ((raw.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"\\s*(,\\s*"[a-z]+"\\s*:|}\\s*$)')) || [])[1] || "").replace(/\\n/g, "\n").trim();
         w = g("subject") && g("intro") ? { subject: g("subject"), intro: g("intro"), closing: g("closing") } : null; } }
-    if (w) { w.intro = String(w.intro || "").replace(/\\n/g, "\n"); w.closing = String(w.closing || "").replace(/\\n/g, "\n"); }
+    if (w) { const unsign = (t) => String(t || "").replace(/\\n/g, "\n").replace(/[\s,.]*(best|regards|thanks|cheers|warm regards|looking forward[^,.]*)?[\s,.]*(anmol)?[\s,]*(fodo)?[\s.]*$/i, (m) => (/anmol|fodo|regards|best|thanks|cheers|looking/i.test(m) ? "." : m)).replace(/\.\.$/, ".").trim();
+      w.intro = String(w.intro || "").replace(/\\n/g, "\n").replace(/^(Hi [^,\n]{1,40},)\s*(?!\n)/, "$1\n\n"); w.closing = unsign(w.closing); }   // the design already signs "Anmol · FODO"
     const blocks = emailBlocks(F, w), subject = clip((w && w.subject) || F.name + ", a few quick wins for more enquiries", 120);
     return { channel: "email", subject, blocks, to: (L.channels.find((c) => c.channel === "email") || {}).target || "", ai: !!w, model: w ? ai.model : null };
   }

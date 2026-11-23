@@ -28,7 +28,7 @@ const call = async (path, body, who, o = {}) => {
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {} return { status: r.status, j, t, h: r.headers };
 };
 /* ---- fixtures for mocked outside services (test data only, never shown on the site) ---- */
-let placesCalls = 0, placesDown = false, serperOn = true, calls = [];
+const mails = []; let placesCalls = 0, placesDown = false, serperOn = true, calls = [];
 const SMILE = `<html><head><title>Smile Dental Clinic Dwarka | Dentist</title><meta name="viewport" content="width=device-width"></head><body><h1>Smile Dental</h1>
 <a href="/contact-us">Contact</a> <a href="/about">About us</a> <a href="/team">Our team</a> <a href="/missing-page">Old offer</a>
 <a href="https://www.instagram.com/smiledentaldwarka/">Instagram</a> <a href="https://wa.me/919800000001">WhatsApp us</a>
@@ -42,6 +42,7 @@ const PLACES = { places: [
   { id: "P3", displayName: { text: "Closed Dental" }, formattedAddress: "Sector 7, Dwarka", location: { latitude: 28.5, longitude: 77.0 }, businessStatus: "CLOSED_PERMANENTLY", googleMapsUri: "https://maps.google.com/?cid=3", rating: 3, userRatingCount: 4 },
 ] };
 globalThis.fetch = async (u, o = {}) => { u = String(u); calls.push(u);
+  if (/api\.resend\.com\/emails/.test(u)) { const b = JSON.parse(o.body); mails.push(b); return Response.json({ id: "re_" + mails.length }); }
   if (/places\.googleapis\.com/.test(u)) { placesCalls++; if (placesDown) return new Response("{}", { status: 403 }); return Response.json(PLACES); }
   if (/google\.serper\.dev/.test(u)) return Response.json({ organic: [{ title: "Amit Kumar - Founder - Bright Teeth Care | LinkedIn", link: "https://in.linkedin.com/in/amit-kumar-bt", snippet: "Founder at Bright Teeth Care, Dwarka" }, { title: "Neha Gupta - CEO - Some Other Company | LinkedIn", link: "https://in.linkedin.com/in/neha", snippet: "CEO at Other Co" }] });
   if (/cloudflare-dns\.com/.test(u)) return Response.json({ Answer: [{ type: 15, data: "10 mx.smiledental.in." }] });
@@ -137,7 +138,17 @@ ok((await LP("duplicates")).j.groups.length === 0, "duplicate report finds none"
 const ex = (await LP("export?ids=" + lid)).j; ok(ex.rows.length === 1 && ex.rows[0]["Lead ID"] === lid && /info@smiledental\.in/.test(ex.rows[0].Email) && ex.rows[0].Priority && ex.rows[0]["Recommended services"], "export rows with all lead columns");
 
 /* outreach drafts */
-const dr = (await LP("drafts/" + lid, { channel: "email" })).j; ok(dr.ok && dr.ai && /Subject:/.test(dr.text), "AI outreach draft (labelled AI), not sent");
+const dr = (await LP("drafts/" + lid, { channel: "email" })).j;
+ok(dr.ok && dr.subject && dr.blocks && /Smile Dental Clinic/.test(dr.blocks.headline) && /212 Google reviews/.test(dr.blocks.stats) && dr.blocks.items.split("\n").length >= 2 && /wa\.me\/917827007676/.test(dr.blocks.cta_link), "email draft: subject + designed blocks built from the lead's real facts (reviews, findings)");
+const pv = (await LP("email-preview/" + lid, { subject: dr.subject, blocks: dr.blocks })).j;
+ok(pv.ok && /FEAR OF DIGITALLY OUT/.test(pv.html) && /a few quick wins/.test(pv.html) && /212 Google reviews/.test(pv.html) && /Unsubscribe/.test(pv.html) && pv.to === "info@smiledental.in", "email preview uses the FODO email design with unsubscribe link");
+ok((await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks })).status === 400, "a real email needs confirm");
+const ts = (await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, test: true })).j;
+ok(ts.ok && ts.test && ts.sent.to === "anmol@fodo.co.in" && mails.length === 1 && /^\[TEST\]/.test(mails[0].subject), "test email goes only to the admin");
+const rs = (await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, confirm: true, override: true })).j;   // an earlier manual "email sent" status sits within the 10-minute guard
+ok(rs.ok && mails.length === 2 && mails[1].to[0] === "info@smiledental.in" && /List-Unsubscribe/.test(JSON.stringify(mails[1].headers)) && rs.history[0].channel === "email" && rs.lead.status === "email_sent" && rs.sent.to === "info@smiledental.in", "confirmed email is sent with unsubscribe header and logged on the lead");
+ok((await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, confirm: true })).status === 409, "a second email within minutes needs an explicit override");
+const wd = (await LP("drafts/" + lid, { channel: "instagram" })).j; ok(wd.ok && wd.text, "per-platform drafts (Instagram)");
 const AIb = env.AI; env.AI = undefined; const dt = (await LP("drafts/" + lid, { channel: "whatsapp" })).j; env.AI = AIb;
 ok(dt.ok && dt.template && /Anmol from FODO/.test(dt.text) && !/\bfree\b/i.test(dt.text) && !/—/.test(dt.text), "without AI a clearly marked template is used");
 /* outreach desk */

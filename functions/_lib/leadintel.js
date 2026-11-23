@@ -621,24 +621,91 @@ export async function logSent(env, id, b, by) {
   return lead(env, x.id);
 }
 /* ---------------- outreach drafts (never sent from here) ---------------- */
+/* the facts every message is written from: only what research actually found */
+const shortName = (n) => clip(String(n || "").split(/\s[|\-–]\s|,|\(/)[0].trim(), 48) || clip(n, 48);
+const greetName = (x) => { if (!x.owner_name || x.owner_conf === "unverified" || x.owner_conf === "not_found") return ""; const p = String(x.owner_name).split(/\s+/); return /^(Dr|Dr\.)$/i.test(p[0]) ? "Dr. " + (p[1] || "") : p[0]; };
+export function factsOf(L) {
+  const x = L.lead, A = (L.audit && L.audit.checks) || {}, obs = (L.opportunities || []).filter((o) => o.kind === "observed");
+  const good = []; if (x.reviews >= 20 && (x.rating || 0) >= 4.2) good.push(x.rating + " stars from " + x.reviews + " Google reviews");
+  if (A.socials && A.socials.length) good.push("active on " + A.socials.join(", "));
+  const problems = obs.filter((o) => !/Strong reputation|Multiple locations/.test(o.problem)).slice(0, 4);
+  return { name: shortName(x.name), first: greetName(x), place: x.locality || x.city || "", category: x.category || x.sub_industry || x.industry || "", website: x.website || "",
+    down: !!(x.website && A.reachable === false), rating: x.rating, reviews: x.reviews, good, problems, pagespeed: A.pagespeed && A.pagespeed.score != null ? A.pagespeed.score : null };
+}
+const factText = (F) => ["Business: " + F.name + (F.category ? " (" + F.category + ")" : "") + (F.place ? ", " + F.place : ""), F.first ? "Person: " + F.first : "Person: unknown, address the team",
+  F.good.length ? "Good: " + F.good.join("; ") : "", F.website ? (F.down ? "Website " + F.website + " did not load when we checked" : "Website: " + F.website) : "No website found",
+  F.pagespeed != null ? "Mobile speed score: " + F.pagespeed + "/100" : "", "What we observed:\n" + (F.problems.map((o) => "- " + o.problem + " (" + o.evidence + ") -> " + o.service).join("\n") || "- nothing major")].filter(Boolean).join("\n");
+const STYLE = { whatsapp: "a WhatsApp message, 45 to 70 words, friendly, 1 or 2 specific observations, ends with a simple yes/no question", instagram: "an Instagram DM, 30 to 45 words, casual and warm, one specific observation, no links", facebook: "a Facebook Page message, 35 to 55 words, polite, one or two specific observations",
+  linkedin: "a LinkedIn connection note under 280 characters to the owner, professional, one specific observation", x: "an X direct message under 240 characters, one specific observation", followup: "a short follow-up email, 50 to 80 words, with 'Subject: ...' as the first line", opener: "three different one-sentence opening lines, one per line" };
+const SYS = "You write honest, personal B2B outreach for FODO (Fear Of Digitally Out ?), a digital growth agency in New Delhi, signed 'Anmol, FODO'. Use ONLY the facts given: never invent numbers, results, clients, awards or claims about their ads. Mention something good about them first when there is a fact for it, then the specific problem. Plain text, no markdown, no hashtags, no long dashes, never the word free. Write in English.";
+function templ(ch, F) {
+  const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team", p = F.problems[0], p2 = F.problems[1], good = F.good[0] ? "Saw " + F.name + " has " + F.good[0] + ", great work. " : "";
+  const obs = p ? (F.down ? "Your website did not open when I checked." : "I noticed " + p.problem.toLowerCase() + (p2 ? " and " + p2.problem.toLowerCase() : "") + " on your website.") : "I had a look at " + F.name + " online.";
+  return { whatsapp: hi + ", this is Anmol from FODO, New Delhi. " + good + obs + " These are quick fixes that bring more enquiries. Can I share them on a 10-minute call?",
+    instagram: hi + "! " + good + obs + " Happy to share 2 quick fixes if useful. Anmol, FODO", facebook: hi + ", Anmol from FODO here. " + good + obs + " Would a 10-minute call to share the fixes help?",
+    linkedin: hi + ", I'm Anmol from FODO (New Delhi). " + obs + " Happy to share 2 quick fixes.", x: hi + ", Anmol from FODO. " + obs + " Can I share 2 quick fixes?",
+    followup: "Subject: Re: " + F.name + ", a few quick wins\n\n" + hi + ", just following up on my note about " + (p ? p.problem.toLowerCase() : "your online presence") + ". Happy to walk you through the fixes in 15 minutes whenever suits you.\n\nAnmol, FODO",
+    opener: F.problems.slice(0, 3).map((o) => o.angle).join("\n") || "I came across " + F.name + " while looking at " + (F.category || "businesses") + " in " + (F.place || "Delhi") + "." }[ch];
+}
+/* the designed email: facts (stats, findings) come straight from research; AI only writes the subject, intro and closing */
+export function emailBlocks(F, w) {
+  w = w || {}; const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";
+  const stats = []; if (F.rating != null && F.reviews != null) stats.push(F.rating + " ★ | " + F.reviews + " Google reviews");
+  if (F.pagespeed != null) stats.push(F.pagespeed + "/100 | Mobile speed score (Google)");
+  if (F.down) stats.push("Not loading | Your website when we checked");
+  const items = F.problems.map((o) => clip(o.problem, 70) + " | " + clip(o.service, 40));
+  return { eyebrow: "For " + F.name + (F.place ? " · " + F.place : ""), headline: clip(F.name, 34) + ", *a few quick wins*",
+    intro: clip(w.intro, 900) || (hi + ",\n\nI'm Anmol from FODO, a digital growth studio in New Delhi. " + (F.good[0] ? "I came across " + F.name + " and saw " + F.good[0] + ", which is a strong base. " : "I came across " + F.name + " and had a look at how it shows up online. ") + "Here is what I noticed, and what we would fix first:"),
+    items: items.join("\n"), stats: stats.slice(0, 2).join("\n"), cta_text: "Book a 15-minute call",
+    cta_link: "https://wa.me/917827007676?text=" + encodeURIComponent("Hi Anmol, about " + F.name),
+    closing: clip(w.closing, 600) || "None of this needs a big project. I can show you the fixes on a short call, and you decide what is worth doing. Just reply to this email or tap the button." };
+}
 export async function drafts(env, id, b) {
   const L = await lead(env, id), x = L.lead; b = b || {};
   if (x.status === "dnc" || L.opted_out) throw err("This business is marked Do not contact (or opted out). No drafts.", 409);
-  const ch = ["email", "linkedin", "whatsapp", "dm", "followup", "opener"].indexOf(b.channel) > -1 ? b.channel : "email";
-  const facts = L.opportunities.filter((o) => o.kind === "observed").slice(0, 3).map((o) => "- " + o.problem + ": " + o.evidence).join("\n") || "- no website problems recorded";
-  const who = x.owner_name && x.owner_conf !== "unverified" ? x.owner_name : "";
-  const limits = { email: "an email of 90 to 130 words with a subject line first as 'Subject: ...'", linkedin: "a LinkedIn connection message under 280 characters", dm: "an Instagram or Facebook direct message under 60 words, warm and personal", whatsapp: "a WhatsApp message under 60 words", followup: "a short follow-up email of 50 to 80 words with 'Subject: ...' first", opener: "three different one-sentence opening lines, one per line" }[ch];
-  const ai = await aiRun(env, "You write honest B2B outreach for FODO (Fear Of Digitally Out ?), a digital growth agency in New Delhi. Sign off as 'Anmol, FODO'. Use only the facts given, never invent results, clients, numbers or claims about their ads. Friendly, specific, no hype, no markdown, no long dashes, never use the word free. Include no links except https://www.fodo.co.in.",
-    "Write " + limits + " to " + (who || "the team at " + x.name) + " at " + x.name + " (" + [x.category || x.industry, x.locality || x.city].filter(Boolean).join(", ") + ").\nWhat we observed:\n" + facts + "\nOffer: a short call to share 2 or 3 fixes.", ch === "email" ? 400 : 250);
+  let ch = b.channel === "dm" ? "instagram" : b.channel; if (["email", "whatsapp", "instagram", "facebook", "linkedin", "x", "followup", "opener"].indexOf(ch) < 0) ch = "email";
+  const F = factsOf(L), facts = factText(F);
+  if (ch === "email") {
+    const ai = await aiRun(env, SYS + " Reply with JSON only: {\"subject\": \"...\", \"intro\": \"...\", \"closing\": \"...\"}.",
+      facts + "\n\nWrite an email to this business. subject: under 60 characters, specific to them, no clickbait. intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, 2 or 3 short sentences: who Anmol is, one genuine positive fact if given, then lead into 'here is what I noticed'. closing: 1 or 2 sentences offering a 15-minute call, no pressure.", 380);
+    let w = null; if (ai) { try { w = JSON.parse(String(ai.text).replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) { w = null; } }
+    const blocks = emailBlocks(F, w), subject = clip((w && w.subject) || F.name + ", a few quick wins for more enquiries", 120);
+    return { channel: "email", subject, blocks, to: (L.channels.find((c) => c.channel === "email") || {}).target || "", ai: !!w, model: w ? ai.model : null };
+  }
+  const ai = await aiRun(env, SYS, facts + "\n\nWrite " + STYLE[ch] + ".", ch === "followup" ? 260 : 220);
   if (ai) return { channel: ch, text: ai.text, ai: true, model: ai.model };
-  const first = (L.opportunities[0] || {}), hi = who ? "Hi " + who.split(" ").filter((w) => !/^(Dr|Mr|Ms|Mrs|CA|Adv)\.?$/.test(w))[0] : "Hi " + x.name + " team";
-  const T = { email: "Subject: A quick idea for " + x.name + "\n\n" + hi + ",\n\nI'm Anmol from FODO, a growth studio in New Delhi. " + (first.angle || "I came across " + x.name + " while researching businesses in " + (x.city || "your area") + ".") + "\n\nWe help businesses like yours fix exactly this and turn it into more enquiries. Would a 15-minute call this week be useful? I can share two or three specific fixes.\n\nRegards,\nAnmol, FODO\nhttps://www.fodo.co.in",
-    linkedin: hi + ", I'm Anmol from FODO (New Delhi). " + (first.angle || "I came across " + x.name + ".") + " Happy to share a couple of quick fixes if useful.",
-    dm: hi + ", this is Anmol from FODO, New Delhi. " + (first.angle || "I came across " + x.name + ".") + " Happy to share 2 quick fixes if useful.",
-    whatsapp: hi + ", this is Anmol from FODO, New Delhi. " + (first.angle || "I came across " + x.name + ".") + " Can I share 2 quick fixes on a short call?",
-    followup: "Subject: Re: A quick idea for " + x.name + "\n\n" + hi + ", just following up on my note about " + (first.problem || "your online presence").toLowerCase() + ". Happy to share the fixes over a 15-minute call whenever suits you.\n\nAnmol, FODO",
-    opener: L.opportunities.slice(0, 3).map((o) => o.angle).join("\n") || "I came across " + x.name + " while researching " + (x.industry || "businesses") + " in " + (x.city || "your city") + "." };
-  return { channel: ch, text: T[ch], ai: false, template: true };
+  return { channel: ch, text: templ(ch, F), ai: false, template: true };
+}
+/* designed email: preview, test to yourself, send to the lead (needs confirm; unsubscribe link; hourly cap; opt-outs respected) */
+const cleanBlocks = (b) => { b = b || {}; const o = {}; ["eyebrow", "headline", "intro", "items", "stats", "cta_text", "cta_link", "closing"].forEach((k) => { o[k] = clip(String(b[k] == null ? "" : b[k]).replace(/\r/g, ""), k === "intro" || k === "closing" || k === "items" ? 1500 : 300).replace(/ {2,}/g, " "); });
+  ["intro", "closing", "items", "stats"].forEach((k) => { o[k] = String(b[k] == null ? "" : b[k]).replace(/\r/g, "").replace(/<[^>]*>/g, "").slice(0, 1500); }); return o; };
+export async function emailRender(env, id, b, to) {
+  const T = await import("./clientmail.js"), OR = await import("./outreach.js"); b = b || {};
+  const subject = clip(b.subject, 150); if (!subject) throw err("Add a subject.");
+  const ou = to ? await OR.optOutUrl(env, to) : "";
+  const r = T.renderMail({ subject, blocks: cleanBlocks(b.blocks), optOutUrl: ou });
+  return { subject, html: r.html, text: r.text, optOut: ou };
+}
+export async function emailPreview(env, id, b) { const L = await lead(env, id), to = (L.channels.find((c) => c.channel === "email") || {}).target || ""; const r = await emailRender(env, id, b, to || "preview@fodo.co.in"); return { subject: r.subject, html: r.html, to }; }
+export async function emailSend(env, id, b, by) {
+  const d = await ldb(env), L = await lead(env, id), x = L.lead, OR = await import("./outreach.js"); b = b || {}; const test = !!b.test;
+  const to = test ? cleanEmail(by) : cleanEmail(b.to || (L.channels.find((c) => c.channel === "email") || {}).target);
+  if (!to) throw err(test ? "Your admin email is not valid." : "This business has no public email.");
+  if (!test) {
+    if (x.status === "dnc" || L.opted_out) throw err("This business is marked Do not contact (or opted out).", 409);
+    if (!b.confirm) throw err("Please confirm the send first.", 400);
+    if (await one(d, "SELECT email FROM camp_unsub WHERE email=?1", to).catch(() => null)) throw err(to + " has unsubscribed from FODO emails.", 409);
+    if ((await OR.usedThisHour(env)) >= OR.hourly(env)) throw err("Hourly limit reached (" + OR.hourly(env) + " emails per hour). Try again a bit later.", 429);
+    const dup = await one(d, "SELECT at FROM li_outreach WHERE business_id=?1 AND channel='email' AND at > ?2", x.id, new Date(Date.now() - 10 * 60e3).toISOString()); if (dup && !b.override) throw err("An email went to this business a few minutes ago. Send again anyway?", 409);
+  }
+  const m = await emailRender(env, id, b, test ? "" : to), sid = "cm_" + randId(14), t = nowIso(), subject = (test ? "[TEST] " : "") + m.subject;
+  const cm = await OR.cmDb(env);
+  await run(cm, "INSERT INTO cm_sends (id,at,last_at,admin,client_id,email,type,subject,status,test,marketing,attempts,html,text,atts,campaign_id) VALUES (?1,?2,?2,?3,?4,?5,'lead_intel',?6,'sending',?7,1,1,?8,?9,'[]','lead-intel')", sid, t, clip(by, 254), x.id, to, subject, test ? 1 : 0, m.html, m.text);
+  const r = await OR.deliver(env, { id: sid, to, subject, html: m.html, text: m.text, optOut: test ? "" : m.optOut }).catch((e) => ({ ok: false, error: String(e.message || e).slice(0, 200) }));
+  await run(cm, "UPDATE cm_sends SET status=?2, provider_id=?3, error=?4, last_at=?5 WHERE id=?1", sid, r.ok ? "sent" : "failed", r.ok ? r.id : null, r.ok ? null : r.error, nowIso());
+  if (!r.ok) throw err("The email was not sent: " + r.error, 502);
+  if (!test) return Object.assign(await logSent(env, x.id, { channel: "email", note: "Email sent to " + to + ": " + m.subject }, by), { sent: { to, via: r.via } });
+  return { test: true, sent: { to, via: r.via } };
 }
 /* hand leads with a public email to a Bulk pitch campaign (sending stays there, with its test-first and confirm rules) */
 export async function toPitch(env, b, by) {

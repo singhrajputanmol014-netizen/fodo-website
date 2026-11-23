@@ -260,3 +260,12 @@ tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var
 .ad-li-ok2{align-items:center;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,#7B61FF 10%,transparent)}
 .ad-li-lnk{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
 .ad-li-more{margin-top:12px}.ad-li-q .cfx-box{max-width:640px;width:calc(100vw - 32px)}.ad-li-qb textarea{width:100%}
+/* v55.7 platforms + designed email */
+.ad-li-plat{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:4px 0 14px}
+.ad-li-pb{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:10px 12px;border-radius:14px;border:1px solid var(--line-3,var(--line));background:transparent;color:var(--text);cursor:pointer;text-align:left;font:inherit}
+.ad-li-pb b{font-size:14px}.ad-li-pb small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.ad-li-pb.miss{opacity:.6;border-style:dashed}.ad-li-pb[aria-pressed=true]{border-color:#7B61FF;background:color-mix(in srgb,#7B61FF 16%,transparent);opacity:1}
+.ad-li-eg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.ad-li-eg .ad-in{width:100%}
+.ad-li-pv{width:100%;height:620px;border:1px solid var(--line-3,var(--line));border-radius:14px;background:#0B0B0C}
+.ad-li-qe{max-width:1080px!important}
+@media (max-width:900px){.ad-li-eg{grid-template-columns:1fr}.ad-li-pv{height:480px}}

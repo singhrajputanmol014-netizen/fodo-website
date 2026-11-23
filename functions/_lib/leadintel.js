@@ -29,6 +29,8 @@ const one = (d, sql, ...a) => d.prepare(sql).bind(...a).first();
 const run = (d, sql, ...a) => d.prepare(sql).bind(...a).run();
 const J = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
 export const clip = (s, n) => String(s == null ? "" : s).replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n || 200);
+/* one Google Cloud key (project FODO) is allowed for both Places API (New) and PageSpeed, so either secret name works */
+const placesKey = (env) => env.GOOGLE_PLACES_KEY || env.PAGESPEED_API_KEY || "";
 const UA = "FODO-LeadIntelligence/1.0 (+https://www.fodo.co.in; anmol@fodo.co.in)";
 
 export const STATUSES = [["new", "New"], ["not_contacted", "Not contacted"], ["contacted", "Contacted"], ["email_sent", "Email sent"], ["called", "Called"], ["interested", "Interested"],
@@ -114,9 +116,9 @@ export function passes(f, b) {
 }
 async function discover(env, d, f) {
   const q = queryOf(f), area = areaOf(f), errors = [];
-  if (env.GOOGLE_PLACES_KEY) {
+  if (placesKey(env)) {
     try {
-      const res = await googleSearch(env.GOOGLE_PLACES_KEY, { type: q, area, center: null, radius: 0, rect: null, pages: Math.ceil(f.limit / 20) });
+      const res = await googleSearch(placesKey(env), { type: q, area, center: null, radius: 0, rect: null, pages: Math.ceil(f.limit / 20) });
       await usage(d, "google_places", true);
       return { source: "google_places", errors, results: res.map((p) => ({ name: p.name, address: p.address, lat: p.lat, lng: p.lng, category: p.category, phone: p.intlPhone || p.phone, website: p.website,
         maps_url: p.mapsUrl || "", place_id: String(p.id || "").replace(/^g\//, ""), rating: p.rating, reviews: p.reviews, biz_status: p.status || "", source_ref: p.mapsUrl || "" })) };
@@ -131,7 +133,7 @@ async function discover(env, d, f) {
       maps_url: p.mapsUrl || "", place_id: "", rating: null, reviews: null, biz_status: "", source_ref: p.osmUrl || "",
       extra: { email: p.email || "", whatsapp: p.whatsapp || "", instagram: p.instagram || "", facebook: p.facebook || "", linkedin: p.linkedin || "", x: p.twitter || "", youtube: p.youtube || "" } })) };
   } catch (e) { await usage(d, "openstreetmap", false); errors.push("OpenStreetMap: " + String((e.tried && e.tried.join("; ")) || e.message || e).slice(0, 200)); }
-  return { source: env.GOOGLE_PLACES_KEY ? "google_places" : "openstreetmap", errors, results: [] };
+  return { source: placesKey(env) ? "google_places" : "openstreetmap", errors, results: [] };
 }
 export async function findDuplicate(d, b) {
   if (b.place_id) { const r = await one(d, "SELECT id FROM li_businesses WHERE place_id=?1", b.place_id); if (r) return r.id; }
@@ -615,7 +617,7 @@ export async function integrations(env) {
   const today = await all(d, "SELECT api, calls, errors FROM li_usage WHERE day=?1", nowIso().slice(0, 10));
   const u = (k) => Object.assign({ calls: 0, errors: 0 }, use.find((x) => x.api === k) || {}, { today: (today.find((x) => x.api === k) || {}).calls || 0 });
   return { items: [
-    { key: "google_places", name: "Google Places API", configured: !!env.GOOGLE_PLACES_KEY, secret: "GOOGLE_PLACES_KEY", role: "Business discovery with phone, website, rating and reviews.", cost: "Text Search Pro: about US$32 per 1,000 requests (each request returns up to 20 places); Google gives a monthly free usage cap per SKU. Set a budget alert in Google Cloud.", usage: u("google_places") },
+    { key: "google_places", name: "Google Places API", configured: !!placesKey(env), secret: "GOOGLE_PLACES_KEY (or the same Google key saved as PAGESPEED_API_KEY)", role: "Business discovery with phone, website, rating and reviews.", cost: "Text Search Pro: about US$32 per 1,000 requests (each request returns up to 20 places); Google gives a monthly free usage cap per SKU. Set a budget alert in Google Cloud.", usage: u("google_places") },
     { key: "openstreetmap", name: "OpenStreetMap (fallback)", configured: true, secret: "", role: "Discovery without a key. Fewer phones/websites, no reviews.", cost: "No cost; shared public servers, please search politely.", usage: u("openstreetmap") },
     { key: "search", name: "Web search API (" + (p.searchName || "Serper or Brave") + ")", configured: !!p.search, secret: "SERPER_API_KEY or BRAVE_API_KEY", role: "Finds public founder/owner/CEO results (e.g. LinkedIn profile titles) when the website does not name them.", cost: "Serper about US$1 per 1,000 searches (2,500 trial); Brave from US$5 per 1,000.", usage: u(p.search || "serper") },
     { key: "ai", name: "AI provider (" + (env.AI ? "Cloudflare Workers AI" : "not bound") + ")", configured: !!(env.AI && env.AI.run), secret: "AI binding", role: "Audit summaries, hypotheses and outreach drafts (always labelled AI).", cost: "Workers AI: a daily free allocation, then pay per use on Workers Paid.", usage: { calls: null } },
@@ -627,12 +629,12 @@ export async function integrations(env) {
 }
 export async function testIntegration(env, key) {
   const d = await ldb(env);
-  if (key === "google_places") { if (!env.GOOGLE_PLACES_KEY) return { ok: false, reason: "GOOGLE_PLACES_KEY is not set." }; try { const r = await googleSearch(env.GOOGLE_PLACES_KEY, { type: "dental clinic", area: "Dwarka, Delhi", pages: 1 }); await usage(d, "google_places", true); return { ok: true, detail: r.length + " places returned" }; } catch (e) { await usage(d, "google_places", false); return { ok: false, reason: String(e.message || e) }; } }
+  if (key === "google_places") { if (!placesKey(env)) return { ok: false, reason: "No Google key set (GOOGLE_PLACES_KEY or PAGESPEED_API_KEY)." }; try { const r = await googleSearch(placesKey(env), { type: "dental clinic", area: "Dwarka, Delhi", pages: 1 }); await usage(d, "google_places", true); return { ok: true, detail: r.length + " places returned" }; } catch (e) { await usage(d, "google_places", false); return { ok: false, reason: String(e.message || e) }; } }
   if (key === "search") { const r = await webSearch(env, d, "FODO digital marketing agency New Delhi"); return !r ? { ok: false, reason: "No search API key set." } : r.error ? { ok: false, reason: r.error } : { ok: true, detail: (r.web || []).length + " results" }; }
   if (key === "ai") { const r = await aiRun(env, "Reply with the single word OK.", "Say OK", 5); return r ? { ok: true, detail: r.model } : { ok: false, reason: "Workers AI is not bound or did not answer." }; }
   if (key === "dns_mx") { const s = await mxCheck(env, d, "gmail.com"); return { ok: /MX found/.test(s), detail: s }; }
   if (key === "pagespeed") { const r = await pagespeed(env, d, "https://www.fodo.co.in/"); return !r ? { ok: false, reason: "Not enabled (set PAGESPEED_API_KEY or LI_PAGESPEED=1)." } : r.error ? { ok: false, reason: r.error } : { ok: true, detail: "fodo.co.in mobile score " + r.score }; }
-  if (key === "openstreetmap") { try { const r = await discover(Object.assign({}, env, { GOOGLE_PLACES_KEY: "" }), d, { industry: "cafe", city: "Dwarka", country: "India", limit: 5 }); return r.results.length ? { ok: true, detail: r.results.length + " places" } : { ok: false, reason: r.errors.join("; ") || "no results" }; } catch (e) { return { ok: false, reason: String(e.message || e) }; } }
+  if (key === "openstreetmap") { try { const r = await discover(Object.assign({}, env, { GOOGLE_PLACES_KEY: "", PAGESPEED_API_KEY: "" }), d, { industry: "cafe", city: "Dwarka", country: "India", limit: 5 }); return r.results.length ? { ok: true, detail: r.results.length + " places" } : { ok: false, reason: r.errors.join("; ") || "no results" }; } catch (e) { return { ok: false, reason: String(e.message || e) }; } }
   if (key === "database") return { ok: !!env.XRAY_DB, detail: env.XRAY_DB ? "connected" : "XRAY_DB not bound" };
   return { ok: false, reason: "This integration has no test." };
 }

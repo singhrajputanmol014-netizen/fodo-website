@@ -84,6 +84,9 @@ export async function onRequest(ctx) {
         try {
           const lq = Object.fromEntries(q), a = path[1];
           if (a === "leads") return json(Object.assign({ ok: true }, await LI.list(env, lq)));
+          if (a === "bot-convos") return json(Object.assign({ ok: true }, await LI.botConvos(env)));
+          if (a === "bot-convo") return json(Object.assign({ ok: true }, await LI.botConvo(env, q.get("ref"))));
+          if (a === "sent-list") return json(Object.assign({ ok: true }, await LI.sentList(env, lq)));
           if (a === "lead" && path[2]) return json(Object.assign({ ok: true }, await LI.lead(env, path[2])));
           if (a === "stats") return json(Object.assign({ ok: true, statuses: LI.STATUSES, industries: LI.INDUSTRIES }, await LI.stats(env, lq)));
           if (a === "jobs") return json(Object.assign({ ok: true }, await LI.jobs(env)));
@@ -151,6 +154,8 @@ export async function onRequest(ctx) {
         else if (a === "bulk") { r = await LI.bulk(env, b, u.email); await logEvent(env, u.id, "li_bulk", b.action + " · " + r.changed); }
         else if (a === "drafts" && id) r = await LI.drafts(env, id, b);
         else if (a === "sent" && id) r = await LI.logSent(env, id, b, u.email);
+        else if (a === "replied" && id) r = await LI.markReplied(env, id, b, u.email);
+        else if (a === "replies-check") r = await LI.checkReplies(env, u.email);
         else if (a === "email-preview" && id) r = await LI.emailPreview(env, id, b);
         else if (a === "file") r = await LI.shareFile(env, b, u.email);
         else if (a === "email-send" && id) { r = await LI.emailSend(env, id, b, u.email); await logEvent(env, u.id, "li_email", id + (b.test ? " test" : "")); }

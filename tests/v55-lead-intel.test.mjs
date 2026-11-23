@@ -9,6 +9,7 @@ import { onRequest as adminApi } from "../functions/api/admin/[[path]].js";
 
 import * as LI from "../functions/_lib/leadintel.js";
 import { onRequest as fileRoute } from "../functions/f/[token].js";
+import { logConvo } from "../functions/_lib/metadm.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 console.log = ((orig) => (...a) => { if (typeof a[0] === "string" && a[0].charAt(0) === "{" && !process.env.DBG) return; orig(...a); })(console.log);
 console.error = () => {};
@@ -64,7 +65,7 @@ const LP = (p, b, who) => call("admin/li/" + p, b, who || "o");
 
 /* access */
 ok((await LP("stats", undefined, "x")).status === 403 && (await LP("stats", undefined, "v")).status === 403 && (await LP("search", { industry: "Dental clinics", city: "Delhi" }, "v")).status === 403, "only owners and Full-control admins can open or use Lead Intelligence");
-const st0 = (await LP("stats", undefined, "adm")).j; ok(st0.ok && st0.totals.discovered === 0 && st0.statuses.length === 12, "empty dashboard shows real zeros; 12 outreach statuses");
+const st0 = (await LP("stats", undefined, "adm")).j; ok(st0.ok && st0.totals.discovered === 0 && st0.statuses.length === 13, "empty dashboard shows real zeros; 13 outreach statuses (with Replied)");
 
 /* integrations: honest status */
 let ig = (await LP("integrations")).j; const gi = (k) => ig.items.find((x) => x.key === k);
@@ -188,6 +189,40 @@ X("CREATE TABLE IF NOT EXISTS fodo_leads (id TEXT PRIMARY KEY, mode TEXT, name T
 X("INSERT INTO fodo_leads (id, name, phone, source, status, created_at) VALUES ('ld_t1','Amit','+91-11-4000-0002','instagram-dm','new','2026-11-23T10:00:00Z')");
 ok((await LP("lead/" + lid2)).j.replies.length === 1, "a reply / enquiry with the same phone shows on the lead");
 await LP("lead/" + lid2, { status: "dnc" }); ok((await LP("drafts/" + lid2, {})).status === 409, "Do not contact: no drafts");
+/* v55.16 Sent & replies */
+let sl = (await LP("sent-list")).j;
+const rowA = sl.items.find((i) => i.id === lid), rowB = sl.items.find((i) => i.id === lid2);
+ok(sl.ok && rowA && rowA.channels.indexOf("email") > -1 && !rowA.replied && rowB && rowB.channels.indexOf("linkedin") > -1 && sl.counts.waiting >= 2 && sl.tracking.email === false, "Sent & replies lists every business messaged, the platforms used, and waiting replies");
+ok((await LP("sent-list?view=replied")).j.items.length === 0 && (await LP("sent-list?channel=linkedin")).j.items.every((i) => i.channels.indexOf("linkedin") > -1), "filters: replied / platform");
+ok((await LP("replies-check", {})).status === 409, "email reply tracking says plainly that Gmail must be connected");
+let gq = []; env.LI_GMAIL_MOCK = { account: "anmol@fodo.co.in", get: async (u) => { gq.push(decodeURIComponent(u));
+  if (/messages\?/.test(u)) return /from:smiledental\.in/.test(decodeURIComponent(u)) ? { messages: [{ id: "g1" }, { id: "g2" }] } : {};
+  if (/messages\/g1/.test(u)) return { snippet: "Yes please, call me tomorrow &amp; send the plan", internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: "Dr Priya <priya@smiledental.in>" }, { name: "Subject", value: "Re: Smile Dental" }] } };
+  if (/messages\/g2/.test(u)) return { snippet: "unrelated", internalDate: String(Date.now()), payload: { headers: [{ name: "From", value: "someone@else.com" }] } };
+  return {}; } };
+const ck = (await LP("replies-check", {})).j;
+ok(ck.ok && ck.check.found === 1 && ck.check.checked >= 1 && gq.some((q) => /from:smiledental\.in after:\d+/.test(q)), "Gmail check finds the reply from the business's own domain after the email went out, skips other senders");
+const la = (await LP("lead/" + lid)).j;
+ok(la.lead.status === "replied" && la.inbox.length === 1 && /call me tomorrow & send/.test(la.inbox[0].text) && la.inbox[0].source === "gmail" && la.history[0].channel === "reply", "the reply lands on the lead, status becomes Replied, history shows it");
+ok((await LP("replies-check", {})).j.check.found === 0 && (await LP("lead/" + lid)).j.inbox.length === 1, "checking again does not add the same reply twice");
+sl = (await LP("sent-list?view=replied")).j; ok(sl.items.length === 1 && sl.items[0].id === lid && sl.items[0].reply.channel === "email" && sl.tracking.email && sl.tracking.last_check.found === 0, "Replied filter shows it with the reply text; last check time is kept");
+ok((await LP("replied/" + lid2, { channel: "pigeon" })).status === 400, "Got a reply needs a real platform");
+const mr = (await LP("replied/" + lid2, { channel: "whatsapp", text: "Interested, send details" })).j;
+ok(mr.ok && mr.inbox[0].channel === "whatsapp" && mr.inbox[0].source === "manual" && mr.lead.status === "dnc", "Got a reply (WhatsApp) is saved; a Do not contact status is not overwritten");
+ok(LI.isStopReply("STOP") && LI.isStopReply("please remove me") && LI.isStopReply("Unsubscribe me") && !LI.isStopReply("Yes interested"), "STOP replies are recognised");
+ok((await LP("sent-list", undefined, "v")).status === 403 && (await LP("replies-check", {}, "v")).status === 403, "only owners / Full-control admins see Sent & replies");
+delete env.LI_GMAIL_MOCK;
+/* bot conversations */
+CHAT_KV.list = async ({ prefix }) => ({ keys: [...KV.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name, metadata: KVM.get(name) })), list_complete: true });
+await logConvo(env, { platform: "instagram", sender: "1789" }, { in: "Website kitne ka banega?", out: "Starter plan se shuru hota hai, aapka business kya hai?", state: "bot" });
+await logConvo(env, { platform: "instagram", sender: "1789" }, { in: "Dental clinic, Dwarka", out: "", state: "human" });
+const bc = (await LP("bot-convos")).j, cv = bc.convos.find((c) => c.ref === "instagram:1789");
+ok(bc.ok && cv && cv.platform === "instagram" && cv.count === 2 && cv.last_in === "Dental clinic, Dwarka" && /Starter plan/.test(cv.last_out) && cv.state === "human" && bc.counts.instagram === 1, "Bot conversations: who the Instagram bot is talking to, last messages, and that a person took over");
+const cd = (await LP("bot-convo?ref=" + encodeURIComponent("instagram:1789"))).j;
+ok(cd.ok && cd.messages.length === 3 && cd.messages[0].r === "in" && cd.messages[1].r === "bot", "opening a bot chat shows the whole conversation");
+ok((await LP("bot-convo?ref=" + encodeURIComponent("../x"))).status === 404, "bad chat ids are refused");
+const AJ2 = fs.readFileSync("js/admin.js", "utf8");
+ok(/"li-sent", "Sent & replies"/.test(AJ2) && /li\/replies-check/.test(AJ2) && /li\/bot-convos/.test(AJ2) && /Got a reply/.test(AJ2), "Admin has the Sent & replies page, Gmail check, Got a reply and Bot conversations");
 X("INSERT INTO camp_unsub (email, at, why) VALUES ('info@smiledental.in','2026-01-01','test')");
 ok((await LP("lead/" + lid)).j.opted_out === true && (await LP("drafts/" + lid, {})).status === 409, "an opted-out email blocks drafts too");
 

@@ -107,7 +107,7 @@ export function parseEvents(env, body) {
         // An echo is a message FODO sent. If no app sent it (or another app did), a human replied: pause the bot in that chat.
         const byUs = msg.app_id && env.META_APP_ID && String(msg.app_id) === String(env.META_APP_ID);
         const automated = msg.metadata === "fodo-bot";
-        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
+        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, text: String(msg.text || "").slice(0, 600), mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
         continue;
       }
       if (own.has(from)) continue;
@@ -244,6 +244,27 @@ async function diag(env, platform, kind, result, appId) {
 }
 export async function readDiag(env) { try { const v = await kvGet(env, "dm:diag"); return v ? JSON.parse(v) : []; } catch (e) { return []; } }
 
+/* v55.16 conversation log for Admin ▸ Lead Intelligence ▸ Sent & replies ▸ Bot conversations.
+   One KV key per person ("dm:cv:<platform>:<sender>", 30 days). The value keeps the last 30 messages; the metadata (read by a
+   single KV list) keeps who, the last message each way, when, how many, and whether the bot or a person is answering.
+   It never blocks or changes a reply. */
+const CV_TTL = 30 * 86400, CV_KEEP = 30;
+export async function logConvo(env, ev, o) {
+  try {
+    if (!env.CHAT_KV || !ev || !ev.sender) return;
+    const key = "dm:cv:" + ev.platform + ":" + ev.sender, cur = env.CHAT_KV.getWithMetadata ? await env.CHAT_KV.getWithMetadata(key) : { value: await env.CHAT_KV.get(key), metadata: null };
+    let msgs = []; try { msgs = cur.value ? JSON.parse(cur.value) : []; } catch (e) { msgs = []; }
+    const m = cur.metadata || {}, t = new Date().toISOString();
+    let name = m.n || "";
+    if (!name && env.META_PAGE_TOKEN && !m.nt) { const p = await profileName(env, ev.platform, ev.sender); name = p.username ? "@" + p.username + (p.name ? " (" + p.name + ")" : "") : p.name; }
+    if (o.in) msgs.push({ r: "in", t, x: String(o.in).slice(0, 600) });
+    if (o.out) msgs.push({ r: o.by === "human" ? "human" : "bot", t, x: String(o.out).slice(0, 900) });
+    msgs = msgs.slice(-CV_KEEP);
+    const meta = { p: ev.platform, n: String(name || "").slice(0, 90), nt: 1, li: o.in ? String(o.in).slice(0, 140) : m.li || "", lo: o.out ? String(o.out).slice(0, 140) : m.lo || "",
+      at: t, c: (m.c || 0) + (o.in ? 1 : 0), st: o.state || m.st || "bot", ld: o.lead || m.ld || "" };
+    await env.CHAT_KV.put(key, JSON.stringify(msgs), { expirationTtl: CV_TTL, metadata: meta });
+  } catch (e) { /* the log never blocks a reply */ }
+}
 /* Handle one parsed event. Returns what happened (for logs and tests). */
 export async function handleEvent(env, ev) {
   let r;
@@ -266,13 +287,14 @@ async function handleEventInner(env, ev) {
     if (last && ev.ts && ev.ts - last >= 0 && ev.ts - last < win) return "automation_echo";
     const hrs = Math.max(1, parseInt(env.META_BOT_HUMAN_PAUSE_HOURS || "12", 10) || 12);
     await kvPut(env, pauseKey, "1", hrs * 3600);
+    await logConvo(env, ev, { out: ev.text ? ev.text : "", by: "human", state: "human" });
     return "paused";
   }
   if (ev.ts) await kvPut(env, lastKey, String(ev.ts), 86400);
-  if (String(env.META_BOT_DISABLED || "") === "1") return "disabled";
+  if (String(env.META_BOT_DISABLED || "") === "1") { await logConvo(env, ev, { in: ev.text, state: "off" }); return "disabled"; }
   if (!env.META_PAGE_TOKEN) return "no_token";
   if (ev.mid) { const k = "dm:seen:" + ev.mid; if (await kvGet(env, k)) return "duplicate"; await kvPut(env, k, "1", DEDUPE_TTL); }
-  if (await kvGet(env, pauseKey)) return "human_active";
+  if (await kvGet(env, pauseKey)) { await logConvo(env, ev, { in: ev.text, state: "human" }); return "human_active"; }
   const contact = findContact(ev.text);
   const leadKnown = !!contact || !!(await kvGet(env, "dm:lead:" + ev.platform + ":" + ev.sender));
   let reply;
@@ -282,5 +304,6 @@ async function handleEventInner(env, ev) {
   if (res && res.message_id) await kvPut(env, "dm:mine:" + res.message_id, "1", DEDUPE_TTL);
   let lead = "";
   if (contact) { try { lead = await captureLead(env, ev, contact); } catch (e) { console.error("fodo-dm lead:", String((e && e.message) || e).slice(0, 120)); lead = "lead_error"; } }
+  await logConvo(env, ev, { in: ev.text, out: reply, state: "bot", lead: lead === "saved" || lead === "updated" ? "saved" : "" });
   return (reply === FALLBACK ? "sent_fallback" : "sent") + (lead ? "+lead_" + lead : "");
 }

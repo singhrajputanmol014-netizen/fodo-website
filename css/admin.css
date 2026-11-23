@@ -272,3 +272,15 @@ tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var
 /* v55.15 outreach files */
 .ad-li-files{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}.ad-li-files .ad-dl2{margin:0 4px 0 0}.ad-li-files small{flex-basis:100%}
 .ad-li-files a{color:inherit;font-size:12px}.ad-li-up{cursor:pointer}
+/* v55.16 Sent & replies */
+.ad-li-ch{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid var(--line-3,var(--line));color:var(--text);white-space:nowrap}
+.ad-li-ch-whatsapp{border-color:#25D366;background:color-mix(in srgb,#25D366 14%,transparent)}.ad-li-ch-instagram{border-color:#E1306C;background:color-mix(in srgb,#E1306C 14%,transparent)}
+.ad-li-ch-facebook{border-color:#1877F2;background:color-mix(in srgb,#1877F2 14%,transparent)}.ad-li-ch-linkedin{border-color:#0A66C2;background:color-mix(in srgb,#0A66C2 14%,transparent)}
+.ad-li-ch-email,.ad-li-ch-website{border-color:#7B61FF;background:color-mix(in srgb,#7B61FF 14%,transparent)}
+.ad-li-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin:0 0 14px}.ad-li-kpis .ad-card{padding:12px 14px;margin:0}.ad-li-kpis b{display:block;font-size:24px;margin-top:2px}
+.ad-li-trk{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.ad-li-trk p{margin:0;flex:1 1 320px}
+.ad-li-rep p,.ad-li-rtx{margin:4px 0 0;font-size:13px;max-width:340px;white-space:pre-wrap}
+.ad-li-st{margin:0 0 14px}.ad-li-st a.chip{text-decoration:none}
+.ad-li-cv{max-width:620px}.ad-li-msgs{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;margin:8px 0 12px}
+.ad-li-m{padding:8px 12px;border-radius:12px;max-width:85%;border:1px solid var(--line-3,var(--line))}.ad-li-m p{margin:2px 0 0;white-space:pre-wrap}
+.ad-li-m.in{align-self:flex-start}.ad-li-m.out{align-self:flex-end;background:color-mix(in srgb,#7B61FF 12%,transparent)}

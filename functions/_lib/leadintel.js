@@ -33,7 +33,7 @@ export const clip = (s, n) => String(s == null ? "" : s).replace(/<[^>]*>/g, " "
 const placesKey = (env) => env.GOOGLE_PLACES_KEY || env.PAGESPEED_API_KEY || "";
 const UA = "FODO-LeadIntelligence/1.0 (+https://www.fodo.co.in; anmol@fodo.co.in)";
 
-export const STATUSES = [["new", "New"], ["not_contacted", "Not contacted"], ["contacted", "Contacted"], ["email_sent", "Email sent"], ["called", "Called"], ["interested", "Interested"],
+export const STATUSES = [["new", "New"], ["not_contacted", "Not contacted"], ["contacted", "Contacted"], ["email_sent", "Email sent"], ["replied", "Replied"], ["called", "Called"], ["interested", "Interested"],
   ["follow_up", "Follow-up required"], ["meeting", "Meeting scheduled"], ["proposal", "Proposal sent"], ["converted", "Converted"], ["not_interested", "Not interested"], ["dnc", "Do not contact"]];
 const ST = STATUSES.map((s) => s[0]);
 export const INDUSTRIES = ["Healthcare", "Dental clinics", "Dermatology", "Real estate", "Interior design", "Restaurants", "Hotels", "Gyms", "Salons", "Education", "Coaching institutes",
@@ -76,6 +76,9 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS li_usage (day TEXT, api TEXT, calls INTEGER DEFAULT 0, errors INTEGER DEFAULT 0, PRIMARY KEY (day, api))",
   "CREATE TABLE IF NOT EXISTS li_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, business_id TEXT, detail TEXT, by_email TEXT, at TEXT)",
   "CREATE INDEX IF NOT EXISTS li_activity_k ON li_activity(kind, at)",
+  "CREATE TABLE IF NOT EXISTS li_replies (id INTEGER PRIMARY KEY AUTOINCREMENT, business_id TEXT, channel TEXT, from_addr TEXT, subject TEXT, text TEXT, at TEXT, source TEXT, ref TEXT, by_email TEXT, created_at TEXT, UNIQUE(business_id, ref))",
+  "CREATE INDEX IF NOT EXISTS li_replies_b ON li_replies(business_id, at)",
+  "CREATE INDEX IF NOT EXISTS li_outreach_ch ON li_outreach(channel, at)",
 ];
 export async function ldb(env) {
   const d = await adb(env); if (!d) throw err("Database not connected.", 503);
@@ -511,7 +514,8 @@ export async function lead(env, id) {
     opportunities: await all(d, "SELECT service,problem,evidence,why,value,angle,kind FROM li_opps WHERE business_id=?1", b.id),
     score: sc ? { total: sc.total, parts: J(sc.parts, []), at: sc.at } : null,
     history: await all(d, "SELECT from_status,to_status,channel,note,by_email,at FROM li_outreach WHERE business_id=?1 ORDER BY id DESC LIMIT 50", b.id),
-    sources: await all(d, "SELECT url, kind, http, at FROM li_sources WHERE business_id=?1", b.id), opted_out: unsub };
+    sources: await all(d, "SELECT url, kind, http, at FROM li_sources WHERE business_id=?1", b.id), opted_out: unsub,
+    inbox: await all(d, "SELECT channel, from_addr, subject, text, at, source, by_email FROM li_replies WHERE business_id=?1 ORDER BY at DESC LIMIT 20", b.id).catch(() => []) };
 }
 const SORTS = { score: "COALESCE(score,-1) DESC", newest: "created_at DESC", name: "name COLLATE NOCASE", updated: "updated_at DESC", reviews: "COALESCE(reviews,-1) DESC" };
 export async function list(env, q) {
@@ -619,6 +623,123 @@ export async function logSent(env, id, b, by) {
   if (to !== x.status) await run(d, "UPDATE li_businesses SET status=?2, updated_at=?3 WHERE id=?1", x.id, to, nowIso());
   await act(d, "sent_" + ch, x.id, clip(b.note, 200), by);
   return lead(env, x.id);
+}
+/* ---------------- v55.16 Sent & replies ----------------
+   Every message logged as sent (email from here, or WhatsApp / Instagram / Facebook / LinkedIn / X sent from the person's own app and
+   logged with "Did you send it?") in one list, with the replies next to it. Email replies are read from FODO's Gmail mailbox
+   (Admin ▸ Studio ▸ Inbox, the inbox replies go to): a message FROM the address we emailed, after we emailed it, is that
+   business's reply. Nothing else is read. Replies on WhatsApp / Instagram / Facebook / LinkedIn stay in those apps (they are
+   not connected), so the person marks them with "Got a reply" and can paste the text. A "STOP" reply opts the address out. */
+const SENT_CH = Object.keys(SENT_STATUS);
+const CH_LABEL = { email: "Email", whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", x: "X", call: "Call" };
+const REPLY_FROM = ["new", "not_contacted", "contacted", "email_sent"];
+export const isStopReply = (t) => /^\s*(stop|unsubscribe|remove me|please remove|do not contact|don'?t contact)\b/i.test(String(t || ""));
+const unEnt = (s) => String(s || "").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+async function addReply(d, x, o, by) {
+  if (await one(d, "SELECT id FROM li_replies WHERE business_id=?1 AND ref=?2", x.id, o.ref)) return false;
+  const t = nowIso(), stop = o.channel === "email" && isStopReply(o.text);
+  await run(d, "INSERT OR IGNORE INTO li_replies (business_id, channel, from_addr, subject, text, at, source, ref, by_email, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+    x.id, o.channel, clip(o.from, 254), clip(o.subject, 200), clip(o.text, 1500), o.at || t, o.source, o.ref, clip(by, 254), t);
+  if (stop && o.from) await run(d, "INSERT OR IGNORE INTO camp_unsub (email, at, why) VALUES (?1,?2,'replied STOP to Lead Intelligence email')", cleanEmail(o.from) || o.from, t).catch(() => {});
+  const to = stop ? "dnc" : REPLY_FROM.indexOf(x.status) > -1 ? "replied" : x.status;
+  await run(d, "INSERT INTO li_outreach (business_id, from_status, to_status, channel, note, by_email, at) VALUES (?1,?2,?3,'reply',?4,?5,?6)", x.id, x.status, to,
+    clip((CH_LABEL[o.channel] || o.channel) + " reply" + (stop ? " (asked to stop, opted out)" : "") + (o.text ? ": " + o.text : ""), 500), clip(by || "Gmail check", 254), t);
+  if (to !== x.status) await run(d, "UPDATE li_businesses SET status=?2, updated_at=?3 WHERE id=?1", x.id, to, t);
+  await act(d, "reply_" + o.channel, x.id, clip(o.text, 200), by);
+  x.status = to; return true;
+}
+/* "Got a reply" for apps we cannot read (WhatsApp, Instagram, Facebook, LinkedIn, X, a call), or an email reply that came elsewhere */
+export async function markReplied(env, id, b, by) {
+  const d = await ldb(env), x = (await lead(env, id)).lead; b = b || {};
+  const ch = SENT_CH.indexOf(b.channel) > -1 ? b.channel : ""; if (!ch) throw err("Pick where the reply came (WhatsApp, Instagram, Facebook, LinkedIn, X, Email or Call).");
+  await addReply(d, x, { channel: ch, text: clip(b.text, 1500), from: "", subject: "", at: nowIso(), source: "manual", ref: "m:" + randId(12) }, by);
+  return lead(env, x.id);
+}
+/* the Gmail mailbox that receives replies (tests inject a fake through env.LI_GMAIL_MOCK in test mode only) */
+async function gmailFor(env) {
+  if (env.XRAY_TEST_MODE === "1" && env.LI_GMAIL_MOCK) return env.LI_GMAIL_MOCK;
+  try {
+    const IB = await import("./sinbox.js"), s = await IB.status(env); if (!s.connected || !s.account) return null;
+    const GO = await import("./brain/google.js"); return { account: s.account, get: (url) => GO.g(env, s.account, url) };
+  } catch (e) { return null; }
+}
+const KV_CHK = "li:replycheck";
+async function lastCheck(env) { try { return env.CHAT_KV ? JSON.parse((await env.CHAT_KV.get(KV_CHK)) || "null") : null; } catch (e) { return null; } }
+export async function checkReplies(env, by) {
+  const d = await ldb(env), gm = await gmailFor(env);
+  if (!gm) throw err("Email reply tracking needs FODO's Gmail mailbox connected: open Admin ▸ Studio ▸ Inbox and log in with Google as anmol@fodo.co.in.", 409);
+  const OR = await import("./outreach.js"), cm = await OR.cmDb(env), since = new Date(Date.now() - 120 * 864e5).toISOString();
+  const sent = await all(cm, "SELECT client_id, email, MIN(at) first_at FROM cm_sends WHERE campaign_id='lead-intel' AND test=0 AND status='sent' AND at > ?1 GROUP BY client_id, email ORDER BY MAX(at) DESC LIMIT 60", since);
+  const GENERIC_D = /^(gmail|yahoo|ymail|hotmail|outlook|live|icloud|rediffmail|aol|proton|protonmail|zoho)\./i;
+  let checked = 0, found = 0; const errors = [];
+  for (const s of sent) {
+    const x = await one(d, "SELECT id, status, domain FROM li_businesses WHERE id=?1", s.client_id); if (!x || !s.email) continue;
+    const dom = s.email.split("@")[1] || "", own = !!(x.domain && dom === x.domain && !GENERIC_D.test(dom));   // the business's own domain: a colleague's reply counts too
+    const after = Math.floor(Date.parse(s.first_at) / 1000) - 60, q = "from:" + (own ? dom : s.email) + " after:" + after;
+    let L; try { L = await gm.get("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=" + encodeURIComponent(q)); } catch (e) { errors.push(s.email + ": " + String(e.message || e).slice(0, 120)); if (errors.length > 3) break; continue; }
+    checked++;
+    for (const m of (L.messages || []).slice(0, 5)) {
+      if (await one(d, "SELECT id FROM li_replies WHERE business_id=?1 AND ref=?2", x.id, "gmail:" + m.id)) continue;
+      let g; try { g = await gm.get("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + encodeURIComponent(m.id) + "?format=metadata&metadataHeaders=From&metadataHeaders=Subject"); } catch (e) { continue; }
+      const H = (n) => (((g.payload && g.payload.headers) || []).find((h) => h.name.toLowerCase() === n) || {}).value || "";
+      const from = (/<([^>]+)>/.exec(H("from")) || [])[1] || H("from"), fe = cleanEmail(from) || "";
+      if (!(fe === s.email || (own && fe.endsWith("@" + dom)))) continue;   // Gmail search is fuzzy; keep only that sender
+      if (gm.account && fe === String(gm.account).toLowerCase()) continue;
+      if (await addReply(d, x, { channel: "email", from: fe, subject: H("subject"), text: clip(unEnt(g.snippet), 600), at: new Date(+g.internalDate || Date.now()).toISOString(), source: "gmail", ref: "gmail:" + m.id }, "Gmail check")) found++;
+    }
+  }
+  const r = { at: nowIso(), checked, found, account: gm.account || "", errors: errors.slice(0, 3) };
+  try { if (env.CHAT_KV) await env.CHAT_KV.put(KV_CHK, JSON.stringify(r), { expirationTtl: 90 * 86400 }); } catch (e) {}
+  await act(d, "reply_check", null, checked + " checked, " + found + " new", by);
+  return Object.assign({ check: r }, await sentList(env, {}));
+}
+/* one row per business we messaged: where, when, which files, and its replies */
+export async function sentList(env, q) {
+  const d = await ldb(env); q = q || {};
+  const sends = await all(d, "SELECT business_id, channel, note, by_email, at FROM li_outreach WHERE channel IN (" + SENT_CH.map((c) => "'" + c + "'").join(",") + ") ORDER BY at DESC LIMIT 4000");
+  const reps = await all(d, "SELECT business_id, channel, from_addr, subject, text, at, source FROM li_replies ORDER BY at DESC LIMIT 4000");
+  const by = new Map();
+  for (const s of sends) { let r = by.get(s.business_id); if (!r) by.set(s.business_id, (r = { sends: [], replies: [] }));
+    const fm = /\(\+([^()]+)\)\s*$/.exec(s.note || ""); r.sends.push({ channel: s.channel, at: s.at, note: s.note, by: s.by_email, files: fm ? fm[1].split(/,\s*/).filter(Boolean).slice(0, 5) : [] }); }
+  for (const p of reps) { const r = by.get(p.business_id); if (r) r.replies.push(p); }
+  const ids = [...by.keys()], biz = new Map();
+  for (let i = 0; i < ids.length; i += 90) { const part = ids.slice(i, i + 90); (await all(d, "SELECT id, name, category, locality, city, status, email, score, priority FROM li_businesses WHERE id IN (" + part.map((_, k) => "?" + (k + 1)).join(",") + ")", ...part)).forEach((b) => biz.set(b.id, b)); }
+  let items = ids.filter((id) => biz.has(id)).map((id) => { const b = biz.get(id), r = by.get(id), last = r.sends[0], rep = r.replies[0] || null;
+    return { id, name: b.name, category: b.category, place: [b.locality, b.city].filter(Boolean).join(", "), status: b.status, score: b.score, priority: b.priority,
+      channels: [...new Set(r.sends.map((s) => s.channel))], sends: r.sends.slice(0, 10), sent_count: r.sends.length, last_sent: last.at, first_sent: r.sends[r.sends.length - 1].at,
+      files: [...new Set([].concat(...r.sends.map((s) => s.files)))].slice(0, 6), replied: !!rep, reply: rep, reply_count: r.replies.length }; });
+  const counts = { all: items.length, replied: items.filter((i) => i.replied).length, waiting: items.filter((i) => !i.replied).length, by_channel: {} };
+  SENT_CH.forEach((c) => { counts.by_channel[c] = items.filter((i) => i.channels.indexOf(c) > -1).length; });
+  if (q.view === "replied") items = items.filter((i) => i.replied); else if (q.view === "waiting") items = items.filter((i) => !i.replied);
+  if (SENT_CH.indexOf(q.channel) > -1) items = items.filter((i) => i.channels.indexOf(q.channel) > -1);
+  const s = String(q.q || "").toLowerCase().trim(); if (s) items = items.filter((i) => (i.name + " " + i.place + " " + i.id).toLowerCase().indexOf(s) > -1);
+  items.sort((a, b) => String((b.reply && b.reply.at) || b.last_sent).localeCompare(String((a.reply && a.reply.at) || a.last_sent)));
+  return { items: items.slice(0, 300), counts, tracking: { email: !!(await gmailFor(env)), last_check: await lastCheck(env) }, channels: SENT_CH.map((c) => [c, CH_LABEL[c]]) };
+}
+/* who FODO's bots are talking to: Instagram / Facebook DM bot (KV log from metadm.js, from v55.16 on) and the website help chat */
+export async function botConvos(env) {
+  const out = []; let dm = { on: !!env.META_PAGE_TOKEN && String(env.META_BOT_DISABLED || "") !== "1", logged: !!(env.CHAT_KV && env.CHAT_KV.list) };
+  if (dm.logged) {
+    let cursor; for (let i = 0; i < 5; i++) {
+      const r = await env.CHAT_KV.list({ prefix: "dm:cv:", cursor, limit: 1000 }).catch(() => null); if (!r) break;
+      (r.keys || []).forEach((k) => { const m = k.metadata || {}, parts = k.name.split(":"); out.push({ platform: m.p || parts[2], ref: parts.slice(2).join(":"), who: m.n || "", last_in: m.li || "", last_out: m.lo || "", at: m.at || "", count: m.c || 0, state: m.st || "bot", lead: !!m.ld }); });
+      if (r.list_complete || !r.cursor) break; cursor = r.cursor;
+    }
+  }
+  try {
+    const d = await adb(env), rows = await all(d, "SELECT c.id, c.email, c.updated_at, c.msgs, c.ticket_id, (SELECT text FROM help_chat_msgs m WHERE m.chat_id=c.id AND m.role='user' ORDER BY m.id DESC LIMIT 1) li, (SELECT text FROM help_chat_msgs m WHERE m.chat_id=c.id AND m.role<>'user' ORDER BY m.id DESC LIMIT 1) lo FROM help_chats c ORDER BY c.updated_at DESC LIMIT 100");
+    rows.forEach((c) => out.push({ platform: "website", ref: c.id, who: c.email || "Website visitor", last_in: clip(c.li, 140), last_out: clip(c.lo, 140), at: c.updated_at, count: c.msgs || 0, state: c.ticket_id ? "human" : "bot", lead: !!c.email, link: "#chat/" + c.id }));
+  } catch (e) {}
+  out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const day = new Date(Date.now() - 864e5).toISOString(), counts = { all: out.length, today: out.filter((c) => c.at > day).length, instagram: 0, facebook: 0, website: 0, human: out.filter((c) => c.state === "human").length, leads: out.filter((c) => c.lead).length };
+  out.forEach((c) => { if (counts[c.platform] != null) counts[c.platform]++; });
+  return { convos: out.slice(0, 400), counts, dm };
+}
+export async function botConvo(env, ref) {
+  const r = String(ref || ""); if (!/^(instagram|facebook):[\w.-]{1,80}$/.test(r) || !env.CHAT_KV) throw err("Not found.", 404);
+  const v = env.CHAT_KV.getWithMetadata ? await env.CHAT_KV.getWithMetadata("dm:cv:" + r) : { value: await env.CHAT_KV.get("dm:cv:" + r), metadata: null };
+  if (!v || !v.value) throw err("This chat is no longer stored (chats are kept for 30 days).", 404);
+  return { convo: Object.assign({ platform: r.split(":")[0] }, v.metadata || {}), messages: J(v.value, []) };
 }
 /* ---------------- outreach drafts (never sent from here) ---------------- */
 /* the facts every message is written from: only what research actually found */

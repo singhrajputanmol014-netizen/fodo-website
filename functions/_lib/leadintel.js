@@ -190,7 +190,7 @@ async function getPage(env, url, d) {
   try {
     const { r, finalUrl } = await safeFetch(url, { headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" } }, { timeout: 12000, env });
     const type = r.headers.get("content-type") || ""; let html = "";
-    if (/html|xml|text/i.test(type) || !type) { html = await r.text(); if (html.length > MAX_HTML) html = html.slice(0, MAX_HTML); } else { try { r.body && r.body.cancel(); } catch (e) {} }
+    if (/html|xml|text/i.test(type) || !type) { html = await r.text(); if (html.length > MAX_HTML) { html = html.slice(0, 2000000).replace(/<script(?![^>]*ld\+json)[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>|data:[a-z\/+.-]+;base64,[A-Za-z0-9+\/=]+/gi, " "); if (html.length > MAX_HTML) html = html.slice(0, MAX_HTML); } } else { try { r.body && r.body.cancel(); } catch (e) {} }
     return { ok: r.ok, status: r.status, url: finalUrl, html, ms: Date.now() - t0, headers: { hsts: !!r.headers.get("strict-transport-security"), server: r.headers.get("server") || "" } };
   } catch (e) { return { ok: false, status: 0, url, html: "", ms: Date.now() - t0, error: String(e.message || e).slice(0, 160) }; }
 }
@@ -261,6 +261,27 @@ export function peopleFromSearch(res, bizName) {
     out.push({ name, role: roleM[0], confidence: "partial", source_url: r.url, profile_url: li ? r.url : "", evidence: "Public search result: \"" + clip(title, 140) + "\"" });
   });
   return out.slice(0, 4);
+}
+/* emails in public search results: only addresses printed in a result that is about this business (its domain, or a title/snippet
+   naming it); each keeps the result URL as its source and says it is NOT from the official website */
+export function emailsInResults(res, b) {
+  const dom = b.domain || siteDomain(b.website), phrase = String(b.name || "").split(/\s[|\-\u2013]\s|,/)[0].toLowerCase().replace(/\s+/g, " ").trim(), out = [], seen = new Set();
+  ((res && res.web) || []).forEach((r) => {
+    const txt = [r.title, r.description].concat(r.extra || []).join(" "), hay = txt.toLowerCase();
+    (txt.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || []).forEach((raw) => {
+      const e = cleanEmail(raw); if (!e || BAD_MAIL.test(e) || seen.has(e)) return;
+      const onDomain = dom && regDomain(e.split("@")[1]) === dom, named = phrase.length >= 6 && hay.replace(/\s+/g, " ").indexOf(phrase) > -1;   // the exact business name, not just "dental" + "dwarka"
+      if (!onDomain && !named) return;
+      seen.add(e); out.push({ email: e, source: clip(r.url, 400), status: onDomain ? "public search result, uses the business's own domain (not on its website)" : "public search result naming the business (not on its website), check before use" });
+    });
+  });
+  return out.slice(0, 3);
+}
+async function emailsFromSearch(env, d, b) {
+  if (!providers(env).search) return { error: "search API not configured" };
+  const dom = b.domain || siteDomain(b.website), qs = (dom ? ['"@' + dom + '"'] : []).concat(['"' + b.name.split(/\s[|\-\u2013]\s/)[0].slice(0, 60) + '" ' + (b.locality || b.city || "") + " email"]), all = [];
+  for (const q of qs) { const res = await webSearch(env, d, q); if (res && res.error) return { error: res.error, emails: all }; emailsInResults(res, b).forEach((e) => { if (!all.some((x) => x.email === e.email)) all.push(e); }); if (all.length) break; }
+  return { emails: all };
 }
 async function mxCheck(env, d, domain) {
   try {
@@ -434,6 +455,13 @@ export async function research(env, id, by) {
     if (res && res.error) notes.push("Search API: " + res.error); else if (res) peopleFromSearch(res, b.name).forEach((x) => people.push(x)); else notes.push("Search API not configured: decision makers come from the website only.");
   }
   for (const p of people) await run(d, "INSERT OR REPLACE INTO li_people (business_id, name, role, profile_url, confidence, source_url, evidence, found_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", b.id, p.name, p.role, clip(p.profile_url, 400), p.confidence, clip(p.source_url, 400), p.evidence, t);
+  // no email on the website → look in public search results (business domain first, then listings that name the business)
+  if (!(await one(d, "SELECT 1 AS x FROM li_contacts WHERE business_id=?1 AND kind='email'", b.id))) {
+    const found = await emailsFromSearch(env, d, b);
+    if (found.error) notes.push("Email search: " + found.error);
+    for (const e of found.emails || []) await addContact(d, b.id, "email", mailKind(e.email), e.email, e.source, e.status);
+    if (found.emails && !found.emails.length && !found.error) notes.push("No public email found on the website or in search results.");
+  }
   // email domain check (MX); never upgrades an address to "verified"
   const contacts = await all(d, "SELECT * FROM li_contacts WHERE business_id=?1", b.id);
   const doms = [...new Set(contacts.filter((x) => x.kind === "email").map((x) => x.value.split("@")[1]))].slice(0, 3);

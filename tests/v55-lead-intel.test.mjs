@@ -117,6 +117,11 @@ ok(LI.scoreLead({ name: "X", website: "" }, null, [], [], {}).total <= 35, "a bu
 
 const PX = LI.peopleIn("<p>care near you.Led by Dr. Chhavi Bajaj, we combine</p><p>Dr. Chhavi Bajaj, BDS, MHA,</p><p>Family Dental is led by Dr. Mahima Yadav. The clinic</p><p>Dr. Rohan Mehta (MDS)</p><p>Read More by Our Team</p>", "https://x.in/");
 ok(PX.length === 3 && PX[0].confidence === "verified" && /Chhavi Bajaj/.test(PX[0].name) && PX.some((p) => /Mahima Yadav/.test(p.name) && p.confidence === "verified") && PX.some((p) => /Rohan Mehta/.test(p.name) && p.confidence === "unverified" && /ownership not stated/.test(p.role)), "'led by Dr. X' = verified head; 'Dr. X, MDS' alone = unverified (ownership not stated); no duplicates");
+const ER = LI.emailsInResults({ web: [
+  { title: "Dental Paradise Dwarka contact", url: "https://www.justdial.com/x", description: "Dental Paradise, Sector 6 Dwarka. Email: dentalparadise.dwarka@gmail.com" },
+  { title: "Other Dental Clinic Dwarka", url: "https://y.in", description: "dental clinic in dwarka, write to other.clinic@gmail.com" },
+  { title: "Contact", url: "https://z.in", description: "reach us at hello@dentalparadise.co.in or name@example.com" } ] }, { name: "Dental Paradise, Dwarka", website: "https://dentalparadise.co.in/" });
+ok(ER.length === 2 && ER.some((e) => e.email === "hello@dentalparadise.co.in" && /own domain/.test(e.status)) && ER.some((e) => e.email === "dentalparadise.dwarka@gmail.com" && /not on its website/.test(e.status) && /justdial/.test(e.source)) && !ER.some((e) => /other\.clinic|example/.test(e.email)), "emails from search: business domain or exact business name only, with source; another clinic's email is not taken");
 /* list, filters, edit, status, bulk, dupes */
 let L = (await LP("leads?sort=score")).j; ok(L.total === 2 && L.leads[0].score >= L.leads[1].score, "All leads sorted by score");
 ok((await LP("leads?q=priya")).j.total === 1 && (await LP("leads?website=none")).j.total === 1 && (await LP("leads?people=verified")).j.total === 1, "search and filters work (owner name, website, founder confidence)");

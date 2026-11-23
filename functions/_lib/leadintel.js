@@ -264,15 +264,23 @@ export function peopleFromSearch(res, bizName) {
 }
 /* emails in public search results: only addresses printed in a result that is about this business (its domain, or a title/snippet
    naming it); each keeps the result URL as its source and says it is NOT from the official website */
+const GENERIC = /^(dental|dentist|dentists|dentistry|clinic|clinics|care|smile|smiles|hospital|centre|center|best|top|city|multispeciality|multispecialty|speciality|specialty|super|family|new|old|delhi|dwarka|noida|gurgaon|gurugram|india|indian|sector|rct|implant|implants|braces|skin|hair|health|healthcare|medical|med|the|and|for|near|me|in|of|pvt|ltd|private|limited|services|solutions|studio|group|home|real|estate|interior|interiors|restaurant|cafe|gym|fitness|salon|spa|academy|institute|coaching|school|law|associates|company|co)$/;
+export const distinctive = (name, locality) => String(name || "").split(/\s[|\-–]\s|,|\(/)[0].toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 3 && !GENERIC.test(w) && w !== String(locality || "").toLowerCase());
+/* emails in public search results. Kept only when the address itself carries every distinctive word of the business name
+   (so "Dwarka Dental" never picks up another clinic's info@ayushmandental.com), or uses the business domain and that domain
+   carries the name too (so a directory site listed as the "website" does not count). Source URL kept; marked not-from-website. */
 export function emailsInResults(res, b) {
-  const dom = b.domain || siteDomain(b.website), phrase = String(b.name || "").split(/\s[|\-\u2013]\s|,/)[0].toLowerCase().replace(/\s+/g, " ").trim(), out = [], seen = new Set();
+  const dom = b.domain || siteDomain(b.website), key = distinctive(b.name, b.locality || b.city), out = [], seen = new Set();
+  if (!key.length) return out;   // a name made only of generic words cannot be matched safely
+  const full = String(b.name || "").split(/\s[|\-\u2013]\s|,|\(/)[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+  const domOk = dom && key.some((w) => dom.replace(/[^a-z0-9]/g, "").indexOf(w) > -1);
   ((res && res.web) || []).forEach((r) => {
-    const txt = [r.title, r.description].concat(r.extra || []).join(" "), hay = txt.toLowerCase();
+    const txt = [r.title, r.description].concat(r.extra || []).join(" ");
     (txt.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || []).forEach((raw) => {
       const e = cleanEmail(raw); if (!e || BAD_MAIL.test(e) || seen.has(e)) return;
-      const onDomain = dom && regDomain(e.split("@")[1]) === dom, named = phrase.length >= 6 && hay.replace(/\s+/g, " ").indexOf(phrase) > -1;   // the exact business name, not just "dental" + "dwarka"
-      if (!onDomain && !named) return;
-      seen.add(e); out.push({ email: e, source: clip(r.url, 400), status: onDomain ? "public search result, uses the business's own domain (not on its website)" : "public search result naming the business (not on its website), check before use" });
+      const flat = e.replace(/[^a-z0-9]/g, ""), onDomain = domOk && regDomain(e.split("@")[1]) === dom, carries = (full.length >= 6 && flat.indexOf(full) > -1) || (key.length >= 2 && key.every((w) => flat.indexOf(w) > -1));   // "dentalparadise" yes, "paradisedentalsmiles" no
+      if (!onDomain && !carries) return;
+      seen.add(e); out.push({ email: e, source: clip(r.url, 400), status: onDomain ? "public search result, uses the business's own domain (not on its website)" : "public search result, address carries the business name (not on its website), check before use" });
     });
   });
   return out.slice(0, 3);
@@ -457,6 +465,7 @@ export async function research(env, id, by) {
   }
   for (const p of people) await run(d, "INSERT OR REPLACE INTO li_people (business_id, name, role, profile_url, confidence, source_url, evidence, found_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)", b.id, p.name, p.role, clip(p.profile_url, 400), p.confidence, clip(p.source_url, 400), p.evidence, t);
   // no email on the website → look in public search results (business domain first, then listings that name the business)
+  await run(d, "DELETE FROM li_contacts WHERE business_id=?1 AND kind='email' AND status LIKE 'public search result%'", b.id);   // re-checked every run
   if (!(await one(d, "SELECT 1 AS x FROM li_contacts WHERE business_id=?1 AND kind='email'", b.id))) {
     const found = await emailsFromSearch(env, d, b);
     if (found.error) notes.push("Email search: " + found.error);

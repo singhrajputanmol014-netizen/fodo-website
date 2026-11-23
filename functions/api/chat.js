@@ -105,15 +105,19 @@ const MONEY_RE = /(₹|rs\.?|inr|rupees?|रुपये)\s?\d|\d[\d,]*\s?(k|haz
 export function inventedPrice(reply, userText) {
   const r = String(reply || ""); if (!MONEY_RE.test(r)) return false;
   if (/x-?ray|growth lab|\/plans|starter|pro tool|website builder|per month|\/month|a month/i.test(r)) return false;
+  const said = String(userText || "").replace(/,/g, "").toLowerCase();
   const nums = (r.match(/\d[\d,]*/g) || []).map((n) => n.replace(/,/g, "")).filter((n) => n.length >= 3);
-  const said = String(userText || "").replace(/,/g, "");
-  return nums.some((n) => said.indexOf(n) < 0);
+  if (nums.some((n) => said.indexOf(n) < 0)) return true;
+  const units = r.match(/\d[\d,.]*\s?(k|hazaar|hazar|thousand|lakh|lac)\b/gi) || [];   // "20-50 hazar", "15k", "2 lakh"
+  return units.some((u) => said.indexOf(u.replace(/[\s,]/g, "").toLowerCase().replace(/(hazaar|hazar|thousand)$/, "")) < 0 && said.indexOf(u.toLowerCase()) < 0);
 }
 export const NO_PRICE_NOTE = "\n\n# CORRECTION\nYour last draft gave a price or price range. FODO has no price list for agency work: never give any rupee amount, range or estimate. Say it depends on what they need and Anmol gives a fixed quote after a quick call.";
+const intentAll = (history, text) => NEED_RE.test((history || []).filter((h) => h && h.role === "user").map((h) => String(h.content || "")).concat([text]).join(" ")) || PRICE_RE.test(text);
 export function turnHints(text, history, o) {
   o = o || {}; const lines = [], lang = languageHint(text);
   if (lang) lines.push("- Language: " + lang);
-  if (PRICE_RE.test(text)) lines.push("- They asked about price or cost: answer that FIRST in one simple line (no fixed price list, it depends on what they need, Anmol gives a fixed quote after a quick call; ad spend is separate). Never invent a number.");
+  if (PRICE_RE.test(text)) lines.push("- They asked about price or cost: answer that FIRST in one simple line (no fixed price list, it depends on what they need, Anmol gives a fixed quote after a quick call; ad spend is separate)" + (/Hinglish/.test(lang) ? ", e.g. \"Price aapki requirement pe depend karta hai, Anmol ek quick call ke baad fixed quote de dete hain.\"" : "") + ".");
+  if (intentAll(history, text)) lines.push("- Never say any amount, range or estimate for FODO's work (not even \"lagbhag 20-50 hazar\" or \"around 15k\"). Only the person can mention numbers, like their own budget.");
   const userTexts = (history || []).filter((h) => h && h.role === "user").map((h) => String(h.content || "")).concat([text]);
   const asked = (history || []).some((h) => h && h.role === "assistant" && /whatsapp\s*(number|no\.?)|naam aur|name and (your )?whatsapp|नाम और|number share/i.test(String(h.content || "")));
   const intent = NEED_RE.test(userTexts.join(" "));

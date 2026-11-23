@@ -100,6 +100,16 @@ export function languageHint(text) {
 }
 const PRICE_RE = /\b(price|pricing|cost|costs|charges?|fees?|rate|rates|quote|quotation|kitna|kitne|kitni|kharcha|kharch|budget kya|package|packages|paisa|paise|lagega|lagegi)\b|कितना|कितने|कीमत|खर्च|दाम/i;
 const NEED_RE = /\b(website|site|web|ads?|advert|google ads|meta ads|facebook ads|leads?|seo|instagram|insta|social media|marketing|branding|logo|content|reels?|whatsapp|automation|chatbot|growth|sales|customers?|clinic|shop|store|dukan|dukaan|restaurant|cafe|gym|salon|business|company|brand|budget|quote)\b|वेबसाइट|बिज़नेस|बिजनेस|विज्ञापन|ਵੈਬਸਾਈਟ|ওয়েবসাইট|বিক্রি/i;
+/* a rupee figure or range for agency work that the person did not say and that is not a Growth Lab price = invented */
+const MONEY_RE = /(₹|rs\.?|inr|rupees?|रुपये)\s?\d|\d[\d,]*\s?(k|hazaar|hazar|thousand|lakh|lac)\b|\b\d{1,3}(,\d{2,3})+\b|\b\d{4,6}\s*(se|to|-|–)\s*\d{4,6}\b/i;
+export function inventedPrice(reply, userText) {
+  const r = String(reply || ""); if (!MONEY_RE.test(r)) return false;
+  if (/x-?ray|growth lab|\/plans|starter|pro tool|website builder|per month|\/month|a month/i.test(r)) return false;
+  const nums = (r.match(/\d[\d,]*/g) || []).map((n) => n.replace(/,/g, "")).filter((n) => n.length >= 3);
+  const said = String(userText || "").replace(/,/g, "");
+  return nums.some((n) => said.indexOf(n) < 0);
+}
+export const NO_PRICE_NOTE = "\n\n# CORRECTION\nYour last draft gave a price or price range. FODO has no price list for agency work: never give any rupee amount, range or estimate. Say it depends on what they need and Anmol gives a fixed quote after a quick call.";
 export function turnHints(text, history, o) {
   o = o || {}; const lines = [], lang = languageHint(text);
   if (lang) lines.push("- Language: " + lang);
@@ -329,7 +339,10 @@ export async function onRequestPost(context) {
 
   try {
     const t0 = Date.now();
-    const { text, model } = await chatGenerate(env, messages, paid ? 800 : 480);
+    let { text, model } = await chatGenerate(env, messages, paid ? 800 : 480);
+    if (inventedPrice(text, messages.filter((m) => m.role === "user").map((m) => m.content).join(" "))) {   // v55.19: no made-up prices
+      try { const m2 = messages.slice(); m2[0] = Object.assign({}, m2[0], { content: m2[0].content + NO_PRICE_NOTE }); const r2 = await chatGenerate(env, m2, paid ? 800 : 480); if (r2.text && !inventedPrice(r2.text, "")) { text = r2.text; model = r2.model; } } catch (e) {}
+    }
     await bump(env, { requests: 1, ok: 1, latency_ms_total: Date.now() - t0 });
     if (sid) {
       const after = (async () => {

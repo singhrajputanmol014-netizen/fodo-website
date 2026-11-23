@@ -24,7 +24,7 @@
  * Rules: only answers messages people send to FODO (never starts a chat), only inside Meta's 24 h window
  * (messaging_type RESPONSE), stays quiet in a thread a human has taken over, never sends the same reply twice.
  */
-import { SYSTEM_PROMPT, generate, turnHints } from "../api/chat.js";
+import { SYSTEM_PROMPT, generate, turnHints, inventedPrice, NO_PRICE_NOTE } from "../api/chat.js";
 import { productBrief, productDetail, PRODUCT_RE } from "./sitekb.js";
 import { groqChat } from "./aivis.js";
 import { saveLead, updateLead } from "./sitecfg.js";
@@ -201,7 +201,10 @@ export async function replyFor(env, platform, sender, text, lead) {
     ...past.slice(-HISTORY_TURNS * 2),
     { role: "user", content: text },
   ];
-  const reply = toDmText(await dmGenerate(env, messages));
+  let reply = toDmText(await dmGenerate(env, messages));
+  if (inventedPrice(reply, past.filter((m) => m.role === "user").map((m) => m.content).join(" ") + " " + text)) {   // v55.19: no made-up prices
+    try { const m2 = messages.slice(); m2[0] = { role: "system", content: m2[0].content + NO_PRICE_NOTE }; const r2 = toDmText(await dmGenerate(env, m2)); if (r2 && !inventedPrice(r2, "")) reply = r2; } catch (e) {}
+  }
   const next = [...past, { role: "user", content: text.slice(0, 600) }, { role: "assistant", content: reply.slice(0, 900) }].slice(-HISTORY_TURNS * 2);
   await kvPut(env, "dm:h:" + platform + ":" + sender, JSON.stringify(next), HISTORY_TTL);
   return reply;

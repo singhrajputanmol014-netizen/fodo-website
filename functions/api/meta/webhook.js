@@ -1,6 +1,7 @@
 /* v54 Meta webhook: FODO Bot answers Instagram + Facebook DMs 24/7 (logic in functions/_lib/metadm.js).
  * Meta app → Webhooks: callback URL https://www.fodo.co.in/api/meta/webhook , verify token = META_WEBHOOK_VERIFY_TOKEN.
  * Subscribe the Page to "messages" and "message_echoes" (and the Instagram product to "messages").
+ * WhatsApp (v54.7): same callback URL in the app's WhatsApp > Configuration; subscribe "messages" and "smb_message_echoes".
  */
 import { verifySignature, parseEvents, handleEvent, readDiag } from "../../_lib/metadm.js";
 
@@ -10,7 +11,7 @@ export async function onRequestGet({ request, env }) {
   const u = new URL(request.url);
   const mode = u.searchParams.get("hub.mode"), token = u.searchParams.get("hub.verify_token"), challenge = u.searchParams.get("hub.challenge");
   if (mode === "subscribe" && env.META_WEBHOOK_VERIFY_TOKEN && token === env.META_WEBHOOK_VERIFY_TOKEN && challenge) return text(challenge);
-  if (!mode) return text(JSON.stringify({ ok: true, service: "fodo-meta-dm", configured: !!(env.META_APP_SECRET && env.META_WEBHOOK_VERIFY_TOKEN && env.META_PAGE_TOKEN), disabled: String(env.META_BOT_DISABLED || "") === "1", recent: u.searchParams.has("diag") ? await readDiag(env) : undefined }));
+  if (!mode) return text(JSON.stringify({ ok: true, service: "fodo-meta-dm", configured: !!(env.META_APP_SECRET && env.META_WEBHOOK_VERIFY_TOKEN && env.META_PAGE_TOKEN), whatsapp: !!(env.META_APP_SECRET && env.META_WA_TOKEN), disabled: String(env.META_BOT_DISABLED || "") === "1", recent: u.searchParams.has("diag") ? await readDiag(env) : undefined }));
   return text("forbidden", 403);
 }
 

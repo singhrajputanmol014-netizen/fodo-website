@@ -635,7 +635,7 @@ export function factsOf(L) {
 const factText = (F) => ["Business: " + F.name + (F.category ? " (" + F.category + ")" : "") + (F.place ? ", " + F.place : ""), F.first ? "Person: " + F.first : "Person: unknown, address the team",
   F.good.length ? "Good: " + F.good.join("; ") : "", F.website ? (F.down ? "Website " + F.website + " did not load when we checked" : "Website: " + F.website) : "No website found",
   F.pagespeed != null ? "Mobile speed score: " + F.pagespeed + "/100" : "", "What we observed:\n" + (F.problems.map((o) => "- " + o.problem + " (" + o.evidence + ") -> " + o.service).join("\n") || "- nothing major")].filter(Boolean).join("\n");
-const STYLE = { whatsapp: "a WhatsApp message, 45 to 70 words, friendly, 1 or 2 specific observations, ends with a simple yes/no question", instagram: "an Instagram DM, 30 to 45 words, casual and warm, one specific observation, no links", facebook: "a Facebook Page message, 35 to 55 words, polite, one or two specific observations",
+const STYLE = { whatsapp: "a WhatsApp message, 45 to 70 words, friendly, 1 or 2 specific observations, ends by asking if a 10-minute call this week works", instagram: "an Instagram DM, 30 to 45 words, casual and warm, one specific observation, no links", facebook: "a Facebook Page message, 35 to 55 words, polite, one or two specific observations",
   linkedin: "a LinkedIn connection note under 280 characters to the owner, professional, one specific observation", x: "an X direct message under 240 characters, one specific observation", followup: "a short follow-up email, 50 to 80 words, with 'Subject: ...' as the first line", opener: "three different one-sentence opening lines, one per line" };
 const SYS = "You write honest, personal B2B outreach for FODO (Fear Of Digitally Out ?), a digital growth agency in New Delhi, signed 'Anmol, FODO'. Use ONLY the facts given: never invent numbers, results, clients, awards or claims about their ads. Mention something good about them first when there is a fact for it, then the specific problem. Plain text, no markdown, no hashtags, no long dashes, never the word free. Write in English.";
 function templ(ch, F) {
@@ -668,7 +668,11 @@ export async function drafts(env, id, b) {
   if (ch === "email") {
     const ai = await aiRun(env, SYS + " Reply with JSON only: {\"subject\": \"...\", \"intro\": \"...\", \"closing\": \"...\"}.",
       facts + "\n\nWrite an email to this business. subject: under 60 characters, specific to them, no clickbait. intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, 2 or 3 short sentences: who Anmol is, one genuine positive fact if given, then lead into 'here is what I noticed'. closing: 1 or 2 sentences offering a 15-minute call, no pressure.", 380);
-    let w = null; if (ai) { try { w = JSON.parse(String(ai.text).replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) { w = null; } }
+    let w = null; if (ai) { const raw = String(ai.text).replace(/```(json)?/g, "");
+      try { w = JSON.parse(raw.replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) {   // models often put raw line breaks inside the strings
+        const g = (k) => ((raw.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"\\s*(,\\s*"[a-z]+"\\s*:|}\\s*$)')) || [])[1] || "").replace(/\\n/g, "\n").trim();
+        w = g("subject") && g("intro") ? { subject: g("subject"), intro: g("intro"), closing: g("closing") } : null; } }
+    if (w) { w.intro = String(w.intro || "").replace(/\\n/g, "\n"); w.closing = String(w.closing || "").replace(/\\n/g, "\n"); }
     const blocks = emailBlocks(F, w), subject = clip((w && w.subject) || F.name + ", a few quick wins for more enquiries", 120);
     return { channel: "email", subject, blocks, to: (L.channels.find((c) => c.channel === "email") || {}).target || "", ai: !!w, model: w ? ai.model : null };
   }

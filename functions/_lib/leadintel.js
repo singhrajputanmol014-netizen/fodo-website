@@ -226,7 +226,13 @@ export function peopleIn(html, url) {
   });
   const txt = textOf(html);
   const a = new RegExp(NAME + "\\s*(?:[,\\-\\u2013\\u2014|:]|\\(|\\n)\\s*(?:the\\s)?" + ROLE + "\\b", "g"), b = new RegExp("\\b" + ROLE + "\\s*(?:[:\\-\\u2013\\u2014|,]|\\n)\\s*" + NAME, "g");
-  let m; while ((m = a.exec(txt)) && out.length < 8) { const role = (m[0].match(new RegExp(ROLE, "i")) || [""])[0]; push(m[1], role, "verified", "Official website text: \"" + clip(m[0], 120) + "\""); }
+  // "Led by Dr. X" / "founded by X": the website names who runs the business → a verified decision maker
+  const led = new RegExp("\\b(led|founded|co-founded|owned|run|headed|started|established|managed)\\s+by\\s+" + NAME, "gi");
+  let m; while ((m = led.exec(txt)) && out.length < 8) push(m[2], ({ led: "Head of the business", founded: "Founder", "co-founded": "Co-founder", owned: "Owner", run: "Runs the business", headed: "Head of the business", started: "Founder", established: "Founder", managed: "Manager" })[m[1].toLowerCase()] || "Head of the business", "verified", "Official website text: \"" + clip(m[0], 120) + "\"");
+  // "Dr. X, BDS, MDS": a named professional on the site, but whether they own or run it is not stated → unverified
+  const cred = new RegExp(NAME + "\\s*,?\\s*\\(?((?:BDS|MDS|MBBS|MD|MS|BAMS|BHMS|MHA|MPT|BPT|DNB|FICOI|PhD|CA|LLB|LLM|B\\.?Arch|M\\.?Arch)(?:\\s*[,/&]\\s*(?:BDS|MDS|MBBS|MD|MS|BAMS|BHMS|MHA|MPT|BPT|DNB|FICOI|PhD|CA|LLB|LLM|B\\.?Arch|M\\.?Arch))*)\\b", "g");
+  while ((m = cred.exec(txt)) && out.length < 8) push(m[1], "Professional (" + m[2].replace(/\\s+/g, " ") + "), ownership not stated", "unverified", "Official website text: \"" + clip(m[0], 120) + "\"");
+  while ((m = a.exec(txt)) && out.length < 8) { const role = (m[0].match(new RegExp(ROLE, "i")) || [""])[0]; push(m[1], role, "verified", "Official website text: \"" + clip(m[0], 120) + "\""); }
   while ((m = b.exec(txt)) && out.length < 8) { const role = (m[0].match(new RegExp(ROLE, "i")) || [""])[0]; push(m[1], role, "verified", "Official website text: \"" + clip(m[0], 120) + "\""); }
   return out;
 }

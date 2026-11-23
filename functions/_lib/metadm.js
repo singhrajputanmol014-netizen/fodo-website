@@ -191,7 +191,7 @@ export async function replyFor(env, platform, sender, text, lead) {
   const past = await history(env, platform, sender);
   const knowledge = "\n\n" + productBrief() + (PRODUCT_RE.test(text) ? productDetail(text) : "");
   const state = lead && lead.saved
-    ? "\n\n# LEAD STATUS\nThis person has ALREADY shared their contact details (saved for the team). Do NOT ask for name or number again. If they just shared it, thank them by name if known and say Anmol will WhatsApp them soon with a custom plan, then ask one useful question about their requirement if still unknown."
+    ? "\n\n# LEAD STATUS\nThis person has ALREADY shared their contact details (saved for the team). Do NOT ask for name or number again. If they just shared it, thank them by name if known and say Anmol will WhatsApp them soon with a custom plan, then ask ONE short, simple question about their requirement if still unknown (never two or three questions, no jargon)."
     : "";
   const channel = platform === "whatsapp"
     ? "\n\n# CHANNEL: WHATSAPP\nThis chat is on FODO's WhatsApp (+91 78270 07676). You already have this person's WhatsApp number, so NEVER ask for their number; when the lead flow needs contact details, ask only for their name and say Anmol will message them on this same WhatsApp chat."

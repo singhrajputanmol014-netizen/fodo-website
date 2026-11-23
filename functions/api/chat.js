@@ -113,6 +113,7 @@ export function turnHints(text, history, o) {
       : asked ? "- Lead: you already asked for their name and WhatsApp number once. Do not ask again in this reply unless they show more interest; just help and keep the chat going."
         : "- Lead: in THIS reply, after helping in one line, ask for their name and WhatsApp number so Anmol can send a custom plan and exact quote. Keep it friendly, one sentence.");
   }
+  if (lines.length) lines.push("- Write the WHOLE reply in that one language and script, including the price line and any request for name or number. One question at most. 1-3 short lines.");
   return lines.length ? "\n\n# FOR THIS REPLY (follow exactly)\n" + lines.join("\n") : "";
 }
 
@@ -294,7 +295,7 @@ export async function onRequestGet({ request, env }) {
   return json({ ok: true, service: "fodo-bot", ai: !!(env && (env.AI || env.GROQ_API_KEY)) && String((env && env.BOT_AI_DISABLED) || "") !== "1", kv: !!(env && env.CHAT_KV), member }, 200, Object.assign({ "cache-control": "no-store" }, corsHeaders(request, env)));
 }
 
-export const LEAD_SAVED_NOTE = "\n\n# LEAD STATUS\nThis person has ALREADY shared their contact details (saved for the team). Do NOT ask for name or number again. If they just shared it, thank them by name if known and say Anmol will WhatsApp them soon with a custom plan, then ask one useful question about their requirement if still unknown.";
+export const LEAD_SAVED_NOTE = "\n\n# LEAD STATUS\nThis person has ALREADY shared their contact details (saved for the team). Do NOT ask for name or number again. If they just shared it, thank them by name if known and say Anmol will WhatsApp them soon with a custom plan, then ask ONE short, simple question about their requirement if still unknown (never two or three questions, no jargon).";
 export async function onRequestPost(context) {
   const { request, env } = context;
   const cors = corsHeaders(request, env);

@@ -776,9 +776,9 @@ const cleanBlocks = (b) => { b = b || {}; const o = {}; ["eyebrow", "headline", 
 export async function emailRender(env, id, b, to) {
   const T = await import("./clientmail.js"), OR = await import("./outreach.js"); b = b || {};
   const subject = clip(b.subject, 150); if (!subject) throw err("Add a subject.");
-  const ou = to ? await OR.optOutUrl(env, to) : "";
-  const r = T.renderMail({ subject, blocks: cleanBlocks(b.blocks), optOutUrl: ou });
-  return { subject, html: r.html, text: r.text, optOut: ou };
+  const ou = to ? await OR.optOutUrl(env, to) : "", atts = await OR.attMeta(env, b.attachments);
+  const r = T.renderMail({ subject, blocks: cleanBlocks(b.blocks), optOutUrl: ou, attachments: atts });
+  return { subject, html: r.html, text: r.text, optOut: ou, atts };
 }
 export async function emailPreview(env, id, b) { const L = await lead(env, id), to = (L.channels.find((c) => c.channel === "email") || {}).target || ""; const r = await emailRender(env, id, b, to || "preview@fodo.co.in"); return { subject: r.subject, html: r.html, to }; }
 export async function emailSend(env, id, b, by) {
@@ -794,11 +794,12 @@ export async function emailSend(env, id, b, by) {
   }
   const m = await emailRender(env, id, b, test ? "" : to), sid = "cm_" + randId(14), t = nowIso(), subject = (test ? "[TEST] " : "") + m.subject;
   const cm = await OR.cmDb(env);
-  await run(cm, "INSERT INTO cm_sends (id,at,last_at,admin,client_id,email,type,subject,status,test,marketing,attempts,html,text,atts,campaign_id) VALUES (?1,?2,?2,?3,?4,?5,'lead_intel',?6,'sending',?7,1,1,?8,?9,'[]','lead-intel')", sid, t, clip(by, 254), x.id, to, subject, test ? 1 : 0, m.html, m.text);
-  const r = await OR.deliver(env, { id: sid, to, subject, html: m.html, text: m.text, optOut: test ? "" : m.optOut }).catch((e) => ({ ok: false, error: String(e.message || e).slice(0, 200) }));
+  await run(cm, "INSERT INTO cm_sends (id,at,last_at,admin,client_id,email,type,subject,status,test,marketing,attempts,html,text,atts,campaign_id) VALUES (?1,?2,?2,?3,?4,?5,'lead_intel',?6,'sending',?7,1,1,?8,?9,?10,'lead-intel')", sid, t, clip(by, 254), x.id, to, subject, test ? 1 : 0, m.html, m.text, JSON.stringify(m.atts || []));
+  const files = await OR.attData(env, m.atts || []);
+  const r = await OR.deliver(env, { id: sid, to, subject, html: m.html, text: m.text, files, optOut: test ? "" : m.optOut }).catch((e) => ({ ok: false, error: String(e.message || e).slice(0, 200) }));
   await run(cm, "UPDATE cm_sends SET status=?2, provider_id=?3, error=?4, last_at=?5 WHERE id=?1", sid, r.ok ? "sent" : "failed", r.ok ? r.id : null, r.ok ? null : r.error, nowIso());
   if (!r.ok) throw err("The email was not sent: " + r.error, 502);
-  if (!test) return Object.assign(await logSent(env, x.id, { channel: "email", note: "Email sent to " + to + ": " + m.subject }, by), { sent: { to, via: r.via } });
+  if (!test) return Object.assign(await logSent(env, x.id, { channel: "email", note: "Email sent to " + to + ": " + m.subject + ((m.atts || []).length ? " (+" + m.atts.map((a) => a.name).join(", ") + ")" : "") }, by), { sent: { to, via: r.via } });
   return { test: true, sent: { to, via: r.via } };
 }
 /* hand leads with a public email to a Bulk pitch campaign (sending stays there, with its test-first and confirm rules) */
@@ -815,6 +816,20 @@ export async function toPitch(env, b, by) {
   return { added: r.counts.queued, counts: r.counts, skipped };
 }
 
+/* a file for outreach: attached to emails, and shared on WhatsApp / Instagram / Facebook / LinkedIn as a private link (fodo.co.in/f/<token>) */
+export async function shareFile(env, b, by) {
+  const OR = await import("./outreach.js"); b = b || {};
+  const r = await OR.attach(env, { file: b.file, name: b.name, mime: b.mime }), a = r.attachment, token = randId(22);
+  await env.CHAT_KV.put("li:share:" + token, JSON.stringify({ id: a.id, name: a.name, mime: a.mime, size: a.size, by: clip(by, 254), at: nowIso() }), { expirationTtl: 180 * 86400 });
+  const d = await ldb(env); await act(d, "file", null, a.name + " (" + Math.round(a.size / 1024) + " KB)", by);
+  return { file: Object.assign({}, a, { url: "https://www.fodo.co.in/f/" + token }) };
+}
+export async function sharedFile(env, token) {
+  if (!env.CHAT_KV || !/^[a-z0-9]{22}$/.test(String(token || ""))) return null;
+  const meta = J(await env.CHAT_KV.get("li:share:" + token), null); if (!meta) return null;
+  const v = await env.CHAT_KV.get("cm:att:" + meta.id); if (v == null) return null;
+  return Object.assign(meta, { b64: String(v).replace(/\s+/g, "") });
+}
 /* ---------------- saved / scheduled searches ---------------- */
 const nextRun = (s, from) => { const t = from || Date.now(); return s === "daily" ? new Date(t + 864e5).toISOString() : s === "weekly" ? new Date(t + 7 * 864e5).toISOString() : null; };
 export async function saveJob(env, b, by) {

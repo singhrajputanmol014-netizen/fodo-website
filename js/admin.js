@@ -764,7 +764,7 @@
   var LOPEN = { whatsapp: "Open WhatsApp", email: "Open in Gmail", linkedin: "Copy & open LinkedIn", instagram: "Copy & open Instagram", facebook: "Copy & open Facebook", x: "Copy & open X" };
   function liCopy(t) { return navigator.clipboard ? navigator.clipboard.writeText(t).then(function () { return true; }, function () { return false; }) : Promise.resolve(false); }
   function liOpen(c, text) {
-    var u = ""; if (c.channel !== "email") text = String(text).replace(/^\s*Subject:[^\n]*\n+/i, "");
+    var u = ""; if (c.channel !== "email") text = lwithFiles(String(text).replace(/^\s*Subject:[^\n]*\n+/i, ""));
     if (c.channel === "whatsapp") u = "https://wa.me/" + encodeURIComponent(c.target) + "?text=" + encodeURIComponent(text);
     else if (c.channel === "email") { var m = String(text).match(/^\s*Subject:\s*(.+)\n+([\s\S]*)$/i), su = m ? m[1].trim() : "", body = m ? m[2].trim() : text;
       u = "https://mail.google.com/mail/?authuser=" + encodeURIComponent("anmol@fodo.co.in") + "&view=cm&fs=1&to=" + encodeURIComponent(c.target) + "&su=" + encodeURIComponent(su) + "&body=" + encodeURIComponent(body); }
@@ -774,6 +774,24 @@
   }
   function liSent(id, ch, note) { return api("li/sent/" + encodeURIComponent(id), { channel: ch, note: note || "" }); }
   function liDraft(id, ch) { return api("li/drafts/" + encodeURIComponent(id), { channel: ch }); }
+  /* v55.15 files for outreach: kept for the whole session (every lead and the queue use them until removed) */
+  var LFILES = [];
+  var lkb = function (n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; };
+  var lfileBlock = function () { return LFILES.length ? "\n\n" + (LFILES.length === 1 ? "I've put together a short file for you (" + LFILES[0].name + "):\n" + LFILES[0].url : "Sharing a few files for you:\n" + LFILES.map(function (f) { return f.name + ": " + f.url; }).join("\n")) : ""; };
+  var lwithFiles = function (t) { t = String(t || ""); var missing = LFILES.filter(function (f) { return t.indexOf(f.url) < 0; }); if (!missing.length) return t; var keep = LFILES; LFILES = missing; var b = lfileBlock(); LFILES = keep; var at = t.search(/\n\nAnmol, FODO/); return at > -1 ? t.slice(0, at) + b + t.slice(at) : t + b; };
+  function lfilesUI(id) {
+    return '<div class="ad-li-files" id="' + id + '"><span class="ad-dl2">Files</span>' + LFILES.map(function (f, i) { return '<span class="ad-or-chip">📎 ' + esc(f.name) + ' <small class="muted">' + lkb(f.size) + '</small> <a href="' + esc(f.url) + '" target="_blank" rel="noopener" title="Open or download">open</a><button type="button" class="ad-ib" data-fx="' + i + '" aria-label="Remove ' + esc(f.name) + '">×</button></span>'; }).join("") +
+      '<label class="btn sm ghost ad-li-up">+ Attach file<input type="file" multiple hidden data-fup></label><small class="muted">PDF, image, doc, up to 10 MB, 5 files. Email: attached. WhatsApp, Instagram, Facebook, LinkedIn: sent as a private link in the message.</small></div>';
+  }
+  function lfilesWire(box, onChange) {
+    var redraw = function () { box.outerHTML = lfilesUI(box.id); var nb = document.getElementById(box.id); lfilesWire(nb, onChange); if (onChange) onChange(); };
+    $$("[data-fx]", box).forEach(function (b) { b.onclick = function () { LFILES.splice(+b.dataset.fx, 1); redraw(); }; });
+    var inp = $("[data-fup]", box); if (inp) inp.onchange = function () {
+      var list = [].slice.call(this.files || []); if (!list.length) return; if (LFILES.length + list.length > 5) return toast("Up to 5 files.", true);
+      var next = function () { var f = list.shift(); if (!f) return redraw(); if (f.size > 10 * 1048576) { toast(f.name + " is over 10 MB.", true); return next(); }
+        toast("Uploading " + f.name + "…"); readB64(f).then(function (b64) { return api("li/file", { file: b64, name: f.name, mime: f.type }); }).then(function (r) { if (r.ok) LFILES.push(r.file); else toast(r.reason, true); next(); }, function (e) { toast(String(e.message || e), true); next(); }); };
+      next(); };
+  }
   /* lead page panel: every platform side by side; ones research did not find can still be drafted and searched */
   var LPLAT = [["whatsapp", "WhatsApp"], ["email", "Email"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["linkedin", "LinkedIn"], ["x", "X"]];
   function liChans(j) { var C = j.channels || []; return LPLAT.filter(function (p) { return p[0] !== "x" || C.some(function (c) { return c.channel === "x"; }); }).map(function (p) { return C.find(function (c) { return c.channel === p[0]; }) || { channel: p[0], label: p[1], target: "", missing: true }; }); }
@@ -783,7 +801,7 @@
     return '<div class="panel ad-card ad-li-msg"><h2>Message this business <small class="muted">one complete message for every platform: what works, what is missing and how FODO fixes it</small></h2>' +
       (blocked ? '<p class="cf-status warn">Do not contact. Messaging is switched off for this business.</p>' :
       '<div class="ad-li-plat" role="group" aria-label="Platforms">' + liChans(j).map(function (c, i) { return '<button type="button" class="ad-li-pb' + (c.missing ? " miss" : "") + '" data-mc="' + i + '" aria-pressed="false"><b>' + esc(c.missing ? LPLAT.find(function (p) { return p[0] === c.channel; })[1] : c.label) + "</b><small>" + esc(c.missing ? "not found yet" : String(c.target).replace(/^https?:\/\/(www\.)?/, "").slice(0, 34)) + "</small></button>"; }).join("") + "</div>" +
-      '<div id="ll-mw" hidden></div><p class="muted ad-li-more">More: <button type="button" class="ad-li-lnk" data-dr="followup">follow-up email text</button> · <button type="button" class="ad-li-lnk" data-dr="opener">3 opening lines</button></p>') + "</div>";
+      lfilesUI("ll-files") + '<div id="ll-mw" hidden></div><p class="muted ad-li-more">More: <button type="button" class="ad-li-lnk" data-dr="followup">follow-up email text</button> · <button type="button" class="ad-li-lnk" data-dr="opener">3 opening lines</button></p>') + "</div>";
   }
   function liEmailBox(x, d, to) {
     var B = d.blocks || {}, f = function (k, label, rows, hint) { return '<label class="ad-dl2" for="le-' + k + '">' + label + (hint ? ' <span class="muted">' + hint + "</span>" : "") + '</label><textarea id="le-' + k + '" class="ad-in ad-ta" rows="' + rows + '">' + esc(B[k] || "") + "</textarea>"; };
@@ -796,26 +814,27 @@
       '<div><p class="ad-dl2">Preview</p><iframe id="le-pv" class="ad-li-pv" title="Email preview" sandbox=""></iframe></div></div>' +
       '<div class="ad-acts"><button type="button" class="btn sm ghost" id="le-prev">Update preview</button><button type="button" class="btn sm ghost" id="le-test">Send test to me</button><button type="button" class="btn sm" id="le-send">Send email</button></div>';
   }
-  var leRead = function (w) { var g = function (k) { var e = $("#le-" + k, w); return e ? e.value : ""; }; return { to: g("to").trim(), subject: g("subject").trim(), blocks: { eyebrow: g("eyebrow"), headline: g("headline"), intro: g("intro"), items: g("items"), stats: g("stats"), cta_text: g("cta_text"), cta_link: g("cta_link"), closing: g("closing") } }; };
+  var leRead = function (w) { var g = function (k) { var e = $("#le-" + k, w); return e ? e.value : ""; }; return { to: g("to").trim(), subject: g("subject").trim(), attachments: LFILES.map(function (f) { return f.id; }), blocks: { eyebrow: g("eyebrow"), headline: g("headline"), intro: g("intro"), items: g("items"), stats: g("stats"), cta_text: g("cta_text"), cta_link: g("cta_link"), closing: g("closing") } }; };
   function leWire(w, id, after) {
     var pv = function () { var m = leRead(w); api("li/email-preview/" + encodeURIComponent(id), m).then(function (r) { if (r.ok) $("#le-pv", w).srcdoc = r.html; else toast(r.reason, true); }); };
     pv(); $("#le-prev", w).onclick = pv;
     $("#le-test", w).onclick = function () { var b = this; b.disabled = true; api("li/email-send/" + encodeURIComponent(id), Object.assign(leRead(w), { test: true })).then(function (r) { b.disabled = false; toast(r.ok ? "Test sent to " + r.sent.to : r.reason, !r.ok); }); };
     $("#le-send", w).onclick = function () { var m = leRead(w), b = this; if (!m.to) return toast("Add the email address first.", true);
-      ask({ title: "Send this email to " + m.to + "?", text: "Subject: " + m.subject + "\n\nIt goes from anmol@fodo.co.in in the FODO design, with an unsubscribe link.", ok: "Send email" }).then(function (y) { if (!y) return; b.disabled = true;
+      ask({ title: "Send this email to " + m.to + "?", text: "Subject: " + m.subject + (LFILES.length ? "\nAttached: " + LFILES.map(function (f) { return f.name; }).join(", ") : "") + "\n\nIt goes from anmol@fodo.co.in in the FODO design, with an unsubscribe link.", ok: "Send email" }).then(function (y) { if (!y) return; b.disabled = true;
         var go = function (ov) { api("li/email-send/" + encodeURIComponent(id), Object.assign(m, { confirm: true, override: !!ov })).then(function (r) { b.disabled = false;
           if (!r.ok && /Send again anyway/.test(r.reason || "")) return ask({ title: "Send again?", text: r.reason, ok: "Send again" }).then(function (z) { if (z) go(true); });
           toast(r.ok ? "Email sent to " + m.to : r.reason, !r.ok); if (r.ok && after) after(r); }); }; go(); }); };
   }
   function liMsgWire(j, reload) {
     var x = j.lead, C = liChans(j), w = $("#ll-mw"), cur = null;
+    var fb = $("#ll-files"); if (fb) lfilesWire(fb, function () { var ta = $("#ll-dr"); if (ta) ta.value = lwithFiles(ta.value); if ($("#le-pv")) $("#le-prev").click(); });
     var show = function (c, kind) {
       cur = c; w.hidden = false; w.innerHTML = '<p class="muted">Writing ' + esc(c ? (LPLAT.find(function (p) { return p[0] === c.channel; }) || [0, ""])[1] : "the") + " message from the research…</p>";
       liDraft(x.id, kind || c.channel).then(function (r) {
         if (!r.ok) { w.innerHTML = '<p class="cf-status warn">' + esc(r.reason) + "</p>"; return; }
         if (c && c.channel === "email") { w.innerHTML = liEmailBox(x, r, c.target); return leWire(w, x.id, function () { reload(); }); }
         w.innerHTML = '<p class="muted" id="ll-drm">' + (c ? (c.missing ? "Not found in research. " : "To " + esc(c.target) + (c.note ? " (" + esc(c.note) + ")" : "") + ". ") : "") + (r.ai ? "AI draft from the research, check before sending." : "Template draft, edit before sending.") + "</p>" +
-          '<textarea id="ll-dr" class="ad-in ad-ta" rows="14" aria-label="Message">' + esc(r.text) + "</textarea>" + (r.note ? '<p class="muted">LinkedIn connection requests allow about 300 characters. Send this short note with the request, and the full message once they accept: <button type="button" class="ad-li-lnk" id="ll-note">Copy connection note</button></p>' : "") +
+          '<textarea id="ll-dr" class="ad-in ad-ta" rows="14" aria-label="Message">' + esc(lwithFiles(r.text)) + "</textarea>" + (r.note ? '<p class="muted">LinkedIn connection requests allow about 300 characters. Send this short note with the request, and the full message once they accept: <button type="button" class="ad-li-lnk" id="ll-note">Copy connection note</button></p>' : "") +
           '<div class="ad-acts">' + (c && !c.missing ? '<button type="button" class="btn sm" id="ll-open">' + LOPEN[c.channel] + "</button>" : "") + (c && c.missing ? '<a class="btn sm ghost" href="' + esc(lfind(x, c.channel)) + '" target="_blank" rel="noopener">Find on Google</a>' : "") + '<button type="button" class="btn sm ghost" id="ll-cp">Copy</button></div>' +
           '<div class="ad-acts ad-li-ok2" id="ll-did" hidden><span>Did you send it?</span><button type="button" class="btn sm" id="ll-yes">Yes, mark as sent</button><button type="button" class="btn sm ghost" id="ll-no">Not sent</button></div>';
         var o = $("#ll-open"); if (o) o.onclick = function () { var t = $("#ll-dr").value.trim(); if (t) { liOpen(cur, t); $("#ll-did").hidden = false; } };
@@ -849,7 +868,8 @@
           if (i + 1 < ids.length) load(i + 1);   // prepare the next one while you send this one
           if (q.skip) { skipped.push((q.name || q.id) + ": " + q.skip); i++; return draw(); }
           if (q.c.channel === "email" && q.d && q.d.ok) {   // designed email: preview + send straight from the queue (your click is the confirmation)
-            w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box ad-li-qb ad-li-qe" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + " sent · " + skipped.length + ' skipped</p><h3 id="lq-t">' + esc(q.name) + "</h3>" + liEmailBox(q.j.lead, q.d, q.c.target).replace('<button type="button" class="btn sm" id="le-send">Send email</button>', '<button type="button" class="btn sm" id="lq-esend">Send email, next</button><button type="button" class="btn sm ghost" id="lq-skip">Skip</button><button type="button" class="btn sm ghost" id="lq-stop">Stop</button>') + "</div>";
+            w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box ad-li-qb ad-li-qe" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + " sent · " + skipped.length + ' skipped</p><h3 id="lq-t">' + esc(q.name) + "</h3>" + lfilesUI("lq-files") + liEmailBox(q.j.lead, q.d, q.c.target).replace('<button type="button" class="btn sm" id="le-send">Send email</button>', '<button type="button" class="btn sm" id="lq-esend">Send email, next</button><button type="button" class="btn sm ghost" id="lq-skip">Skip</button><button type="button" class="btn sm ghost" id="lq-stop">Stop</button>') + "</div>";
+            var qf2 = $("#lq-files", w); if (qf2) lfilesWire(qf2, function () { $("#le-prev", w).click(); });
             var pv = function () { api("li/email-preview/" + encodeURIComponent(q.id), leRead(w)).then(function (r) { if (r.ok) $("#le-pv", w).srcdoc = r.html; }); }; pv(); $("#le-prev", w).onclick = pv;
             $("#le-test", w).onclick = function () { api("li/email-send/" + encodeURIComponent(q.id), Object.assign(leRead(w), { test: true })).then(function (r) { toast(r.ok ? "Test sent to " + r.sent.to : r.reason, !r.ok); }); };
             $("#lq-esend", w).onclick = function () { var b = this; b.disabled = true; api("li/email-send/" + encodeURIComponent(q.id), Object.assign(leRead(w), { confirm: true })).then(function (r) { if (r.ok) { sent++; i++; draw(); } else { b.disabled = false; toast(r.reason, true); } }); };
@@ -857,9 +877,10 @@
           }
           w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box ad-li-qb" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + " sent · " + skipped.length + ' skipped</p>' +
             '<h3 id="lq-t">' + esc(q.name) + '</h3><p class="muted">' + esc(q.c.label + ": " + q.c.target) + (q.c.note ? " · " + esc(q.c.note) : "") + (q.err ? '<br><span class="ad-li-bad">' + esc(q.err) + "</span>" : "") + "</p>" +
-            '<textarea class="ad-in ad-ta" rows="14" id="lq-tx" aria-label="Message">' + esc(q.text) + '</textarea>' +
+            lfilesUI("lq-files") + '<textarea class="ad-in ad-ta" rows="14" id="lq-tx" aria-label="Message">' + esc(lwithFiles(q.text)) + '</textarea>' +
             '<div class="ad-acts"><button type="button" class="btn" id="lq-open">' + LOPEN[q.c.channel] + '</button><button type="button" class="btn ghost" id="lq-sent" disabled>Sent, next</button><button type="button" class="btn sm ghost" id="lq-skip">Skip</button><button type="button" class="btn sm ghost" id="lq-stop">Stop</button></div>' +
             '<p class="muted">' + (q.ai ? "AI draft, check it before sending." : "Template draft, edit before sending.") + "</p></div>";
+          var qf = $("#lq-files", w); if (qf) lfilesWire(qf, function () { var ta = $("#lq-tx", w); if (ta) ta.value = lwithFiles(ta.value); });
           $("#lq-open", w).onclick = function () { var t = $("#lq-tx", w).value.trim(); if (!t) return; liOpen(q.c, t); $("#lq-sent", w).disabled = false; $("#lq-sent", w).classList.remove("ghost"); };
           $("#lq-sent", w).onclick = function () { this.disabled = true; liSent(q.id, q.c.channel, "Sent on " + q.c.label + " (queue)").then(function (r) { if (r.ok) sent++; else skipped.push(q.name + ": " + r.reason); i++; draw(); }); };
           $("#lq-skip", w).onclick = function () { skipped.push(q.name + ": skipped"); i++; draw(); };

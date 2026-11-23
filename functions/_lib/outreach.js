@@ -248,4 +248,4 @@ export async function overview(env, q) {
     statuses: STATUSES, sends: await sends(env, {}), config: await (async () => { const p = await provider(env); return { configured: !!p.via, provider: p.via === "gmail" ? "Gmail (" + p.account + ")" : p.via === "resend" ? "Resend" : "", from: p.via === "gmail" ? ((/^(.*?)\s*</.exec(fromAddr(env)) || [])[1] || "FODO") + " <" + p.account + ">" : fromAddr(env), replyTo: replyTo(env), hourly: hourly(env), used: await usedThisHour(env), dupMinutes: DUP_MIN, attach: !!env.CHAT_KV, maxFiles: MAX_FILES, maxFileMB: 10, maxTotalMB: 15 }; })() };
 }
 /* v54.6: used by Bulk pitch (pitch.js) to send through the same Gmail / Resend path */
-export { resend as deliver };
+export { resend as deliver, attMeta, attData };

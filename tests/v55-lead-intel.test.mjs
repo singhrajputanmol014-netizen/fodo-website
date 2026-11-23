@@ -8,6 +8,7 @@ import { onRequest as adminApi } from "../functions/api/admin/[[path]].js";
 
 
 import * as LI from "../functions/_lib/leadintel.js";
+import { onRequest as fileRoute } from "../functions/f/[token].js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 console.log = ((orig) => (...a) => { if (typeof a[0] === "string" && a[0].charAt(0) === "{" && !process.env.DBG) return; orig(...a); })(console.log);
 console.error = () => {};
@@ -148,6 +149,16 @@ ok(ts.ok && ts.test && ts.sent.to === "anmol@fodo.co.in" && mails.length === 1 &
 const rs = (await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, confirm: true, override: true })).j;   // an earlier manual "email sent" status sits within the 10-minute guard
 ok(rs.ok && mails.length === 2 && mails[1].to[0] === "info@smiledental.in" && /List-Unsubscribe/.test(JSON.stringify(mails[1].headers)) && rs.history[0].channel === "email" && rs.lead.status === "email_sent" && rs.sent.to === "info@smiledental.in", "confirmed email is sent with unsubscribe header and logged on the lead");
 ok((await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, confirm: true })).status === 409, "a second email within minutes needs an explicit override");
+/* files: attached to emails, shared as a private link for chat platforms */
+const PDFB = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF").toString("base64");
+ok((await LP("file", { file: PDFB, name: "FODO.pdf", mime: "application/pdf" }, "v")).status === 403, "only owners/Full-control admins can upload outreach files");
+const up = (await LP("file", { file: PDFB, name: "FODO Services.pdf", mime: "application/pdf" })).j;
+ok(up.ok && /^https:\/\/www\.fodo\.co\.in\/f\/[a-z0-9]{22}$/.test(up.file.url) && /^ca_/.test(up.file.id), "upload gives an attachment id and an unguessable fodo.co.in/f/ link");
+const tok = up.file.url.split("/f/")[1], fr = await fileRoute({ request: new Request(up.file.url), env, params: { token: tok } });
+ok(fr.status === 200 && fr.headers.get("content-type") === "application/pdf" && /inline/.test(fr.headers.get("content-disposition")) && (await fr.text()).startsWith("%PDF"), "the link serves the PDF inline");
+ok((await fileRoute({ request: new Request("https://www.fodo.co.in/f/nope"), env, params: { token: "abcdefghijklmnopqrstuv" } })).status === 404, "unknown or expired links give a clear 404");
+const nm = mails.length, ta = (await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, test: true, attachments: [up.file.id] })).j;
+ok(ta.ok && mails.length === nm + 1 && mails[nm].attachments && mails[nm].attachments[0].filename === "FODO Services.pdf" && /FODO Services\.pdf/.test(mails[nm].html), "email carries the PDF as an attachment and shows a file card");
 const G1 = LI.gapsOf((await LP("lead/" + lid2)).j).map((g) => g.key), G0 = LI.gapsOf((await LP("lead/" + lid)).j).map((g) => g.key);
 ok(G1.indexOf("website") > -1 && G1.indexOf("social") > -1 && G1.indexOf("email") > -1 && G1.indexOf("reviews") > -1 && G0.indexOf("website") < 0 && G0.indexOf("whatsapp") < 0 && G0.indexOf("form") < 0 && G0.indexOf("chat") > -1 && G0.indexOf("social") > -1, "gaps: no website / socials / email / few reviews for the listing-only lead; the researched site shows only its real gaps (no chat, no Facebook), not things it has (WhatsApp, form)");
 ok(dr.blocks.items.split("\n").every((l) => / \| /.test(l)) && /people|customers|enquir/i.test(dr.blocks.items), "email rows explain each gap and why it costs customers");
@@ -157,7 +168,7 @@ ok(nw.template && /no website/i.test(nw.text) && /Google Maps|services/.test(nw.
 const fm = (await LP("drafts/" + lid, { channel: "whatsapp" })).j, gl = (await LP("lead/" + lid)).j;
 ok(LI.gapsOf(gl).every((g) => fm.text.indexOf(g.what) > -1) && /\*What's already working\*/.test(fm.text) && /212 Google reviews/.test(fm.text) && /how we'd fix/.test(fm.text) && /AI assistant that answers/.test(fm.text), "every platform message lists what's good, every gap, why it matters and how we fix it (WhatsApp uses *bold* headings)");
 const li2 = (await LP("drafts/" + lid, { channel: "linkedin" })).j; ok(li2.note && li2.note.length <= 300 && li2.text.length > li2.note.length && !/\*/.test(li2.text), "LinkedIn: full message plus a short connection note");
-const ig2 = (await LP("drafts/" + lid2, { channel: "instagram" })).j; console.log("SAMPLE\n" + ig2.text + "\nLEN " + ig2.text.length);
+const ig2 = (await LP("drafts/" + lid2, { channel: "instagram" })).j;
 ok(ig2.text.length <= 1000 && LI.gapsOf((await LP("lead/" + lid2)).j).every((g) => ig2.text.indexOf(g.what) > -1) && /No WhatsApp number listed/.test(ig2.text), "Instagram message keeps every gap within 1000 characters; no-website business is not told about a WhatsApp button");
 const wd = (await LP("drafts/" + lid, { channel: "instagram" })).j; ok(wd.ok && wd.text, "per-platform drafts (Instagram)");
 const AIb = env.AI; env.AI = undefined; const dt = (await LP("drafts/" + lid, { channel: "whatsapp" })).j; env.AI = AIb;

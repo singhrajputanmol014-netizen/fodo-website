@@ -269,3 +269,6 @@ tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var
 .ad-li-pv{width:100%;height:620px;border:1px solid var(--line-3,var(--line));border-radius:14px;background:#0B0B0C}
 .ad-li-qe{max-width:1080px!important}
 @media (max-width:900px){.ad-li-eg{grid-template-columns:1fr}.ad-li-pv{height:480px}}
+/* v55.15 outreach files */
+.ad-li-files{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}.ad-li-files .ad-dl2{margin:0 4px 0 0}.ad-li-files small{flex-basis:100%}
+.ad-li-files a{color:inherit;font-size:12px}.ad-li-up{cursor:pointer}

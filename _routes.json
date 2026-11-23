@@ -1,1 +1,1 @@
-{ "version": 1, "include": ["/api/*", "/CLAUDE.md", "/l/*", "/approve/*"], "exclude": [] }
+{ "version": 1, "include": ["/api/*", "/CLAUDE.md", "/l/*", "/approve/*", "/f/*"], "exclude": [] }

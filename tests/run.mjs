@@ -19,7 +19,7 @@ const BUILDER = ["v28-builder", "v31-builder", "v32-builder", "v34-builder", "v3
 const BRAIN = ["v21-brain", "v22-brain", "v23-brain", "v24-voice", "v26-live", "v27-engineer", "v30-brain-xray", "v31-live-client.js", "v37"];
 const XRAY = ["xray-functions", "v17-functions", "v18-functions", "v19-functions", "xray-e2e.js"];
 const SECURITY = ["v34-security", "v34-store", "v34-site", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476", "v501", "v502", "v503", "v504", "v505", "v506", "v507", "v508", "v51-journeys", "v511", "v52"];
-const INTEGRATION = ["accounts-functions", "v17-functions", "v18-functions", "v19-functions", "v20-functions", "v201-functions", "v203-chat", "v54-meta-dm", "v542-client-emails", "v546-bulk-pitch",
+const INTEGRATION = ["accounts-functions", "v17-functions", "v18-functions", "v19-functions", "v20-functions", "v201-functions", "v203-chat", "v54-meta-dm", "v542-client-emails", "v546-bulk-pitch", "v55-lead-intel",
   "v21-brain", "v22-brain", "v23-brain", "v27-engineer", "v27-razorpay", "v28-builder", "v29-store", "v30-brain-xray", "v31-builder", "v32-builder",
   "xray-functions", "v34-store", "v34-builder", "v34-security", "v34-site", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v462", "v47", "v472", "v473", "v474", "v475", "v476", "v501", "v502", "v503", "v504", "v505", "v506", "v507", "v508", "v51-journeys", "v511", "v52"];
 const STATIC_E2E = ["v5-pages.js", "v6-features.js", "v9-seo.js", "v12-brand.js", "design-smoke.js", "voice-ui.js", "lab.js", "ai-auto.js",

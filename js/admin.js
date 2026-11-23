@@ -41,9 +41,11 @@
   TABS.push(["campaigns", "Email campaigns", "M3 6h18v12H3zm0 0 9 7 9-7M17 3l4 3"]);   // v53.8
   TABS.push(["outreach", "Client Emails", "M4 5h16v14H4zm0 0 8 7 8-7M8 15h4"]);   // v54.2
   TABS.push(["pitch", "Bulk pitch", "M3 11l18-7-7 18-2-8zM12 14l9-10"]);   // v54.6
+  TABS.push(["li-dash", "Lead dashboard", "M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"], ["li-find", "Find businesses", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4.3-4.3"], ["li-people", "Decision makers", "M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm-7 9a7 7 0 0 1 14 0"], ["li-leads", "All leads", "M4 6h16M4 12h16M4 18h16"],
+    ["li-hot", "Hot leads", "M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"], ["li-audit", "Website audit", "M4 4h16v12H4zM8 20h8M12 16v4M8 10l2 2 4-4"], ["li-analytics", "Lead analytics", "M3 3v18h18M7 15l4-4 3 3 6-6"], ["li-outreach", "Outreach manager", "M3 11l18-7-7 18-2-8z"], ["li-settings", "Integrations", "M10 14l-6 6M14 10l6-6M8 6l10 10M6 8l2-2 10 10-2 2z"]);   // v55 Lead Intelligence
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Customers", ["enquiries", "users", "studio", "pitch", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Lead Intelligence", ["li-dash", "li-find", "li-people", "li-leads", "li-hot", "li-audit", "li-analytics", "li-outreach", "li-settings"]], ["Customers", ["enquiries", "users", "studio", "pitch", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -100,11 +102,11 @@
   setInterval(function () { if (ME) liveTick(); }, 20000);
   function route() {
     var h = (location.hash || "#overview").slice(1), parts = h.split("/"), tab = parts[0] || "overview";
-    root.querySelectorAll(".ad-nav a[data-tab]").forEach(function (a) { var on = a.dataset.tab === tab || (tab === "user" && a.dataset.tab === "users") || (tab === "business" && a.dataset.tab === "businesses") || (tab === "report" && a.dataset.tab === "xrays"); a.classList.toggle("on", on); if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    root.querySelectorAll(".ad-nav a[data-tab]").forEach(function (a) { var on = a.dataset.tab === tab || (tab === "user" && a.dataset.tab === "users") || (tab === "business" && a.dataset.tab === "businesses") || (tab === "report" && a.dataset.tab === "xrays") || (tab === "li-lead" && a.dataset.tab === "li-leads"); a.classList.toggle("on", on); if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, studio: studioView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, pitch: pitchView, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, pitch: pitchView, "li-dash": function () { liDash(false); }, "li-analytics": function () { liDash(true); }, "li-find": liFind, "li-people": function () { liLeads("li-people"); }, "li-leads": function () { liLeads("li-leads"); }, "li-hot": function () { liLeads("li-hot"); }, "li-audit": function () { liLeads("li-audit"); }, "li-outreach": function () { liLeads("li-outreach"); }, "li-settings": liSettings, "li-lead": function () { liLead(decodeURIComponent(parts[1] || "")); }, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -506,6 +508,256 @@
   /* ---------- v54.6 Bulk pitch: one presentation + one email design to many prospects (owners and Full-control admins) ---------- */
   var PI = null, piPt = null;
   var PI_ST = { queued: ["Queued", "mid"], sent: ["Sent", "ok"], failed: ["Failed", "bad"], opted_out: ["Opted out", ""] };
+  /* ---------- v55 Lead Intelligence (owners + Full-control admins). Real data only: every figure comes from /api/admin/li/*. ---------- */
+  var LIST = [["new", "New"], ["not_contacted", "Not contacted"], ["contacted", "Contacted"], ["email_sent", "Email sent"], ["called", "Called"], ["interested", "Interested"], ["follow_up", "Follow-up required"], ["meeting", "Meeting scheduled"], ["proposal", "Proposal sent"], ["converted", "Converted"], ["not_interested", "Not interested"], ["dnc", "Do not contact"]];
+  var LIND = ["Healthcare", "Dental clinics", "Dermatology", "Real estate", "Interior design", "Restaurants", "Hotels", "Gyms", "Salons", "Education", "Coaching institutes", "Law firms", "CA firms", "Automobile", "E-commerce", "Manufacturing", "IT companies", "SaaS", "Logistics", "Other"];
+  var LPRI = { hot: ["Hot lead", "ok"], high: ["High potential", "ok"], medium: ["Medium potential", "mid"], low: ["Low priority", ""] };
+  var LCONF = { verified: ["Verified", "ok"], partial: ["Partially verified", "mid"], unverified: ["Unverified", "bad"], not_found: ["Not found", ""] };
+  var LNCR = [["", "Delhi NCR (choose)"], ["New Delhi", "New Delhi"], ["Delhi", "Delhi"], ["Gurugram", "Gurugram"], ["Noida", "Noida"], ["Greater Noida", "Greater Noida"], ["Ghaziabad", "Ghaziabad"], ["Faridabad", "Faridabad"]];
+  var lst = function (s) { var x = LIST.filter(function (r) { return r[0] === s; })[0]; return x ? x[1] : (s || ""); };
+  var lpri = function (p, sc) { var x = LPRI[p]; return x ? '<span class="ad-st ' + x[1] + '">' + (sc != null ? sc + " · " : "") + x[0] + "</span>" : '<span class="ad-st">Not scored</span>'; };
+  var lconf = function (c) { var x = LCONF[c] || LCONF.not_found; return '<span class="ad-st ' + x[1] + '">' + x[0] + "</span>"; };
+  var lday = function (s) { return s ? date(s, true) : "Never"; };
+  var opt = function (list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(l) + "</option>"; }).join(""); };
+  var lnav = function (cur) { var T = [["li-dash", "Dashboard"], ["li-find", "Find businesses"], ["li-people", "Decision makers"], ["li-leads", "All leads"], ["li-hot", "Hot leads"], ["li-audit", "Website audit"], ["li-analytics", "Analytics"], ["li-outreach", "Outreach"], ["li-settings", "Integrations"]];
+    return '<nav class="ad-li-tabs" aria-label="Lead Intelligence">' + T.map(function (t) { return '<a href="#' + t[0] + '"' + (t[0] === cur ? ' aria-current="page" class="on"' : "") + ">" + t[1] + "</a>"; }).join("") + "</nav>"; };
+  function liGate(title) { if (ME && !owner()) { $("#ad-view").innerHTML = head(title, "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners and Full-control admins can open Lead Intelligence.</p></div>'; return true; } return false; }
+  var lqs = function (o) { return Object.keys(o).filter(function (k) { return o[k] !== "" && o[k] != null; }).map(function (k) { return k + "=" + encodeURIComponent(o[k]); }).join("&"); };
+  var lbars = function (rows, lab) { var mx = Math.max.apply(null, [1].concat(rows.map(function (r) { return r.n; }))); return rows.length ? '<div class="ad-li-bars">' + rows.map(function (r) { return '<div class="ad-li-br"><span>' + esc(lab ? lab(r.k) : r.k) + '</span><i class="ad-bar" style="--v:' + Math.round(r.n / mx * 100) + '"></i><b>' + r.n + "</b></div>"; }).join("") + "</div>" : '<p class="muted">No data yet.</p>'; };
+  var lrow = function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><b>' + esc(x.name) + '</b><small class="muted ad-li-sub">' + esc([x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + '</td><td data-l="Status">' + esc(lst(x.status)) + "</td></tr>"; };
+  var lclick = function (sel) { $$(sel || "[data-li]").forEach(function (r) { var go = function (e) { if (e && e.target && /INPUT|SELECT|BUTTON|A/.test(e.target.tagName)) return; location.hash = "li-lead/" + r.dataset.li; }; r.onclick = go; r.onkeydown = function (e) { if (e.key === "Enter") go(e); }; }); };
+
+  /* 1 · dashboard + 7 · analytics (same real counts, analytics adds breakdowns) */
+  function liDash(full) {
+    var tab = full ? "li-analytics" : "li-dash", title = full ? "Lead analytics" : "Lead Intelligence"; if (liGate(title)) return;
+    var p = location.hash.split("/"), from = decodeURIComponent(p[1] || ""), to = decodeURIComponent(p[2] || "");
+    api("li/stats?" + lqs({ from: from, to: to })).then(function (j) {
+      if (!j.ok) return fail(j); var t = j.totals;
+      $("#ad-view").innerHTML = head(title, full ? "Breakdowns of every lead in the database. Counts are live from the database; nothing is estimated." : "Find real businesses, research their websites, score them with evidence and track outreach. Nothing here is sent automatically.", '<a class="btn sm" href="#li-find">Find businesses</a>') + lnav(tab) +
+        '<div class="ad-li-dates"><label class="ad-dl2" for="li-df">From</label><input type="date" id="li-df" class="ad-in" value="' + esc(from) + '"><label class="ad-dl2" for="li-dt">To</label><input type="date" id="li-dt" class="ad-in" value="' + esc(to) + '"><button type="button" class="btn sm ghost" id="li-dc">All time</button></div>' +
+        '<div class="ad-kpis">' + K(t.discovered, "Businesses discovered") + K(t.researched, "Researched") + K(t.qualified, "Qualified (60+)") + K(t.hot, "Hot leads (80+)", t.high + " high potential") + K(t.founders, "Decision makers found", t.founders_verified + " verified on own website") + K(t.verified_contacts, "With a contact from the website") + "</div>" +
+        '<div class="ad-kpis">' + K(t.contacted, "Contacted") + K(t.meetings, "Meetings") + K(t.proposals, "Proposals") + K(t.converted, "Converted") + K(t.discovered ? Math.round(t.converted / t.discovered * 1000) / 10 + "%" : "0%", "Conversion rate") + K(t.contacted ? Math.round(t.meetings / t.contacted * 1000) / 10 + "%" : "0%", "Contacted to meeting") + "</div>" +
+        '<div class="ad-grid2"><div class="panel ad-card"><h2>' + (full ? "Highest scores" : "Top leads") + '</h2><div class="ad-table"><table><thead><tr><th>Business</th><th>Score</th><th>Status</th></tr></thead><tbody>' + (j.top.length ? j.top.map(lrow).join("") : '<tr><td colspan="3" class="muted">No researched leads yet.</td></tr>') + "</tbody></table></div></div>" +
+        '<div class="panel ad-card"><h2>Recently discovered</h2><div class="ad-table"><table><thead><tr><th>Business</th><th>Score</th><th>Status</th></tr></thead><tbody>' + (j.recent.length ? j.recent.map(lrow).join("") : '<tr><td colspan="3" class="muted">No businesses yet. Start with Find businesses.</td></tr>') + "</tbody></table></div></div></div>" +
+        '<div class="ad-grid3"><div class="panel ad-card"><h2>By industry</h2>' + lbars(j.by_industry) + '</div><div class="panel ad-card"><h2>By city</h2>' + lbars(j.by_city) + '</div><div class="panel ad-card"><h2>By priority</h2>' + lbars(j.by_priority, function (k) { return (LPRI[k] || ["Not scored"])[0]; }) + "</div></div>" +
+        (full ? '<div class="ad-grid3"><div class="panel ad-card"><h2>Outreach status</h2>' + lbars(j.by_status, lst) + '</div><div class="panel ad-card"><h2>Lead source</h2>' + lbars(j.by_source, function (k) { return { google_places: "Google Places", openstreetmap: "OpenStreetMap" }[k] || k; }) + '</div><div class="panel ad-card"><h2>Funnel</h2>' + lbars([{ k: "Discovered", n: t.discovered }, { k: "Researched", n: t.researched }, { k: "Qualified", n: t.qualified }, { k: "Contacted", n: t.contacted }, { k: "Meeting", n: t.meetings }, { k: "Proposal", n: t.proposals }, { k: "Converted", n: t.converted }]) + "</div></div>" : "");
+      var go = function () { location.hash = tab + "/" + encodeURIComponent($("#li-df").value) + "/" + encodeURIComponent($("#li-dt").value); };
+      $("#li-df").onchange = $("#li-dt").onchange = go; $("#li-dc").onclick = function () { location.hash = tab; }; lclick();
+    });
+  }
+
+  /* 2 · find businesses */
+  var LF = null;
+  function liFind() {
+    if (liGate("Find businesses")) return;
+    var f = LF || { country: "India", state: "Delhi", city: "", locality: "", industry: "", sub_industry: "", keywords: "", website: "any", size: "any", growth: "any", limit: 20, schedule: "once" };
+    var inp = function (id, label, ph) { return '<div><label class="ad-dl2" for="lf-' + id + '">' + label + '</label><input id="lf-' + id + '" class="ad-in" maxlength="80" placeholder="' + esc(ph || "") + '" value="' + esc(f[id] || "") + '"></div>'; };
+    var sel = function (id, label, list) { return '<div><label class="ad-dl2" for="lf-' + id + '">' + label + '</label><select id="lf-' + id + '" class="ad-in">' + opt(list, f[id]) + "</select></div>"; };
+    $("#ad-view").innerHTML = head("Find businesses", "Searches Google Places when its key is set, otherwise OpenStreetMap. Each result keeps its source. Already-saved businesses are matched by name, website, phone and address and are not added twice.") + lnav("li-find") +
+      '<form class="panel ad-card ad-li-form" id="lf-form"><div class="ad-li-fg">' + inp("country", "Country") + inp("state", "State") +
+      '<div><label class="ad-dl2" for="lf-city">City</label><input id="lf-city" class="ad-in" list="lf-ncr" maxlength="80" placeholder="New Delhi" value="' + esc(f.city) + '"><datalist id="lf-ncr">' + LNCR.slice(1).map(function (c) { return '<option value="' + esc(c[0]) + '">'; }).join("") + "</datalist></div>" +
+      inp("locality", "Locality", "Dwarka, Connaught Place, Sector 29") + '<div><label class="ad-dl2" for="lf-industry">Industry</label><select id="lf-industry" class="ad-in">' + opt(LIND, f.industry, "Choose an industry") + "</select></div>" +
+      inp("sub_industry", "Sub-industry", "dentist, orthodontist") + inp("keywords", "Keywords", "implants, 24 hours") +
+      sel("website", "Website", [["any", "Any"], ["has", "Has a website"], ["none", "No website"]]) + sel("size", "Size (by Google review count)", [["any", "Any"], ["small", "Small (under 50 reviews)"], ["medium", "Medium (50 to 499)"], ["large", "Large (500+)"]]) +
+      sel("growth", "Growth signals", [["any", "Any"], ["active", "Active (10+ reviews, rating 4+)"], ["established", "Established (100+ reviews)"]]) +
+      '<div><label class="ad-dl2" for="lf-limit">Max new leads</label><input id="lf-limit" type="number" min="1" max="60" class="ad-in" value="' + (+f.limit || 20) + '"></div>' +
+      sel("schedule", "Run", [["once", "Once"], ["daily", "Daily (save search)"], ["weekly", "Weekly (save search)"]]) + "</div>" +
+      '<p class="muted">Size and growth filters need review counts, which only Google Places provides. Without them those filters leave businesses out rather than guess.</p>' +
+      '<div class="ad-acts"><button type="submit" class="btn" id="lf-go">Search now</button><button type="button" class="btn ghost" id="lf-save">Save search</button></div></form>' +
+      '<div id="lf-out"></div><div id="lf-jobs"></div>';
+    var read = function () { var o = {}; ["country", "state", "city", "locality", "industry", "sub_industry", "keywords", "website", "size", "growth", "limit", "schedule"].forEach(function (k) { o[k] = $("#lf-" + k).value.trim(); }); LF = o; return o; };
+    $("#lf-form").onsubmit = function (e) {
+      e.preventDefault(); var o = read(), b = $("#lf-go"); b.disabled = true; b.textContent = "Searching…"; $("#lf-out").innerHTML = '<div class="ad-load">Searching ' + esc([o.locality, o.city].filter(Boolean).join(", ")) + "…</div>";
+      api("li/search", o).then(function (j) {
+        b.disabled = false; b.textContent = "Search now";
+        if (!j.ok) { $("#lf-out").innerHTML = '<div class="panel ad-card"><p class="cf-status warn">' + esc(j.reason) + "</p></div>"; return; }
+        var src = { google_places: "Google Places", openstreetmap: "OpenStreetMap" }[j.source] || j.source;
+        $("#lf-out").innerHTML = '<div class="panel ad-card"><h2>Results <small class="muted">' + esc(j.query) + " · " + esc(j.area) + " · " + esc(src) + "</small></h2>" +
+          (j.errors.length ? '<p class="cf-status warn">' + j.errors.map(esc).join("<br>") + "</p>" : "") +
+          '<p>' + j.found + " found · <b>" + j.added.length + " new</b> · " + j.duplicates.length + " already saved · " + j.filtered + " left out by filters</p>" +
+          (j.added.length ? '<ul class="ad-li-ul">' + j.added.map(function (a) { return '<li><a href="#li-lead/' + esc(a.id) + '">' + esc(a.name) + '</a> <small class="muted">' + esc(a.id) + "</small></li>"; }).join("") + '</ul><div class="ad-acts"><button type="button" class="btn sm" id="lf-res">Research these ' + j.added.length + '</button><span class="muted" id="lf-rs"></span></div>' : (j.found ? "" : '<p class="muted">No businesses came back for this search. Try a wider area or different words.</p>')) + "</div>";
+        var r = $("#lf-res"); if (r) r.onclick = function () { r.disabled = true; liResearchMany(j.added.map(function (a) { return a.id; }), $("#lf-rs"), function () { r.textContent = "Done"; }); };
+        liJobs();
+      });
+    };
+    $("#lf-save").onclick = function () { var o = read(); api("li/jobs/save", { filters: o, schedule: o.schedule }).then(function (j) { if (!j.ok) return toast(j.reason, true); toast(o.schedule === "once" ? "Search saved" : "Saved: runs " + o.schedule); liJobs(); }); };
+    liJobs();
+  }
+  function liResearchMany(ids, el, done) {
+    var i = 0, okN = 0, bad = 0;
+    (function next() {
+      if (i >= ids.length) { el.textContent = okN + " researched" + (bad ? ", " + bad + " failed" : "") + "."; if (done) done(); return; }
+      el.textContent = "Researching " + (i + 1) + " of " + ids.length + "… (website, contacts, people, audit)";
+      api("li/research/" + encodeURIComponent(ids[i++]), {}).then(function (j) { if (j.ok) okN++; else bad++; next(); });
+    })();
+  }
+  function liJobs() {
+    api("li/jobs").then(function (j) {
+      var el = $("#lf-jobs"); if (!el || !j.ok) return;
+      el.innerHTML = '<div class="ad-grid2"><div class="panel ad-card"><h2>Saved searches</h2>' + (j.jobs.length ? '<div class="ad-table"><table><thead><tr><th>Search</th><th>Runs</th><th>Last run</th><th>Next run</th><th></th></tr></thead><tbody>' + j.jobs.map(function (x) { return "<tr><td><b>" + esc(x.name) + '</b></td><td data-l="Runs">' + esc(x.schedule) + '</td><td data-l="Last run">' + lday(x.last_run) + '</td><td data-l="Next run">' + (x.next_run ? date(x.next_run, true) : "Manual") + '</td><td><button type="button" class="btn sm ghost" data-jr="' + esc(x.id) + '">Run</button> <button type="button" class="ad-ib" data-jd="' + esc(x.id) + '" aria-label="Delete saved search">×</button></td></tr>'; }).join("") + "</tbody></table></div>" : '<p class="muted">None yet. Daily and weekly searches run with the daily scheduler (one per run) and skip businesses already saved.</p>') + "</div>" +
+        '<div class="panel ad-card"><h2>Search log</h2>' + (j.runs.length ? '<div class="ad-table"><table><thead><tr><th>When</th><th>Source</th><th>Found</th><th>New</th><th>Errors</th></tr></thead><tbody>' + j.runs.slice(0, 20).map(function (r) { var e = []; try { e = JSON.parse(r.errors || "[]"); } catch (x) {} return "<tr><td>" + date(r.at, true) + (r.job_id ? ' <span class="ad-tag">scheduled</span>' : "") + '</td><td data-l="Source">' + esc(r.source) + '</td><td data-l="Found">' + r.found + '</td><td data-l="New">' + r.added + '</td><td data-l="Errors">' + (e.length ? '<span class="ad-tag bad" title="' + esc(e.join(" | ")) + '">' + e.length + "</span>" : "0") + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<p class="muted">No searches yet.</p>') + "</div></div>";
+      $$("[data-jr]", el).forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = "Running…"; api("li/jobs/" + encodeURIComponent(b.dataset.jr) + "/run", {}).then(function (r) { toast(r.ok ? r.added.length + " new, " + r.duplicates.length + " already saved" : r.reason, !r.ok); liJobs(); }); }; });
+      $$("[data-jd]", el).forEach(function (b) { b.onclick = function () { ask({ title: "Delete this saved search?", text: "Leads it already found stay.", ok: "Delete" }).then(function (v) { if (v) api("li/jobs/" + encodeURIComponent(b.dataset.jd) + "/delete", {}).then(liJobs); }); }; });
+    });
+  }
+
+  /* 4 · all leads, 5 · hot leads, 3 · decision makers, 6 · audits, 8 · outreach: one table with different presets */
+  var LQ = {};
+  function liLeads(mode) {
+    var titles = { "li-leads": "All leads", "li-hot": "Hot leads", "li-people": "Founder & decision maker finder", "li-audit": "Website audit", "li-outreach": "Outreach manager" };
+    if (liGate(titles[mode])) return;
+    var q = LQ[mode] || (LQ[mode] = mode === "li-hot" ? { min: 60, sort: "score" } : mode === "li-audit" ? { researched: "1", sort: "updated" } : { sort: mode === "li-outreach" ? "updated" : "score" });
+    var subs = { "li-leads": "Every saved business. Click a row for the full profile. Exports include sources and confidence.", "li-hot": "Leads scoring 60 or more (High potential and Hot). The score is the sum of 8 evidenced parts; open a lead to see why.",
+      "li-people": "Decision makers come from the business's own website (Verified) or public search results that name the business (Partially verified). LinkedIn is never opened or scraped, and no name or email is guessed.",
+      "li-audit": "Automatic checks of each business's own website: HTTPS, mobile tag, speed, SEO basics, broken links, forms, booking, chat, analytics and ad tags. AI summaries are labelled.", "li-outreach": "Track every lead through 12 statuses. Drafts are written for you to copy; nothing is sent from here. Do not contact and unsubscribed emails are blocked." };
+    api("li/leads?" + lqs(q)).then(function (j) {
+      if (!j.ok) return fail(j);
+      var L = j.leads, sel = {};
+      var filt = '<div class="ad-li-filt"><input id="lq-q" class="ad-in" placeholder="Search name, website, owner, email, ID" value="' + esc(q.q || "") + '">' +
+        '<select id="lq-status" class="ad-in" aria-label="Status">' + opt(LIST, q.status || "", "Any status") + "</select>" +
+        '<select id="lq-priority" class="ad-in" aria-label="Priority">' + opt([["hot", "Hot lead"], ["high", "High potential"], ["medium", "Medium potential"], ["low", "Low priority"]], q.priority || "", "Any priority") + "</select>" +
+        '<select id="lq-industry" class="ad-in" aria-label="Industry">' + opt(LIND, q.industry || "", "Any industry") + "</select>" +
+        '<input id="lq-city" class="ad-in" placeholder="City" value="' + esc(q.city || "") + '">' +
+        '<select id="lq-website" class="ad-in" aria-label="Website">' + opt([["has", "Has website"], ["none", "No website"]], q.website || "", "Website: any") + "</select>" +
+        '<select id="lq-people" class="ad-in" aria-label="Decision maker">' + opt([["verified", "Verified"], ["partial", "Partially verified"], ["unverified", "Unverified"], ["not_found", "Not found"]], q.people || "", "Decision maker: any") + "</select>" +
+        '<select id="lq-researched" class="ad-in" aria-label="Researched">' + opt([["1", "Researched"], ["0", "Not researched"]], q.researched || "", "Researched: any") + "</select>" +
+        '<select id="lq-sort" class="ad-in" aria-label="Sort">' + opt([["score", "Sort: score"], ["newest", "Sort: newest"], ["updated", "Sort: updated"], ["name", "Sort: name"], ["reviews", "Sort: reviews"]], q.sort || "score") + "</select>" +
+        '<label class="ad-tog"><input type="checkbox" id="lq-archived"' + (q.archived === "1" ? " checked" : "") + "> Archived</label></div>";
+      var cols = mode === "li-people" ? ["Decision maker", "Confidence"] : mode === "li-audit" ? ["Website", "Researched"] : mode === "li-outreach" ? ["Contact", "Change status"] : ["Contact", "Decision maker"];
+      var cell = function (x) {
+        if (mode === "li-people") return '<td data-l="Decision maker">' + (x.owner_name ? "<b>" + esc(x.owner_name) + "</b><small class=\"muted ad-li-sub\">" + esc(x.owner_role || "") + "</small>" : '<span class="muted">' + (x.researched_at ? "None found" : "Not searched yet") + "</span>") + '</td><td data-l="Confidence">' + lconf(x.owner_conf) + "</td>";
+        if (mode === "li-audit") return '<td data-l="Website">' + (x.website ? '<a href="' + esc(x.website) + '" target="_blank" rel="noopener nofollow">' + esc(x.website.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)) + "</a>" : '<span class="muted">No website</span>') + '</td><td data-l="Researched">' + lday(x.researched_at) + "</td>";
+        if (mode === "li-outreach") return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Change status"><select class="ad-in" data-ls="' + esc(x.id) + '" aria-label="Status for ' + esc(x.name) + '">' + opt(LIST, x.status) + "</select></td>";
+        return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Decision maker">' + (x.owner_name ? esc(x.owner_name) + " " + lconf(x.owner_conf) : '<span class="muted">None yet</span>') + "</td>";
+      };
+      $("#ad-view").innerHTML = head(titles[mode], subs[mode], '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + filt +
+        '<div class="ad-li-bulk"><span id="lq-n" class="muted">' + j.total + " leads" + (j.total > L.length ? " (showing " + L.length + ")" : "") + '</span><span class="ad-li-ba" id="lq-ba" hidden><b id="lq-sn">0</b> selected · ' +
+        '<button type="button" class="btn sm" data-ba="research">Research</button><select class="ad-in" id="lq-bst" aria-label="Set status">' + opt(LIST, "", "Set status…") + "</select>" +
+        '<button type="button" class="btn sm ghost" data-ba="csv">CSV</button><button type="button" class="btn sm ghost" data-ba="xlsx">Excel</button><button type="button" class="btn sm ghost" data-ba="pitch">Add to Bulk pitch</button>' +
+        '<button type="button" class="btn sm ghost" data-ba="' + (q.archived === "1" ? "unarchive" : "archive") + '">' + (q.archived === "1" ? "Restore" : "Archive") + '</button><button type="button" class="btn sm ghost" data-ba="delete">Delete</button></span>' +
+        '<span class="ad-li-ex"><button type="button" class="btn sm ghost" id="lq-csv">Export all CSV</button> <button type="button" class="btn sm ghost" id="lq-xlsx">Excel</button>' + (mode === "li-leads" ? ' <button type="button" class="btn sm ghost" id="lq-dup">Check duplicates</button>' : "") + "</span></div>" +
+        '<div class="ad-table"><table><thead><tr><th><input type="checkbox" id="lq-all" aria-label="Select all"></th><th>Business</th><th>Score</th><th>' + cols[0] + "</th><th>" + cols[1] + "</th><th>Status</th></tr></thead><tbody>" +
+        (L.length ? L.map(function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><input type="checkbox" data-ck="' + esc(x.id) + '" aria-label="Select ' + esc(x.name) + '"></td><td><b>' + esc(x.name) + '</b><small class="muted ad-li-sub">' + esc([x.id, x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + "</td>" + cell(x) + '<td data-l="Status">' + esc(lst(x.status)) + "</td></tr>"; }).join("")
+          : '<tr><td colspan="6" class="muted">No leads match. ' + (mode === "li-hot" ? "Research leads to score them." : "Use Find businesses to add some.") + "</td></tr>") + "</tbody></table></div><div id=\"lq-dups\"></div>";
+      var reload = function () { liLeads(mode); };
+      var setQ = function () { ["q", "status", "priority", "industry", "city", "website", "people", "researched", "sort"].forEach(function (k) { q[k] = $("#lq-" + k).value.trim(); }); q.archived = $("#lq-archived").checked ? "1" : ""; reload(); };
+      ["status", "priority", "industry", "website", "people", "researched", "sort"].forEach(function (k) { $("#lq-" + k).onchange = setQ; }); $("#lq-archived").onchange = setQ;
+      $("#lq-q").onkeydown = $("#lq-city").onkeydown = function (e) { if (e.key === "Enter") setQ(); };
+      var ids = function () { return Object.keys(sel).filter(function (k) { return sel[k]; }); };
+      var upd = function () { var n = ids().length; $("#lq-ba").hidden = !n; $("#lq-sn").textContent = n; };
+      $$("[data-ck]").forEach(function (c) { c.onchange = function () { sel[c.dataset.ck] = c.checked; upd(); }; });
+      $("#lq-all").onchange = function () { var on = this.checked; $$("[data-ck]").forEach(function (c) { c.checked = on; sel[c.dataset.ck] = on; }); upd(); };
+      $$("[data-ls]").forEach(function (s) { s.onchange = function () { api("li/lead/" + encodeURIComponent(s.dataset.ls), { status: s.value }).then(function (r) { toast(r.ok ? "Status: " + lst(s.value) : r.reason, !r.ok); }); }; });
+      $("#lq-bst").onchange = function () { var v = this.value; if (!v) return; api("li/bulk", { ids: ids(), action: "status", status: v }).then(function (r) { toast(r.ok ? r.changed + " updated" : r.reason, !r.ok); reload(); }); };
+      $$("[data-ba]").forEach(function (b) { b.onclick = function () {
+        var a = b.dataset.ba, I = ids(); if (!I.length) return;
+        if (a === "research") { b.disabled = true; return liResearchMany(I, $("#lq-n"), reload); }
+        if (a === "csv" || a === "xlsx") return liExport(a, I);
+        if (a === "pitch") return liToPitch(I);
+        var run = function () { api("li/bulk", { ids: I, action: a }).then(function (r) { toast(r.ok ? r.changed + " " + a + "d" : r.reason, !r.ok); reload(); }); };
+        if (a === "delete") ask({ title: "Delete " + I.length + " lead" + (I.length > 1 ? "s" : "") + "?", text: "Their contacts, people, audit, score and outreach history are removed for good. Archive keeps them instead.", ok: "Delete" }).then(function (v) { if (v) run(); }); else run();
+      }; });
+      $("#lq-csv").onclick = function () { liExport("csv"); }; $("#lq-xlsx").onclick = function () { liExport("xlsx"); };
+      var du = $("#lq-dup"); if (du) du.onclick = function () { api("li/duplicates").then(function (r) { if (!r.ok) return toast(r.reason, true); $("#lq-dups").innerHTML = '<div class="panel ad-card"><h2>Possible duplicates</h2>' + (r.groups.length ? '<ul class="ad-li-ul">' + r.groups.map(function (g) { return "<li>Same " + esc(g.by) + ": " + g.ids.map(function (id) { return '<a href="#li-lead/' + esc(id) + '">' + esc(id) + "</a>"; }).join(", ") + ' <small class="muted">' + esc(g.names) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No duplicates found.</p>') + "</div>"; }); };
+      lclick("tr[data-li]");
+    });
+  }
+  function liExport(kind, ids) {
+    var q = LQ[(location.hash.slice(1).split("/")[0])] || {};
+    api("li/export?" + lqs(Object.assign({}, q, ids ? { ids: ids.join(",") } : {}))).then(function (j) {
+      if (!j.ok) return toast(j.reason, true); if (!j.rows.length) return toast("Nothing to export.", true);
+      var keys = Object.keys(j.rows[0]), rows = [keys].concat(j.rows.map(function (r) { return keys.map(function (k) { return r[k]; }); })), name = "fodo-leads-" + new Date().toISOString().slice(0, 10);
+      if (kind === "csv") csv(rows, name + ".csv"); else xlsxDownload(rows, name + ".xlsx", "Leads");
+      toast(j.rows.length + " leads exported");
+    });
+  }
+  function liToPitch(ids) {
+    api("pitch").then(function (j) {
+      if (!j.ok) return toast(j.reason, true); if (!j.campaigns.length) return toast("Create a Bulk pitch campaign first.", true);
+      ask({ title: "Add to a Bulk pitch campaign", text: "Only leads with a public email from their website or listing are added. Do not contact leads and unsubscribed emails are skipped. Sending stays in Bulk pitch (test first, then confirm).\n\nCampaigns: " + j.campaigns.map(function (c) { return c.id + " (" + c.name + ")"; }).join(", "), input: "Campaign ID", ok: "Add" }).then(function (cid) {
+        if (!cid) return; api("li/to-pitch", { ids: ids, campaign_id: cid }).then(function (r) { toast(r.ok ? r.added + " added, " + r.skipped + " skipped (no email)" : r.reason, !r.ok); });
+      });
+    });
+  }
+  /* minimal .xlsx writer (stored zip, inline strings) so Excel export needs no library */
+  function xlsxDownload(rows, name, sheet) {
+    var x = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); };
+    var col = function (i) { var s = ""; i++; while (i) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
+    var data = rows.map(function (r, ri) { return '<row r="' + (ri + 1) + '">' + r.map(function (v, ci) { var ref = col(ci) + (ri + 1); return typeof v === "number" && isFinite(v) ? '<c r="' + ref + '"><v>' + v + "</v></c>" : '<c r="' + ref + '" t="inlineStr"' + (ri === 0 ? ' s="1"' : "") + "><is><t>" + x(v) + "</t></is></c>"; }).join("") + "</row>"; }).join("");
+    var F = {
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+      "_rels/.rels": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      "xl/workbook.xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + x(sheet) + '" sheetId="1" r:id="rId1"/></sheets></workbook>',
+      "xl/_rels/workbook.xml.rels": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+      "xl/styles.xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf fontId="1" applyFont="1"/></cellXfs></styleSheet>',
+      "xl/worksheets/sheet1.xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>' + data + "</sheetData></worksheet>"
+    };
+    var enc = new TextEncoder(), T = [], crcT = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crcT[n] = c >>> 0; }
+    var crc = function (b) { var c = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+    var parts = [], cen = [], off = 0, u16 = function (v) { return [v & 255, (v >>> 8) & 255]; }, u32 = function (v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; };
+    Object.keys(F).forEach(function (fn) {
+      var nm = enc.encode(fn), b = enc.encode(F[fn]), cr = crc(b);
+      var lh = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(cr), u32(b.length), u32(b.length), u16(nm.length), u16(0));
+      parts.push(new Uint8Array(lh), nm, b);
+      cen.push(new Uint8Array([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(cr), u32(b.length), u32(b.length), u16(nm.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(off))), nm);
+      off += lh.length + nm.length + b.length;
+    });
+    var cl = cen.reduce(function (s, a) { return s + a.length; }, 0);
+    var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(Object.keys(F).length), u16(Object.keys(F).length), u32(cl), u32(off), u16(0)));
+    var blob = new Blob(parts.concat(cen, [end]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  /* lead detail: score breakdown, contacts with sources, people, audit, opportunities, drafts, history */
+  function liLead(id) {
+    if (liGate("Lead")) return;
+    api("li/lead/" + encodeURIComponent(id || "")).then(function (j) {
+      if (!j.ok) return fail(j);
+      var x = j.lead, A = j.audit, C = (A && A.checks) || {}, S = j.score;
+      var srcName = { google_places: "Google Places", openstreetmap: "OpenStreetMap" }[x.source] || x.source;
+      var link = function (u, t) { return u && /^https?:\/\//.test(u) ? '<a href="' + esc(u) + '" target="_blank" rel="noopener nofollow">' + esc(t || u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 48)) + "</a>" : esc(u || ""); };
+      var KL = { email: "Email", phone: "Phone", whatsapp: "WhatsApp", website: "Website", maps: "Google Maps", instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", x: "X", youtube: "YouTube" };
+      var chk = function (v, label) { return '<li class="' + (v ? "ok" : "no") + '"><span aria-hidden="true">' + (v ? "✓" : "✕") + "</span> " + esc(label) + "</li>"; };
+      $("#ad-view").innerHTML = head(esc(x.name), esc([x.id, x.category || x.industry, x.address].filter(Boolean).join(" · ")), '<a class="btn sm ghost" href="#li-leads">All leads</a>') + lnav("") +
+        (x.status === "dnc" || j.opted_out ? '<div class="panel ad-card"><p class="cf-status warn">' + (j.opted_out ? "This email has unsubscribed from FODO emails." : "Marked Do not contact.") + " No drafts, no Bulk pitch.</p></div>" : "") +
+        '<div class="ad-kpis">' + K(x.score == null ? "?" : x.score + "/100", "Lead score", x.priority ? LPRI[x.priority][0] : "Run research to score") + K(x.rating == null ? "n/a" : x.rating + "★", "Google rating", x.reviews == null ? "No review data" : x.reviews + " reviews") + K(esc(srcName), "Source", lday(x.created_at)) + K(lday(x.researched_at), "Last researched") + "</div>" +
+        '<div class="panel ad-card ad-li-bar"><label class="ad-dl2" for="ll-st">Status</label><select id="ll-st" class="ad-in">' + opt(LIST, x.status) + '</select><button type="button" class="btn sm" id="ll-res">' + (x.researched_at ? "Research again" : "Research now") + '</button><button type="button" class="btn sm ghost" id="ll-edit">Edit</button><button type="button" class="btn sm ghost" id="ll-arc">' + (x.archived ? "Restore" : "Archive") + '</button><span class="muted" id="ll-msg"></span></div>' +
+        '<div class="ad-grid2"><div class="panel ad-card"><h2>Why this score</h2>' + (S ? '<div class="ad-li-score">' + S.parts.map(function (p) { return '<div class="ad-li-sp"><div><b>' + esc(p.label) + "</b><small class=\"muted\">" + esc(p.evidence) + '</small></div><i class="ad-bar" style="--v:' + Math.round(p.points / p.max * 100) + '"></i><span>' + p.points + "/" + p.max + "</span></div>"; }).join("") + '</div><p class="muted">Parts with no data score 0. Scored ' + date(S.at, true) + ".</p>" : '<p class="muted">Not scored yet. Research reads the business\'s own website and builds the score from what it finds.</p>') + "</div>" +
+        '<div class="panel ad-card"><h2>Decision makers</h2>' + (j.people.length ? '<ul class="ad-li-ul">' + j.people.map(function (p) { return "<li><b>" + esc(p.name) + "</b> · " + esc(p.role) + " " + lconf(p.confidence) + '<small class="muted ad-li-sub">' + esc(p.evidence) + " · source: " + link(p.source_url) + (p.profile_url ? " · profile: " + link(p.profile_url) : "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">' + (x.researched_at ? "Not found on the website or in public search results. Nothing is guessed." : "Run research to look.") + "</p>") +
+        '<h2>Contacts</h2>' + (j.contacts.length ? '<ul class="ad-li-ul">' + j.contacts.map(function (c) { return "<li><b>" + esc(c.label || KL[c.kind] || c.kind) + ":</b> " + (/^https?:/.test(c.value) ? link(c.value) : c.kind === "email" ? '<a href="mailto:' + esc(c.value) + '">' + esc(c.value) + "</a>" : esc(c.value)) + '<small class="muted ad-li-sub">' + esc(c.status || "") + (c.source_url ? " · source: " + link(c.source_url) : "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No public contacts found.</p>') + "</div></div>" +
+        '<div class="panel ad-card"><h2>Website audit ' + (A ? '<small class="muted">' + date(A.at, true) + " · " + link(A.url) + "</small>" : "") + "</h2>" + (A ? (A.checks.findings && A.checks.findings.length ? '<ul class="ad-li-ul">' + A.checks.findings.map(function (f) { return '<li><span class="ad-st ' + (f[0] === "high" ? "bad" : f[0] === "medium" ? "mid" : "") + '">' + esc(f[0]) + "</span> " + esc(f[1]) + "</li>"; }).join("") + "</ul>" : '<p class="muted">No problems found in the automatic checks.</p>') +
+          (C.reachable ? '<ul class="ad-li-chk">' + chk(C.https, "HTTPS") + chk(C.viewport, "Mobile viewport") + chk(C.title, "Title") + chk(C.description, "Meta description") + chk(C.h1, "H1 heading") + chk(C.canonical, "Canonical") + chk(C.schema, "Structured data") + chk(C.contact_form, "Contact form") + chk(C.booking, "Booking") + chk(C.whatsapp_link || C.chat_widget, "WhatsApp / chat") + chk(C.analytics, "Analytics") + chk(C.meta_pixel || C.google_ads_tag, "Ad tracking tag") + chk((C.socials || []).length, "Social links") + chk(!(C.broken_links || []).length, "No broken links (sample)") + "</ul><p class=\"muted\">First response " + (C.response_ms / 1000).toFixed(1) + " s · " + C.html_kb + " KB · " + C.images + " images, " + C.images_no_alt + " without alt text" + (C.pagespeed && C.pagespeed.score != null ? " · PageSpeed mobile " + C.pagespeed.score + "/100" : " · PageSpeed not run") + "</p>" : "") +
+          (A.ai_summary ? '<div class="ad-li-ai"><p class="ad-dl2">AI summary <span class="ad-tag">AI · ' + esc((A.ai_model || "").split("/").pop()) + '</span> <small class="muted">written from the checks above; hypotheses are not facts</small></p><p>' + esc(A.ai_summary).replace(/\n/g, "<br>") + "</p></div>" : "") + ((C.notes || []).length ? '<p class="muted">' + C.notes.map(esc).join("<br>") + "</p>" : "") : '<p class="muted">Not audited yet.</p>') + "</div>" +
+        '<div class="panel ad-card"><h2>Opportunities for FODO</h2>' + (j.opportunities.length ? '<div class="ad-table"><table><thead><tr><th>Service</th><th>Problem and evidence</th><th>Why it matters</th><th>Outreach angle</th></tr></thead><tbody>' + j.opportunities.map(function (o) { return "<tr><td><b>" + esc(o.service) + '</b> <span class="ad-tag">' + (o.kind === "observed" ? "observed" : "AI hypothesis") + '</span></td><td data-l="Problem"><b>' + esc(o.problem) + '</b><small class="muted ad-li-sub">' + esc(o.evidence) + '</small></td><td data-l="Why">' + esc(o.why) + '<small class="muted ad-li-sub">' + esc(o.value) + '</small></td><td data-l="Angle">' + esc(o.angle) + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<p class="muted">None yet.</p>') + "</div>" +
+        '<div class="ad-grid2"><div class="panel ad-card"><h2>Outreach drafts <small class="muted">copy and send yourself; nothing is sent from here</small></h2><div class="ad-acts">' + [["email", "Email"], ["followup", "Follow-up"], ["linkedin", "LinkedIn note"], ["whatsapp", "WhatsApp"], ["opener", "Openers"]].map(function (c) { return '<button type="button" class="btn sm ghost" data-dr="' + c[0] + '">' + c[1] + "</button>"; }).join("") + '</div><p class="muted" id="ll-drm"></p><textarea id="ll-dr" class="ad-in ad-ta" rows="9" aria-label="Draft" placeholder="Pick a channel to write a draft from this lead\'s observed problems."></textarea><div class="ad-acts"><button type="button" class="btn sm" id="ll-cp">Copy</button></div>' +
+          '<label class="ad-dl2" for="ll-notes">Notes</label><textarea id="ll-notes" class="ad-in ad-ta" rows="3" maxlength="4000">' + esc(x.notes || "") + '</textarea><button type="button" class="btn sm ghost" id="ll-ns">Save notes</button></div>' +
+        '<div class="panel ad-card"><h2>History</h2>' + (j.history.length ? '<ul class="ad-li-ul">' + j.history.map(function (h) { return "<li>" + esc(lst(h.from_status)) + " → <b>" + esc(lst(h.to_status)) + "</b>" + (h.channel ? " · " + esc(h.channel) : "") + (h.note ? " · " + esc(h.note) : "") + '<small class="muted ad-li-sub">' + date(h.at, true) + " · " + esc(h.by_email || "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No status changes yet.</p>') +
+          "<h2>Research sources</h2>" + (j.sources.length || x.source_ref || x.maps_url ? '<ul class="ad-li-ul">' + (x.maps_url ? "<li>Listing: " + link(x.maps_url) + "</li>" : x.source_ref ? "<li>Listing: " + link(x.source_ref) + "</li>" : "") + j.sources.map(function (s) { return "<li>" + link(s.url) + ' <small class="muted">HTTP ' + s.http + " · " + date(s.at, true) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">None.</p>') + "</div></div>";
+      var reload = function () { liLead(x.id); };
+      $("#ll-st").onchange = function () { var v = this.value; ask({ title: "Change status to " + lst(v) + "?", input: "Note (optional)", ok: "Save" }).then(function (note) { if (note === null) { $("#ll-st").value = x.status; return; } api("li/lead/" + encodeURIComponent(x.id), { status: v, note: note }).then(function (r) { toast(r.ok ? "Status saved" : r.reason, !r.ok); reload(); }); }); };
+      $("#ll-res").onclick = function () { var b = this; b.disabled = true; $("#ll-msg").textContent = "Reading the website, contact and about pages, checking people and email domain… this can take up to a minute."; api("li/research/" + encodeURIComponent(x.id), {}).then(function (r) { if (!r.ok) { b.disabled = false; $("#ll-msg").textContent = r.reason; return; } toast("Research done · score " + r.lead.score); reload(); }); };
+      $("#ll-arc").onclick = function () { api("li/bulk", { ids: [x.id], action: x.archived ? "unarchive" : "archive" }).then(function (r) { toast(r.ok ? (x.archived ? "Restored" : "Archived") : r.reason, !r.ok); reload(); }); };
+      $("#ll-edit").onclick = function () { ask({ title: "Website", text: "Fix or add the official website (https://…). Research again afterwards.", input: "Website", ok: "Save" }).then(function (w) { if (w === null) return; api("li/lead/" + encodeURIComponent(x.id), { website: w }).then(function (r) { toast(r.ok ? "Saved" : r.reason, !r.ok); reload(); }); }); };
+      $("#ll-ns").onclick = function () { api("li/lead/" + encodeURIComponent(x.id), { notes: $("#ll-notes").value }).then(function (r) { toast(r.ok ? "Notes saved" : r.reason, !r.ok); }); };
+      $$("[data-dr]").forEach(function (b) { b.onclick = function () { $("#ll-drm").textContent = "Writing…"; api("li/drafts/" + encodeURIComponent(x.id), { channel: b.dataset.dr }).then(function (r) { if (!r.ok) { $("#ll-drm").textContent = r.reason; return; } $("#ll-dr").value = r.text; $("#ll-drm").textContent = r.ai ? "AI draft (" + (r.model || "").split("/").pop() + "). Check every line before sending." : "Template draft (AI not available). Edit before sending."; }); }; });
+      $("#ll-cp").onclick = function () { var t = $("#ll-dr").value; if (!t) return; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Copied"); }, function () { $("#ll-dr").select(); }); };
+    });
+  }
+
+  /* 9 · integrations & settings */
+  function liSettings() {
+    if (liGate("Integrations & settings")) return;
+    Promise.all([api("li/integrations"), api("li/activity")]).then(function (R) {
+      var j = R[0], a = R[1]; if (!j.ok) return fail(j);
+      $("#ad-view").innerHTML = head("Integrations & settings", "Keys are stored as Cloudflare secrets on the server and never sent to the browser. A feature whose service is not connected says so instead of showing results.") + lnav("li-settings") +
+        '<div class="ad-table"><table><thead><tr><th>Service</th><th>Status</th><th>Used (30 days)</th><th>Cost</th><th></th></tr></thead><tbody>' + j.items.map(function (i) { var u = i.usage || {}; return "<tr><td><b>" + esc(i.name) + '</b><small class="muted ad-li-sub">' + esc(i.role) + (i.secret ? " · Setting: " + esc(i.secret) : "") + '</small></td><td data-l="Status"><span class="ad-st ' + (i.configured ? "ok" : "mid") + '">' + (i.configured ? "Connected" : "Not configured") + '</span></td><td data-l="Used">' + (u.calls == null ? '<span class="muted">n/a</span>' : u.calls + " calls" + (u.errors ? ' <span class="ad-tag bad">' + u.errors + " errors</span>" : "") + '<small class="muted ad-li-sub">today ' + (u.today || 0) + "</small>") + '</td><td data-l="Cost"><small>' + esc(i.cost) + '</small></td><td><button type="button" class="btn sm ghost" data-lt="' + esc(i.key) + '">Test</button><small class="muted ad-li-sub" id="lt-' + esc(i.key) + '"></small></td></tr>'; }).join("") + "</tbody></table></div>" +
+        '<div class="panel ad-card"><h2>How to connect</h2><ol class="ad-li-ol"><li><b>Google Places</b> (best results, Delhi NCR phones, websites, reviews): Google Cloud Console, enable Places API (New), create an API key restricted to Places API, set a budget alert, then in Cloudflare Pages ▸ Settings ▸ Variables and Secrets add <code>GOOGLE_PLACES_KEY</code> as a secret. The public Competitor Finder already uses the same key.</li><li><b>Decision-maker search</b>: create a Serper.dev (or Brave Search API) key and add <code>SERPER_API_KEY</code> (or <code>BRAVE_API_KEY</code>). Without it, decision makers come only from business websites.</li><li><b>PageSpeed</b> (optional): Google Cloud Console, enable PageSpeed Insights API, add <code>PAGESPEED_API_KEY</code>.</li><li><b>Scheduled searches</b> run through the existing daily scheduler (GitHub Actions calling /api/monitor/tick), one search per run.</li><li>Nothing here turns on a paid plan by itself. Each paid API bills only when its key is added and used.</li></ol></div>' +
+        '<div class="ad-grid2"><div class="panel ad-card"><h2>Recent errors</h2>' + (j.errors.length ? '<ul class="ad-li-ul">' + j.errors.map(function (e) { return "<li>" + esc(e.detail) + '<small class="muted ad-li-sub">' + date(e.at, true) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No errors.</p>') + "</div>" +
+        '<div class="panel ad-card"><h2>Activity</h2>' + (a.ok && a.items.length ? '<ul class="ad-li-ul">' + a.items.slice(0, 40).map(function (e) { return "<li><b>" + esc(e.kind.replace(/_/g, " ")) + "</b> " + (e.business_id ? '<a href="#li-lead/' + esc(e.business_id) + '">' + esc(e.business_id) + "</a> " : "") + esc(e.detail || "") + '<small class="muted ad-li-sub">' + date(e.at, true) + " · " + esc(e.by_email || "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No activity yet.</p>') + "</div></div>";
+      $$("[data-lt]").forEach(function (b) { b.onclick = function () { var k = b.dataset.lt, out = $("#lt-" + k); b.disabled = true; out.textContent = "Testing…"; api("li/test/" + encodeURIComponent(k), {}).then(function (r) { b.disabled = false; out.textContent = r.ok ? "OK · " + (r.detail || "") : (r.reason || "Failed"); out.className = "ad-li-sub " + (r.ok ? "ad-li-ok" : "ad-li-bad"); }); }; });
+    });
+  }
+
   function pitchView() {
     if (ME && !owner()) { $("#ad-view").innerHTML = head("Bulk pitch", "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners and Full-control admins can open Bulk pitch.</p></div>'; return; }
     api("pitch").then(function (j) {

@@ -24,6 +24,8 @@ export async function onRequest({ request, env }) {
     out.push({ domain: t.domain, ok: r.ok, events: r.events.length });
   }
   const left = await d.prepare("SELECT COUNT(*) AS n FROM mon_targets WHERE next_check <= ?1").bind(now).first();
+  // v55: Lead Intelligence scheduled searches (one per tick, only searches whose daily/weekly time has come)
+  let leadintel = null; try { leadintel = await (await import("../../_lib/leadintel.js")).runDue(env, 1); } catch (e) { leadintel = { error: String(e.message || e).slice(0, 160) }; }
   // v21: when the day's monitoring is finished, the FODO Brain writes the owner's daily briefing + alert scan (once a day)
   const brain = left && left.n ? null : await brainDaily(env, request);
   // v46.1: once a day, the notification digest emails (people who chose "daily")
@@ -32,5 +34,5 @@ export async function onRequest({ request, env }) {
   let teams = null; try { const TM = await import("../../_lib/teams.js"); teams = { expired: await TM.expireDue(env), reminded: await TM.remindDue(env) }; } catch (e) { teams = { error: true }; }   // v47.2 invitations + reminders
   let jobs = null; try { const JB = await import("../../_lib/jobs.js"); if (!(left && left.n)) await JB.enqueueDaily(env); jobs = await JB.runDue(env, 10); } catch (e) { jobs = { error: true }; }   /* v47.6 background jobs: queue the daily housekeeping once, then run what is due */
   let digest = null; if (!(left && left.n)) { try { digest = await (await import("../../_lib/alerts.js")).digest(env); } catch (e) { digest = { error: true }; } }
-  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest, payouts, refunds, teams, jobs });
+  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest, payouts, refunds, teams, jobs, leadintel });
 }

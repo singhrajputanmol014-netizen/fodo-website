@@ -33,6 +33,7 @@ import * as IB from "../../_lib/sinbox.js";
 import * as CP from "../../_lib/campaigns.js";
 import * as OR from "../../_lib/outreach.js";
 import * as PI from "../../_lib/pitch.js";
+import * as LI from "../../_lib/leadintel.js";
 
 const clean = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
@@ -77,6 +78,21 @@ export async function onRequest(ctx) {
           if (path[1] === "clients") return json({ ok: true, clients: await OR.listClients(env, q.get("q")) });
           return json(Object.assign({ ok: true, role, me: u.email }, await OR.overview(env, q.get("q"))));
         } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Could not load: " + String(e.message || e).slice(0, 200) }, e.status && e.status < 500 ? e.status : 500); }
+      }
+      if (p0 === "li") {   // v55 Lead Intelligence (owners and Full-control admins only)
+        if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and Full-control admins can open Lead Intelligence." }, 403);
+        try {
+          const lq = Object.fromEntries(q), a = path[1];
+          if (a === "leads") return json(Object.assign({ ok: true }, await LI.list(env, lq)));
+          if (a === "lead" && path[2]) return json(Object.assign({ ok: true }, await LI.lead(env, path[2])));
+          if (a === "stats") return json(Object.assign({ ok: true, statuses: LI.STATUSES, industries: LI.INDUSTRIES }, await LI.stats(env, lq)));
+          if (a === "jobs") return json(Object.assign({ ok: true }, await LI.jobs(env)));
+          if (a === "integrations") return json(Object.assign({ ok: true }, await LI.integrations(env)));
+          if (a === "duplicates") return json(Object.assign({ ok: true }, await LI.duplicates(env)));
+          if (a === "export") return json(Object.assign({ ok: true }, await LI.exportRows(env, lq)));
+          if (a === "activity") return json(Object.assign({ ok: true }, await LI.activity(env)));
+          return json({ ok: false, reason: "Unknown Lead Intelligence page." }, 404);
+        } catch (e) { return json({ ok: false, reason: e.status && e.status < 500 ? e.message : "Lead Intelligence: " + String(e.message || e).slice(0, 200) }, e.status || 500); }
       }
       if (p0 === "pitch") {   // v54.6 Bulk pitch (owners and Full-control admins only)
         if (!canEdit) return json({ ok: false, readOnly: true, reason: "Only FODO owners and Full-control admins can open Bulk pitch." }, 403);
@@ -124,6 +140,24 @@ export async function onRequest(ctx) {
         else return json({ ok: false, reason: "Unknown action." }, 400);
         return json(Object.assign({ ok: true }, r));
       } catch (e) { const st = e.status || 502; return json(Object.assign({ ok: false, reason: st < 500 || e.send || e.setup ? e.message : "Could not do that: " + String(e.message || e).slice(0, 220) }, e.duplicate ? { duplicate: true } : {}, e.needConfirm ? { needConfirm: true } : {}, e.optedOut ? { optedOut: true } : {}, e.limit ? { limit: true } : {}, e.setup ? { setup: true } : {}, e.send ? { send: e.send } : {}), st); }
+    }
+    if (p0 === "li") {   // v55 Lead Intelligence: canEdit = owner or Full-control admin
+      const b = await request.json().catch(() => ({}));
+      try {
+        let r; const a = path[1], id = path[2];
+        if (a === "search") { r = await LI.search(env, b, u.email); await logEvent(env, u.id, "li_search", r.query + " · " + r.area + " · " + r.added.length); }
+        else if (a === "research" && id) r = await LI.research(env, id, u.email);
+        else if (a === "lead" && id) r = await LI.update(env, id, b, u.email);
+        else if (a === "bulk") { r = await LI.bulk(env, b, u.email); await logEvent(env, u.id, "li_bulk", b.action + " · " + r.changed); }
+        else if (a === "drafts" && id) r = await LI.drafts(env, id, b);
+        else if (a === "to-pitch") r = await LI.toPitch(env, b, u.email);
+        else if (a === "jobs" && id === "save") r = await LI.saveJob(env, b, u.email);
+        else if (a === "jobs" && id && path[3] === "run") r = await LI.runJob(env, id, u.email);
+        else if (a === "jobs" && id && path[3] === "delete") r = await LI.delJob(env, id);
+        else if (a === "test" && id) r = await LI.testIntegration(env, id);
+        else return json({ ok: false, reason: "Unknown action." }, 400);
+        return json(Object.assign({ ok: true }, r));
+      } catch (e) { const st = e.status || 502; return json({ ok: false, reason: st < 500 ? e.message : "Lead Intelligence: " + String(e.message || e).slice(0, 220) }, st); }
     }
     if (p0 === "pitch") {   // v54.6 Bulk pitch: canEdit = owner or Full-control admin
       const b = await request.json().catch(() => ({}));

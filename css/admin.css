@@ -241,3 +241,17 @@ body.ad-menu-on{overflow:hidden}
 .ad-pi-bar i{display:block;height:100%;background:#8F7BFF;border-radius:99px;transition:width .3s}
 .ad-pi-pvs{display:inline-block;width:auto;max-width:260px;padding:4px 8px;font-size:12px}
 @media (max-width:700px){.ad-pi-ben{grid-template-columns:1fr}}
+/* v55 Lead Intelligence */
+.ad-li-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 16px}.ad-li-tabs a{padding:7px 12px;border-radius:999px;border:1px solid var(--line-3,var(--line));font-size:13px;font-weight:600;color:var(--muted);text-decoration:none}.ad-li-tabs a.on,.ad-li-tabs a:hover{color:var(--text);border-color:#7B61FF;background:color-mix(in srgb,#7B61FF 14%,transparent)}
+.ad-li-dates,.ad-li-filt,.ad-li-bulk,.ad-li-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.ad-li-dates .ad-in,.ad-li-filt .ad-in,.ad-li-bulk .ad-in,.ad-li-bar .ad-in{width:auto;min-width:0;flex:0 1 auto}.ad-li-filt #lq-q{flex:1 1 240px}
+.ad-li-bulk{justify-content:space-between}.ad-li-ba{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.ad-li-bar .ad-dl2{margin:0}
+.ad-li-fg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.ad-li-fg .ad-in{width:100%}
+.ad-li-sub{display:block;font-size:12px;margin-top:3px;overflow-wrap:anywhere}.ad-li-ok{color:var(--ok)}.ad-li-bad{color:#FF6B6B}
+.ad-li-ul{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}.ad-li-ul li{overflow-wrap:anywhere}.ad-li-ol{margin:0;padding-left:20px;display:grid;gap:8px;font-size:14px}
+.ad-li-bars{display:grid;gap:8px}.ad-li-br{display:grid;grid-template-columns:minmax(0,1.2fr) 2fr auto;gap:10px;align-items:center;font-size:13px}.ad-li-br span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-li-score{display:grid;gap:12px}.ad-li-sp{display:grid;grid-template-columns:minmax(0,1.6fr) 1fr auto;gap:12px;align-items:center}.ad-li-sp small{display:block;font-size:12px;margin-top:2px}.ad-li-sp span{font:600 13px var(--font-mono)}
+.ad-li-chk{list-style:none;margin:10px 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;font-size:13px}.ad-li-chk .ok span{color:var(--ok)}.ad-li-chk .no span{color:#FF6B6B}
+.ad-li-ai{border:1px solid color-mix(in srgb,#7B61FF 40%,transparent);background:color-mix(in srgb,#7B61FF 8%,transparent);border-radius:14px;padding:12px 14px;margin-top:12px}
+tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var(--text) 4%,transparent)}
+@media (max-width:900px){.ad-li-fg{grid-template-columns:repeat(2,minmax(0,1fr))}.ad-li-sp{grid-template-columns:1fr auto}.ad-li-sp .ad-bar{grid-column:1/-1;order:3}}
+@media (max-width:560px){.ad-li-fg{grid-template-columns:1fr}.ad-li-filt .ad-in,.ad-li-dates .ad-in{flex:1 1 100%}}

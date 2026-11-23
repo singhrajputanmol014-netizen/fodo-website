@@ -655,10 +655,10 @@ export function emailBlocks(F, w) {
   if (F.down) stats.push("Not loading | Your website when we checked");
   const items = F.problems.map((o) => clip(o.problem, 70) + " | " + clip(o.service, 40));
   return { eyebrow: "For " + F.name + (F.place ? " · " + F.place : ""), headline: clip(F.name, 34) + ", *a few quick wins*",
-    intro: clip(w.intro, 900) || (hi + ",\n\nI'm Anmol from FODO, a digital growth studio in New Delhi. " + (F.good[0] ? "I came across " + F.name + " and saw " + F.good[0] + ", which is a strong base. " : "I came across " + F.name + " and had a look at how it shows up online. ") + "Here is what I noticed, and what we would fix first:"),
+    intro: String(w.intro || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 900) || (hi + ",\n\nI'm Anmol from FODO, a digital growth studio in New Delhi. " + (F.good[0] ? "I came across " + F.name + " and saw " + F.good[0] + ", which is a strong base. " : "I came across " + F.name + " and had a look at how it shows up online. ") + "Here is what I noticed, and what we would fix first:"),
     items: items.join("\n"), stats: stats.slice(0, 2).join("\n"), cta_text: "Book a 15-minute call",
     cta_link: "https://wa.me/917827007676?text=" + encodeURIComponent("Hi Anmol, about " + F.name),
-    closing: clip(w.closing, 600) || "None of this needs a big project. I can show you the fixes on a short call, and you decide what is worth doing. Just reply to this email or tap the button." };
+    closing: String(w.closing || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 600) || "None of this needs a big project. I can show you the fixes on a short call, and you decide what is worth doing. Just reply to this email or tap the button." };
 }
 export async function drafts(env, id, b) {
   const L = await lead(env, id), x = L.lead; b = b || {};

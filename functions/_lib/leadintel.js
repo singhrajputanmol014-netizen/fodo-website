@@ -624,41 +624,79 @@ export async function logSent(env, id, b, by) {
 /* the facts every message is written from: only what research actually found */
 const shortName = (n) => clip(String(n || "").split(/\s[|\-–]\s|,|\(/)[0].trim(), 48) || clip(n, 48);
 const greetName = (x) => { if (!x.owner_name || x.owner_conf === "unverified" || x.owner_conf === "not_found") return ""; const p = String(x.owner_name).split(/\s+/); return /^(Dr|Dr\.)$/i.test(p[0]) ? "Dr. " + (p[1] || "") : p[0]; };
+/* what the business is missing, in plain words, each with why it costs them customers. Only gaps we actually checked. */
+export function gapsOf(L) {
+  const x = L.lead, A = (L.audit && L.audit.checks) || {}, C = L.contacts || [], has = (k) => C.some((c) => c.kind === k), checked = !!x.researched_at, site = !!x.website, up = site && A.reachable === true, G = [];
+  const add = (key, what, why, fix) => G.push({ key, what, why, fix });
+  if (!site) add("website", "No website", "people who find you on Google Maps have nowhere to see your services, prices or timings", "Website");
+  else if (checked && A.reachable === false) add("website_down", "Your website is not opening", "everyone who clicks it from Google right now just leaves", "Website fix");
+  if (up && A.viewport === false) add("mobile", "Website is not made for phones", "most people open it on mobile and the page looks broken there", "Website redesign");
+  if (up && A.pagespeed && A.pagespeed.score != null && A.pagespeed.score < 50) add("speed", "Website is slow on phones (Google score " + A.pagespeed.score + "/100)", "people close a page that takes more than a few seconds", "Speed fix");
+  if (up && A.https === false) add("https", "No padlock (https) on the website", "Chrome shows 'Not secure' and people get doubtful", "SSL");
+  if (checked && !has("whatsapp") && !(A.whatsapp_link)) add("whatsapp", "No WhatsApp button", "most people here prefer to WhatsApp first instead of calling", "WhatsApp setup");
+  if (up && !A.chat_widget) add("chat", "No chat or AI assistant on the website", "questions at night or on Sundays get no reply and those people go elsewhere", "AI chatbot");
+  if (up && !A.contact_form && !A.booking) add("form", "No enquiry form or online booking", "someone ready to book has to call during working hours or leave", "Enquiry + booking");
+  const soc = ["instagram", "facebook"].filter((k) => !has(k)); if (checked && soc.length) add("social", "No " + soc.map((k) => k === "instagram" ? "Instagram" : "Facebook").join(" or ") + " page linked", "people check Instagram and Facebook to trust a business before they visit", "Social media");
+  if (checked && !has("email")) add("email", "No email address listed anywhere", "bigger clients, companies and suppliers usually want to email first", "Business email");
+  if (x.reviews != null && x.reviews < 20) add("reviews", "Only " + x.reviews + " Google reviews", "people usually pick the nearby option with more reviews", "Review system");
+  if (up && (!A.title || !A.description || !A.h1)) add("seo", "Website is missing basic Google tags", "it is harder for people searching nearby to find you", "SEO");
+  if (up && !A.analytics) add("tracking", "No visitor tracking on the website", "you cannot see how many people visit or where enquiries come from", "Analytics");
+  return G;
+}
 export function factsOf(L) {
-  const x = L.lead, A = (L.audit && L.audit.checks) || {}, obs = (L.opportunities || []).filter((o) => o.kind === "observed");
+  const x = L.lead, A = (L.audit && L.audit.checks) || {};
   const good = []; if (x.reviews >= 20 && (x.rating || 0) >= 4.2) good.push(x.rating + " stars from " + x.reviews + " Google reviews");
-  if (A.socials && A.socials.length) good.push("active on " + A.socials.join(", "));
-  const problems = obs.filter((o) => !/Strong reputation|Multiple locations/.test(o.problem)).slice(0, 4);
   return { name: shortName(x.name), first: greetName(x), place: x.locality || x.city || "", category: x.category || x.sub_industry || x.industry || "", website: x.website || "",
-    down: !!(x.website && A.reachable === false), rating: x.rating, reviews: x.reviews, good, problems, pagespeed: A.pagespeed && A.pagespeed.score != null ? A.pagespeed.score : null };
+    down: !!(x.website && A.reachable === false), rating: x.rating, reviews: x.reviews, good, gaps: gapsOf(L), problems: (L.opportunities || []).filter((o) => o.kind === "observed").slice(0, 4),
+    pagespeed: A.pagespeed && A.pagespeed.score != null ? A.pagespeed.score : null };
 }
-const factText = (F) => ["Business: " + F.name + (F.category ? " (" + F.category + ")" : "") + (F.place ? ", " + F.place : ""), F.first ? "Person: " + F.first : "Person: unknown, address the team",
-  F.good.length ? "Good: " + F.good.join("; ") : "", F.website ? (F.down ? "Website " + F.website + " did not load when we checked" : "Website: " + F.website) : "No website found",
-  F.pagespeed != null ? "Mobile speed score: " + F.pagespeed + "/100" : "", "What we observed:\n" + (F.problems.map((o) => "- " + o.problem + " (" + o.evidence + ") -> " + o.service).join("\n") || "- nothing major")].filter(Boolean).join("\n");
-const STYLE = { whatsapp: "a WhatsApp message, 45 to 70 words, friendly, 1 or 2 specific observations, ends by asking if a 10-minute call this week works", instagram: "an Instagram DM, 30 to 45 words, casual and warm, one specific observation, no links", facebook: "a Facebook Page message, 35 to 55 words, polite, one or two specific observations",
-  linkedin: "a LinkedIn connection note under 280 characters to the owner, professional, one specific observation", x: "an X direct message under 240 characters, one specific observation", followup: "a short follow-up email, 50 to 80 words, with 'Subject: ...' as the first line", opener: "three different one-sentence opening lines, one per line" };
-const SYS = "You write honest, personal B2B outreach for FODO (Fear Of Digitally Out ?), a digital growth agency in New Delhi, signed 'Anmol, FODO'. Use ONLY the facts given: never invent numbers, results, clients, awards or claims about their ads. Mention something good about them first when there is a fact for it, then the specific problem. Plain text, no markdown, no hashtags, no long dashes, never the word free. Write in English.";
+const factText = (F) => ["Business: " + F.name + (F.category ? " (" + F.category + ")" : "") + (F.place ? ", " + F.place : ""), F.first ? "Person to greet: " + F.first : "Person: unknown, greet the team",
+  F.good.length ? "Something genuinely good: " + F.good.join("; ") : "", F.website ? "Website: " + F.website : "They have no website",
+  "What they are missing (with why it costs them customers):\n" + (F.gaps.map((g) => "- " + g.what + ": " + g.why).join("\n") || "- nothing major found")].filter(Boolean).join("\n");
+const STYLE = { whatsapp: "a WhatsApp message of 50 to 80 words. Mention the 2 or 3 most important missing things from the list and in a few words why each matters. End by asking if they have 10 minutes this week",
+  instagram: "an Instagram DM of 30 to 50 words. Mention the 1 or 2 most important missing things and why", facebook: "a Facebook Page message of 40 to 60 words. Mention 2 missing things and why",
+  linkedin: "a LinkedIn connection note under 280 characters to the owner. One missing thing and why", x: "an X direct message under 240 characters. One missing thing",
+  followup: "a short follow-up email of 50 to 80 words with 'Subject: ...' as the first line, referring back to the missing things", opener: "three different one-sentence opening lines, one per line, each about a different missing thing" };
+const SYS = "You are Anmol, who runs FODO, a small digital growth studio in New Delhi. You are typing a message yourself, by hand, to a local business owner. " +
+  "Sound like a real person: short simple sentences, everyday words, contractions (I'm, you're), Indian English is fine. Say what you saw (\"I checked\", \"I couldn't find\") and in a few words why it matters to their customers. " +
+  "Start with one honest positive only if a good fact is given. Use ONLY the facts given: never invent numbers, results, clients or claims. " +
+  "Never use these words or phrases: impressive, enhance, elevate, leverage, unlock, seamless, boost, digital presence, online presence, take your business to the next level, testament, game changer, I hope this message finds you well, reach out, synergy, cutting-edge, robust, delve, journey, solution(s). " +
+  "No markdown, no emojis, no hashtags, no exclamation marks, no long dashes, never the word free. Sign off as 'Anmol, FODO' only where a sign-off fits.";
+const AI_TELL = /\b(impressive|enhanc\w*|elevat\w*|leverag\w*|unlock\w*|seamless\w*|boost\w*|digital presence|online presence|next level|testament|game[- ]changer|hope this (message|email) finds|reach out|synergy|cutting[- ]edge|robust|delve|journey|solutions?|I'd love to|thrilled|excited to)\b/i;
+export const soundsAI = (t) => AI_TELL.test(String(t || "")) || (String(t || "").match(/!/g) || []).length > 1;
+const tidy = (t) => String(t || "").replace(/[—–]/g, ", ").replace(/!+/g, ".").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+/* write with the model, and if it still sounds like AI, ask once more; then fall back to the hand-written template */
+async function humanAI(env, system, user, max) {
+  const a = await aiRun(env, system, user, max); if (!a) return null;
+  if (!soundsAI(a.text)) return Object.assign(a, { text: tidy(a.text) });
+  const b = await aiRun(env, system, user + "\n\nYour last try sounded like a marketing bot (\"" + clip((String(a.text).match(AI_TELL) || [""])[0], 30) + "\"). Rewrite it plainer, the way a person types on their phone.", max);
+  return b && !soundsAI(b.text) ? Object.assign(b, { text: tidy(b.text) }) : null;
+}
 function templ(ch, F) {
-  const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team", p = F.problems[0], p2 = F.problems[1], good = F.good[0] ? "Saw " + F.name + " has " + F.good[0] + ", great work. " : "";
-  const obs = p ? (F.down ? "Your website did not open when I checked." : "I noticed " + p.problem.toLowerCase() + (p2 ? " and " + p2.problem.toLowerCase() : "") + " on your website.") : "I had a look at " + F.name + " online.";
-  return { whatsapp: hi + ", this is Anmol from FODO, New Delhi. " + good + obs + " These are quick fixes that bring more enquiries. Can I share them on a 10-minute call?",
-    instagram: hi + "! " + good + obs + " Happy to share 2 quick fixes if useful. Anmol, FODO", facebook: hi + ", Anmol from FODO here. " + good + obs + " Would a 10-minute call to share the fixes help?",
-    linkedin: hi + ", I'm Anmol from FODO (New Delhi). " + obs + " Happy to share 2 quick fixes.", x: hi + ", Anmol from FODO. " + obs + " Can I share 2 quick fixes?",
-    followup: "Subject: Re: " + F.name + ", a few quick wins\n\n" + hi + ", just following up on my note about " + (p ? p.problem.toLowerCase() : "your online presence") + ". Happy to walk you through the fixes in 15 minutes whenever suits you.\n\nAnmol, FODO",
-    opener: F.problems.slice(0, 3).map((o) => o.angle).join("\n") || "I came across " + F.name + " while looking at " + (F.category || "businesses") + " in " + (F.place || "Delhi") + "." }[ch];
+  const hi = F.first ? "Hi " + F.first : "Hi", g = F.gaps, g1 = g[0], g2 = g[1], g3 = g[2];
+  const good = F.good[0] ? "I came across " + F.name + " and saw " + F.good[0] + ", really good. " : "I came across " + F.name + (F.place ? " in " + F.place : "") + ". ";
+  const say = (x) => x ? x.what.charAt(0).toLowerCase() + x.what.slice(1) : "";
+  const two = g1 ? "One thing I noticed: " + say(g1) + ", so " + g1.why + "." + (g2 ? " Also " + say(g2) + ", so " + g2.why + "." : "") : "I had a look at how you show up online and have a couple of small ideas.";
+  return { whatsapp: hi + ", I'm Anmol from FODO in New Delhi. " + good + two + (g3 ? " And " + say(g3) + "." : "") + " These are quick to fix. Do you have 10 minutes this week? I can show you.",
+    instagram: hi + ", Anmol from FODO here. " + good + (g1 ? "Noticed " + say(g1) + ", so " + g1.why + "." : "") + " Happy to show you a quick fix if useful.",
+    facebook: hi + ", I'm Anmol from FODO, New Delhi. " + good + two + " Can I show you the fixes on a short call?",
+    linkedin: hi + ", I'm Anmol from FODO, New Delhi. " + (g1 ? "Noticed " + F.name + " has " + say(g1).replace(/^no /, "no ") + ". Happy to share a quick fix." : "Would be good to connect."),
+    x: hi + ", Anmol from FODO. " + (g1 ? "Noticed " + say(g1) + " for " + F.name + ". Can I share a quick fix?" : "Would like to share an idea for " + F.name + "."),
+    followup: "Subject: Re: " + F.name + "\n\n" + hi + ", just following up on my note" + (g1 ? " about " + say(g1) : "") + ". Happy to walk you through it in 10 minutes whenever suits you.\n\nAnmol, FODO",
+    opener: g.slice(0, 3).map((x) => "Noticed " + say(x) + ", which means " + x.why + ".").join("\n") || "I came across " + F.name + " while looking at " + (F.category || "businesses") + " in " + (F.place || "Delhi") + "." }[ch];
 }
-/* the designed email: facts (stats, findings) come straight from research; AI only writes the subject, intro and closing */
+/* the designed email: rows and numbers come straight from research; AI only writes the subject, intro and closing */
 export function emailBlocks(F, w) {
   w = w || {}; const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";
   const stats = []; if (F.rating != null && F.reviews != null) stats.push(F.rating + " ★ | " + F.reviews + " Google reviews");
   if (F.pagespeed != null) stats.push(F.pagespeed + "/100 | Mobile speed score (Google)");
-  if (F.down) stats.push("Not loading | Your website when we checked");
-  const items = F.problems.map((o) => clip(o.problem, 70) + " | " + clip(o.service, 40));
-  return { eyebrow: "For " + F.name + (F.place ? " · " + F.place : ""), headline: clip(F.name, 34) + ", *a few quick wins*",
-    intro: String(w.intro || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 900) || (hi + ",\n\nI'm Anmol from FODO, a digital growth studio in New Delhi. " + (F.good[0] ? "I came across " + F.name + " and saw " + F.good[0] + ", which is a strong base. " : "I came across " + F.name + " and had a look at how it shows up online. ") + "Here is what I noticed, and what we would fix first:"),
-    items: items.join("\n"), stats: stats.slice(0, 2).join("\n"), cta_text: "Book a 15-minute call",
+  if (F.down) stats.push("Not opening | Your website when we checked");
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1), rows = F.gaps.slice(0, 6).map((g) => clip(g.what, 70) + " | " + cap(clip(g.why, 110)));
+  return { eyebrow: "For " + F.name + (F.place ? " · " + F.place : ""), headline: clip(F.name, 34) + ", *what we noticed*",
+    intro: String(w.intro || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 900) || (hi + ",\n\nI'm Anmol from FODO, a small digital growth studio in New Delhi. " + (F.good[0] ? "I came across " + F.name + " and saw " + F.good[0] + ", which is a strong base. " : "I came across " + F.name + " and checked how it shows up for people searching online. ") + "A few things are missing that are probably costing you enquiries:"),
+    items: rows.join("\n"), stats: stats.slice(0, 2).join("\n"), cta_text: "Book a 15-minute call",
     cta_link: "https://wa.me/917827007676?text=" + encodeURIComponent("Hi Anmol, about " + F.name),
-    closing: String(w.closing || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 600) || "None of this needs a big project. I can show you the fixes on a short call, and you decide what is worth doing. Just reply to this email or tap the button." };
+    closing: String(w.closing || "").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").trim().slice(0, 600) || "None of this needs a big project. I can show you on a short call what I'd fix first, and you decide. Just reply here or tap the button." };
 }
 export async function drafts(env, id, b) {
   const L = await lead(env, id), x = L.lead; b = b || {};
@@ -667,19 +705,20 @@ export async function drafts(env, id, b) {
   const F = factsOf(L), facts = factText(F);
   if (ch === "email") {
     const ai = await aiRun(env, SYS + " Reply with JSON only: {\"subject\": \"...\", \"intro\": \"...\", \"closing\": \"...\"}.",
-      facts + "\n\nWrite an email to this business. subject: under 60 characters, specific to them, no clickbait. intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, 2 or 3 short sentences: who Anmol is, one genuine positive fact if given, then lead into 'here is what I noticed'. closing: 1 or 2 sentences offering a 15-minute call, no pressure, with NO sign-off or name (the email template adds the signature).", 380);
+      facts + "\n\nWrite an email to this business. The email already shows the list of missing things as rows, so do not repeat the list. subject: under 55 characters, plain and specific, like a person would write it (for example '" + F.name + ": a few things I noticed'). intro: starts with '" + (F.first ? "Hi " + F.first : "Hi " + F.name + " team") + ",' then a blank line, then 2 or 3 short sentences: who you are, one honest positive if given, then that a few things are missing and are probably costing them enquiries. closing: 1 or 2 short sentences offering a 15-minute call, no pressure, NO sign-off or name.", 380);
     let w = null; if (ai) { const raw = String(ai.text).replace(/```(json)?/g, "");
       try { w = JSON.parse(raw.replace(/^[^{]*/, "").replace(/[^}]*$/, "")); } catch (e) {   // models often put raw line breaks inside the strings
         const g = (k) => ((raw.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"\\s*(,\\s*"[a-z]+"\\s*:|}\\s*$)')) || [])[1] || "").replace(/\\n/g, "\n").trim();
         w = g("subject") && g("intro") ? { subject: g("subject"), intro: g("intro"), closing: g("closing") } : null; } }
     if (w) { const unsign = (t) => String(t || "").replace(/\\n/g, "\n").replace(/[\s,.]*(best|regards|thanks|cheers|warm regards|looking forward[^,.]*)?[\s,.]*(anmol)?[\s,]*(fodo)?[\s.]*$/i, (m) => (/anmol|fodo|regards|best|thanks|cheers|looking/i.test(m) ? "." : m)).replace(/\.\.$/, ".").trim();
-      w.intro = String(w.intro || "").replace(/\\n/g, "\n").replace(/^(Hi [^,\n]{1,40},)\s*(?!\n)/, "$1\n\n"); w.closing = unsign(w.closing); }   // the design already signs "Anmol · FODO"
-    const blocks = emailBlocks(F, w), subject = clip((w && w.subject) || F.name + ", a few quick wins for more enquiries", 120);
-    return { channel: "email", subject, blocks, to: (L.channels.find((c) => c.channel === "email") || {}).target || "", ai: !!w, model: w ? ai.model : null };
+      w.intro = tidy(String(w.intro || "").replace(/\\n/g, "\n").replace(/^(Hi [^,\n]{1,40},)\s*(?!\n)/, "$1\n\n")); w.closing = tidy(unsign(w.closing)); w.subject = tidy(w.subject).replace(/\.$/, "");
+      if (soundsAI(w.subject + " " + w.intro + " " + w.closing)) w = null; }   // marketing-bot wording → use the plain hand-written text
+    const blocks = emailBlocks(F, w), subject = clip((w && w.subject) || F.name + ": a few things I noticed", 120);
+    return { channel: "email", subject, blocks, gaps: F.gaps, to: (L.channels.find((c) => c.channel === "email") || {}).target || "", ai: !!w, model: w ? ai.model : null };
   }
-  const ai = await aiRun(env, SYS, facts + "\n\nWrite " + STYLE[ch] + ".", ch === "followup" ? 260 : 220);
-  if (ai) return { channel: ch, text: ai.text, ai: true, model: ai.model };
-  return { channel: ch, text: templ(ch, F), ai: false, template: true };
+  const ai = await humanAI(env, SYS, facts + "\n\nWrite " + STYLE[ch] + ".", ch === "followup" ? 260 : 230);
+  if (ai) return { channel: ch, text: ai.text, gaps: F.gaps, ai: true, model: ai.model };
+  return { channel: ch, text: templ(ch, F), gaps: F.gaps, ai: false, template: true };
 }
 /* designed email: preview, test to yourself, send to the lead (needs confirm; unsubscribe link; hourly cap; opt-outs respected) */
 const cleanBlocks = (b) => { b = b || {}; const o = {}; ["eyebrow", "headline", "intro", "items", "stats", "cta_text", "cta_link", "closing"].forEach((k) => { o[k] = clip(String(b[k] == null ? "" : b[k]).replace(/\r/g, ""), k === "intro" || k === "closing" || k === "items" ? 1500 : 300).replace(/ {2,}/g, " "); });

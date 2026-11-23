@@ -141,13 +141,19 @@ const ex = (await LP("export?ids=" + lid)).j; ok(ex.rows.length === 1 && ex.rows
 const dr = (await LP("drafts/" + lid, { channel: "email" })).j;
 ok(dr.ok && dr.subject && dr.blocks && /Smile Dental Clinic/.test(dr.blocks.headline) && /212 Google reviews/.test(dr.blocks.stats) && dr.blocks.items.split("\n").length >= 2 && /wa\.me\/917827007676/.test(dr.blocks.cta_link), "email draft: subject + designed blocks built from the lead's real facts (reviews, findings)");
 const pv = (await LP("email-preview/" + lid, { subject: dr.subject, blocks: dr.blocks })).j;
-ok(pv.ok && /FEAR OF DIGITALLY OUT/.test(pv.html) && /a few quick wins/.test(pv.html) && /212 Google reviews/.test(pv.html) && /Unsubscribe/.test(pv.html) && pv.to === "info@smiledental.in", "email preview uses the FODO email design with unsubscribe link");
+ok(pv.ok && /FEAR OF DIGITALLY OUT/.test(pv.html) && /what we noticed/.test(pv.html) && /212 Google reviews/.test(pv.html) && /Unsubscribe/.test(pv.html) && pv.to === "info@smiledental.in", "email preview uses the FODO email design with unsubscribe link");
 ok((await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks })).status === 400, "a real email needs confirm");
 const ts = (await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, test: true })).j;
 ok(ts.ok && ts.test && ts.sent.to === "anmol@fodo.co.in" && mails.length === 1 && /^\[TEST\]/.test(mails[0].subject), "test email goes only to the admin");
 const rs = (await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, confirm: true, override: true })).j;   // an earlier manual "email sent" status sits within the 10-minute guard
 ok(rs.ok && mails.length === 2 && mails[1].to[0] === "info@smiledental.in" && /List-Unsubscribe/.test(JSON.stringify(mails[1].headers)) && rs.history[0].channel === "email" && rs.lead.status === "email_sent" && rs.sent.to === "info@smiledental.in", "confirmed email is sent with unsubscribe header and logged on the lead");
 ok((await LP("email-send/" + lid, { subject: dr.subject, blocks: dr.blocks, confirm: true })).status === 409, "a second email within minutes needs an explicit override");
+const G1 = LI.gapsOf((await LP("lead/" + lid2)).j).map((g) => g.key), G0 = LI.gapsOf((await LP("lead/" + lid)).j).map((g) => g.key);
+ok(G1.indexOf("website") > -1 && G1.indexOf("social") > -1 && G1.indexOf("email") > -1 && G1.indexOf("reviews") > -1 && G0.indexOf("website") < 0 && G0.indexOf("whatsapp") < 0 && G0.indexOf("form") < 0 && G0.indexOf("chat") > -1 && G0.indexOf("social") > -1, "gaps: no website / socials / email / few reviews for the listing-only lead; the researched site shows only its real gaps (no chat, no Facebook), not things it has (WhatsApp, form)");
+ok(dr.blocks.items.split("\n").every((l) => / \| /.test(l)) && /people|customers|enquir/i.test(dr.blocks.items), "email rows explain each gap and why it costs customers");
+ok(LI.soundsAI("Boost your digital presence with our solutions!") && LI.soundsAI("I noticed your impressive reviews") && !LI.soundsAI("Hi Dr. Priya, I checked your site and couldn't find a WhatsApp button."), "marketing-bot wording is detected and rewritten");
+const AIx = env.AI; env.AI = undefined; const nw = (await LP("drafts/" + lid2, { channel: "whatsapp" })).j; env.AI = AIx;
+ok(nw.template && /no website/i.test(nw.text) && /Google Maps|services/.test(nw.text) && !LI.soundsAI(nw.text), "hand-written fallback names what is missing and why, in plain words");
 const wd = (await LP("drafts/" + lid, { channel: "instagram" })).j; ok(wd.ok && wd.text, "per-platform drafts (Instagram)");
 const AIb = env.AI; env.AI = undefined; const dt = (await LP("drafts/" + lid, { channel: "whatsapp" })).j; env.AI = AIb;
 ok(dt.ok && dt.template && /Anmol from FODO/.test(dt.text) && !/\bfree\b/i.test(dt.text) && !/—/.test(dt.text), "without AI a clearly marked template is used");

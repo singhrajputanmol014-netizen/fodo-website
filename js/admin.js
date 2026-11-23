@@ -791,7 +791,7 @@
       '<div class="ad-li-eg"><div><label class="ad-dl2" for="le-to">To</label><input id="le-to" class="ad-in" value="' + esc(to || "") + '" placeholder="no public email found: type one you have verified">' +
       '<label class="ad-dl2" for="le-subject">Subject</label><input id="le-subject" class="ad-in" maxlength="150" value="' + esc(d.subject || "") + '">' +
       '<label class="ad-dl2" for="le-headline">Headline <span class="muted">*word* = purple italic</span></label><input id="le-headline" class="ad-in" maxlength="120" value="' + esc(B.headline || "") + '">' +
-      f("intro", "Intro", 5) + f("items", "What we noticed", 4, "one per line: problem | fix") + f("stats", "Numbers", 2, "value | label, from research") + f("closing", "Closing", 3) +
+      f("intro", "Intro", 5) + f("items", "What is missing", 5, "one per line: what is missing | why it costs them customers") + f("stats", "Numbers", 2, "value | label, from research") + f("closing", "Closing", 3) +
       '<input type="hidden" id="le-eyebrow" value="' + esc(B.eyebrow || "") + '"><input type="hidden" id="le-cta_text" value="' + esc(B.cta_text || "") + '"><input type="hidden" id="le-cta_link" value="' + esc(B.cta_link || "") + '"></div>' +
       '<div><p class="ad-dl2">Preview</p><iframe id="le-pv" class="ad-li-pv" title="Email preview" sandbox=""></iframe></div></div>' +
       '<div class="ad-acts"><button type="button" class="btn sm ghost" id="le-prev">Update preview</button><button type="button" class="btn sm ghost" id="le-test">Send test to me</button><button type="button" class="btn sm" id="le-send">Send email</button></div>';

@@ -704,7 +704,7 @@ const capF = (t) => String(t || "").charAt(0).toUpperCase() + String(t || "").sl
 export function fullMessage(F, ch, w) {
   w = w || {}; const wa = ch === "whatsapp", b = (t) => (wa ? "*" + t + "*" : t), dot = "• ";
   const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";
-  const opening = w.opening || (ch === "instagram" || ch === "x" ? hi + ", Anmol from FODO (New Delhi) here. I had a look at " + F.name + " online." : hi + ", I'm Anmol from FODO, a small digital growth studio in New Delhi. I came across " + F.name + (F.place ? " in " + F.place : "") + " and spent some time checking how you show up for people online.");
+  const opening = w.opening || (ch === "instagram" || ch === "x" ? hi + ", Anmol from FODO (New Delhi) here. I had a look at " + F.name + " online." : hi + ", I'm Anmol from FODO, a small digital growth studio in New Delhi. I came across " + F.name + (F.place && F.name.toLowerCase().indexOf(F.place.toLowerCase()) < 0 ? " in " + F.place : "") + " and spent some time checking how you show up for people online.");
   const parts = [opening];
   if (F.strengths.length) parts.push(b("What's already working") + "\n" + F.strengths.map((g) => dot + capF(g)).join("\n"));
   const compact = ch === "instagram" || ch === "x";   // Instagram DMs stop at 1000 characters: one line per gap

@@ -8,12 +8,13 @@ console.error = () => {};
 
 const kv = new Map();
 const CHAT_KV = { get: async (k) => (kv.has(k) ? kv.get(k) : null), put: async (k, v) => { kv.set(k, v); } };
-const prompts = [], sent = [];
+const prompts = [], sent = [], waSent = [];
 let aiFail = false, aiReply = "Hi! We build **websites** and run ads. See [Free Growth Audit](/contact/?mode=audit).";
 const AI = { run: async (m, inp) => { if (aiFail) throw new Error("model down"); prompts.push(inp.messages); return { response: aiReply }; } };
 globalThis.fetch = async (u, o = {}) => {
   u = String(u);
   if (/graph\.facebook\.com\/v23\.0\/me\/messages/.test(u)) { sent.push(JSON.parse(o.body)); return new Response(JSON.stringify({ message_id: "m" + sent.length })); }
+  if (/graph\.facebook\.com\/v23\.0\/WAPHONE1\/messages/.test(u)) { waSent.push({ body: JSON.parse(o.body), auth: (o.headers || {}).authorization }); return new Response(JSON.stringify({ messages: [{ id: "wamid.out" + waSent.length }] })); }
   return new Response("not mocked " + u, { status: 599 });
 };
 const SECRET = "app-secret-x";
@@ -113,6 +114,23 @@ await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ se
 await post({ object: "page", entry: [{ id: env.META_PAGE_ID, messaging: [{ sender: { id: "f7" }, recipient: { id: env.META_PAGE_ID }, timestamp: 5, postback: { title: "Website banwani hai", payload: "WEB" } }] }] });
 await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "u8" }, recipient: { id: env.META_IG_ID }, message: { mid: "at2", attachments: [{ type: "like_heart" }] } }] }] });
 ok(sent.length === s8 + 2, "voice notes and buttons get a reply, a heart reaction does not");
+
+/* 8f. WhatsApp (Cloud API, coexistence): same bot, number known, lead saved from the 2nd message, app replies pause the bot */
+const waEnv = Object.assign({}, env, { META_WA_TOKEN: "wa-token", META_WA_PHONE_ID: "WAPHONE1" });
+const waMsg = (from, text, id, extra) => ({ object: "whatsapp_business_account", entry: [{ id: "WABA1", changes: [{ field: "messages", value: Object.assign({ messaging_product: "whatsapp", metadata: { phone_number_id: "WAPHONE1" }, contacts: [{ profile: { name: "Neha" }, wa_id: from }], messages: [{ from, id, timestamp: String(Math.floor(Date.now() / 1000)), type: "text", text: { body: text } }] }, extra || {}) }] }] });
+const leadsBefore = leads.length, npw = prompts.length;
+await post(waMsg("919811122233", "hi, salon ke liye instagram ads chahiye", "wamid.a1"), { env: waEnv });
+ok(waSent.length === 1 && waSent[0].body.to === "919811122233" && waSent[0].body.messaging_product === "whatsapp" && waSent[0].auth === "Bearer wa-token", "WhatsApp message gets a reply through the Cloud API with the WA token");
+ok(/CHANNEL: WHATSAPP/.test(prompts[npw][0].content) && /NEVER ask for their number/.test(prompts[npw][0].content), "WhatsApp prompt: number already known, ask only for the name");
+ok(leads.length === leadsBefore, "no enquiry saved from the first WhatsApp hello");
+await post(waMsg("919811122233", "Noida mein hai, budget 20k", "wamid.a2"), { env: waEnv });
+ok(waSent.length === 2 && leads.length === leadsBefore + 1 && leads[leads.length - 1].phone === "+919811122233" && leads[leads.length - 1].source === "whatsapp-dm" && leads[leads.length - 1].name === "Neha", "2nd WhatsApp message saves the enquiry with the WhatsApp number and profile name");
+await post({ object: "whatsapp_business_account", entry: [{ id: "WABA1", changes: [{ field: "smb_message_echoes", value: { metadata: { phone_number_id: "WAPHONE1" }, message_echoes: [{ from: "917827007676", to: "919811122233", id: "wamid.h1", timestamp: String(Math.floor(Date.now() / 1000) + 600), type: "text", text: { body: "Hi Neha, Anmol here" } }] } }] }] }, { env: waEnv });
+await post(waMsg("919811122233", "ok call me", "wamid.a3"), { env: waEnv });
+ok(waSent.length === 2, "a reply typed in the WhatsApp Business app pauses the bot in that chat");
+await post({ object: "whatsapp_business_account", entry: [{ id: "WABA1", changes: [{ field: "messages", value: { metadata: { phone_number_id: "WAPHONE1" }, statuses: [{ id: "wamid.out1", status: "read" }] } }] }] }, { env: waEnv });
+await post(waMsg("919800000001", "hello", "wamid.b1"), { env: env });
+ok(waSent.length === 2, "delivery statuses are ignored; without the WA token nothing is sent");
 
 /* 9. AI down: friendly bilingual fallback, never silence */
 aiFail = true; await post(igMsg("u3", "hello?", "m5")); aiFail = false;

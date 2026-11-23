@@ -9,7 +9,9 @@ import { onRequest as adminApi } from "../functions/api/admin/[[path]].js";
 
 import * as LI from "../functions/_lib/leadintel.js";
 import { onRequest as fileRoute } from "../functions/f/[token].js";
-import { logConvo } from "../functions/_lib/metadm.js";
+import { logConvo } from "../functions/_lib/botlog.js";
+import { onRequestPost as chatPost, SYSTEM_PROMPT } from "../functions/api/chat.js";
+import { _setLeadStore } from "../functions/_lib/metadm.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 console.log = ((orig) => (...a) => { if (typeof a[0] === "string" && a[0].charAt(0) === "{" && !process.env.DBG) return; orig(...a); })(console.log);
 console.error = () => {};
@@ -214,13 +216,28 @@ ok((await LP("sent-list", undefined, "v")).status === 403 && (await LP("replies-
 delete env.LI_GMAIL_MOCK;
 /* bot conversations */
 CHAT_KV.list = async ({ prefix }) => ({ keys: [...KV.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name, metadata: KVM.get(name) })), list_complete: true });
-await logConvo(env, { platform: "instagram", sender: "1789" }, { in: "Website kitne ka banega?", out: "Starter plan se shuru hota hai, aapka business kya hai?", state: "bot" });
-await logConvo(env, { platform: "instagram", sender: "1789" }, { in: "Dental clinic, Dwarka", out: "", state: "human" });
+await logConvo(env, "instagram", "1789", { in: "Website kitne ka banega?", out: "Starter plan se shuru hota hai, aapka business kya hai?", state: "bot" });
+await logConvo(env, "instagram", "1789", { in: "Dental clinic, Dwarka", out: "", state: "human" });
 const bc = (await LP("bot-convos")).j, cv = bc.convos.find((c) => c.ref === "instagram:1789");
 ok(bc.ok && cv && cv.platform === "instagram" && cv.count === 2 && cv.last_in === "Dental clinic, Dwarka" && /Starter plan/.test(cv.last_out) && cv.state === "human" && bc.counts.instagram === 1, "Bot conversations: who the Instagram bot is talking to, last messages, and that a person took over");
 const cd = (await LP("bot-convo?ref=" + encodeURIComponent("instagram:1789"))).j;
 ok(cd.ok && cd.messages.length === 3 && cd.messages[0].r === "in" && cd.messages[1].r === "bot", "opening a bot chat shows the whole conversation");
 ok((await LP("bot-convo?ref=" + encodeURIComponent("../x"))).status === 404, "bad chat ids are refused");
+/* v55.17 FODO Bot: human tone, any language, faster lead; website chat saves shared numbers and shows up in Bot conversations */
+ok(/SAME language AND the same script/.test(SYSTEM_PROMPT) && /Punjabi, Bengali/.test(SYSTEM_PROMPT) && /LEAD FLOW/.test(SYSTEM_PROMPT) && /by your 2nd or 3rd reply/.test(SYSTEM_PROMPT) && /Never use bot phrases/.test(SYSTEM_PROMPT) && !/Usually 40-130 words/.test(SYSTEM_PROMPT), "bot prompt: human chat style, any language and script, name + WhatsApp asked by the 2nd or 3rd reply");
+const saved = []; _setLeadStore(async (e, l) => { saved.push(l); return { id: "ld_w" + saved.length }; }, async () => ({}));
+const wchat = async (message, history, sid) => { const r = await chatPost({ request: new Request(SITE + "/api/chat", { method: "POST", headers: { origin: SITE, "content-type": "application/json", "cf-connecting-ip": "7.7.7." + Math.floor(Math.random() * 200) }, body: JSON.stringify({ message, history, sid, page: "/services/" }) }), env, waitUntil: () => {} }); return r.json(); };
+const w1 = await wchat("mujhe gym ke liye leads chahiye", [], "wTEST1");
+ok(w1.ok && saved.length === 0, "website chat answers; nothing saved without a number");
+const w2 = await wchat("Rahul, 98765 43210", [{ role: "user", content: "mujhe gym ke liye leads chahiye" }, { role: "assistant", content: w1.reply }], "wTEST1");
+await new Promise((z) => setTimeout(z, 20));
+ok(w2.ok && saved.length === 1 && saved[0].phone === "+919876543210" && saved[0].source === "website-chat" && KV.get("dm:lead:website:wTEST1") === "ld_w1", "a number shared in the website chat becomes an enquiry (source website-chat), once");
+const bc2 = (await LP("bot-convos")).j, wc = bc2.convos.find((c) => c.ref === "website:wTEST1");
+ok(wc && wc.count === 2 && wc.lead && bc2.counts.website >= 1 && (await LP("bot-convo?ref=" + encodeURIComponent("website:wTEST1"))).j.messages.length === 4, "website chats show in Bot conversations with the full chat");
+const tw = (await LP("bot-test", { platform: "website", text: "website banwana hai kitna lagega" })).j, tw2 = (await LP("bot-test", { platform: "whatsapp", text: "hi, ads chahiye" })).j;
+ok(tw.ok && tw.reply && tw.sid && tw2.ok && tw2.reply && saved.length === 1 && mails.length >= 0, "Try the bot: website and WhatsApp replies come back, nothing is sent and no lead is saved");
+ok((await LP("bot-test", { platform: "website", text: "" })).status === 400 && (await LP("bot-test", { text: "hi" }, "v")).status === 403, "Try the bot needs a message and owner access");
+_setLeadStore();
 const AJ2 = fs.readFileSync("js/admin.js", "utf8");
 ok(/"li-sent", "Sent & replies"/.test(AJ2) && /li\/replies-check/.test(AJ2) && /li\/bot-convos/.test(AJ2) && /Got a reply/.test(AJ2), "Admin has the Sent & replies page, Gmail check, Got a reply and Bot conversations");
 X("INSERT INTO camp_unsub (email, at, why) VALUES ('info@smiledental.in','2026-01-01','test')");

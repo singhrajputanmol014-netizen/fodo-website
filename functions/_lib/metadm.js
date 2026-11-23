@@ -28,6 +28,7 @@ import { SYSTEM_PROMPT, generate } from "../api/chat.js";
 import { productBrief, productDetail, PRODUCT_RE } from "./sitekb.js";
 import { groqChat } from "./aivis.js";
 import { saveLead, updateLead } from "./sitecfg.js";
+import { logConvo } from "./botlog.js";
 
 const SITE_ORIGIN = "https://www.fodo.co.in";
 const MAX_IN = 600, MAX_OUT = 950, HISTORY_TURNS = 10, HISTORY_TTL = 7 * 86400, DEDUPE_TTL = 2 * 86400;
@@ -40,7 +41,7 @@ You are typing as the FODO team in DMs. Your two jobs: (1) answer ANY message he
 
 HOW TO WRITE
 - Short and natural, like a real person on Instagram: usually 15-70 words, 1-3 short lines. Never a wall of text.
-- Language: reply ONLY in the language and script the person used. Hinglish (Roman Hindi) gets natural Hinglish, Hindi (Devanagari) gets Hindi, English gets English. Never add a translation in brackets. Never mix two languages in one reply unless they did.
+- Language: reply ONLY in the language and script the person used in their latest message, whatever it is (English, Hinglish, Hindi, Punjabi, Bengali, Marathi, Gujarati, Tamil, Telugu, Urdu, Arabic, Spanish...). Everyday spoken words, never formal or textbook words. If they switch language, switch with them. Never add a translation in brackets. Never mix two languages in one reply unless they did.
 - Natural Hinglish example: "Bilkul! Aapka business kis cheez ka hai aur kis city mein hai?" (not stiff textbook Hindi).
 - Use their first name sometimes if you know it. At most one emoji, only if they use emojis.
 - Plain text only: no Markdown, no **bold**, no bullets, no headings. Full links only, e.g. https://www.fodo.co.in/services/ . Never Markdown links.
@@ -58,7 +59,7 @@ ANSWER FIRST, THEN ONE QUESTION
 
 LEAD FLOW (natural, never pushy)
 - Learn these over the chat, ONE question per reply, only what you don't know yet: what they need, their business / niche, city, rough monthly budget or timeline.
-- Once they show real interest (they asked about price, a service, or said they want something), ask for their name and WhatsApp number so Anmol can send a custom plan and quote, for example: "Aapka naam aur WhatsApp number share kar dijiye, Anmol aaj hi aapko custom plan bhej denge."
+- Once they show real interest (they asked about price, a service, or said they want something), ask for their name and WhatsApp number so Anmol can send a custom plan and quote, by your 2nd or 3rd reply at the latest, for example: "Aapka naam aur WhatsApp number share kar dijiye, Anmol aaj hi aapko custom plan bhej denge."
 - If they don't want to share a number, that's fine: give WhatsApp +91 78270 07676 and the Free Growth Audit link https://www.fodo.co.in/contact/?mode=audit , and keep helping.
 - Never promise a price, a result, a delivery date or a call time.
 
@@ -112,7 +113,7 @@ export function parseEvents(env, body) {
         // An echo is a message FODO sent. If no app sent it (or another app did), a human replied: pause the bot in that chat.
         const byUs = msg.app_id && env.META_APP_ID && String(msg.app_id) === String(env.META_APP_ID);
         const automated = msg.metadata === "fodo-bot";
-        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
+        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, text: String(msg.text || "").slice(0, 600), mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
         continue;
       }
       if (own.has(from)) continue;
@@ -144,7 +145,7 @@ function parseWhatsApp(env, body) {
       const v = ch.value || {}, pid = String((v.metadata || {}).phone_number_id || "");
       if (only && pid && pid !== only) continue;
       if (ch.field === "smb_message_echoes") {   // typed by a human in the WhatsApp Business app (coexistence)
-        for (const e of v.message_echoes || []) if (e.to) out.push({ kind: "human_echo", platform: "whatsapp", sender: String(e.to), mid: e.id || "", appId: "", ts: (Number(e.timestamp) || 0) * 1000, waPhoneId: pid });
+        for (const e of v.message_echoes || []) if (e.to) out.push({ kind: "human_echo", platform: "whatsapp", sender: String(e.to), text: String(((e.text || {}).body) || "").slice(0, 600), mid: e.id || "", appId: "", ts: (Number(e.timestamp) || 0) * 1000, waPhoneId: pid });
         continue;
       }
       if (ch.field !== "messages") continue;
@@ -264,6 +265,19 @@ async function captureLead(env, ev, contact) {
   return "";
 }
 
+/* v55.17 website chat: same lead capture (the browser sends the chat so far; the visitor id is a random per-tab id) */
+export async function captureChatLead(env, o) {
+  const key = "dm:lead:website:" + o.id, hist = (o.history || []).concat([{ role: "user", content: o.text }]);
+  const convo = hist.map((m) => (m.role === "user" ? "Person: " : "FODO: ") + String(m.content || "").slice(0, 600)).join("\n");
+  const info = await extractLead(env, convo);
+  const lines = [info.summary, info.need && "Need: " + info.need, info.budget && "Budget: " + info.budget, "Chat on the website (" + (o.page || "/") + ")", "Last message: " + String(o.text).slice(0, 300)].filter(Boolean).join("\n");
+  const existing = await kvGet(env, key);
+  if (existing) { try { await leadUpdater(env, existing, { notes: ("Update " + new Date().toISOString().slice(0, 16) + ": " + [o.contact.phone, o.contact.email].filter(Boolean).join(" ") + "\n" + lines).slice(0, 2000) }); return "updated"; } catch (e) { return ""; } }
+  const r = await leadSaver(env, { mode: "contact", name: info.name || "Website chat lead", phone: o.contact.phone, email: o.contact.email, business: info.business, city: info.city, goal: info.need, budget: info.budget, message: lines, page: o.page || "/", source: "website-chat", campaign: "fodo-bot-web" }, "");
+  if (r && r.id) { await kvPut(env, key, r.id, 180 * 86400); return "saved"; }
+  return "";
+}
+
 export async function sendWa(env, phoneId, to, text) {
   const v = env.META_GRAPH_VERSION || "v23.0";
   const r = await fetch("https://graph.facebook.com/" + v + "/" + encodeURIComponent(phoneId) + "/messages", {
@@ -297,6 +311,8 @@ async function diag(env, platform, kind, result, appId) {
 }
 export async function readDiag(env) { try { const v = await kvGet(env, "dm:diag"); return v ? JSON.parse(v) : []; } catch (e) { return []; } }
 
+/* v55.17 conversation log (Admin ▸ Sent & replies ▸ Bot conversations) */
+const cvLog = (env, ev, o) => logConvo(env, ev.platform, ev.sender, Object.assign({ name: ev.name || "", lookupName: ev.platform === "whatsapp" || !env.META_PAGE_TOKEN ? null : async () => { const p = await profileName(env, ev.platform, ev.sender); return p.username ? "@" + p.username + (p.name ? " (" + p.name + ")" : "") : p.name; } }, o));
 /* Handle one parsed event. Returns what happened (for logs and tests). */
 export async function handleEvent(env, ev) {
   let r;
@@ -319,14 +335,15 @@ async function handleEventInner(env, ev) {
     if (last && ev.ts && ev.ts - last >= 0 && ev.ts - last < win) return "automation_echo";
     const hrs = Math.max(1, parseInt(env.META_BOT_HUMAN_PAUSE_HOURS || "12", 10) || 12);
     await kvPut(env, pauseKey, "1", hrs * 3600);
+    await cvLog(env, ev, { out: ev.text || "(the team replied in the app)", by: "human", state: "human" });
     return "paused";
   }
   if (ev.ts) await kvPut(env, lastKey, String(ev.ts), 86400);
-  if (String(env.META_BOT_DISABLED || "") === "1") return "disabled";
+  if (String(env.META_BOT_DISABLED || "") === "1") { await cvLog(env, ev, { in: ev.text, state: "off" }); return "disabled"; }
   const wa = ev.platform === "whatsapp", waPhone = wa ? String(ev.waPhoneId || env.META_WA_PHONE_ID || "") : "";
   if (wa ? !(env.META_WA_TOKEN && waPhone) : !env.META_PAGE_TOKEN) return "no_token";
   if (ev.mid) { const k = "dm:seen:" + ev.mid; if (await kvGet(env, k)) return "duplicate"; await kvPut(env, k, "1", DEDUPE_TTL); }
-  if (await kvGet(env, pauseKey)) return "human_active";
+  if (await kvGet(env, pauseKey)) { await cvLog(env, ev, { in: ev.text, state: "human" }); return "human_active"; }
   const leadKey = "dm:lead:" + ev.platform + ":" + ev.sender, hadLead = !!(await kvGet(env, leadKey));
   let contact = findContact(ev.text);
   if (wa) {
@@ -344,5 +361,6 @@ async function handleEventInner(env, ev) {
   if (res && res.message_id) await kvPut(env, "dm:mine:" + res.message_id, "1", DEDUPE_TTL);
   let lead = "";
   if (contact) { try { lead = await captureLead(env, ev, contact); } catch (e) { console.error("fodo-dm lead:", String((e && e.message) || e).slice(0, 120)); lead = "lead_error"; } }
+  await cvLog(env, ev, { in: ev.text, out: reply, state: "bot", lead: hadLead || lead === "saved" || lead === "updated" ? "saved" : "" });
   return (reply === FALLBACK ? "sent_fallback" : "sent") + (lead ? "+lead_" + lead : "");
 }

@@ -728,18 +728,33 @@ export async function botConvos(env) {
   }
   try {
     const d = await adb(env), rows = await all(d, "SELECT c.id, c.email, c.updated_at, c.msgs, c.ticket_id, (SELECT text FROM help_chat_msgs m WHERE m.chat_id=c.id AND m.role='user' ORDER BY m.id DESC LIMIT 1) li, (SELECT text FROM help_chat_msgs m WHERE m.chat_id=c.id AND m.role<>'user' ORDER BY m.id DESC LIMIT 1) lo FROM help_chats c ORDER BY c.updated_at DESC LIMIT 100");
-    rows.forEach((c) => out.push({ platform: "website", ref: c.id, who: c.email || "Website visitor", last_in: clip(c.li, 140), last_out: clip(c.lo, 140), at: c.updated_at, count: c.msgs || 0, state: c.ticket_id ? "human" : "bot", lead: !!c.email, link: "#chat/" + c.id }));
+    rows.forEach((c) => out.push({ platform: "website", ref: c.id, help: true, who: c.email || "Help page visitor", last_in: clip(c.li, 140), last_out: clip(c.lo, 140), at: c.updated_at, count: c.msgs || 0, state: c.ticket_id ? "human" : "bot", lead: !!c.email, link: "#chat/" + c.id }));
   } catch (e) {}
   out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const day = new Date(Date.now() - 864e5).toISOString(), counts = { all: out.length, today: out.filter((c) => c.at > day).length, instagram: 0, facebook: 0, website: 0, human: out.filter((c) => c.state === "human").length, leads: out.filter((c) => c.lead).length };
+  const day = new Date(Date.now() - 864e5).toISOString(), counts = { all: out.length, today: out.filter((c) => c.at > day).length, instagram: 0, facebook: 0, whatsapp: 0, website: 0, human: out.filter((c) => c.state === "human").length, leads: out.filter((c) => c.lead).length };
   out.forEach((c) => { if (counts[c.platform] != null) counts[c.platform]++; });
   return { convos: out.slice(0, 400), counts, dm };
 }
 export async function botConvo(env, ref) {
-  const r = String(ref || ""); if (!/^(instagram|facebook):[\w.-]{1,80}$/.test(r) || !env.CHAT_KV) throw err("Not found.", 404);
+  const r = String(ref || ""); if (!/^(instagram|facebook|whatsapp|website):[\w.+-]{1,80}$/.test(r) || !env.CHAT_KV) throw err("Not found.", 404);
   const v = env.CHAT_KV.getWithMetadata ? await env.CHAT_KV.getWithMetadata("dm:cv:" + r) : { value: await env.CHAT_KV.get("dm:cv:" + r), metadata: null };
   if (!v || !v.value) throw err("This chat is no longer stored (chats are kept for 30 days).", 404);
   return { convo: Object.assign({ platform: r.split(":")[0] }, v.metadata || {}), messages: J(v.value, []) };
+}
+/* v55.17 try the bot from the admin: the same brain and rules as the real channel, nothing is sent to anyone, no lead is saved */
+export async function botTest(env, b) {
+  b = b || {}; const platform = ["website", "instagram", "facebook", "whatsapp"].indexOf(b.platform) > -1 ? b.platform : "website";
+  const text = clip(b.text, 600); if (!text) throw err("Type a message.");
+  const sid = String(b.sid || "").replace(/[^\w-]/g, "").slice(0, 30) || randId(10), t0 = Date.now();
+  if (platform === "website") {
+    const C = await import("../api/chat.js"), SK = await import("./sitekb.js");
+    const hist = (Array.isArray(b.history) ? b.history : []).slice(-12).filter((h) => h && (h.role === "user" || h.role === "assistant")).map((h) => ({ role: h.role, content: clip(h.content, 900) }));
+    const r = await C.chatGenerate(env, [{ role: "system", content: C.SYSTEM_PROMPT + "\n\n" + SK.productBrief() + (b.lead ? C.LEAD_SAVED_NOTE : "") }].concat(hist, [{ role: "user", content: text }]), 480);
+    return { reply: r.text, model: r.model, ms: Date.now() - t0, sid };
+  }
+  const MD = await import("./metadm.js");
+  const reply = await MD.replyFor(env, platform, "test-" + sid, text, { saved: !!b.lead });
+  return { reply, ms: Date.now() - t0, sid };
 }
 /* ---------------- outreach drafts (never sent from here) ---------------- */
 /* the facts every message is written from: only what research actually found */

@@ -212,6 +212,8 @@
   function contextSnapshot() {
     try { var s = window.FODO_BOT_CONTEXT && window.FODO_BOT_CONTEXT.snapshot(); if (!s) return {}; delete s.name; delete s.website; delete s.competitors; return s; } catch (_) { return {}; }
   }
+  /* v55.17 a random id for this chat (per tab), so the team can see the conversation and a shared number becomes a lead */
+  function chatSid() { try { var k = "fodo-bot-sid", v = sessionStorage.getItem(k); if (!v) { v = "w" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); sessionStorage.setItem(k, v); } return v; } catch (_) { return ""; } }
   function callAI(q, prior) {
     var ctl = ("AbortController" in window) ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, TIMEOUT_MS);
@@ -219,7 +221,7 @@
     return fetch(ENDPOINT, {
       method: "POST", credentials: "same-origin", signal: ctl ? ctl.signal : undefined,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: q, history: prior.slice(-12), context: contextSnapshot(), page: route })
+      body: JSON.stringify({ message: q, history: prior.slice(-12), context: contextSnapshot(), page: route, sid: chatSid() })
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {
         clearTimeout(timer);
@@ -261,7 +263,7 @@
 
   // "New conversation" clears the model's memory too.
   document.addEventListener("click", function (ev) {
-    if (ev.target && ev.target.closest && ev.target.closest(".bot-new")) { hist.length = 0; saveHist(); }
+    if (ev.target && ev.target.closest && ev.target.closest(".bot-new")) { hist.length = 0; saveHist(); try { sessionStorage.removeItem("fodo-bot-sid"); } catch (_) { } }
   });
   window.FODO_BOT_LLM = { version: "2026.10.30", mode: MODE, endpoint: ENDPOINT, render: render, safeHref: safeHref, aiOn: aiPossible, member: function () { return member; }, remember: remember,
     state: function () { return { used: used, failures: failures, pausedUntil: disabledUntil, history: hist.length, member: member }; } };

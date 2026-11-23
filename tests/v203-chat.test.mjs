@@ -32,7 +32,7 @@ globalThis.fetch = async (u, o = {}) => {
   return new Response("not mocked " + u, { status: 599 });
 };
 const AI = { run: async (m, inp) => { if (aiFail) throw new Error("4006: you have used up your daily free allocation of 10,000 neurons"); prompts.push(inp.messages[0].content); return { response: "AI reply" }; } };
-const env = { XRAY_DB: d1(), ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", XRAY_PER_HOUR: "99", AI, GROQ_API_KEY: "gsk_t", RATE_PER_MIN: "3", RATE_PER_HOUR: "40" };
+const env = { XRAY_DB: d1(), ACCOUNTS_ENABLED: "1", XRAY_TEST_MODE: "1", XRAY_PER_HOUR: "99", AI, GROQ_API_KEY: "gsk_t", RATE_PER_MIN: "3", RATE_PER_HOUR: "40", BOT_ENGINE: "workers" };
 const chat = async (msg, who, ip) => { const r = await chatPost({ request: new Request(SITE + "/api/chat", { method: "POST", headers: Object.assign({ origin: SITE, "content-type": "application/json", "cf-connecting-ip": ip || "8.8.8.8" }, jars[who] ? { cookie: jars[who] } : {}), body: JSON.stringify({ message: msg, history: [] }) }), env }); return { status: r.status, j: await r.json() }; };
 const health = async (who) => (await chatGet({ request: new Request(SITE + "/api/chat", { headers: jars[who] ? { cookie: jars[who] } : {} }), env })).json();
 

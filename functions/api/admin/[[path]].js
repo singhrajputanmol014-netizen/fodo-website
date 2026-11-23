@@ -156,6 +156,7 @@ export async function onRequest(ctx) {
         else if (a === "sent" && id) r = await LI.logSent(env, id, b, u.email);
         else if (a === "replied" && id) r = await LI.markReplied(env, id, b, u.email);
         else if (a === "replies-check") r = await LI.checkReplies(env, u.email);
+        else if (a === "bot-test") r = await LI.botTest(env, b);
         else if (a === "email-preview" && id) r = await LI.emailPreview(env, id, b);
         else if (a === "file") r = await LI.shareFile(env, b, u.email);
         else if (a === "email-send" && id) { r = await LI.emailSend(env, id, b, u.email); await logEvent(env, u.id, "li_email", id + (b.test ? " test" : "")); }

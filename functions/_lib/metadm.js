@@ -13,6 +13,10 @@
  *                              (Instant reply / FAQ / keyword), not a human, so it does NOT pause the bot. Default 45.
  *   META_BOT_AUTOMATION_APP_IDS comma list of app ids whose echoes never pause the bot (extra safety).
  *   META_BOT_ENGINE            "groq" (default when GROQ_API_KEY is set: best Hindi/Hinglish) or "workers" (Workers AI only).
+ *   META_WA_TOKEN              (v54.7) permanent System User token with whatsapp_business_messaging, for WhatsApp replies. Optional.
+ *   META_WA_PHONE_ID           (v54.7) WhatsApp phone number ID of +91 78270 07676 (Cloud API, coexistence). Optional: only this number is answered.
+ * WhatsApp (v54.7): the same bot answers WhatsApp Cloud API messages (object "whatsapp_business_account"). With coexistence the number
+ *   stays on the WhatsApp Business app; replies typed in the app arrive as smb_message_echoes and pause the bot in that chat.
  * Leads (v54.2): when a person shares a phone number or email in the DM, the chat is saved as an enquiry in
  *   Admin → Enquiries (D1 fodo_leads, source "instagram-dm" / "facebook-dm") and the team gets the usual enquiry email.
  * Storage: CHAT_KV (history per person, dedupe, human-takeover pause). Without KV it still replies, without memory.
@@ -91,6 +95,7 @@ const kvPut = async (env, k, v, ttl) => { try { if (env.CHAT_KV) await env.CHAT_
 /* Turn a Meta webhook body into plain events: { kind: "message" | "human_echo", platform, sender, text, mid } */
 export function parseEvents(env, body) {
   const out = [];
+  if (body && body.object === "whatsapp_business_account") return parseWhatsApp(env, body);
   if (!body || (body.object !== "page" && body.object !== "instagram")) return out;
   const platform = body.object === "instagram" ? "instagram" : "facebook";
   const own = new Set([env.META_PAGE_ID, env.META_IG_ID].filter(Boolean).map(String));
@@ -107,7 +112,7 @@ export function parseEvents(env, body) {
         // An echo is a message FODO sent. If no app sent it (or another app did), a human replied: pause the bot in that chat.
         const byUs = msg.app_id && env.META_APP_ID && String(msg.app_id) === String(env.META_APP_ID);
         const automated = msg.metadata === "fodo-bot";
-        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, text: String(msg.text || "").slice(0, 600), mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
+        if (!byUs && !automated && to) out.push({ kind: "human_echo", platform, sender: to, mid: msg.mid, appId: String(msg.app_id || ""), ts: Number(ev.timestamp) || 0 });
         continue;
       }
       if (own.has(from)) continue;
@@ -115,6 +120,40 @@ export function parseEvents(env, body) {
       if (!text && Array.isArray(msg.attachments) && msg.attachments.length) text = describeAttachment(msg.attachments[0]);
       if (!from || !text) continue; // reactions, deleted or unsupported messages
       out.push({ kind: "message", platform, sender: from, text: text.slice(0, MAX_IN), mid: msg.mid || "", ts: Number(ev.timestamp) || 0 });
+    }
+  }
+  return out;
+}
+
+/* WhatsApp Cloud API webhook -> the same plain events (platform "whatsapp", sender = wa_id) */
+function waText(m) {
+  const t = String((m && m.type) || "");
+  if (t === "text") return String((m.text || {}).body || "").trim();
+  if (t === "interactive") { const i = m.interactive || {}; return String((i.button_reply || i.list_reply || {}).title || "").trim(); }
+  if (t === "button") return String((m.button || {}).text || "").trim();
+  if (t === "reaction" || t === "unsupported" || t === "system" || !t) return "";
+  if (t === "location") return "(The person shared a location.)";
+  if (t === "contacts") return "(The person shared a contact card.)";
+  if (t === "document") return "(The person sent a document you cannot open.)";
+  return describeAttachment({ type: t });
+}
+function parseWhatsApp(env, body) {
+  const out = [], only = String(env.META_WA_PHONE_ID || "");
+  for (const entry of body.entry || []) {
+    for (const ch of entry.changes || []) {
+      const v = ch.value || {}, pid = String((v.metadata || {}).phone_number_id || "");
+      if (only && pid && pid !== only) continue;
+      if (ch.field === "smb_message_echoes") {   // typed by a human in the WhatsApp Business app (coexistence)
+        for (const e of v.message_echoes || []) if (e.to) out.push({ kind: "human_echo", platform: "whatsapp", sender: String(e.to), mid: e.id || "", appId: "", ts: (Number(e.timestamp) || 0) * 1000, waPhoneId: pid });
+        continue;
+      }
+      if (ch.field !== "messages") continue;
+      const names = {}; for (const c of v.contacts || []) names[String(c.wa_id)] = String(((c.profile || {}).name) || "").slice(0, 80);
+      for (const m of v.messages || []) {
+        const from = String(m.from || ""), text = waText(m);
+        if (!from || !text) continue;
+        out.push({ kind: "message", platform: "whatsapp", sender: from, text: text.slice(0, MAX_IN), mid: m.id || "", ts: (Number(m.timestamp) || 0) * 1000, name: names[from] || "", waPhoneId: pid });
+      }
     }
   }
   return out;
@@ -153,8 +192,11 @@ export async function replyFor(env, platform, sender, text, lead) {
   const state = lead && lead.saved
     ? "\n\n# LEAD STATUS\nThis person has ALREADY shared their contact details (saved for the team). Do NOT ask for name or number again. If they just shared it, thank them by name if known and say Anmol will WhatsApp them soon with a custom plan, then ask one useful question about their requirement if still unknown."
     : "";
+  const channel = platform === "whatsapp"
+    ? "\n\n# CHANNEL: WHATSAPP\nThis chat is on FODO's WhatsApp (+91 78270 07676). You already have this person's WhatsApp number, so NEVER ask for their number; when the lead flow needs contact details, ask only for their name and say Anmol will message them on this same WhatsApp chat."
+    : "";
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT + knowledge + DM_RULES + state },
+    { role: "system", content: SYSTEM_PROMPT + knowledge + DM_RULES + channel + state },
     ...past.slice(-HISTORY_TURNS * 2),
     { role: "user", content: text },
   ];
@@ -208,9 +250,9 @@ async function captureLead(env, ev, contact) {
   const past = await history(env, ev.platform, ev.sender);
   const convo = past.map((m) => (m.role === "user" ? "Person: " : "FODO: ") + m.content).join("\n");
   const info = await extractLead(env, convo);
-  const prof = await profileName(env, ev.platform, ev.sender);
+  const prof = ev.platform === "whatsapp" ? { name: ev.name || "", username: "" } : await profileName(env, ev.platform, ev.sender);
   const handle = prof.username ? "@" + prof.username : "";
-  const name = info.name || prof.name || handle || (ev.platform === "instagram" ? "Instagram lead" : "Facebook lead");
+  const name = info.name || prof.name || handle || (ev.platform === "instagram" ? "Instagram lead" : ev.platform === "whatsapp" ? "WhatsApp lead" : "Facebook lead");
   const src = ev.platform + "-dm";
   const lines = [info.summary, info.need && "Need: " + info.need, info.budget && "Budget: " + info.budget, handle && "Instagram: " + handle, "Last message: " + ev.text.slice(0, 300)].filter(Boolean).join("\n");
   const existing = await kvGet(env, key);
@@ -220,6 +262,17 @@ async function captureLead(env, ev, contact) {
   const r = await leadSaver(env, { mode: "contact", name, phone: contact.phone, email: contact.email, business: info.business, city: info.city, goal: info.need, budget: info.budget, message: lines, page: "/dm/" + ev.platform, source: src, campaign: "fodo-bot-dm" }, "");
   if (r && r.id) { await kvPut(env, key, r.id, 180 * 86400); return "saved"; }
   return "";
+}
+
+export async function sendWa(env, phoneId, to, text) {
+  const v = env.META_GRAPH_VERSION || "v23.0";
+  const r = await fetch("https://graph.facebook.com/" + v + "/" + encodeURIComponent(phoneId) + "/messages", {
+    method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + env.META_WA_TOKEN },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { preview_url: true, body: text } }),
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("WhatsApp send " + r.status + ": " + t.slice(0, 200)); }
+  const j = await r.json().catch(() => ({}));
+  return { message_id: ((j.messages || [])[0] || {}).id || "" };
 }
 
 export async function sendDm(env, recipient, text) {
@@ -244,27 +297,6 @@ async function diag(env, platform, kind, result, appId) {
 }
 export async function readDiag(env) { try { const v = await kvGet(env, "dm:diag"); return v ? JSON.parse(v) : []; } catch (e) { return []; } }
 
-/* v55.16 conversation log for Admin ▸ Lead Intelligence ▸ Sent & replies ▸ Bot conversations.
-   One KV key per person ("dm:cv:<platform>:<sender>", 30 days). The value keeps the last 30 messages; the metadata (read by a
-   single KV list) keeps who, the last message each way, when, how many, and whether the bot or a person is answering.
-   It never blocks or changes a reply. */
-const CV_TTL = 30 * 86400, CV_KEEP = 30;
-export async function logConvo(env, ev, o) {
-  try {
-    if (!env.CHAT_KV || !ev || !ev.sender) return;
-    const key = "dm:cv:" + ev.platform + ":" + ev.sender, cur = env.CHAT_KV.getWithMetadata ? await env.CHAT_KV.getWithMetadata(key) : { value: await env.CHAT_KV.get(key), metadata: null };
-    let msgs = []; try { msgs = cur.value ? JSON.parse(cur.value) : []; } catch (e) { msgs = []; }
-    const m = cur.metadata || {}, t = new Date().toISOString();
-    let name = m.n || "";
-    if (!name && env.META_PAGE_TOKEN && !m.nt) { const p = await profileName(env, ev.platform, ev.sender); name = p.username ? "@" + p.username + (p.name ? " (" + p.name + ")" : "") : p.name; }
-    if (o.in) msgs.push({ r: "in", t, x: String(o.in).slice(0, 600) });
-    if (o.out) msgs.push({ r: o.by === "human" ? "human" : "bot", t, x: String(o.out).slice(0, 900) });
-    msgs = msgs.slice(-CV_KEEP);
-    const meta = { p: ev.platform, n: String(name || "").slice(0, 90), nt: 1, li: o.in ? String(o.in).slice(0, 140) : m.li || "", lo: o.out ? String(o.out).slice(0, 140) : m.lo || "",
-      at: t, c: (m.c || 0) + (o.in ? 1 : 0), st: o.state || m.st || "bot", ld: o.lead || m.ld || "" };
-    await env.CHAT_KV.put(key, JSON.stringify(msgs), { expirationTtl: CV_TTL, metadata: meta });
-  } catch (e) { /* the log never blocks a reply */ }
-}
 /* Handle one parsed event. Returns what happened (for logs and tests). */
 export async function handleEvent(env, ev) {
   let r;
@@ -287,23 +319,30 @@ async function handleEventInner(env, ev) {
     if (last && ev.ts && ev.ts - last >= 0 && ev.ts - last < win) return "automation_echo";
     const hrs = Math.max(1, parseInt(env.META_BOT_HUMAN_PAUSE_HOURS || "12", 10) || 12);
     await kvPut(env, pauseKey, "1", hrs * 3600);
-    await logConvo(env, ev, { out: ev.text ? ev.text : "", by: "human", state: "human" });
     return "paused";
   }
   if (ev.ts) await kvPut(env, lastKey, String(ev.ts), 86400);
-  if (String(env.META_BOT_DISABLED || "") === "1") { await logConvo(env, ev, { in: ev.text, state: "off" }); return "disabled"; }
-  if (!env.META_PAGE_TOKEN) return "no_token";
+  if (String(env.META_BOT_DISABLED || "") === "1") return "disabled";
+  const wa = ev.platform === "whatsapp", waPhone = wa ? String(ev.waPhoneId || env.META_WA_PHONE_ID || "") : "";
+  if (wa ? !(env.META_WA_TOKEN && waPhone) : !env.META_PAGE_TOKEN) return "no_token";
   if (ev.mid) { const k = "dm:seen:" + ev.mid; if (await kvGet(env, k)) return "duplicate"; await kvPut(env, k, "1", DEDUPE_TTL); }
-  if (await kvGet(env, pauseKey)) { await logConvo(env, ev, { in: ev.text, state: "human" }); return "human_active"; }
-  const contact = findContact(ev.text);
-  const leadKnown = !!contact || !!(await kvGet(env, "dm:lead:" + ev.platform + ":" + ev.sender));
+  if (await kvGet(env, pauseKey)) return "human_active";
+  const leadKey = "dm:lead:" + ev.platform + ":" + ev.sender, hadLead = !!(await kvGet(env, leadKey));
+  let contact = findContact(ev.text);
+  if (wa) {
+    // WhatsApp: the number is already known. Save the enquiry from the person's 2nd message (enough context to summarise), once.
+    const pastUser = (await history(env, ev.platform, ev.sender)).filter((m) => m.role === "user").length;
+    const own = "+" + ev.sender.replace(/\D/g, "");
+    if (contact) contact = { phone: contact.phone || own, email: contact.email };
+    else if (!hadLead && pastUser >= 1) contact = { phone: own, email: "" };
+  }
+  const leadKnown = (!wa && !!contact) || hadLead;
   let reply;
   try { reply = await replyFor(env, ev.platform, ev.sender, ev.text, { saved: leadKnown }); } catch (e) { console.error("fodo-dm ai error:", String((e && e.message) || e).slice(0, 160)); reply = FALLBACK; }
   if (!reply) reply = FALLBACK;
-  const res = await sendDm(env, ev.sender, reply);
+  const res = wa ? await sendWa(env, waPhone, ev.sender, reply) : await sendDm(env, ev.sender, reply);
   if (res && res.message_id) await kvPut(env, "dm:mine:" + res.message_id, "1", DEDUPE_TTL);
   let lead = "";
   if (contact) { try { lead = await captureLead(env, ev, contact); } catch (e) { console.error("fodo-dm lead:", String((e && e.message) || e).slice(0, 120)); lead = "lead_error"; } }
-  await logConvo(env, ev, { in: ev.text, out: reply, state: "bot", lead: lead === "saved" || lead === "updated" ? "saved" : "" });
   return (reply === FALLBACK ? "sent_fallback" : "sent") + (lead ? "+lead_" + lead : "");
 }

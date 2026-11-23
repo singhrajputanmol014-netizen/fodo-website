@@ -633,7 +633,7 @@
       $("#ad-view").innerHTML = head(titles[mode], subs[mode], '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + filt +
         '<div class="ad-li-bulk"><span id="lq-n" class="muted">' + j.total + " leads" + (j.total > L.length ? " (showing " + L.length + ")" : "") + '</span><span class="ad-li-ba" id="lq-ba" hidden><b id="lq-sn">0</b> selected · ' +
         '<button type="button" class="btn sm" data-ba="research">Research</button><select class="ad-in" id="lq-bst" aria-label="Set status">' + opt(LIST, "", "Set status…") + "</select>" +
-        '<button type="button" class="btn sm ghost" data-ba="csv">CSV</button><button type="button" class="btn sm ghost" data-ba="xlsx">Excel</button><button type="button" class="btn sm ghost" data-ba="pitch">Add to Bulk pitch</button>' +
+        '<button type="button" class="btn sm ghost" data-ba="csv">CSV</button><button type="button" class="btn sm ghost" data-ba="xlsx">Excel</button><button type="button" class="btn sm" data-ba="queue">Outreach queue</button><button type="button" class="btn sm ghost" data-ba="pitch">Add to Bulk pitch</button>' +
         '<button type="button" class="btn sm ghost" data-ba="' + (q.archived === "1" ? "unarchive" : "archive") + '">' + (q.archived === "1" ? "Restore" : "Archive") + '</button><button type="button" class="btn sm ghost" data-ba="delete">Delete</button></span>' +
         '<span class="ad-li-ex"><button type="button" class="btn sm ghost" id="lq-csv">Export all CSV</button> <button type="button" class="btn sm ghost" id="lq-xlsx">Excel</button>' + (mode === "li-leads" ? ' <button type="button" class="btn sm ghost" id="lq-dup">Check duplicates</button>' : "") + "</span></div>" +
         '<div class="ad-table"><table><thead><tr><th><input type="checkbox" id="lq-all" aria-label="Select all"></th><th>Business</th><th>Score</th><th>' + cols[0] + "</th><th>" + cols[1] + "</th><th>Status</th></tr></thead><tbody>" +
@@ -654,6 +654,7 @@
         if (a === "research") { b.disabled = true; return liResearchMany(I, $("#lq-n"), reload); }
         if (a === "csv" || a === "xlsx") return liExport(a, I);
         if (a === "pitch") return liToPitch(I);
+        if (a === "queue") return liQueue(I);
         var run = function () { api("li/bulk", { ids: I, action: a }).then(function (r) { toast(r.ok ? r.changed + " " + a + "d" : r.reason, !r.ok); reload(); }); };
         if (a === "delete") ask({ title: "Delete " + I.length + " lead" + (I.length > 1 ? "s" : "") + "?", text: "Their contacts, people, audit, score and outreach history are removed for good. Archive keeps them instead.", ok: "Delete" }).then(function (v) { if (v) run(); }); else run();
       }; });
@@ -729,9 +730,9 @@
           (C.reachable ? '<ul class="ad-li-chk">' + chk(C.https, "HTTPS") + chk(C.viewport, "Mobile viewport") + chk(C.title, "Title") + chk(C.description, "Meta description") + chk(C.h1, "H1 heading") + chk(C.canonical, "Canonical") + chk(C.schema, "Structured data") + chk(C.contact_form, "Contact form") + chk(C.booking, "Booking") + chk(C.whatsapp_link || C.chat_widget, "WhatsApp / chat") + chk(C.analytics, "Analytics") + chk(C.meta_pixel || C.google_ads_tag, "Ad tracking tag") + chk((C.socials || []).length, "Social links") + chk(!(C.broken_links || []).length, "No broken links (sample)") + "</ul><p class=\"muted\">First response " + (C.response_ms / 1000).toFixed(1) + " s · " + C.html_kb + " KB · " + C.images + " images, " + C.images_no_alt + " without alt text" + (C.pagespeed && C.pagespeed.score != null ? " · PageSpeed mobile " + C.pagespeed.score + "/100" : " · PageSpeed not run") + "</p>" : "") +
           (A.ai_summary ? '<div class="ad-li-ai"><p class="ad-dl2">AI summary <span class="ad-tag">AI · ' + esc((A.ai_model || "").split("/").pop()) + '</span> <small class="muted">written from the checks above; hypotheses are not facts</small></p><p>' + esc(A.ai_summary).replace(/\n/g, "<br>") + "</p></div>" : "") + ((C.notes || []).length ? '<p class="muted">' + C.notes.map(esc).join("<br>") + "</p>" : "") : '<p class="muted">Not audited yet.</p>') + "</div>" +
         '<div class="panel ad-card"><h2>Opportunities for FODO</h2>' + (j.opportunities.length ? '<div class="ad-table"><table><thead><tr><th>Service</th><th>Problem and evidence</th><th>Why it matters</th><th>Outreach angle</th></tr></thead><tbody>' + j.opportunities.map(function (o) { return "<tr><td><b>" + esc(o.service) + '</b> <span class="ad-tag">' + (o.kind === "observed" ? "observed" : "AI hypothesis") + '</span></td><td data-l="Problem"><b>' + esc(o.problem) + '</b><small class="muted ad-li-sub">' + esc(o.evidence) + '</small></td><td data-l="Why">' + esc(o.why) + '<small class="muted ad-li-sub">' + esc(o.value) + '</small></td><td data-l="Angle">' + esc(o.angle) + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<p class="muted">None yet.</p>') + "</div>" +
-        '<div class="ad-grid2"><div class="panel ad-card"><h2>Outreach drafts <small class="muted">copy and send yourself; nothing is sent from here</small></h2><div class="ad-acts">' + [["email", "Email"], ["followup", "Follow-up"], ["linkedin", "LinkedIn note"], ["whatsapp", "WhatsApp"], ["opener", "Openers"]].map(function (c) { return '<button type="button" class="btn sm ghost" data-dr="' + c[0] + '">' + c[1] + "</button>"; }).join("") + '</div><p class="muted" id="ll-drm"></p><textarea id="ll-dr" class="ad-in ad-ta" rows="9" aria-label="Draft" placeholder="Pick a channel to write a draft from this lead\'s observed problems."></textarea><div class="ad-acts"><button type="button" class="btn sm" id="ll-cp">Copy</button></div>' +
-          '<label class="ad-dl2" for="ll-notes">Notes</label><textarea id="ll-notes" class="ad-in ad-ta" rows="3" maxlength="4000">' + esc(x.notes || "") + '</textarea><button type="button" class="btn sm ghost" id="ll-ns">Save notes</button></div>' +
-        '<div class="panel ad-card"><h2>History</h2>' + (j.history.length ? '<ul class="ad-li-ul">' + j.history.map(function (h) { return "<li>" + esc(lst(h.from_status)) + " → <b>" + esc(lst(h.to_status)) + "</b>" + (h.channel ? " · " + esc(h.channel) : "") + (h.note ? " · " + esc(h.note) : "") + '<small class="muted ad-li-sub">' + date(h.at, true) + " · " + esc(h.by_email || "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No status changes yet.</p>') +
+        '<div class="ad-grid2"><div>' + liMsgPanel(j) + '<div class="panel ad-card">' +
+          '<label class="ad-dl2" for="ll-notes">Notes</label><textarea id="ll-notes" class="ad-in ad-ta" rows="3" maxlength="4000">' + esc(x.notes || "") + '</textarea><button type="button" class="btn sm ghost" id="ll-ns">Save notes</button></div></div>' +
+        '<div class="panel ad-card">' + ((j.replies || []).length ? '<h2>Replies and enquiries <span class="ad-tag ok">' + j.replies.length + '</span></h2><ul class="ad-li-ul">' + j.replies.map(function (e) { return '<li><a href="#enquiries">' + esc(e.name || e.email || e.phone) + '</a> · ' + esc(e.source || 'website') + '<small class="muted ad-li-sub">' + date(e.created_at, true) + ' · ' + esc(e.status || '') + '</small></li>'; }).join('') + '</ul>' : '') + '<h2>History</h2>' + (j.history.length ? '<ul class="ad-li-ul">' + j.history.map(function (h) { return "<li>" + esc(lst(h.from_status)) + " → <b>" + esc(lst(h.to_status)) + "</b>" + (h.channel ? " · " + esc(h.channel) : "") + (h.note ? " · " + esc(h.note) : "") + '<small class="muted ad-li-sub">' + date(h.at, true) + " · " + esc(h.by_email || "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No status changes yet.</p>') +
           "<h2>Research sources</h2>" + (j.sources.length || x.source_ref || x.maps_url ? '<ul class="ad-li-ul">' + (x.maps_url ? "<li>Listing: " + link(x.maps_url) + "</li>" : x.source_ref ? "<li>Listing: " + link(x.source_ref) + "</li>" : "") + j.sources.map(function (s) { return "<li>" + link(s.url) + ' <small class="muted">HTTP ' + s.http + " · " + date(s.at, true) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">None.</p>') + "</div></div>";
       var reload = function () { liLead(x.id); };
       $("#ll-st").onchange = function () { var v = this.value; ask({ title: "Change status to " + lst(v) + "?", input: "Note (optional)", ok: "Save" }).then(function (note) { if (note === null) { $("#ll-st").value = x.status; return; } api("li/lead/" + encodeURIComponent(x.id), { status: v, note: note }).then(function (r) { toast(r.ok ? "Status saved" : r.reason, !r.ok); reload(); }); }); };
@@ -739,8 +740,7 @@
       $("#ll-arc").onclick = function () { api("li/bulk", { ids: [x.id], action: x.archived ? "unarchive" : "archive" }).then(function (r) { toast(r.ok ? (x.archived ? "Restored" : "Archived") : r.reason, !r.ok); reload(); }); };
       $("#ll-edit").onclick = function () { ask({ title: "Website", text: "Fix or add the official website (https://…). Research again afterwards.", input: "Website", ok: "Save" }).then(function (w) { if (w === null) return; api("li/lead/" + encodeURIComponent(x.id), { website: w }).then(function (r) { toast(r.ok ? "Saved" : r.reason, !r.ok); reload(); }); }); };
       $("#ll-ns").onclick = function () { api("li/lead/" + encodeURIComponent(x.id), { notes: $("#ll-notes").value }).then(function (r) { toast(r.ok ? "Notes saved" : r.reason, !r.ok); }); };
-      $$("[data-dr]").forEach(function (b) { b.onclick = function () { $("#ll-drm").textContent = "Writing…"; api("li/drafts/" + encodeURIComponent(x.id), { channel: b.dataset.dr }).then(function (r) { if (!r.ok) { $("#ll-drm").textContent = r.reason; return; } $("#ll-dr").value = r.text; $("#ll-drm").textContent = r.ai ? "AI draft (" + (r.model || "").split("/").pop() + "). Check every line before sending." : "Template draft (AI not available). Edit before sending."; }); }; });
-      $("#ll-cp").onclick = function () { var t = $("#ll-dr").value; if (!t) return; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Copied"); }, function () { $("#ll-dr").select(); }); };
+      liMsgWire(j, reload);
     });
   }
 
@@ -755,6 +755,84 @@
         '<div class="ad-grid2"><div class="panel ad-card"><h2>Recent errors</h2>' + (j.errors.length ? '<ul class="ad-li-ul">' + j.errors.map(function (e) { return "<li>" + esc(e.detail) + '<small class="muted ad-li-sub">' + date(e.at, true) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No errors.</p>') + "</div>" +
         '<div class="panel ad-card"><h2>Activity</h2>' + (a.ok && a.items.length ? '<ul class="ad-li-ul">' + a.items.slice(0, 40).map(function (e) { return "<li><b>" + esc(e.kind.replace(/_/g, " ")) + "</b> " + (e.business_id ? '<a href="#li-lead/' + esc(e.business_id) + '">' + esc(e.business_id) + "</a> " : "") + esc(e.detail || "") + '<small class="muted ad-li-sub">' + date(e.at, true) + " · " + esc(e.by_email || "") + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No activity yet.</p>') + "</div></div>";
       $$("[data-lt]").forEach(function (b) { b.onclick = function () { var k = b.dataset.lt, out = $("#lt-" + k); b.disabled = true; out.textContent = "Testing…"; api("li/test/" + encodeURIComponent(k), {}).then(function (r) { b.disabled = false; out.textContent = r.ok ? "OK · " + (r.detail || "") : (r.reason || "Failed"); out.className = "ad-li-sub " + (r.ok ? "ad-li-ok" : "ad-li-bad"); }); }; });
+    });
+  }
+
+  /* ---------- v55.6 Outreach desk: message a lead on its own channels from your own apps (nothing is sent by the server) ---------- */
+  var LDR = { whatsapp: "whatsapp", email: "email", linkedin: "linkedin", instagram: "dm", facebook: "dm", x: "dm" };
+  var LBEST = ["whatsapp", "email", "linkedin", "instagram", "facebook", "x"];
+  var LOPEN = { whatsapp: "Open WhatsApp", email: "Open in Gmail", linkedin: "Copy & open LinkedIn", instagram: "Copy & open Instagram", facebook: "Copy & open Facebook", x: "Copy & open X" };
+  function liCopy(t) { return navigator.clipboard ? navigator.clipboard.writeText(t).then(function () { return true; }, function () { return false; }) : Promise.resolve(false); }
+  function liOpen(c, text) {
+    var u = ""; if (c.channel !== "email") text = String(text).replace(/^\s*Subject:[^\n]*\n+/i, "");
+    if (c.channel === "whatsapp") u = "https://wa.me/" + encodeURIComponent(c.target) + "?text=" + encodeURIComponent(text);
+    else if (c.channel === "email") { var m = String(text).match(/^\s*Subject:\s*(.+)\n+([\s\S]*)$/i), su = m ? m[1].trim() : "", body = m ? m[2].trim() : text;
+      u = "https://mail.google.com/mail/?authuser=" + encodeURIComponent("anmol@fodo.co.in") + "&view=cm&fs=1&to=" + encodeURIComponent(c.target) + "&su=" + encodeURIComponent(su) + "&body=" + encodeURIComponent(body); }
+    else u = /^https?:\/\//.test(c.target) ? c.target : "";
+    if (c.channel !== "whatsapp" && c.channel !== "email") liCopy(text).then(function (ok) { toast(ok ? "Message copied. Paste it in the chat and send." : "Copy the message from the box, then paste it in the chat.", !ok); });
+    if (u) window.open(u, "_blank", "noopener");
+  }
+  function liSent(id, ch, note) { return api("li/sent/" + encodeURIComponent(id), { channel: ch, note: note || "" }); }
+  function liDraft(id, ch) { return api("li/drafts/" + encodeURIComponent(id), { channel: LDR[ch] || ch }); }
+  /* lead page panel */
+  function liMsgPanel(j) {
+    var x = j.lead, C = j.channels || [], blocked = x.status === "dnc" || j.opted_out;
+    return '<div class="panel ad-card ad-li-msg"><h2>Message this business <small class="muted">opens your own WhatsApp, Gmail or the profile; you press Send</small></h2>' +
+      (blocked ? '<p class="cf-status warn">Do not contact. Messaging is switched off for this business.</p>' :
+      (C.length ? '<div class="ad-acts" role="group" aria-label="Channels">' + C.map(function (c, i) { return '<button type="button" class="btn sm ghost" data-mc="' + i + '" title="' + esc(c.target + (c.note ? " · " + c.note : "")) + '">' + esc(c.label) + "</button>"; }).join("") + "</div>" : '<p class="muted">No public WhatsApp, email or social profile found for this business. Call the phone number instead, or research again.</p>') +
+      '<div id="ll-mw" hidden><p class="muted" id="ll-drm"></p><textarea id="ll-dr" class="ad-in ad-ta" rows="8" aria-label="Message"></textarea>' +
+      '<div class="ad-acts"><button type="button" class="btn sm" id="ll-open"></button><button type="button" class="btn sm ghost" id="ll-cp">Copy</button></div>' +
+      '<div class="ad-acts ad-li-ok2" id="ll-did" hidden><span>Did you send it?</span><button type="button" class="btn sm" id="ll-yes">Yes, mark as sent</button><button type="button" class="btn sm ghost" id="ll-no">Not sent</button></div></div>' +
+      '<p class="muted ad-li-more">More drafts: <button type="button" class="ad-li-lnk" data-dr="followup">follow-up email</button> · <button type="button" class="ad-li-lnk" data-dr="opener">3 opening lines</button></p>') + "</div>";
+  }
+  function liMsgWire(j, reload) {
+    var x = j.lead, C = j.channels || [], cur = null;
+    var show = function (c, kind) {
+      cur = c; $("#ll-mw").hidden = false; $("#ll-did").hidden = true; $("#ll-dr").value = ""; $("#ll-drm").textContent = "Writing the message…";
+      $("#ll-open").textContent = c ? LOPEN[c.channel] : "Copy"; $("#ll-open").hidden = !c;
+      liDraft(x.id, kind || c.channel).then(function (r) { if (!r.ok) { $("#ll-drm").textContent = r.reason; return; } $("#ll-dr").value = r.text;
+        $("#ll-drm").textContent = (c ? "To " + c.target + (c.note ? " (" + c.note + ")" : "") + ". " : "") + (r.ai ? "AI draft, check every line before sending." : "Template draft, edit before sending."); });
+    };
+    $$("[data-mc]").forEach(function (b) { b.onclick = function () { $$("[data-mc]").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); }); show(C[+b.dataset.mc]); }; });
+    $$(".ad-li-msg [data-dr]").forEach(function (b) { b.onclick = function () { show(null, b.dataset.dr); }; });
+    var o = $("#ll-open"); if (o) o.onclick = function () { var t = $("#ll-dr").value.trim(); if (!t || !cur) return; liOpen(cur, t); $("#ll-did").hidden = false; };
+    var cp = $("#ll-cp"); if (cp) cp.onclick = function () { var t = $("#ll-dr").value; if (t) liCopy(t).then(function (ok) { if (ok) toast("Copied"); else $("#ll-dr").select(); }); };
+    var y = $("#ll-yes"); if (y) y.onclick = function () { if (!cur) return; liSent(x.id, cur.channel, "Sent on " + cur.label).then(function (r) { toast(r.ok ? "Logged: sent on " + cur.label : r.reason, !r.ok); if (r.ok) reload(); }); };
+    var n = $("#ll-no"); if (n) n.onclick = function () { $("#ll-did").hidden = true; };
+  }
+  /* outreach queue: one lead after another, you press Send in your own app, the desk logs it and moves on */
+  function liQueue(ids) {
+    ask({ title: "Outreach queue: " + ids.length + " leads", text: "Pick the channel. For each lead the message is written for you; you open it in WhatsApp, Gmail or the profile, press Send, then mark it sent here. Leads without that channel, Do not contact and unsubscribed leads are skipped.\n\nChannel: whatsapp, email, linkedin, instagram, facebook, x, or best (first available)", input: "Channel", ok: "Start" }).then(function (chv) {
+      if (chv === null) return; chv = String(chv || "best").toLowerCase().trim(); if (["best"].concat(LBEST).indexOf(chv) < 0) return toast("Unknown channel: " + chv, true);
+      var w = document.createElement("div"); w.className = "cfx ad-dlg ad-li-q"; document.body.appendChild(w);
+      var i = 0, sent = 0, skipped = [], pre = {}, close = function () { w.remove(); toast(sent + " sent, " + skipped.length + " skipped"); route(); };
+      var load = function (k) { if (pre[k]) return pre[k]; var id = ids[k];
+        return (pre[k] = api("li/lead/" + encodeURIComponent(id)).then(function (j) {
+          if (!j.ok) return { id: id, skip: j.reason || "could not open" };
+          if (j.lead.status === "dnc" || j.opted_out) return { id: id, name: j.lead.name, skip: "Do not contact" };
+          var c = (j.channels || []).filter(function (c) { return chv === "best" ? true : c.channel === chv; }).sort(function (a, b) { return LBEST.indexOf(a.channel) - LBEST.indexOf(b.channel); })[0];
+          if (!c) return { id: id, name: j.lead.name, skip: "no " + (chv === "best" ? "public channel" : chv) };
+          return liDraft(id, c.channel).then(function (r) { return { id: id, name: j.lead.name, j: j, c: c, text: r.ok ? r.text : "", ai: r.ai, err: r.ok ? "" : r.reason }; });
+        })); };
+      var draw = function () {
+        if (i >= ids.length) { w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box" role="dialog" aria-modal="true"><h3>Queue finished</h3><p>' + sent + " sent, " + skipped.length + " skipped.</p>" + (skipped.length ? '<ul class="ad-li-ul">' + skipped.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ul>" : "") + '<div class="ad-acts"><button type="button" class="btn" data-qx>Close</button></div></div>'; w.querySelector("[data-qx]").onclick = close; return; }
+        w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + ' sent</p><h3 id="lq-t">Loading…</h3></div>';
+        load(i).then(function (q) {
+          if (i + 1 < ids.length) load(i + 1);   // prepare the next one while you send this one
+          if (q.skip) { skipped.push((q.name || q.id) + ": " + q.skip); i++; return draw(); }
+          w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box ad-li-qb" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + " sent · " + skipped.length + ' skipped</p>' +
+            '<h3 id="lq-t">' + esc(q.name) + '</h3><p class="muted">' + esc(q.c.label + ": " + q.c.target) + (q.c.note ? " · " + esc(q.c.note) : "") + (q.err ? '<br><span class="ad-li-bad">' + esc(q.err) + "</span>" : "") + "</p>" +
+            '<textarea class="ad-in ad-ta" rows="8" id="lq-tx" aria-label="Message">' + esc(q.text) + '</textarea>' +
+            '<div class="ad-acts"><button type="button" class="btn" id="lq-open">' + LOPEN[q.c.channel] + '</button><button type="button" class="btn ghost" id="lq-sent" disabled>Sent, next</button><button type="button" class="btn sm ghost" id="lq-skip">Skip</button><button type="button" class="btn sm ghost" id="lq-stop">Stop</button></div>' +
+            '<p class="muted">' + (q.ai ? "AI draft, check it before sending." : "Template draft, edit before sending.") + "</p></div>";
+          $("#lq-open", w).onclick = function () { var t = $("#lq-tx", w).value.trim(); if (!t) return; liOpen(q.c, t); $("#lq-sent", w).disabled = false; $("#lq-sent", w).classList.remove("ghost"); };
+          $("#lq-sent", w).onclick = function () { this.disabled = true; liSent(q.id, q.c.channel, "Sent on " + q.c.label + " (queue)").then(function (r) { if (r.ok) sent++; else skipped.push(q.name + ": " + r.reason); i++; draw(); }); };
+          $("#lq-skip", w).onclick = function () { skipped.push(q.name + ": skipped"); i++; draw(); };
+          $("#lq-stop", w).onclick = close;
+        });
+      };
+      w.onkeydown = function (e) { if (e.key === "Escape") close(); };
+      draw();
     });
   }
 

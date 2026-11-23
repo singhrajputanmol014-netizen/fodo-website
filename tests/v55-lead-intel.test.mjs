@@ -140,6 +140,20 @@ const ex = (await LP("export?ids=" + lid)).j; ok(ex.rows.length === 1 && ex.rows
 const dr = (await LP("drafts/" + lid, { channel: "email" })).j; ok(dr.ok && dr.ai && /Subject:/.test(dr.text), "AI outreach draft (labelled AI), not sent");
 const AIb = env.AI; env.AI = undefined; const dt = (await LP("drafts/" + lid, { channel: "whatsapp" })).j; env.AI = AIb;
 ok(dt.ok && dt.template && /Anmol from FODO/.test(dt.text) && !/\bfree\b/i.test(dt.text) && !/—/.test(dt.text), "without AI a clearly marked template is used");
+/* outreach desk */
+ok(LI.waNumber("+91 98000 00001") === "919800000001" && LI.waNumber("098000 00001") === "919800000001" && LI.waNumber("011 4000 0002") === "" && LI.waNumber("https://wa.me/919800000001") === "919800000001", "WhatsApp numbers: Indian mobiles only, landlines skipped");
+X("UPDATE li_businesses SET status='not_contacted' WHERE id=?", lid2);
+const lj = (await LP("lead/" + lid2)).j;
+ok(lj.channels.some((c) => c.channel === "linkedin" && /amit-kumar/.test(c.target)) && !lj.channels.some((c) => c.channel === "whatsapp"), "channels come only from found contacts (partial founder LinkedIn yes, landline gives no WhatsApp)");
+const lj1 = (await LP("lead/" + lid)).j;
+ok(lj1.channels[0].channel === "whatsapp" && lj1.channels[0].target === "919800000001" && lj1.channels.some((c) => c.channel === "instagram"), "WhatsApp first, then email and socials");
+const dm = (await LP("drafts/" + lid2, { channel: "dm" })).j; ok(dm.ok && dm.text, "Instagram/Facebook DM drafts");
+const s1x = (await LP("sent/" + lid2, { channel: "linkedin" })).j;
+ok(s1x.ok && s1x.lead.status === "contacted" && s1x.history[0].channel === "linkedin", "marking a message as sent logs the channel and moves Not contacted to Contacted");
+ok((await LP("sent/" + lid2, { channel: "pigeon" })).status === 400, "unknown channel refused");
+X("CREATE TABLE IF NOT EXISTS fodo_leads (id TEXT PRIMARY KEY, mode TEXT, name TEXT, email TEXT, phone TEXT, business TEXT, data TEXT, page TEXT, source TEXT, campaign TEXT, status TEXT, notes TEXT, ip_hash TEXT, created_at TEXT, updated_at TEXT)");
+X("INSERT INTO fodo_leads (id, name, phone, source, status, created_at) VALUES ('ld_t1','Amit','+91-11-4000-0002','instagram-dm','new','2026-11-23T10:00:00Z')");
+ok((await LP("lead/" + lid2)).j.replies.length === 1, "a reply / enquiry with the same phone shows on the lead");
 await LP("lead/" + lid2, { status: "dnc" }); ok((await LP("drafts/" + lid2, {})).status === 409, "Do not contact: no drafts");
 X("INSERT INTO camp_unsub (email, at, why) VALUES ('info@smiledental.in','2026-01-01','test')");
 ok((await LP("lead/" + lid)).j.opted_out === true && (await LP("drafts/" + lid, {})).status === 409, "an opted-out email blocks drafts too");

@@ -150,6 +150,7 @@ export async function onRequest(ctx) {
         else if (a === "lead" && id) r = await LI.update(env, id, b, u.email);
         else if (a === "bulk") { r = await LI.bulk(env, b, u.email); await logEvent(env, u.id, "li_bulk", b.action + " · " + r.changed); }
         else if (a === "drafts" && id) r = await LI.drafts(env, id, b);
+        else if (a === "sent" && id) r = await LI.logSent(env, id, b, u.email);
         else if (a === "to-pitch") r = await LI.toPitch(env, b, u.email);
         else if (a === "jobs" && id === "save") r = await LI.saveJob(env, b, u.email);
         else if (a === "jobs" && id && path[3] === "run") r = await LI.runJob(env, id, u.email);

@@ -503,8 +503,10 @@ export async function lead(env, id) {
   const d = await ldb(env), b = await one(d, "SELECT * FROM li_businesses WHERE id=?1", String(id || "")); if (!b) throw err("Lead not found.", 404);
   const au = await one(d, "SELECT * FROM li_audits WHERE business_id=?1", b.id), sc = await one(d, "SELECT * FROM li_scores WHERE business_id=?1 ORDER BY id DESC LIMIT 1", b.id);
   const unsub = b.email ? !!(await one(d, "SELECT email FROM camp_unsub WHERE email=?1", b.email).catch(() => null)) : false;
-  return { lead: b, contacts: await all(d, "SELECT kind,label,value,source_url,status,checked_at FROM li_contacts WHERE business_id=?1 ORDER BY kind", b.id),
-    people: await all(d, "SELECT name,role,profile_url,confidence,source_url,evidence,found_at FROM li_people WHERE business_id=?1 ORDER BY CASE confidence WHEN 'verified' THEN 0 WHEN 'partial' THEN 1 ELSE 2 END", b.id),
+  const contacts = await all(d, "SELECT kind,label,value,source_url,status,checked_at FROM li_contacts WHERE business_id=?1 ORDER BY kind", b.id);
+  const people = await all(d, "SELECT name,role,profile_url,confidence,source_url,evidence,found_at FROM li_people WHERE business_id=?1 ORDER BY CASE confidence WHEN 'verified' THEN 0 WHEN 'partial' THEN 1 ELSE 2 END", b.id);
+  return { lead: b, contacts, channels: channelsOf(b, contacts, people), replies: await repliesOf(d, b, contacts),
+    people,
     audit: au ? Object.assign({ at: au.at, url: au.url, summary: au.summary, ai_summary: au.ai_summary, ai_model: au.ai_model }, { checks: J(au.data, {}) }) : null,
     opportunities: await all(d, "SELECT service,problem,evidence,why,value,angle,kind FROM li_opps WHERE business_id=?1", b.id),
     score: sc ? { total: sc.total, parts: J(sc.parts, []), at: sc.at } : null,
@@ -581,20 +583,58 @@ export async function exportRows(env, q) {
   return { rows: out };
 }
 
+
+/* ---------------- outreach desk: where this business can be messaged (only contacts we actually found) ---------------- */
+export const waNumber = (v) => { const g = String(v || "").replace(/\D/g, ""); if (/wa\.me|whatsapp/i.test(v || "") && g.length >= 10) return g.length === 10 ? "91" + g : g;
+  const t = g.slice(-10); return t.length === 10 && /^[6-9]/.test(t) && (g.length === 10 || /^(91|091|0)$/.test(g.slice(0, -10))) ? "91" + t : ""; };   // Indian mobiles only; landlines have no WhatsApp
+export function channelsOf(b, contacts, people) {
+  const C = contacts || [], out = [], get = (k) => C.filter((c) => c.kind === k);
+  const wa = get("whatsapp").map((c) => waNumber(c.value)).concat(get("phone").map((c) => waNumber(c.value))).filter(Boolean);
+  if (wa.length) out.push({ channel: "whatsapp", label: "WhatsApp", target: wa[0], note: get("whatsapp").length ? "WhatsApp link on the website" : "mobile number from the listing / website (WhatsApp not confirmed)" });
+  const mail = get("email").sort((a, c) => (/official website/.test(c.status) ? 1 : 0) - (/official website/.test(a.status) ? 1 : 0))[0];
+  if (mail) out.push({ channel: "email", label: "Email", target: mail.value, note: mail.status || "" });
+  const lp = (people || []).find((p) => /linkedin\.com\/in\//.test(p.profile_url || "") && p.confidence !== "unverified");
+  if (lp) out.push({ channel: "linkedin", label: "LinkedIn (" + lp.name + ")", target: lp.profile_url, note: lp.role });
+  else if (get("linkedin")[0]) out.push({ channel: "linkedin", label: "LinkedIn page", target: get("linkedin")[0].value, note: "company page" });
+  [["instagram", "Instagram"], ["facebook", "Facebook"], ["x", "X"]].forEach(([k, l]) => { if (get(k)[0]) out.push({ channel: k, label: l, target: get(k)[0].value, note: get(k)[0].status || "" }); });
+  return out;
+}
+/* replies: enquiries (website form, Instagram / Facebook DMs) whose email or phone matches this business */
+async function repliesOf(d, b, contacts) {
+  try {
+    const mails = contacts.filter((c) => c.kind === "email").map((c) => c.value.toLowerCase()), phones = contacts.filter((c) => /phone|whatsapp/.test(c.kind)).map((c) => phoneKey(c.value)).concat([b.phone_key]).filter(Boolean);
+    if (!mails.length && !phones.length) return [];
+    const rows = await all(d, "SELECT id, name, email, phone, source, status, created_at FROM fodo_leads ORDER BY created_at DESC LIMIT 2000");
+    return rows.filter((r) => (r.email && mails.indexOf(String(r.email).toLowerCase()) > -1) || (r.phone && phones.indexOf(phoneKey(r.phone)) > -1)).slice(0, 10);
+  } catch (e) { return []; }
+}
+const SENT_STATUS = { email: "email_sent", whatsapp: "contacted", instagram: "contacted", facebook: "contacted", linkedin: "contacted", x: "contacted", call: "called" };
+/* the person sent the message from their own app; we only record it (and move New / Not contacted forward) */
+export async function logSent(env, id, b, by) {
+  const d = await ldb(env), L = await lead(env, id), x = L.lead; b = b || {};
+  const ch = Object.keys(SENT_STATUS).indexOf(b.channel) > -1 ? b.channel : ""; if (!ch) throw err("Unknown channel.");
+  if (x.status === "dnc" || L.opted_out) throw err("This business is marked Do not contact (or opted out).", 409);
+  const to = ["new", "not_contacted", "contacted"].indexOf(x.status) > -1 && !(x.status === "contacted" && SENT_STATUS[ch] === "contacted") ? SENT_STATUS[ch] : x.status;
+  await run(d, "INSERT INTO li_outreach (business_id, from_status, to_status, channel, note, by_email, at) VALUES (?1,?2,?3,?4,?5,?6,?7)", x.id, x.status, to, ch, clip(b.note || "Message sent on " + ch, 500), clip(by, 254), nowIso());
+  if (to !== x.status) await run(d, "UPDATE li_businesses SET status=?2, updated_at=?3 WHERE id=?1", x.id, to, nowIso());
+  await act(d, "sent_" + ch, x.id, clip(b.note, 200), by);
+  return lead(env, x.id);
+}
 /* ---------------- outreach drafts (never sent from here) ---------------- */
 export async function drafts(env, id, b) {
   const L = await lead(env, id), x = L.lead; b = b || {};
   if (x.status === "dnc" || L.opted_out) throw err("This business is marked Do not contact (or opted out). No drafts.", 409);
-  const ch = ["email", "linkedin", "whatsapp", "followup", "opener"].indexOf(b.channel) > -1 ? b.channel : "email";
+  const ch = ["email", "linkedin", "whatsapp", "dm", "followup", "opener"].indexOf(b.channel) > -1 ? b.channel : "email";
   const facts = L.opportunities.filter((o) => o.kind === "observed").slice(0, 3).map((o) => "- " + o.problem + ": " + o.evidence).join("\n") || "- no website problems recorded";
   const who = x.owner_name && x.owner_conf !== "unverified" ? x.owner_name : "";
-  const limits = { email: "an email of 90 to 130 words with a subject line first as 'Subject: ...'", linkedin: "a LinkedIn connection message under 280 characters", whatsapp: "a WhatsApp message under 60 words", followup: "a short follow-up email of 50 to 80 words with 'Subject: ...' first", opener: "three different one-sentence opening lines, one per line" }[ch];
+  const limits = { email: "an email of 90 to 130 words with a subject line first as 'Subject: ...'", linkedin: "a LinkedIn connection message under 280 characters", dm: "an Instagram or Facebook direct message under 60 words, warm and personal", whatsapp: "a WhatsApp message under 60 words", followup: "a short follow-up email of 50 to 80 words with 'Subject: ...' first", opener: "three different one-sentence opening lines, one per line" }[ch];
   const ai = await aiRun(env, "You write honest B2B outreach for FODO (Fear Of Digitally Out ?), a digital growth agency in New Delhi. Sign off as 'Anmol, FODO'. Use only the facts given, never invent results, clients, numbers or claims about their ads. Friendly, specific, no hype, no markdown, no long dashes, never use the word free. Include no links except https://www.fodo.co.in.",
     "Write " + limits + " to " + (who || "the team at " + x.name) + " at " + x.name + " (" + [x.category || x.industry, x.locality || x.city].filter(Boolean).join(", ") + ").\nWhat we observed:\n" + facts + "\nOffer: a short call to share 2 or 3 fixes.", ch === "email" ? 400 : 250);
   if (ai) return { channel: ch, text: ai.text, ai: true, model: ai.model };
   const first = (L.opportunities[0] || {}), hi = who ? "Hi " + who.split(" ").filter((w) => !/^(Dr|Mr|Ms|Mrs|CA|Adv)\.?$/.test(w))[0] : "Hi " + x.name + " team";
   const T = { email: "Subject: A quick idea for " + x.name + "\n\n" + hi + ",\n\nI'm Anmol from FODO, a growth studio in New Delhi. " + (first.angle || "I came across " + x.name + " while researching businesses in " + (x.city || "your area") + ".") + "\n\nWe help businesses like yours fix exactly this and turn it into more enquiries. Would a 15-minute call this week be useful? I can share two or three specific fixes.\n\nRegards,\nAnmol, FODO\nhttps://www.fodo.co.in",
     linkedin: hi + ", I'm Anmol from FODO (New Delhi). " + (first.angle || "I came across " + x.name + ".") + " Happy to share a couple of quick fixes if useful.",
+    dm: hi + ", this is Anmol from FODO, New Delhi. " + (first.angle || "I came across " + x.name + ".") + " Happy to share 2 quick fixes if useful.",
     whatsapp: hi + ", this is Anmol from FODO, New Delhi. " + (first.angle || "I came across " + x.name + ".") + " Can I share 2 quick fixes on a short call?",
     followup: "Subject: Re: A quick idea for " + x.name + "\n\n" + hi + ", just following up on my note about " + (first.problem || "your online presence").toLowerCase() + ". Happy to share the fixes over a 15-minute call whenever suits you.\n\nAnmol, FODO",
     opener: L.opportunities.slice(0, 3).map((o) => o.angle).join("\n") || "I came across " + x.name + " while researching " + (x.industry || "businesses") + " in " + (x.city || "your city") + "." };

@@ -255,3 +255,8 @@ body.ad-menu-on{overflow:hidden}
 tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var(--text) 4%,transparent)}
 @media (max-width:900px){.ad-li-fg{grid-template-columns:repeat(2,minmax(0,1fr))}.ad-li-sp{grid-template-columns:1fr auto}.ad-li-sp .ad-bar{grid-column:1/-1;order:3}}
 @media (max-width:560px){.ad-li-fg{grid-template-columns:1fr}.ad-li-filt .ad-in,.ad-li-dates .ad-in{flex:1 1 100%}}
+/* v55.6 outreach desk */
+.ad-li-msg [aria-pressed=true]{border-color:#7B61FF;background:color-mix(in srgb,#7B61FF 16%,transparent)}
+.ad-li-ok2{align-items:center;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,#7B61FF 10%,transparent)}
+.ad-li-lnk{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
+.ad-li-more{margin-top:12px}.ad-li-q .cfx-box{max-width:640px;width:calc(100vw - 32px)}.ad-li-qb textarea{width:100%}

@@ -749,7 +749,7 @@ export async function botTest(env, b) {
   if (platform === "website") {
     const C = await import("../api/chat.js"), SK = await import("./sitekb.js");
     const hist = (Array.isArray(b.history) ? b.history : []).slice(-12).filter((h) => h && (h.role === "user" || h.role === "assistant")).map((h) => ({ role: h.role, content: clip(h.content, 900) }));
-    const r = await C.chatGenerate(env, [{ role: "system", content: C.SYSTEM_PROMPT + "\n\n" + SK.productBrief() + (b.lead ? C.LEAD_SAVED_NOTE : "") }].concat(hist, [{ role: "user", content: text }]), 480);
+    const r = await C.chatGenerate(env, [{ role: "system", content: C.SYSTEM_PROMPT + "\n\n" + SK.productBrief() + (b.lead ? C.LEAD_SAVED_NOTE : "") + C.turnHints(text, hist, { leadSaved: !!b.lead }) }].concat(hist, [{ role: "user", content: text }]), 480);
     return { reply: r.text, model: r.model, ms: Date.now() - t0, sid };
   }
   const MD = await import("./metadm.js");

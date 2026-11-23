@@ -24,7 +24,7 @@
  * Rules: only answers messages people send to FODO (never starts a chat), only inside Meta's 24 h window
  * (messaging_type RESPONSE), stays quiet in a thread a human has taken over, never sends the same reply twice.
  */
-import { SYSTEM_PROMPT, generate } from "../api/chat.js";
+import { SYSTEM_PROMPT, generate, turnHints } from "../api/chat.js";
 import { productBrief, productDetail, PRODUCT_RE } from "./sitekb.js";
 import { groqChat } from "./aivis.js";
 import { saveLead, updateLead } from "./sitecfg.js";
@@ -197,7 +197,7 @@ export async function replyFor(env, platform, sender, text, lead) {
     ? "\n\n# CHANNEL: WHATSAPP\nThis chat is on FODO's WhatsApp (+91 78270 07676). You already have this person's WhatsApp number, so NEVER ask for their number; when the lead flow needs contact details, ask only for their name and say Anmol will message them on this same WhatsApp chat."
     : "";
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT + knowledge + DM_RULES + channel + state },
+    { role: "system", content: SYSTEM_PROMPT + knowledge + DM_RULES + channel + state + turnHints(text, past, { leadSaved: !!(lead && lead.saved), whatsapp: platform === "whatsapp" }) },
     ...past.slice(-HISTORY_TURNS * 2),
     { role: "user", content: text },
   ];

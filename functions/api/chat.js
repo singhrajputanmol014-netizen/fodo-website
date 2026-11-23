@@ -85,6 +85,37 @@ FORMAT (rendered in a small chat window)
 
 ${KNOWLEDGE}`;
 
+/* v55.18 per-reply hints worked out in code (models drift on these): the exact language/script to answer in, price questions
+   answered first, and the moment to ask for name + WhatsApp. Used by the website chat and the Instagram/Facebook/WhatsApp bot. */
+const HINGLISH_RE = /\b(hai|hain|kya|kitna|kitne|kitni|mujhe|mujhko|mera|meri|mere|aap|aapka|aapki|apna|apne|chahiye|karna|karwana|karwani|banwana|banwani|banana|nahi|nahin|haan|bhai|kaise|kab|kahan|lagega|lagegi|wala|wali|tum|hum|theek|thik|accha|achha|batao|bataiye|dijiye|kijiye|sakte|sakta|raha|rahe|kuch|bahut|abhi|kal|paise|dukan|dukaan)\b/i;
+const SCRIPTS = [[/[ऀ-ॿ]/, "the same language (Hindi or Marathi) in Devanagari script"], [/[਀-੿]/, "Punjabi in Gurmukhi script"], [/[ঀ-৿]/, "Bengali in Bengali script"],
+  [/[઀-૿]/, "Gujarati in Gujarati script"], [/[஀-௿]/, "Tamil in Tamil script"], [/[ఀ-౿]/, "Telugu in Telugu script"], [/[ಀ-೿]/, "Kannada in Kannada script"],
+  [/[ഀ-ൿ]/, "Malayalam in Malayalam script"], [/[଀-୿]/, "Odia in Odia script"], [/[؀-ۿ]/, "the same language (Urdu, Arabic or Persian) in Arabic script"]];
+export function languageHint(text) {
+  const t = String(text || "");
+  for (const [re, lang] of SCRIPTS) if (re.test(t)) return "Reply in " + lang + ", everyday spoken words.";
+  if (/[a-z]/i.test(t) && HINGLISH_RE.test(t)) return "The person wrote Hindi in English letters (Hinglish). Reply in natural Hinglish using ONLY English (Roman) letters. Do NOT write in Devanagari.";
+  if (/^[\s\W\d]*(hi+|hello+|hey+|hii+|yo|namaste|namaskar)[\s\W\d]*$/i.test(t)) return "Short greeting: reply in the same casual style (English or Hinglish), one line.";
+  return /[a-z]/i.test(t) ? "Reply in the same language they wrote in (for example English, Spanish, French), everyday words." : "";
+}
+const PRICE_RE = /\b(price|pricing|cost|costs|charges?|fees?|rate|rates|quote|quotation|kitna|kitne|kitni|kharcha|kharch|budget kya|package|packages|paisa|paise|lagega|lagegi)\b|कितना|कितने|कीमत|खर्च|दाम/i;
+const NEED_RE = /\b(website|site|web|ads?|advert|google ads|meta ads|facebook ads|leads?|seo|instagram|insta|social media|marketing|branding|logo|content|reels?|whatsapp|automation|chatbot|growth|sales|customers?|clinic|shop|store|dukan|dukaan|restaurant|cafe|gym|salon|business|company|brand|budget|quote)\b|वेबसाइट|बिज़नेस|बिजनेस|विज्ञापन|ਵੈਬਸਾਈਟ|ওয়েবসাইট|বিক্রি/i;
+export function turnHints(text, history, o) {
+  o = o || {}; const lines = [], lang = languageHint(text);
+  if (lang) lines.push("- Language: " + lang);
+  if (PRICE_RE.test(text)) lines.push("- They asked about price or cost: answer that FIRST in one simple line (no fixed price list, it depends on what they need, Anmol gives a fixed quote after a quick call; ad spend is separate). Never invent a number.");
+  const userTexts = (history || []).filter((h) => h && h.role === "user").map((h) => String(h.content || "")).concat([text]);
+  const asked = (history || []).some((h) => h && h.role === "assistant" && /whatsapp\s*(number|no\.?)|naam aur|name and (your )?whatsapp|नाम और|number share/i.test(String(h.content || "")));
+  const intent = NEED_RE.test(userTexts.join(" "));
+  if (!o.leadSaved && intent && (userTexts.length >= 2 || PRICE_RE.test(text))) {
+    lines.push(o.whatsapp
+      ? "- Lead: after helping in one line, ask for their name (and business name if not known) so Anmol can send a custom plan. You already have their number, never ask for it."
+      : asked ? "- Lead: you already asked for their name and WhatsApp number once. Do not ask again in this reply unless they show more interest; just help and keep the chat going."
+        : "- Lead: in THIS reply, after helping in one line, ask for their name and WhatsApp number so Anmol can send a custom plan and exact quote. Keep it friendly, one sentence.");
+  }
+  return lines.length ? "\n\n# FOR THIS REPLY (follow exactly)\n" + lines.join("\n") : "";
+}
+
 /* ---------- small helpers ---------- */
 const json = (body, status, headers) =>
   new Response(JSON.stringify(body), {
@@ -163,7 +194,7 @@ async function siteKnowledge(env, request, message) {
     "\n\n# RULES FOR THE GROWTH LAB\n- Quote Growth Lab prices exactly as listed above (they are live). Agency service pricing is different: fixed price after a free scoping call.\n- Never invent a feature, plan, discount or report result. If something is not listed, say you are not sure and point to /help/.\n- Link pages with Markdown, e.g. [Business X-Ray](/business-x-ray/), [Plans](/plans/), [Growth Lab](/growth-lab/)." };
 }
 
-function buildMessages(body, extra) {
+function buildMessages(body, extra, leadSaved) {
   const message = cleanText(body.message, MAX_MESSAGE);
   if (!message) return null;
   const history = [];
@@ -181,7 +212,7 @@ function buildMessages(body, extra) {
     ? `\n\n# NOTE\nThe visitor's latest message ("${message.replace(/"/g, "'")}") is a short reply to your previous message. Continue from that previous message; do not start over.`
     : "";
   return [
-    { role: "system", content: SYSTEM_PROMPT + (extra || "") + contextBlock(body.context, body.page) + followNote },
+    { role: "system", content: SYSTEM_PROMPT + (extra || "") + contextBlock(body.context, body.page) + followNote + turnHints(message, history, { leadSaved: !!leadSaved }) },
     ...history,
     { role: "user", content: message },
   ];
@@ -284,7 +315,7 @@ export async function onRequestPost(context) {
   const sid = String(body.sid || "").replace(/[^\w-]/g, "").slice(0, 40), msgText = cleanText(body.message, MAX_MESSAGE);
   let MD = null, contact = null, hadLead = false;
   try { MD = await import("../_lib/metadm.js"); contact = MD.findContact(msgText); if (sid && env.CHAT_KV) hadLead = !!(await env.CHAT_KV.get("dm:lead:website:" + sid)); } catch (e) { MD = null; }
-  const messages = buildMessages(body, K.text + (contact || hadLead ? LEAD_SAVED_NOTE : ""));
+  const messages = buildMessages(body, K.text + (contact || hadLead ? LEAD_SAVED_NOTE : ""), contact || hadLead);
   if (!messages) return json({ ok: false, code: "empty" }, 400, cors);
   const paid = !!(K.facts && K.facts.paid);   // v20.3: paying customers get higher limits and longer answers
 

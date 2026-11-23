@@ -10,7 +10,7 @@ import { onRequest as adminApi } from "../functions/api/admin/[[path]].js";
 import * as LI from "../functions/_lib/leadintel.js";
 import { onRequest as fileRoute } from "../functions/f/[token].js";
 import { logConvo } from "../functions/_lib/botlog.js";
-import { onRequestPost as chatPost, SYSTEM_PROMPT } from "../functions/api/chat.js";
+import { onRequestPost as chatPost, SYSTEM_PROMPT, turnHints } from "../functions/api/chat.js";
 import { _setLeadStore } from "../functions/_lib/metadm.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 console.log = ((orig) => (...a) => { if (typeof a[0] === "string" && a[0].charAt(0) === "{" && !process.env.DBG) return; orig(...a); })(console.log);
@@ -238,6 +238,8 @@ const tw = (await LP("bot-test", { platform: "website", text: "website banwana h
 ok(tw.ok && tw.reply && tw.sid && tw2.ok && tw2.reply && saved.length === 1 && mails.length >= 0, "Try the bot: website and WhatsApp replies come back, nothing is sent and no lead is saved");
 ok((await LP("bot-test", { platform: "website", text: "" })).status === 400 && (await LP("bot-test", { text: "hi" }, "v")).status === 403, "Try the bot needs a message and owner access");
 _setLeadStore();
+ok(/ONLY English \(Roman\) letters/.test(turnHints("website banwana hai kitna lagega", [])) && /answer that FIRST/.test(turnHints("website banwana hai kitna lagega", [])) && /Gurmukhi/.test(turnHints("ਮੈਨੂੰ ਵੈਬਸਾਈਟ ਚਾਹੀਦੀ ਹੈ", [])) && /Bengali script/.test(turnHints("আমার দোকানের ওয়েবসাইট চাই", [])), "per-reply hints: Hinglish stays in Roman letters, each Indian script is mirrored, price answered first");
+ok(/name and WhatsApp number/.test(turnHints("dental clinic hai Dwarka me", [{ role: "user", content: "website chahiye" }, { role: "assistant", content: "Sure" }])) && /never ask for it/.test(turnHints("budget 15k", [{ role: "user", content: "instagram handle karwana hai" }, { role: "assistant", content: "ok" }], { whatsapp: true })) && !/Lead:/.test(turnHints("ok thanks", [{ role: "user", content: "website chahiye" }], { leadSaved: true })), "lead ask by the 2nd message (WhatsApp: name only), never again once saved");
 const AJ2 = fs.readFileSync("js/admin.js", "utf8");
 ok(/"li-sent", "Sent & replies"/.test(AJ2) && /li\/replies-check/.test(AJ2) && /li\/bot-convos/.test(AJ2) && /Got a reply/.test(AJ2), "Admin has the Sent & replies page, Gmail check, Got a reply and Bot conversations");
 X("INSERT INTO camp_unsub (email, at, why) VALUES ('info@smiledental.in','2026-01-01','test')");

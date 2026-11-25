@@ -22,6 +22,7 @@ export async function onRequestPost(context) {
   if (!(await verifySignature(env, raw, request.headers.get("x-hub-signature-256")))) return text("bad signature", 401);
   let body; try { body = JSON.parse(raw); } catch (e) { return text("bad json", 400); }
   const events = parseEvents(env, body);
+  events.sort((a, b) => (a.att ? 1 : 0) - (b.att ? 1 : 0));   // v55.25 typed words first, a bare attachment after them
   const work = (async () => {
     for (const ev of events) {
       try { await handleEvent(env, ev); } catch (e) { console.error("fodo-dm error:", String((e && e.message) || e).slice(0, 200)); }

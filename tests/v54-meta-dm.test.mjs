@@ -18,7 +18,7 @@ globalThis.fetch = async (u, o = {}) => {
   return new Response("not mocked " + u, { status: 599 });
 };
 const SECRET = "app-secret-x";
-const env = { AI, CHAT_KV, META_APP_SECRET: SECRET, META_APP_ID: "111", META_WEBHOOK_VERIFY_TOKEN: "verify-me", META_PAGE_TOKEN: "page-token", META_PAGE_ID: "659006123960042", META_IG_ID: "17841476681882495" };
+const env = { AI, CHAT_KV, META_APP_SECRET: SECRET, META_APP_ID: "111", META_WEBHOOK_VERIFY_TOKEN: "verify-me", META_PAGE_TOKEN: "page-token", META_PAGE_ID: "659006123960042", META_IG_ID: "17841476681882495", META_ATT_WAIT_MS: "0" };
 const URL_ = "https://www.fodo.co.in/api/meta/webhook";
 const sign = (raw) => "sha256=" + createHmac("sha256", SECRET).update(raw).digest("hex");
 const post = async (body, o = {}) => {
@@ -145,5 +145,18 @@ ok(sent.length === k, "META_BOT_DISABLED=1: nothing is sent");
 ok(toDmText("**Hi**\n- one\n- two — three\n[WhatsApp](https://wa.me/917827007676)") === "Hi\none\ntwo, three\nWhatsApp: https://wa.me/917827007676", "Markdown, bullets and long dashes are stripped for DMs");
 ok(toDmText("a. ".repeat(600)).length <= 950, "replies are capped for Instagram's message limit");
 
+/* v55.25 a typed number plus the card Instagram adds, or a share sent with words: ONE reply, not two */
+{ const s0 = sent.length, T = 1795600000000;
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [
+    { sender: { id: "c1" }, recipient: { id: env.META_IG_ID }, timestamp: T, message: { mid: "c1a", attachments: [{ type: "template", payload: {} }] } },
+    { sender: { id: "c1" }, recipient: { id: env.META_IG_ID }, timestamp: T + 1, message: { mid: "c1b", text: "Anand 9876543210" } } ] }] });
+  ok(sent.length === s0 + 1, "number typed in Instagram + the card Instagram adds = one reply");
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "c2" }, recipient: { id: env.META_IG_ID }, timestamp: T + 10, message: { mid: "c2a", text: "dekho ye reel" } }] }] });
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "c2" }, recipient: { id: env.META_IG_ID }, timestamp: T + 4000, message: { mid: "c2b", attachments: [{ type: "share", payload: { url: "https://instagram.com/p/x" } }] } }] }] });
+  ok(sent.length === s0 + 2, "a reel shared seconds after typed words gets no second reply");
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "c3" }, recipient: { id: env.META_IG_ID }, timestamp: T + 20, message: { mid: "c3a", attachments: [{ type: "ig_reel", payload: { url: "https://instagram.com/reel/y" } }] } }] }] });
+  ok(sent.length === s0 + 3 && /shared a post or reel/.test(prompts[prompts.length - 1].slice(-1)[0].content), "a reel shared on its own still gets a reply");
+  const sys = prompts[prompts.length - 1][0].content;
+  ok(/Never promise a call or a reply at a set time/.test(sys), "the bot never promises a call 'abhi' or at a set time"); }
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

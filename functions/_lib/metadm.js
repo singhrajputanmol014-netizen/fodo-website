@@ -41,6 +41,7 @@ You are typing as the FODO team in DMs. Your two jobs: (1) answer ANY message he
 
 HOW TO WRITE
 - Short and natural, like a real person on Instagram: usually 15-70 words, 1-3 short lines. Never a wall of text.
+- Never promise a call or a reply at a set time ("abhi", "5 minute me", "today"): say Anmol will get in touch soon. Never say you already have their number unless the LEAD STATUS section says so.
 - Language: reply ONLY in the language and script the person used in their latest message, whatever it is (English, Hinglish, Hindi, Punjabi, Bengali, Marathi, Gujarati, Tamil, Telugu, Urdu, Arabic, Spanish...). Everyday spoken words, never formal or textbook words. If they switch language, switch with them. Never add a translation in brackets. Never mix two languages in one reply unless they did.
 - Natural Hinglish example: "Bilkul! Aapka business kis cheez ka hai aur kis city mein hai?" (not stiff textbook Hindi).
 - Use their first name sometimes if you know it. At most one emoji, only if they use emojis.
@@ -117,10 +118,10 @@ export function parseEvents(env, body) {
         continue;
       }
       if (own.has(from)) continue;
-      let text = typeof msg.text === "string" ? msg.text.trim() : "";
-      if (!text && Array.isArray(msg.attachments) && msg.attachments.length) text = describeAttachment(msg.attachments[0]);
+      let text = typeof msg.text === "string" ? msg.text.trim() : "", att = "";
+      if (!text && Array.isArray(msg.attachments) && msg.attachments.length) { att = String(msg.attachments[0].type || "other").toLowerCase().replace(/[^a-z_]/g, "").slice(0, 20); text = describeAttachment(msg.attachments[0]); }
       if (!from || !text) continue; // reactions, deleted or unsupported messages
-      out.push({ kind: "message", platform, sender: from, text: text.slice(0, MAX_IN), mid: msg.mid || "", ts: Number(ev.timestamp) || 0 });
+      out.push({ kind: "message", platform, sender: from, text: text.slice(0, MAX_IN), mid: msg.mid || "", ts: Number(ev.timestamp) || 0, att });
     }
   }
   return out;
@@ -163,11 +164,12 @@ function parseWhatsApp(env, body) {
 function describeAttachment(a) {
   const t = String((a && a.type) || "").toLowerCase();
   if (t === "like_heart") return "";   // a heart is a reaction, not a question
+  if (t === "template" || t === "fallback" || t === "contact" || t === "location") return "";   // v55.25 cards Instagram adds on its own (a typed number, email or link), not a share
   if (t === "story_mention") return "(The person mentioned FODO in their Instagram story.)";
   if (t === "image") return "(The person sent a photo you cannot see.)";
   if (t === "audio") return "(The person sent a voice note you cannot hear.)";
   if (t === "video") return "(The person sent a video you cannot watch.)";
-  if (t === "share" || t === "ig_reel" || t === "reel" || t === "ig_post" || t === "template") return "(The person shared a post or reel with FODO.)";
+  if (t === "share" || t === "ig_reel" || t === "reel" || t === "ig_post") return "(The person shared a post or reel with FODO.)";
   if (t === "file") return "(The person sent a file you cannot open.)";
   if (t === "sticker") return "(The person sent a sticker.)";
   return t ? "(The person sent a " + t.replace(/[^a-z_]/g, "") + ".)" : "";
@@ -342,6 +344,16 @@ async function handleEventInner(env, ev) {
     return "paused";
   }
   if (ev.ts) await kvPut(env, lastKey, String(ev.ts), 86400);
+  /* v55.25 an attachment with no words (a share, photo, sticker) that comes with a typed message, before or after it, gets no
+     separate reply: Instagram sends these as their own events and the bot used to answer the typed message AND the attachment. */
+  const textKey = "dm:lasttext:" + ev.platform + ":" + ev.sender;
+  if (!ev.att && ev.ts) await kvPut(env, textKey, String(ev.ts), 3600);
+  if (ev.att && ev.kind === "message") {
+    const near = async () => { const t = Number(await kvGet(env, textKey)) || 0; return t && ev.ts && Math.abs(ev.ts - t) < 120000; };
+    if (await near()) { await cvLog(env, ev, { in: ev.text + " [" + ev.att + ", came with a typed message, no reply]" }); return "attachment_with_text"; }
+    const wait = Math.max(0, parseInt(env.META_ATT_WAIT_MS == null ? "9000" : env.META_ATT_WAIT_MS, 10) || 0);
+    if (wait) { await new Promise((z) => setTimeout(z, wait)); if (await near()) { await cvLog(env, ev, { in: ev.text + " [" + ev.att + ", came with a typed message, no reply]" }); return "attachment_with_text"; } }
+  }
   if (String(env.META_BOT_DISABLED || "") === "1") { await cvLog(env, ev, { in: ev.text, state: "off" }); return "disabled"; }
   const wa = ev.platform === "whatsapp", waPhone = wa ? String(ev.waPhoneId || env.META_WA_PHONE_ID || "") : "";
   if (wa ? !(env.META_WA_TOKEN && waPhone) : !env.META_PAGE_TOKEN) return "no_token";

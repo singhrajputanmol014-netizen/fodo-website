@@ -203,6 +203,11 @@ ok(PLANS.agency.features.filter((f) => ["fixPack", "battleCards", "roadmap90", "
 const ownerC = (await call(env, "google", { credential: await gToken({ sub: "own2", email: "singhrajputanmol014@gmail.com" }) }, { cookie: "", ip: "6.6.6.1", noKeep: false }), cookie);
 const proC = (await call(env, "google", { credential: await gToken({ sub: "pro9", email: "proguy@gmail.com" }) }, { cookie: "", ip: "6.6.6.2" }), cookie);
 r = await call(env, "admin/overview", undefined, { cookie: proC }); ok(r.status === 403 && r.j.forbidden, "normal user cannot open the admin dashboard");
+/* v55.26: these orders went through the Cashfree sandbox, so they are test orders and never count as revenue. Turn them into
+   live-key orders to check the revenue numbers (behaviour intentionally changed in v55.26). */
+ok(D.db.prepare("SELECT count(*) n FROM acct_orders WHERE test IS NULL OR test != 1").get().n === 0, "sandbox orders are recorded as test orders");
+{ const o = await call(env, "admin/overview", undefined, { cookie: ownerC }); ok(o.j.ok && o.j.money.revenue === 0, "test orders are not counted as revenue"); }
+D.db.prepare("UPDATE acct_orders SET test=0").run();
 r = await call(env, "admin/overview", undefined, { cookie: ownerC });
 ok(r.j.ok && r.j.role === "owner" && r.j.users.total >= 6 && r.j.runs.total >= 5 && r.j.money.revenue >= 1499 && r.j.days.length === 30 && r.j.series.xrays.length === 30 && r.j.features.some((f) => f.kind === "xray_start") && r.j.funnel.signed === r.j.users.total, "owner overview: users " + r.j.users.total + ", X-Rays " + r.j.runs.total + ", revenue ₹" + r.j.money.revenue + ", 30-day series, feature usage, funnel");
 r = await call(env, "admin/users?q=rohit", undefined, { cookie: ownerC }); const rohit = r.j.items[0];

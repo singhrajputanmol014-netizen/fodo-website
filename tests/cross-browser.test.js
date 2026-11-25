@@ -13,7 +13,7 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
 (async () => {
   stop();
   const src = fs.readFileSync(path.join(__dirname, "xray-fixtures/env.sh"), "utf8"), map = JSON.parse(/MAP='(.*)'\s*$/m.exec(src)[1].replace(/'\$F'/g, F));
-  const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER: process.env.WRANGLER, STATE: path.join(os.tmpdir(), "xb-" + process.pid), MAPX: JSON.stringify(map), EXTRA: "--binding ACCOUNTS_ENABLED=1" });
+  const r = sh("bash", [path.join(__dirname, "xray-fixtures/run-local.sh"), "100"], { WRANGLER: process.env.WRANGLER, STATE: path.join(os.tmpdir(), "xb-" + process.pid), MAPX: JSON.stringify(map), EXTRA: "--binding ACCOUNTS_ENABLED=1" });
   if (!/READY/.test(r.stdout)) { console.log(r.stdout, r.stderr); process.exit(1); }
   const want = (process.env.BROWSERS || "chromium,firefox,webkit").split(",").map((x) => x.trim()).filter(Boolean);
   for (const name of want) {

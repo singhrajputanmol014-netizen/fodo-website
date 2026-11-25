@@ -16,7 +16,7 @@
 import * as RP from "../../_lib/replay.js";
 import { PRODUCTS } from "../../_lib/products.js";
 import { waOn, verifyFirebase, firebaseOn, logEvent, EVENT_KINDS, isOwner, OWNER_EMAILS, json, accountsOn, db, count, ipHash, sessionUser, newSession, endSession, sameOrigin, userByEmail, createUser, cleanEmail, billingUser, activePlan, publicUser, builderTier,
-  verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, payOn, payProvider, rzp, rzpOn, rzpMode, rzpVerifyWebhook, rzpVerifyPayment, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
+  verifyGoogle, sendMail, otpHash, cfOn, cf, verifyWebhook, settleOrder, payOn, payProvider, rzp, rzpOn, rzpMode, payTest, rzpVerifyWebhook, rzpVerifyPayment, grantPlan, randId, sha256, nowIso, refundCredit } from "../../_lib/accounts.js";
 import { PLANS, PACKS, rank, has, publicPlans, BUILDER, BUILDER_SELL, builderRank, publicBuilder } from "../../_lib/plans.js";
 import { log, providers, outbound } from "../../_lib/xray-core.js";
 import { applyConfig } from "../../_lib/config.js";
@@ -262,7 +262,7 @@ async function checkout(request, env, u, b, body) {
   if (payProvider(env) === "razorpay") {   // Razorpay Standard Checkout: server creates the order, the page opens Razorpay's popup
     const oid = "fo_" + randId(20), what = ("FODO " + (kind === "milestone" ? "Pros milestone: " + thing.name : kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200);
     const o = await rzp(env, "POST", "/orders", { amount: Math.round(thing.price * 100), currency: "INR", receipt: oid, notes: { kind, item, user: b.id.slice(0, 40) } });
-    await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.id), nowIso()).run();
+    await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at, test) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7,?8)").bind(oid, b.id, kind, item, thing.price, String(o.id), nowIso(), payTest(env)).run();
     return json({ ok: true, provider: "razorpay", orderId: oid, rzpOrderId: o.id, keyId: env.RAZORPAY_KEY_ID, amount: o.amount, currency: "INR", description: what, mode: rzpMode(env),
       prefill: { name: cust.customer_name, email: b.email, contact: phone }, returnUrl: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : kind === "milestone" ? "/workspace/?order_id=" : "/account/?order_id=") + oid });
   }
@@ -280,7 +280,7 @@ async function checkout(request, env, u, b, body) {
   const o = await cf(env, "POST", "/orders", { order_id: oid, order_amount: thing.price, order_currency: "INR", customer_details: cust,
     order_meta: { return_url: site + (kind === "tool" ? "/growth-lab/" + item + "/?order_id=" : kind === "milestone" ? "/workspace/?order_id=" : "/account/?order_id=") + oid, notify_url: site + "/api/account/webhook/cashfree" }, order_note: ("FODO " + (kind === "milestone" ? "Pros milestone: " + thing.name : kind === "builder" ? thing.name + ", 1 month" : "Growth Lab " + (kind === "pack" ? thing.name + " pack" : kind === "tool" ? thing.name + ", 1 run" : thing.name + ", 1 month"))).slice(0, 200),
     order_tags: { kind, item, user: b.id.slice(0, 40) } }, oid);
-  await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7)").bind(oid, b.id, kind, item, thing.price, String(o.cf_order_id || ""), nowIso()).run();
+  await d.prepare("INSERT INTO acct_orders (order_id, user_id, kind, item, amount, status, cf_order_id, created_at, test) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7,?8)").bind(oid, b.id, kind, item, thing.price, String(o.cf_order_id || ""), nowIso(), payTest(env)).run();
   return json({ ok: true, paymentSessionId: o.payment_session_id, orderId: oid, mode: env.CASHFREE_ENV === "production" ? "production" : "sandbox" });
 }
 /* subscription: ACTIVE → first month; each later successful charge → one more month (idempotent by Cashfree payment id) */

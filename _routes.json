@@ -1,1 +1,1 @@
-{ "version": 1, "include": ["/api/*", "/CLAUDE.md", "/l/*", "/approve/*", "/f/*"], "exclude": [] }
+{"version": 1, "include": ["/api/*", "/CLAUDE.md", "/l/*", "/approve/*", "/f/*", "/docs/*", "/tests/*", "/scripts/*", "/runner/*", "/functions/*", "/.github/*", "/.wrangler/*", "/docs", "/tests", "/scripts", "/runner", "/functions", "/.github", "/README.md", "/BOT-README.md", "/DEPLOY-GUIDE.md", "/DESIGN-NOTES.md", "/QA-report.md", "/VOICE-README.md", "/wrangler.toml", "/package.json", "/.gitignore", "/VERSION", "/data/reviews.csv", "/data/seo-lastmod.json"], "exclude": []}

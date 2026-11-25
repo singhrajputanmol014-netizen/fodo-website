@@ -38,7 +38,9 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS acct_wa (code TEXT PRIMARY KEY, poll_hash TEXT, phone TEXT, created INTEGER, expires INTEGER, used INTEGER DEFAULT 0)",
 ];
 // columns added after v13 went live (ALTER fails harmlessly when the column already exists)
-const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN deleted_at TEXT", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT", "ALTER TABLE acct_users ADD COLUMN builder_plan TEXT", "ALTER TABLE acct_users ADD COLUMN builder_until TEXT"];
+const MIGRATE = ["ALTER TABLE acct_users ADD COLUMN blocked INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN deleted_at TEXT", "ALTER TABLE acct_users ADD COLUMN unlimited INTEGER DEFAULT 0", "ALTER TABLE acct_users ADD COLUMN extra_features TEXT", "ALTER TABLE acct_users ADD COLUMN admin_note TEXT", "ALTER TABLE acct_runs ADD COLUMN features TEXT", "ALTER TABLE acct_users ADD COLUMN fb_uid TEXT", "ALTER TABLE acct_users ADD COLUMN login_via TEXT", "ALTER TABLE acct_users ADD COLUMN wa_phone TEXT", "ALTER TABLE acct_runs ADD COLUMN completeness INTEGER", "ALTER TABLE acct_runs ADD COLUMN duration_ms INTEGER", "ALTER TABLE acct_runs ADD COLUMN share TEXT", "ALTER TABLE acct_runs ADD COLUMN share_until TEXT", "ALTER TABLE acct_runs ADD COLUMN qc TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_note TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_by TEXT", "ALTER TABLE acct_runs ADD COLUMN qc_at TEXT", "ALTER TABLE acct_users ADD COLUMN builder_plan TEXT", "ALTER TABLE acct_users ADD COLUMN builder_until TEXT",
+  /* v55.26 test orders: made against a payment sandbox, never counted as revenue. Every order before v55.26 was a sandbox order (live keys were never set). */
+  "ALTER TABLE acct_orders ADD COLUMN test INTEGER", "UPDATE acct_orders SET test=1 WHERE test IS NULL"];
 /* Table setup runs once per worker instance. It is NOT shared as a promise between requests: on Cloudflare Workers a request
    that awaits a promise created by ANOTHER request can hang forever (that was the Brain's "Loading…" / "timeout at session").
    Each request awaits its own (idempotent) setup until one has finished; then everyone skips it. */
@@ -164,6 +166,17 @@ export async function spendCredit(env, b, jobId) {
   await d.prepare("INSERT OR IGNORE INTO acct_ledger (user_id, kind, delta, ref, note, created_at) VALUES (?1,?2,-1,?3,'X-Ray',?4)").bind(b.id, kind, "run:" + jobId, nowIso()).run();
   return { tier, kind };
 }
+/* v55.26: an X-Ray run still "running" hours after it started can never finish (the tab closed, no background runner).
+   The hourly tick returns its credit (refundCredit is idempotent) or, when nothing was charged, marks it expired. */
+export async function expireStuckRuns(env, hours) {
+  const d = await db(env), cut = new Date(Date.now() - (hours || 3) * 3600e3).toISOString(); let refunded = 0, expired = 0;
+  const rows = ((await d.prepare("SELECT * FROM acct_runs WHERE status='running' AND created_at < ?1 ORDER BY created_at LIMIT 50").bind(cut).all()).results) || [];
+  for (const r of rows) {
+    let ok = false; try { ok = await refundCredit(env, r); } catch (e) {}
+    if (ok) refunded++; else { const u = await d.prepare("UPDATE acct_runs SET status='expired' WHERE job_id=?1 AND status='running'").bind(r.job_id).run(); if (u.meta && u.meta.changes) expired++; }
+  }
+  return { checked: rows.length, refunded, expired };
+}
 export async function refundCredit(env, run) {
   const d = await db(env);
   if (/^tool:/.test(run.credit || "")) {   // v18: a bought tool run comes back as a tool run
@@ -275,8 +288,15 @@ export async function sendMail(env, to, subject, html, text, opt) {
   const from = opt.from || env.MAIL_FROM || "FODO <login@fodo.co.in>", secret = /login code/i.test(subject);
   const logText = secret ? "[login code — not stored]" : String(text || String(html || "").replace(/<[^>]+>/g, " ")).replace(/\s+\n/g, "\n").slice(0, 20000);
   if (!env.RESEND_API_KEY) {
-    /* v55.25: internal alerts to a FODO owner go out through the connected Gmail mailbox (anmol@fodo.co.in) when no mail provider is set */
-    if (OWNER_EMAILS.indexOf(String(to || "").toLowerCase()) > -1 && !secret && !opt.noGmail) { try { return await (await import("./sinbox.js")).selfMail(env, to, subject, String(text || String(html || "").replace(/<br\s*\/?>|<\/(p|tr|div|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s+/g, "\n")).trim(), html, opt.kind); } catch (e) { await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, status: "failed", error: "gmail: " + String((e && e.message) || e).slice(0, 160), by: opt.by }); throw e; } }
+    /* v55.25: internal alerts to a FODO owner go out through the connected Gmail mailbox (anmol@fodo.co.in) when no mail provider is set.
+       v55.26: every other non-secret email too (help desk replies, Studio keys, receipts) when that mailbox is connected; login codes
+       and mail with attachments never go this way. */
+    const owner = OWNER_EMAILS.indexOf(String(to || "").toLowerCase()) > -1;
+    let viaGmail = owner && !secret && !opt.noGmail;
+    if (!viaGmail && !secret && !opt.noGmail && !(opt.attachments && opt.attachments.length) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || ""))) {
+      try { viaGmail = !!(await (await import("./sinbox.js")).status(env)).connected; } catch (e) { viaGmail = false; }
+    }
+    if (viaGmail) { try { return await (await import("./sinbox.js")).selfMail(env, to, subject, String(text || String(html || "").replace(/<br\s*\/?>|<\/(p|tr|div|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s+/g, "\n")).trim(), html, opt.kind); } catch (e) { await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, status: "failed", error: "gmail: " + String((e && e.message) || e).slice(0, 160), by: opt.by }); throw e; } }
     await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, ticket: opt.ticket, status: "not sent", error: "email not configured (RESEND_API_KEY)", by: opt.by }); throw new Error("email not configured"); }
   const body = { from, to: [to], subject, html, text };
   if (opt.replyTo) body.reply_to = opt.replyTo;
@@ -302,6 +322,8 @@ export function payProvider(env) {
   return rzpOn(env) ? "razorpay" : cfOn(env) ? "cashfree" : null;
 }
 export const payOn = (env) => !!payProvider(env);
+/* v55.26: 1 when payments run against a sandbox (Cashfree sandbox or Razorpay rzp_test_ keys): such orders are test orders */
+export const payTest = (env) => ((payProvider(env) === "razorpay" ? rzpMode(env) : (env.CASHFREE_ENV === "production" ? "production" : "sandbox")) === "sandbox" ? 1 : 0);
 export const rzpMode = (env) => (/^rzp_live_/.test(env.RAZORPAY_KEY_ID || "") ? "production" : "sandbox");
 export async function rzp(env, method, path, body) {
   const r = await outbound(env)("https://api.razorpay.com/v1" + path, { method, headers: { authorization: "Basic " + btoa(env.RAZORPAY_KEY_ID + ":" + env.RAZORPAY_KEY_SECRET), "content-type": "application/json", accept: "application/json" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });

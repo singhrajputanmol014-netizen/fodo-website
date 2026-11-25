@@ -299,19 +299,19 @@ async function overview(d) {
   const [U, R, O, act7, act1, plans, series, sRuns, sLogins, sRev, feats, doms, tiers, recent, funnel, owners] = await Promise.all([
     one(d, "SELECT count(*) total, sum(created_at >= ?1) new7, sum(created_at >= ?2) new30, sum(blocked = 1) blocked, sum(plan != 'free' AND plan_until > ?3) paid, sum(unlimited = 1) gifted FROM acct_users", d7, d30, now),
     one(d, "SELECT count(*) total, sum(created_at >= ?1) last7, sum(status = 'COMPLETE') done, sum(status = 'refunded') refunded, round(avg(score)) avgScore FROM acct_runs", d7),
-    one(d, "SELECT count(*) paidOrders, coalesce(sum(amount),0) revenue, coalesce(sum(CASE WHEN substr(paid_at,1,7) = ?1 THEN amount END),0) month FROM acct_orders WHERE status = 'PAID'", m0),
+    one(d, "SELECT count(*) paidOrders, coalesce(sum(amount),0) revenue, coalesce(sum(CASE WHEN substr(paid_at,1,7) = ?1 THEN amount END),0) month FROM acct_orders WHERE status='PAID' AND coalesce(test,0)=0", m0),
     one(d, "SELECT count(DISTINCT user_id) n FROM acct_events WHERE created_at >= ?1", d7),
     one(d, "SELECT count(DISTINCT user_id) n FROM acct_events WHERE created_at >= ?1", daysAgo(1)),
     all(d, "SELECT CASE WHEN plan != 'free' AND plan_until > ?1 THEN plan ELSE 'free' END p, count(*) n FROM acct_users GROUP BY p", now),
     all(d, "SELECT substr(created_at,1,10) day, count(*) n FROM acct_users WHERE created_at >= ?1 GROUP BY day", d30),
     all(d, "SELECT substr(created_at,1,10) day, count(*) n FROM acct_runs WHERE created_at >= ?1 GROUP BY day", d30),
     all(d, "SELECT substr(created_at,1,10) day, count(DISTINCT user_id) n FROM acct_events WHERE created_at >= ?1 AND kind LIKE 'login_%' GROUP BY day", d30),
-    all(d, "SELECT substr(paid_at,1,10) day, sum(amount) n FROM acct_orders WHERE status='PAID' AND paid_at >= ?1 GROUP BY day", d30),
+    all(d, "SELECT substr(paid_at,1,10) day, sum(amount) n FROM acct_orders WHERE status='PAID' AND coalesce(test,0)=0 AND paid_at >= ?1 GROUP BY day", d30),
     all(d, "SELECT kind, count(*) n, count(DISTINCT user_id) users FROM acct_events WHERE created_at >= ?1 GROUP BY kind ORDER BY n DESC", d30),
     all(d, "SELECT domain, count(*) n, round(avg(score)) score, max(created_at) last FROM acct_runs GROUP BY domain ORDER BY n DESC LIMIT 12"),
     all(d, "SELECT tier, count(*) n FROM acct_runs GROUP BY tier"),
     all(d, "SELECT e.kind, e.detail, e.created_at, u.email, u.phone, u.name, u.id AS uid FROM acct_events e LEFT JOIN acct_users u ON u.id = e.user_id ORDER BY e.id DESC LIMIT 40"),
-    one(d, "SELECT (SELECT count(*) FROM acct_users) signed, (SELECT count(DISTINCT user_id) FROM acct_runs) ran1, (SELECT count(*) FROM (SELECT user_id FROM acct_runs GROUP BY user_id HAVING count(*) >= 2)) ran2, (SELECT count(DISTINCT user_id) FROM acct_events WHERE kind='limit_hit') limited, (SELECT count(DISTINCT user_id) FROM acct_orders WHERE status='PAID') paid"),
+    one(d, "SELECT (SELECT count(*) FROM acct_users) signed, (SELECT count(DISTINCT user_id) FROM acct_runs) ran1, (SELECT count(*) FROM (SELECT user_id FROM acct_runs GROUP BY user_id HAVING count(*) >= 2)) ran2, (SELECT count(DISTINCT user_id) FROM acct_events WHERE kind='limit_hit') limited, (SELECT count(DISTINCT user_id) FROM acct_orders WHERE status='PAID' AND coalesce(test,0)=0) paid"),
     one(d, "SELECT 1 x"),
   ]);
   const days = []; for (let i = 29; i >= 0; i--) days.push(daysAgo(i).slice(0, 10));
@@ -326,7 +326,7 @@ async function users(d, s, offset, filter, everyone) {
   if (filter === "gifted") where.push("(u.unlimited = 1 OR (u.extra_features IS NOT NULL AND u.extra_features != '[]'))");
   args.push(offset);
   return all(d, "SELECT u.id, u.email, u.name, u.phone, u.login_via, u.picture, u.plan, u.plan_until, u.monthly_left, u.pack_left, u.free_left, u.blocked, u.unlimited, u.extra_features, u.created_at, u.last_login, " +
-    "(SELECT count(*) FROM acct_runs r WHERE r.user_id = u.id) runs, (SELECT count(*) FROM acct_events e WHERE e.user_id = u.id) events, (SELECT coalesce(sum(amount),0) FROM acct_orders o WHERE o.user_id = u.id AND o.status='PAID') paid " +
+    "(SELECT count(*) FROM acct_runs r WHERE r.user_id = u.id) runs, (SELECT count(*) FROM acct_events e WHERE e.user_id = u.id) events, (SELECT coalesce(sum(amount),0) FROM acct_orders o WHERE o.user_id = u.id AND o.status='PAID' AND coalesce(o.test,0)=0) paid " +
     "FROM acct_users u" + (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY coalesce(u.last_login, u.created_at) DESC LIMIT " + (everyone ? 5000 : 100) + " OFFSET ?" + args.length, ...args);
 }
 async function userDetail(d, id, role) {
@@ -346,7 +346,7 @@ async function userDetail(d, id, role) {
 /* people who ran out of free X-Rays (or hit the hourly limit) and have not paid, warm sales leads */
 async function leads(d) {
   return all(d, "SELECT u.id, u.email, u.name, u.phone, u.created_at, max(e.created_at) last_hit, count(e.id) hits, (SELECT count(*) FROM acct_runs r WHERE r.user_id = u.id) runs, (SELECT group_concat(DISTINCT r.domain) FROM acct_runs r WHERE r.user_id = u.id) domains " +
-    "FROM acct_events e JOIN acct_users u ON u.id = e.user_id WHERE e.kind = 'limit_hit' AND NOT EXISTS (SELECT 1 FROM acct_orders o WHERE o.user_id = u.id AND o.status = 'PAID') GROUP BY u.id ORDER BY last_hit DESC LIMIT 200");
+    "FROM acct_events e JOIN acct_users u ON u.id = e.user_id WHERE e.kind = 'limit_hit' AND NOT EXISTS (SELECT 1 FROM acct_orders o WHERE o.user_id = u.id AND o.status='PAID' AND coalesce(o.test,0)=0) GROUP BY u.id ORDER BY last_hit DESC LIMIT 200");
 }
 
 /* ---------- v17: API cost + profitability (prompt §57–59, §105), estimates are labelled; revenue is real paid orders ---------- */
@@ -354,7 +354,7 @@ async function costs(env, d, days) {
   const U = await usageReport(env, days); if (!U.ok) return U;
   const rate = usdInr(env), since = U.since + "T00:00:00.000Z";
   const runs = (await d.prepare("SELECT job_id, domain, tier, credit, user_id, created_at, status, completeness FROM acct_runs WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT 2000").bind(since).all()).results || [];
-  const orders = (await d.prepare("SELECT kind, item, amount FROM acct_orders WHERE status='PAID' AND paid_at >= ?1").bind(since).all()).results || [];
+  const orders = (await d.prepare("SELECT kind, item, amount FROM acct_orders WHERE status='PAID' AND coalesce(test,0)=0 AND paid_at >= ?1").bind(since).all()).results || [];
   const byJob = {}; U.perJob.forEach((j) => { byJob[j.job_id] = j; });
   const revenue = orders.reduce((s, o) => s + (+o.amount || 0), 0), apiUsd = +U.totals.cost || 0, apiInr = apiUsd * rate;
   const paidRuns = runs.filter((r) => r.credit === "monthly" || r.credit === "pack").length, freeRuns = runs.filter((r) => r.credit === "free").length, giftRuns = runs.filter((r) => r.credit === "owner" || r.credit === "gift").length;
@@ -434,7 +434,7 @@ async function labStats(env, d, days) {
     return { id, name, path, views, started, completed: done, loggedInUses: li.n, users: li.users, completionRate: views ? Math.round(done / views * 1000) / 10 : null, avgTimeSec: g("tcnt", path) ? Math.round(g("tsum", path) / g("tcnt", path)) : null }; });
   const R = await safeOne(d, "SELECT count(*) runs, sum(status='COMPLETE') done, sum(status='refunded') refunded, sum(status='running' AND created_at < ?2) stuck, round(avg(score)) avgScore, round(avg(completeness)) avgData, round(avg(duration_ms)/1000) avgSec, count(DISTINCT user_id) users, count(DISTINCT domain) sites, sum(credit IN ('monthly','pack')) paid, sum(credit='free') free, sum(credit IN ('owner','gift')) gift, sum(qc='verified') verified, sum(qc='needs_review') review, sum(qc='failed') qcFailed FROM acct_runs WHERE created_at >= ?1", since, daysAgo(1 / 24));
   const tiers = await safeAll(d, "SELECT tier, count(*) n, round(avg(score)) score, round(avg(completeness)) data FROM acct_runs WHERE created_at >= ?1 GROUP BY tier ORDER BY n DESC", since);
-  const O = await safeOne(d, "SELECT count(*) n, coalesce(sum(amount),0) revenue, sum(kind='plan') plans, sum(kind='pack') packs FROM acct_orders WHERE status='PAID' AND paid_at >= ?1", since);
+  const O = await safeOne(d, "SELECT count(*) n, coalesce(sum(amount),0) revenue, sum(kind='plan') plans, sum(kind='pack') packs FROM acct_orders WHERE status='PAID' AND coalesce(test,0)=0 AND paid_at >= ?1", since);
   const S = await safeOne(d, "SELECT count(*) n FROM acct_users WHERE created_at >= ?1", since);
   const industries = await safeAll(d, "SELECT coalesce(NULLIF(b.industry,''),'(unknown)') k, count(*) n FROM xray_businesses b JOIN acct_runs r ON r.job_id = b.job_id WHERE r.created_at >= ?1 GROUP BY k ORDER BY n DESC LIMIT 15", since);
   const locations = await safeAll(d, "SELECT coalesce(NULLIF(b.location,''),'(unknown)') k, count(*) n FROM xray_businesses b JOIN acct_runs r ON r.job_id = b.job_id WHERE r.created_at >= ?1 GROUP BY k ORDER BY n DESC LIMIT 15", since);
@@ -447,7 +447,7 @@ async function labStats(env, d, days) {
     ["Got a report", R.done || 0, "X-Rays completed"], ["Started monitoring", E("monitor_add").n, "Websites added to monitoring"], ["Asked FODO for help", leads, "Contact, WhatsApp, call, booking and lead-form actions"]].map((x) => ({ step: x[0], n: x[1], note: x[2] }));
   // v18 standalone tools: runs (reused vs fresh scan), bought runs and revenue per tool
   const TR = await safeAll(d, "SELECT tool, source, status, reused, COUNT(*) n FROM lab_tool_runs WHERE created_at >= ?1 GROUP BY tool, source, status, reused", since);
-  const TO = await safeAll(d, "SELECT item, COUNT(*) n, SUM(amount) amt FROM acct_orders WHERE kind='tool' AND status='PAID' AND created_at >= ?1 GROUP BY item", since);
+  const TO = await safeAll(d, "SELECT item, COUNT(*) n, SUM(amount) amt FROM acct_orders WHERE kind='tool' AND status='PAID' AND coalesce(test,0)=0 AND created_at >= ?1 GROUP BY item", since);
   const products = Object.keys(PRODUCTS).map((id) => { const r = TR.filter((x) => x.tool === id), o = TO.filter((x) => x.item === id)[0] || {}, sum = (f) => r.filter(f).reduce((a, x) => a + x.n, 0);
     return { id, name: PRODUCTS[id].name, price: PRODUCTS[id].price, on: PRODUCTS[id].on !== false, runs: sum(() => true), reused: sum((x) => x.reused === 1), fresh: sum((x) => x.reused !== 1), done: sum((x) => x.status === "done"), viaPlan: sum((x) => x.source === "included" || x.source === "xray"), bought: o.n || 0, revenue: o.amt || 0 }; });
   return { days, since: sinceDay, products, tools, xray: Object.assign({}, R, { starts: E("xray_start").n, limitHits: E("limit_hit"), exportsPdf: E("export_pdf").n, exportsXlsx: E("export_xlsx").n, shares: E("share").n }), tiers, money: O, signups: S.n || 0, industries, locations,
@@ -507,7 +507,7 @@ async function promptsList(env, d) {
 /* next best actions for the FODO team (rule-based, from the data) */
 async function insights(env, d) {
   const out = [], add = (level, title, detail, link) => out.push({ level, title, detail, link });
-  const lim = await safeOne(d, "SELECT count(DISTINCT e.user_id) n FROM acct_events e LEFT JOIN acct_orders o ON o.user_id = e.user_id AND o.status='PAID' WHERE e.kind='limit_hit' AND e.created_at >= ?1 AND o.order_id IS NULL", daysAgo(30));
+  const lim = await safeOne(d, "SELECT count(DISTINCT e.user_id) n FROM acct_events e LEFT JOIN acct_orders o ON o.user_id = e.user_id AND o.status='PAID' AND coalesce(o.test,0)=0 WHERE e.kind='limit_hit' AND e.created_at >= ?1 AND o.order_id IS NULL", daysAgo(30));
   if (lim.n) add("money", lim.n + " user(s) ran out of free X-Rays and have not paid", "Send them a plan or pack offer, they already saw the value.", "users");
   const low = await safeOne(d, "SELECT count(*) n FROM acct_runs WHERE status='COMPLETE' AND completeness < 60 AND created_at >= ?1 AND (qc IS NULL OR qc='')", daysAgo(30));
   if (low.n) add("quality", low.n + " report(s) with data completeness under 60% not reviewed", "Open them in Quality, usually a missing data source or a site that blocks readers.", "quality");

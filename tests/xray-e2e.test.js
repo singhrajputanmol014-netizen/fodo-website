@@ -13,7 +13,7 @@ const STATE = path.join(os.tmpdir(), "xray-e2e-state-" + process.pid);
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 const sh = (cmd, args, env) => spawnSync(cmd, args, { env: Object.assign({}, process.env, env || {}), encoding: "utf8" });
 const stop = () => { sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 8788|[w]orkerd serve'); do kill $p; done; sleep 1; true"]); };
-const start = (perHour) => { stop(); const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), [String(perHour || 100)], { WRANGLER, STATE }); if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
+const start = (perHour) => { stop(); const r = sh("bash", [path.join(__dirname, "xray-fixtures/run-local.sh"), String(perHour || 100)], { WRANGLER, STATE }); if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
 const bodies = [];   // every response body the browser receives, scanned for the secret
 
 async function newCtx(b, opt) {

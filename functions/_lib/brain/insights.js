@@ -10,7 +10,8 @@ import { OWNER_EMAILS, sha256, randId } from "../accounts.js";
 
 async function upsertAlert(env, a) {
   const d = await brainDb(env), now = nowIso(), key = a.key + "|" + istDay();
-  const ex = await d.prepare("SELECT id, status FROM brain_alerts WHERE akey=?1").bind(key).first();
+  /* v55.26: one open alert per problem, not one per day: a still-open alert from an earlier day is refreshed instead of repeated */
+  const ex = (await d.prepare("SELECT id, status FROM brain_alerts WHERE akey=?1").bind(key).first()) || (await d.prepare("SELECT id, status FROM brain_alerts WHERE status='open' AND substr(akey, 1, ?2)=?1 ORDER BY created_at DESC LIMIT 1").bind(a.key + "|", (a.key + "|").length).first());
   if (ex) { await d.prepare("UPDATE brain_alerts SET reason=?2, evidence=?3, updated_at=?4 WHERE id=?1").bind(ex.id, a.reason, a.evidence, now).run(); return ex.id; }
   const id = "al_" + rid(10);
   await d.prepare("INSERT INTO brain_alerts (id, akey, severity, title, reason, evidence, action, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'open',?8,?8)").bind(id, key, a.severity, clip(a.title, 160), clip(a.reason, 500), clip(a.evidence, 800), clip(a.action, 300), now).run();
@@ -40,6 +41,8 @@ export async function scan(ctx, health, today) {
     const rv = today.revenueINR && today.revenueINR.daily; if (rv && rv.today > 0) push({ key: "revenue-today", severity: "info", title: "₹" + rv.today.toLocaleString("en-IN") + " revenue today", reason: "New paid orders today.", evidence: "acct_orders", action: "Welcome the new customers." });
   }
   for (const a of found) await upsertAlert(env, a);
+  /* v55.26: an alert this scan no longer finds (not refreshed for 2 days) closes itself; duplicates from earlier days close the same way */
+  try { await (await brainDb(env)).prepare("UPDATE brain_alerts SET status='auto-closed', updated_at=?2 WHERE status='open' AND coalesce(evidence,'') NOT IN ('automation','tasks') AND substr(akey,1,5) != 'auto|' AND updated_at < ?1").bind(new Date(Date.now() - 2 * 864e5).toISOString(), nowIso()).run(); } catch (e) {}
   return found;
 }
 

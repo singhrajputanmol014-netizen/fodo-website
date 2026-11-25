@@ -23,7 +23,7 @@ const stop = () => sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --port 
   /* ---------- runtime ---------- */
   stop();
   const src = fs.readFileSync(path.join(__dirname, "xray-fixtures/env.sh"), "utf8"), map = JSON.parse(/MAP='(.*)'\s*$/m.exec(src)[1].replace(/'\$F'/g, F));
-  const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER: process.env.WRANGLER, STATE: path.join(os.tmpdir(), "csp51-" + process.pid), MAPX: JSON.stringify(map), EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding PAYOUT_ENC_KEY=vis-key-0123456789abcdef" });
+  const r = sh("bash", [path.join(__dirname, "xray-fixtures/run-local.sh"), "100"], { WRANGLER: process.env.WRANGLER, STATE: path.join(os.tmpdir(), "csp51-" + process.pid), MAPX: JSON.stringify(map), EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding PAYOUT_ENC_KEY=vis-key-0123456789abcdef" });
   if (!/READY/.test(r.stdout)) { console.log(r.stdout, r.stderr); process.exit(1); }
   const b = await pw.chromium.launch();
   const ctx = async () => { const c = await b.newContext({ viewport: { width: 1366, height: 860 } }); await c.addInitScript(() => { window.__cspv = []; document.addEventListener("securitypolicyviolation", (e) => window.__cspv.push(e.violatedDirective + " " + (e.blockedURI || "inline") + " @" + (e.sourceFile || "").split("/").pop() + ":" + e.lineNumber)); }); return c; };

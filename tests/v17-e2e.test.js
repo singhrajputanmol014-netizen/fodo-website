@@ -20,7 +20,7 @@ const envMap = () => { const src = fs.readFileSync(path.join(__dirname, "xray-fi
 const SECRETS = ["groq_test_KEY", "gem_test_KEY", "gsecret_test", "rt_test", "sk-test-SECRET-123", "opr_test_KEY", "cron_test_KEY_123456789"];
 function start() {
   stop(); sh("bash", ["-c", "curl -s --noproxy '*' -m 2 " + F + "/_calls >/dev/null && pkill -f '[x]ray-fixtures/server.js'; sleep 0.5; true"]);
-  const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER, STATE, MAPX: envMap(),
+  const r = sh("bash", [path.join(__dirname, "xray-fixtures/run-local.sh"), "100"], { WRANGLER, STATE, MAPX: envMap(),
     EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding OPR_API_KEY=opr_test_KEY --binding XRAY_TEST_AI=" + F + "/_ai --binding GROQ_API_KEY=groq_test_KEY --binding GEMINI_API_KEY=gem_test_KEY --binding GOOGLE_CLIENT_ID=gid.apps.googleusercontent.com --binding GOOGLE_CLIENT_SECRET=gsecret_test --binding CRON_KEY=cron_test_KEY_123456789 --binding FIREBASE_API_KEY=AIza-test --binding FIREBASE_PROJECT_ID=fodo-test --binding FIREBASE_PROVIDERS=email" });
   if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr);
 }
@@ -161,7 +161,8 @@ const DONE = /X-Ray complete|stopped|could not|cannot be/i;
   ok(/Next best actions/.test(await p.textContent(".ad-nba")), "overview: next best actions panel");
   await p.click("#ad-menu"); await p.waitForSelector(".ad-menu-box");
   const groups = await p.$$eval(".ad-menu-box .ad-gl", (e) => e.map((x) => x.textContent)), mlinks = await p.$$eval(".ad-menu-box a[data-tab]", (e) => e.length);
-  ok(groups.join(",") === "Growth Lab,Support,Customers,Website,Money & setup,Quick links" && mlinks === 22, "☰ menu beside dark mode opens every section, grouped (" + mlinks + " sections) + quick links");
+  /* v55.26: the admin keeps gaining sections (v54 Client Emails, v55 Lead Intelligence, Sent & replies, Autopilot ...), so the count is a floor */
+  ok(groups.join(",") === "Growth Lab,Support,Lead Intelligence,Customers,Website,Money & setup,Quick links" && mlinks >= 22, "☰ menu beside dark mode opens every section, grouped (" + mlinks + " sections) + quick links: " + groups.join(","));
   await shot(p, "admin-menu");
   await p.click('.ad-menu-box a[data-tab="lab"]'); await p.waitForFunction(() => /Every Growth Lab tool/.test(document.getElementById("ad-view").textContent), null, { timeout: 20000 });
   const lt = await p.textContent("#ad-view"); ok(/Every Growth Lab tool/.test(lt) && /Visitor → customer funnel/.test(lt) && /Marketing Budget Planner/.test(lt) && /Growth Score/.test(lt), "admin Growth Lab: every tool + full funnel");

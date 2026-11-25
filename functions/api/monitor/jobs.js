@@ -1,7 +1,7 @@
 /* FODO v47.6 background jobs tick. POST /api/monitor/jobs with header x-cron-key: <CRON_KEY>. Runs up to 25 due jobs
    (emails, housekeeping, provider checks, webhooks) and answers { ran, done, failed, dead, remaining }. The hourly GitHub
    Actions workflow (.github/workflows/fodo-brain.yml) calls it; a bound Cloudflare Queue (JOBS) makes it near-instant instead. */
-import { json, accountsOn } from "../../_lib/accounts.js";
+import { json, accountsOn, expireStuckRuns } from "../../_lib/accounts.js";
 import { runDue, enqueue } from "../../_lib/jobs.js";
 const same = (a, b) => { a = String(a || ""); b = String(b || ""); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 export async function onRequest({ request, env }) {
@@ -11,5 +11,6 @@ export async function onRequest({ request, env }) {
   if (!accountsOn(env)) return json({ ok: false, reason: "Accounts are off." }, 503);
   try { const h = new Date().toISOString().slice(0, 13); await enqueue(env, "os_hourly", {}, { key: "os_hourly:" + h, maxAttempts: 2 }); } catch (e) {}   /* v50.2: one FODO OS housekeeping job per hour */
   let social = null; try { social = await (await import("../../_lib/sstudio.js")).tick(env, new URL(request.url).origin); } catch (e) { social = { error: String((e && e.message) || e).slice(0, 120) }; }   /* v52 Social Studio: due posts, comments, numbers */
-  return json(Object.assign({ ok: true }, await runDue(env, 25), { social }));
+  let stuck = null; try { stuck = await expireStuckRuns(env, 3); } catch (e) { stuck = { error: String((e && e.message) || e).slice(0, 120) }; }   /* v55.26: stuck X-Ray runs */
+  return json(Object.assign({ ok: true }, await runDue(env, 25), { social, stuck }));
 }

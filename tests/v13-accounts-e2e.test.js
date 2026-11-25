@@ -17,7 +17,7 @@ const stop = () => { sh("bash", ["-c", "for p in $(pgrep -f '[p]ages dev . --por
 const envMap = () => { const src = fs.readFileSync(path.join(__dirname, "xray-fixtures/env.sh"), "utf8"); const m = JSON.parse(/MAP='(.*)'\s*$/m.exec(src)[1].replace(/'\$F'/g, F));
   return JSON.stringify(Object.assign(m, { "instagram.com": F + "/_ext404", "facebook.com": F + "/_ext200", "api.resend.com": F + "/_resend", "sandbox.cashfree.com": F + "/_cf", "openpagerank.com": F + "/_opr" })); };
 const start = () => { stop(); sh("bash", ["-c", "curl -s --noproxy '*' -m 2 " + F + "/_calls >/dev/null && pkill -f '[x]ray-fixtures/server.js'; sleep 0.5; true"]);
-  const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER, STATE, MAPX: envMap(),
+  const r = sh("bash", [path.join(__dirname, "xray-fixtures/run-local.sh"), "100"], { WRANGLER, STATE, MAPX: envMap(),
     EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding RESEND_API_KEY=re_test_KEY --binding MAIL_FROM=login@fodo.test --binding CASHFREE_APP_ID=CF_TEST_APP --binding CASHFREE_SECRET_KEY=CF_TEST_SECRET --binding CASHFREE_ENV=sandbox --binding OPR_API_KEY=opr_test_KEY --binding XRAY_TEST_AI=" + F + "/_ai --binding FIREBASE_API_KEY=AIza-test --binding FIREBASE_PROJECT_ID=fodo-test --binding FIREBASE_PROVIDERS=facebook,phone,microsoft --binding WA_NUMBER=917827007676 --binding WA_PHONE_ID=PID --binding WA_TOKEN=wa_test_TOKEN --binding WA_APP_SECRET=wa_test_SECRET --binding WA_VERIFY_TOKEN=v" });
   if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr); };
 const calls = () => fetch(F + "/_calls").then((r) => r.json());
@@ -186,7 +186,8 @@ const waitDone = (p) => p.waitForFunction((re) => new RegExp(re, "i").test(docum
   /* ---------- v15 admin dashboard ---------- */
   await p.goto(BASE + "/admin/"); await p.waitForSelector(".ad-kpis", { timeout: 15000 });
   const kp = await p.$$eval(".ad-kpi", (k) => k.map((x) => x.textContent));
-  ok(kp.length === 6 && /users/.test(kp[0]) && /X-Rays run/.test(kp[2]) && /₹3,999/.test(kp[4]), "admin overview (owner): 6 KPIs incl. revenue ₹3,999: " + kp[4].slice(0, 40));
+  /* v55.26: the ₹3,999 payment above went through the Cashfree sandbox, so it is a test order and is not revenue */
+  ok(kp.length === 6 && /users/.test(kp[0]) && /X-Rays run/.test(kp[2]) && /₹0/.test(kp[4]) && !/₹3,999/.test(kp[4]), "admin overview (owner): 6 KPIs, the sandbox ₹3,999 order is not revenue: " + kp[4].slice(0, 40));
   ok(await p.isVisible(".ad-chart") && (await p.$$(".ad-funnel li")).length === 5 && /Owner · full control/.test(await p.textContent(".ad-role")), "admin: 30-day chart, funnel, owner role");
   await p.click('a[data-tab="users"]'); await p.waitForSelector("#ad-ulist tr[data-u]");
   await p.fill("#ad-uq", "rohit@"); await p.waitForFunction(() => document.querySelectorAll("#ad-ulist tr[data-u]").length === 1, null, { timeout: 8000 });

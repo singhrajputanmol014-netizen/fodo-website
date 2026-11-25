@@ -17,7 +17,7 @@ const envMap = () => { const src = fs.readFileSync(path.join(__dirname, "xray-fi
   return JSON.stringify(Object.assign(m, { "instagram.com": F + "/_ext404", "facebook.com": F + "/_ext200", "openpagerank.com": F + "/_opr", "api.groq.com": F + "/_groq", "generativelanguage.googleapis.com": F + "/_gemini", "oauth2.googleapis.com": F + "/_gtoken", "api.resend.com": F + "/_resend" })); };
 function start() {
   stop(); sh("bash", ["-c", "curl -s --noproxy '*' -m 2 " + F + "/_calls >/dev/null && pkill -f '[x]ray-fixtures/server.js'; sleep 0.5; true"]);
-  const r = sh(path.join(__dirname, "xray-fixtures/run-local.sh"), ["100"], { WRANGLER, STATE, MAPX: envMap(),
+  const r = sh("bash", [path.join(__dirname, "xray-fixtures/run-local.sh"), "100"], { WRANGLER, STATE, MAPX: envMap(),
     EXTRA: "--binding ACCOUNTS_ENABLED=1 --binding XRAY_TEST_AI=" + F + "/_ai --binding GROQ_API_KEY=groq_test_KEY --binding RUNNER_URL=http://127.0.0.1:" + RPORT + " --binding RUNNER_KEY=" + KEY + " --binding RESEND_API_KEY=re_test_KEY --binding MAIL_FROM=FODO_test" });
   if (!/READY/.test(r.stdout)) throw new Error("local runtime did not start: " + r.stdout + r.stderr);
 }

@@ -121,6 +121,8 @@ r = await call(env, "xray/start", { url: "deadsite.test", toolRun: run3 }); cons
 r = await call(env, "xray/refund", { jobId: job3 }); ok(r.j.refunded && credits("ravi@shop.in", "local-visibility") === 1 && runs().filter((x) => x.id === run3)[0].status === "refunded", "site couldn't be read → the Local Visibility run comes back");
 
 /* ---------- 11. admin: per-tool runs, reuse and revenue ---------- */
+/* v55.26: sandbox orders are test orders and never count as revenue; make them live-key orders for the revenue check */
+env.XRAY_DB.db.prepare("UPDATE acct_orders SET test=0").run();
 r = await call(env, "admin/lab?days=30", undefined, { as: "own" });
 const wh = r.j.products.filter((p) => p.id === "website-health")[0], cx = r.j.products.filter((p) => p.id === "conversion-xray")[0];
 ok(wh.bought === 1 && wh.revenue === 799 && wh.fresh === 1 && cx.reused === 1 && cx.revenue === PRODUCTS["conversion-xray"].price, "admin Growth Lab: runs bought, revenue, fresh scans vs reused X-Rays per tool");

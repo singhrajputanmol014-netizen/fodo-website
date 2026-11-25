@@ -51,6 +51,7 @@ export async function saveLead(env, b, ip) {
   await d.prepare("INSERT INTO fodo_leads (id, mode, name, email, phone, business, data, page, source, campaign, status, notes, ip_hash, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'new','',?11,?12,?12)")
     .bind(id, L.mode, L.name, L.email, L.phone, L.business, JSON.stringify(keep), page, source, campaign, ipHash, now).run();
   const cfg = await getSiteCfg(env), to = cfg.leadEmail || OWNER_EMAILS[0], e = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  try { const lc = await import("./leadcrm.js"); await lc.enquiryToCrm(env, L, keep, source, id); } catch (x) { /* v55.23 CRM copy never blocks an enquiry */ }
   try { await sendMail(env, to, "New " + L.mode + " enquiry: " + (L.business || L.name), "<p><b>" + e(L.name) + "</b>" + (L.business ? " · " + e(L.business) : "") + "<br>" + e(L.email) + " · " + e(L.phone) + "</p><table>" + Object.keys(keep).map((k) => "<tr><td>" + e(k) + "</td><td>" + e(Array.isArray(keep[k]) ? keep[k].join(", ") : keep[k]) + "</td></tr>").join("") + "</table><p>Page: " + e(page) + (source ? " · source: " + e(source) : "") + (campaign ? " · campaign: " + e(campaign) : "") + "</p><p>Manage it in Admin → Enquiries.</p>"); } catch (x) {}
   return { ok: true, id };
 }

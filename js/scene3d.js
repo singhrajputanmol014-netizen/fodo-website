@@ -96,7 +96,9 @@
   var BP = [0, 0], introOn = document.documentElement.classList.contains("intro") && !reduce;
   (function () { var d = document.querySelector(".fi-dot"); if (!introOn || !d) return; var r = d.getBoundingClientRect(); BP = [((r.left + r.width / 2) / innerWidth) * 2 - 1, 1 - ((r.top + r.height / 2) / innerHeight) * 2]; })();
   function introBurst(now) { if (!introOn) return 1; var go = window.__fodoIntroGo; if (!go) return 0; var u = Math.min(1, Math.max(0, (now - go) / 1100)); if (u >= 1) introOn = false; return 1 - Math.pow(1 - u, 3); }
-  var last = performance.now(), clock = 0, raf = 0, sOp = -1, heroE = 0;
+  var last = performance.now(), clock = 0, raf = 0, sOp = -1, heroE = 0, dxS = 0, spinS = 1, heroA = 1.25;
+  /* v55.26: frame-rate independent easing (same feel at 60, 90 or 120 Hz) */
+  var k = function (dt, rate) { return 1 - Math.exp(-dt * rate); };
   function frame(now) {
     raf = 0; if (!running) return;
     if (mobile && now - last < 30) { raf = requestAnimationFrame(frame); return; }   // phones: ~30 fps is plenty for a background and halves the work
@@ -104,7 +106,8 @@
     prog01 += (target - prog01) * Math.min(1, dt * 4.5);
     mx += (tmx - mx) * Math.min(1, dt * 3); my += (tmy - my) * Math.min(1, dt * 3);
     var heroIn = sy < H * .6;
-    var S = SHAPES.length, seg = prog01 * (S - 1), i = Math.min(S - 1, Math.floor(seg)), j = Math.min(S - 1, i + 1), t = reduce ? 0 : ease(seg - i);
+    /* v55.26: i stops at the last pair, so the very end of the page is "last shape, t = 1" (before, it snapped back to t = 0 there) */
+    var S = SHAPES.length, seg = prog01 * (S - 1), i = Math.max(0, Math.min(S - 2, Math.floor(seg))), j = Math.min(S - 1, i + 1), t = reduce ? 0 : ease(Math.min(1, seg - i));
     bind(i, j);
     var wordT = (j === S - 1 && !reduce) ? t : 0;
     var wide = W > 900, side = wide ? (i % 2 ? -1 : 1) : 0, isWord = !reduce && j === S - 1 && t > .5;
@@ -112,17 +115,21 @@
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(U.t, t); gl.uniform1f(U.time, clock);
     gl.uniform1f(U.size, (mobile ? 2.8 : 3.2) * dpr * (theme === "dark" ? 1 : 1.12) * (1 + .18 * wordT));
-    var spin = isWord ? (1 - t) * 1.2 : 1;
+    var spin = (!reduce && j === S - 1) ? 1 - ease(Math.min(1, Math.max(0, (t - .25) / .75))) : 1; spinS += (spin - spinS) * k(dt, 6); spin = spinS;
     gl.uniform1f(U.ay, (clock * .12 + prog01 * Math.PI * 2.2) * spin + mx * .5);
     gl.uniform1f(U.ax, (.35 + Math.sin(prog01 * Math.PI) * .45) * spin + my * .35);
-    gl.uniform1f(U.aspect, W / H); gl.uniform1f(U.dx, dxTarget); gl.uniform1f(U.dy, mobile ? .12 - wordT * .12 : wordT * .34);
+    /* v55.26: the side position, spin and hero brightness change in steps at shape boundaries (the cloud jumped sideways at 12.5 %, 25 %, 50 %, 75 % of
+       the page and turned ~165 degrees in one frame at 87.5 %); they now glide to their target, which is what made scrolling look stuck / jerky */
+    dxS += (dxTarget - dxS) * k(dt, 3.2);
+    gl.uniform1f(U.aspect, W / H); gl.uniform1f(U.dx, dxS); gl.uniform1f(U.dy, mobile ? .12 - wordT * .12 : wordT * .34);
     gl.uniform1f(U.scale, ((mobile ? .78 : .95) - wordT * (mobile ? .36 : .05)) * (1 + .32 * Math.max(0, 1 - prog01 * 12)));
-    gl.uniform3fv(U.c1, col1); gl.uniform3fv(U.c2, col2); gl.uniform1f(U.alpha, Math.min(1, alpha * (heroIn ? 1.25 : 1) * (1 + .55 * wordT)));
+    heroA += ((heroIn ? 1.25 : 1) - heroA) * k(dt, 4);
+    gl.uniform3fv(U.c1, col1); gl.uniform3fv(U.c2, col2); gl.uniform1f(U.alpha, Math.min(1, alpha * heroA * (1 + .55 * wordT)));
     var bu = introBurst(now); gl.uniform1f(U.burst, bu); gl.uniform2f(U.bpos, BP[0], BP[1]);
     heroE += (Math.min(1, sy / (H * .9)) - heroE) * Math.min(1, dt * 8);
     var op = Math.round((.25 + .75 * heroE) * (1 - .7 * wordT) * 250) / 250; if (op !== sOp) { sOp = op; scrim.style.opacity = op; }
     gl.drawArrays(gl.POINTS, 0, N);
-    if (!reduce || Math.abs(target - prog01) > .001 || bu < 1) raf = requestAnimationFrame(frame);
+    if (!reduce || Math.abs(target - prog01) > .001 || bu < 1 || Math.abs(dxTarget - dxS) > .001) raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && running) { last = performance.now(); raf = requestAnimationFrame(frame); } }
   kick();

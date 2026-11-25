@@ -41,6 +41,9 @@ async function mailbox(env, account) {
   return a || s.account;
 }
 
+/* v55.25 internal alert to a FODO owner from the connected mailbox (sendMail falls back to this when no mail provider is set) */
+export async function selfMail(env, to, subject, text, html, kind) { const acc = await mailbox(env); return send(env, acc, to, subject, text || "", html || "", null, "system", kind || "system"); }
+
 /* sender's FODO Studio status, for the "Has a key" chip */
 async function keyStatus(env, emails) {
   const out = {}, list = [...new Set(emails.filter(Boolean))].slice(0, 60); if (!list.length) return out;

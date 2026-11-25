@@ -34,5 +34,6 @@ export async function onRequest({ request, env }) {
   let teams = null; try { const TM = await import("../../_lib/teams.js"); teams = { expired: await TM.expireDue(env), reminded: await TM.remindDue(env) }; } catch (e) { teams = { error: true }; }   // v47.2 invitations + reminders
   let jobs = null; try { const JB = await import("../../_lib/jobs.js"); if (!(left && left.n)) await JB.enqueueDaily(env); jobs = await JB.runDue(env, 10); } catch (e) { jobs = { error: true }; }   /* v47.6 background jobs: queue the daily housekeeping once, then run what is due */
   let digest = null; if (!(left && left.n)) { try { digest = await (await import("../../_lib/alerts.js")).digest(env); } catch (e) { digest = { error: true }; } }
-  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest, payouts, refunds, teams, jobs, leadintel });
+  let autopilot = null; if (!(left && left.n)) { try { autopilot = await (await import("../../_lib/leadcrm.js")).autopilotDigest(env); } catch (e) { autopilot = { error: true }; } }   // v55.25 morning Autopilot email
+  return json({ ok: true, checked: out.length, results: out, remaining: left ? left.n : 0, brain, digest, autopilot, payouts, refunds, teams, jobs, leadintel });
 }

@@ -47,3 +47,32 @@ export async function enquiryToCrm(env, L, keep, source, leadId, deps) {
     return { ok: true, contactId: cid, dup, tasks: p.tasks.length };
   } catch (e) { console.error("fodo enquiry→crm:", String((e && e.message) || e).slice(0, 160)); return { ok: false, reason: "error" }; }
 }
+
+/* v55.25 Autopilot morning digest: once a day (from the daily scheduler tick) one email to the FODO mailbox with the bot status,
+   new enquiries, CRM follow-ups due today or overdue, and bot chats of the last 24 hours. Internal only; it never contacts a lead. */
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+export function digestBody(x) {
+  const L = [], H = [];
+  const sec = (t, rows) => { L.push("", t); H.push("<h3 style=\"margin:18px 0 6px\">" + esc(t) + "</h3>"); if (!rows.length) { L.push("- none"); H.push("<p style=\"color:#666\">None.</p>"); } else { rows.forEach((r) => L.push("- " + r)); H.push("<ul>" + rows.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>"); } };
+  L.push("FODO Autopilot, " + x.day, "Bot: Instagram + Facebook " + (x.botOn ? "ON" : "OFF") + ", WhatsApp " + (x.waOn ? "ON" : "not connected") + ". Bot chats last 24 h: " + x.chats24 + ".");
+  H.push("<p><b>FODO Autopilot, " + esc(x.day) + "</b><br>Bot: Instagram + Facebook <b>" + (x.botOn ? "ON" : "OFF") + "</b>, WhatsApp " + (x.waOn ? "ON" : "not connected") + ". Bot chats last 24 h: " + x.chats24 + ".</p>");
+  sec("New enquiries not handled (" + x.enq.length + ")", x.enq.map((q) => q.name + (q.business ? " · " + q.business : "") + " · " + (q.source || "website") + " · " + String(q.created_at || "").slice(0, 10)));
+  sec("Follow-ups due today or overdue (" + x.fu.length + ")", x.fu.map((t) => (t.overdue ? "OVERDUE " : "") + t.due + " · " + t.name + " · " + String(t.body || "").slice(0, 90)));
+  L.push("", "Open: https://www.fodo.co.in/admin/#autopilot", "Nothing was sent to any lead. This email goes only to the FODO mailbox.");
+  H.push("<p><a href=\"https://www.fodo.co.in/admin/#autopilot\">Open Autopilot</a></p><p style=\"color:#888;font-size:12px\">Nothing was sent to any lead. This email goes only to the FODO mailbox.</p>");
+  return { subject: "FODO Autopilot " + x.day + ": " + x.enq.length + " new enquir" + (x.enq.length === 1 ? "y" : "ies") + ", " + x.fu.length + " follow-up" + (x.fu.length === 1 ? "" : "s") + " due", text: L.join("\n"), html: H.join("") };
+}
+export async function autopilotDigest(env, deps) {
+  deps = deps || {}; const day = istDay(0), key = "ap:digest:" + day;
+  try {
+    if (env.CHAT_KV && !deps.force && await env.CHAT_KV.get(key)) return { skipped: "already sent today" };
+    const SC = await import("./sitecfg.js"), A = await import("./accounts.js");
+    const enq = ((await SC.listLeads(env, { status: "new" }).catch(() => [])) || []).slice(0, 30);
+    const u = await ownerUser(env).catch(() => null), fu = u ? (await CRM.followUps(env, u, 0).catch(() => [])) : [];
+    let chats24 = 0; try { const b = await (await import("./leadintel.js")).botConvos(env); const since = Date.now() - 864e5; chats24 = (b.convos || []).filter((c) => Date.parse(c.at) > since).length; } catch (e) {}
+    const m = digestBody({ day, botOn: !!(env.META_APP_SECRET && env.META_PAGE_TOKEN) && String(env.META_BOT_DISABLED || "") !== "1", waOn: !!(env.META_APP_SECRET && env.META_WA_TOKEN), chats24, enq, fu });
+    await (deps.sendMail || A.sendMail)(env, A.OWNER_EMAILS[0], m.subject, m.html, m.text, { kind: "autopilot_digest" });
+    if (env.CHAT_KV) await env.CHAT_KV.put(key, "1", { expirationTtl: 3 * 86400 });
+    return { sent: true, enquiries: enq.length, followUps: fu.length };
+  } catch (e) { return { error: String((e && e.message) || e).slice(0, 160) }; }
+}

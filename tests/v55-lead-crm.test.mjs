@@ -42,3 +42,21 @@ ok(!r.threw, "no owner / no db does not throw");
 
 console.log(`v55-lead-crm: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
+
+// v55.25 digest
+{
+  const { digestBody, autopilotDigest } = await import("../functions/_lib/leadcrm.js");
+  const m = digestBody({ day: "2026-11-26", botOn: true, waOn: false, chats24: 3, enq: [{ name: "A <b>", business: "Hall", source: "instagram-dm", created_at: "2026-11-22T00:00:00Z" }], fu: [{ due: "2026-11-23", overdue: true, name: "X", body: "Day 0" }] });
+  ok(/1 new enquiry, 1 follow-up due/.test(m.subject), "digest subject " + m.subject);
+  ok(/OVERDUE 2026-11-23 · X/.test(m.text) && /Instagram \+ Facebook ON/.test(m.text), "digest text");
+  ok(m.html.indexOf("<b>") > -1 && m.html.indexOf("A &lt;b&gt;") > -1, "digest html escapes names");
+  ok(/Nothing was sent to any lead/.test(m.text), "digest says nothing sent");
+  const kv = { m: {}, get: async (k) => kv.m[k], put: async (k, v) => { kv.m[k] = v; } };
+  let mails = [];
+  const r1 = await autopilotDigest({ CHAT_KV: kv }, { sendMail: async (e, to, s) => { mails.push([to, s]); } });
+  ok(r1.sent && mails.length === 1 && mails[0][0] === "anmol@fodo.co.in", "digest sent to the FODO mailbox only " + JSON.stringify(r1));
+  const r2 = await autopilotDigest({ CHAT_KV: kv }, { sendMail: async () => { mails.push(1); } });
+  ok(r2.skipped && mails.length === 1, "only once a day");
+  console.log(`v55-lead-crm (with digest): ${pass} passed, ${fail} failed`);
+  if (fail) process.exit(1);
+}

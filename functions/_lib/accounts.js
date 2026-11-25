@@ -274,7 +274,10 @@ export async function sendMail(env, to, subject, html, text, opt) {
   opt = opt || {};
   const from = opt.from || env.MAIL_FROM || "FODO <login@fodo.co.in>", secret = /login code/i.test(subject);
   const logText = secret ? "[login code — not stored]" : String(text || String(html || "").replace(/<[^>]+>/g, " ")).replace(/\s+\n/g, "\n").slice(0, 20000);
-  if (!env.RESEND_API_KEY) { await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, ticket: opt.ticket, status: "not sent", error: "email not configured (RESEND_API_KEY)", by: opt.by }); throw new Error("email not configured"); }
+  if (!env.RESEND_API_KEY) {
+    /* v55.25: internal alerts to a FODO owner go out through the connected Gmail mailbox (anmol@fodo.co.in) when no mail provider is set */
+    if (OWNER_EMAILS.indexOf(String(to || "").toLowerCase()) > -1 && !secret && !opt.noGmail) { try { return await (await import("./sinbox.js")).selfMail(env, to, subject, String(text || String(html || "").replace(/<br\s*\/?>|<\/(p|tr|div|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s+/g, "\n")).trim(), html, opt.kind); } catch (e) { await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, status: "failed", error: "gmail: " + String((e && e.message) || e).slice(0, 160), by: opt.by }); throw e; } }
+    await mailLog(env, { kind: opt.kind, from, to, subject, text: logText, ticket: opt.ticket, status: "not sent", error: "email not configured (RESEND_API_KEY)", by: opt.by }); throw new Error("email not configured"); }
   const body = { from, to: [to], subject, html, text };
   if (opt.replyTo) body.reply_to = opt.replyTo;
   if (opt.headers) body.headers = opt.headers;

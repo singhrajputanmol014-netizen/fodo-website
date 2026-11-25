@@ -24,7 +24,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Install ${{ matrix.browser }}
         working-directory: tests
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        run: npx playwright install --with-deps chromium ${{ matrix.browser }}   # v55.26: the v51 app-page CSP step always runs in Chromium
       - name: Cross-browser smoke test
         env:
           WRANGLER: ${{ github.workspace }}/tests/node_modules/.bin/wrangler

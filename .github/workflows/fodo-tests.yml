@@ -43,8 +43,10 @@ jobs:
       - name: Install Chromium
         working-directory: tests
         run: npx playwright install --with-deps chromium
-      - name: Python tools for the suites (v52 builds an .xlsx report)
-        run: python3 -m pip install --user --break-system-packages openpyxl
+      - name: Tools the suites call (openpyxl for v52, pdftotext + qpdf for the PDF checks)
+        run: |
+          python3 -m pip install --user --break-system-packages openpyxl
+          sudo apt-get install -y -qq poppler-utils qpdf   # pdftotext + qpdf for the X-Ray PDF checks
       - name: Unit + integration + security suites
         env:
           WRANGLER: ${{ github.workspace }}/tests/node_modules/.bin/wrangler

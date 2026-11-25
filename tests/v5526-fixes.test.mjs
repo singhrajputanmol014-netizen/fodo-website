@@ -64,6 +64,7 @@ for (const f of ["cross-browser.test.js", "v508-csp.test.js", "v51-csp.test.js",
 const wf = fs.readdirSync(".github/workflows").map((f) => fs.readFileSync(".github/workflows/" + f, "utf8")).join("\n");
 ok(!/actions\/(checkout|setup-node)@v4|setup-python@v5/.test(wf), "workflows use the Node 24 action versions");
 ok(/openpyxl/.test(fs.readFileSync(".github/workflows/fodo-tests.yml", "utf8")), "CI installs openpyxl for the v52 suite");
+ok(/poppler-utils qpdf/.test(fs.readFileSync(".github/workflows/fodo-tests.yml", "utf8")) && /install --with-deps chromium \$/.test(fs.readFileSync(".github/workflows/fodo-browsers.yml", "utf8")), "CI installs pdftotext / qpdf, and Chromium in every browser job");
 
 console.log("\nv55.26 fixes: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

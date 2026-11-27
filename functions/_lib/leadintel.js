@@ -1037,3 +1037,89 @@ export async function testIntegration(env, key) {
   return { ok: false, reason: "This integration has no test." };
 }
 export async function activity(env) { const d = await ldb(env); return { items: await all(d, "SELECT kind, business_id, detail, by_email, at FROM li_activity ORDER BY id DESC LIMIT 100") }; }
+
+/* ---------------- v55.28 import your own client data (Excel / CSV / pasted) ----------------
+   Rows become ordinary leads (source "import"), so everything on a lead works for them: WhatsApp / email drafts, email send,
+   Bulk pitch, outreach queue, statuses, research. Duplicates (same website, phone, email or name + city) are filled in, never doubled.
+   The browser sends the rows in small chunks (D1 allows ~1,000 queries per request). */
+const IMP_COLS = [
+  ["business", /^(business|company|firm|brand|client|organi[sz]ation|shop|store|clinic|restaurant|hotel|account)( ?name)?$|^(business|company|client) name$/],
+  ["person", /^(contact( ?person| ?name)?|person|owner|founder|full ?name|first ?name|decision ?maker|name of (the )?(owner|contact)|client contact)$/],
+  ["name", /^name$/],
+  ["role", /^(designation|role|title|position|job ?title)$/],
+  ["email", /^(e ?-?mail( ?id| ?address)?|mail( ?id)?)$/],
+  ["whatsapp", /^(whats ?app( ?(no|number))?|wa)$/],
+  ["phone", /^(phone|mobile|mob|cell|tel|telephone|contact ?(no|number)|phone ?(no|number)|mobile ?(no|number)|number)$/],
+  ["website", /^(website|web ?site|site|url|domain|web)$/],
+  ["city", /^(city|town|location)$/], ["locality", /^(area|locality|sector|neighbou?rhood)$/], ["state", /^(state|region)$/],
+  ["address", /^(address|full address)$/], ["industry", /^(industry|category|sector|niche|business type|type)$/],
+  ["notes", /^(notes?|remarks?|comments?|details)$/], ["instagram", /^(instagram|insta|ig)$/], ["facebook", /^(facebook|fb)$/], ["linkedin", /^linked ?in$/],
+];
+const hnorm = (h) => String(h || "").toLowerCase().replace(/[_.\-:#*]+/g, " ").replace(/\s+/g, " ").trim();
+export function importMap(header) {
+  const m = {}; (header || []).forEach((h, i) => { const n = hnorm(h); for (const [k, re] of IMP_COLS) if (re.test(n) && m[k] == null) { m[k] = i; break; } });
+  if (m.name != null) { if (m.business == null) m.business = m.name; else if (m.person == null) m.person = m.name; delete m.name; }
+  return m;
+}
+export function importRow(r, m) {
+  const g = (k) => (m[k] == null ? "" : String(r[m[k]] == null ? "" : r[m[k]]).trim());
+  const email = cleanEmail(g("email").split(/[\s,;/]+/)[0]), phone = clip(g("phone"), 40), wa = clip(g("whatsapp"), 40);
+  let web = clip(g("website"), 300); if (web && !/^https?:\/\//i.test(web) && /^[\w-]+(\.[\w-]+)+/.test(web)) web = "https://" + web; if (!/^https?:\/\/[\w-]+(\.[\w-]+)+/i.test(web)) web = "";
+  const person = clip(g("person"), 120), business = clip(g("business"), 160) || person || (email ? email.split("@")[1].split(".")[0] : "");
+  const o = { name: business, person, role: clip(g("role"), 80), email, phone, whatsapp: wa, website: web, city: clip(g("city"), 80), locality: clip(g("locality"), 80), state: clip(g("state"), 80),
+    address: clip(g("address"), 300), industry: clip(g("industry"), 80), notes: clip(g("notes"), 2000) };
+  ["instagram", "facebook", "linkedin"].forEach((k) => { const v = clip(g(k), 300); o[k] = /^https?:\/\//i.test(v) ? v : ""; });
+  o.error = !o.name ? "No business or contact name" : (g("email") && !email && !(phoneKey(o.phone) || phoneKey(o.whatsapp) || o.website)) ? "Email looks wrong: " + clip(g("email"), 60) : !(o.email || phoneKey(o.phone) || phoneKey(o.whatsapp) || o.website) ? "No email, phone or website" : "";
+  return o;
+}
+/* read the file (or pasted text) and show what would be imported; nothing is saved */
+export async function importPreview(env, b) {
+  b = b || {}; let rows;
+  if (b.file) { const CM = await import("./campaigns.js"); rows = await CM.readSheet(b.file, clip(b.filename, 120)); }
+  else { const PI = await import("./pitch.js"); rows = PI.parseCsv(String(b.text || "").slice(0, 2e6).replace(/\t/g, ",")); }
+  rows = (rows || []).filter((r) => r && r.some((x) => String(x || "").trim()));
+  if (rows.length < 2) throw err("The sheet needs a header row (Business, Contact person, Email, Phone, City ...) and at least one client.");
+  if (rows.length > 5001) throw err("Up to 5,000 clients per import. Split the sheet and import it in parts.");
+  const m = importMap(rows[0]);
+  if (m.business == null && m.person == null) throw err("Couldn't find a name column. Use a header such as Business name, Company or Contact person.");
+  if (m.email == null && m.phone == null && m.whatsapp == null && m.website == null) throw err("Couldn't find an Email, Phone, WhatsApp or Website column.");
+  const out = rows.slice(1).map((r) => importRow(r, m));
+  const fields = {}; Object.keys(m).forEach((k) => { fields[k] = String(rows[0][m[k]] || ""); });
+  return { fields, headers: rows[0].map((h) => String(h || "")), rows: out, total: out.length, ok: out.filter((x) => !x.error).length, invalid: out.filter((x) => x.error).length };
+}
+async function findByEmail(d, email) { if (!email) return null; const r = await one(d, "SELECT business_id FROM li_contacts WHERE kind='email' AND value=?1 LIMIT 1", email); return r ? r.business_id : null; }
+export async function importRows(env, b, by) {
+  const d = await ldb(env); b = b || {}; const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 60);
+  if (!rows.length) throw err("Nothing to import.");
+  const status = ST.indexOf(b.status) > -1 ? b.status : "not_contacted", tag = clip(b.tag || "Imported client data", 80), t = nowIso();
+  const src = "imported by " + clip(by, 120) + " (" + tag + ")";
+  const res = { added: [], updated: [], skipped: [] };
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i] || {}, x = importRow([raw.name, raw.person, raw.role, raw.email, raw.phone, raw.whatsapp, raw.website, raw.city, raw.locality, raw.state, raw.address, raw.industry, raw.notes, raw.instagram, raw.facebook, raw.linkedin],
+      { business: 0, person: 1, role: 2, email: 3, phone: 4, whatsapp: 5, website: 6, city: 7, locality: 8, state: 9, address: 10, industry: 11, notes: 12, instagram: 13, facebook: 14, linkedin: 15 });
+    const at = (+b.offset || 0) + i + 1;
+    if (x.error) { res.skipped.push({ row: at, name: x.name, reason: x.error }); continue; }
+    const k = { domain: siteDomain(x.website), phone_key: phoneKey(x.phone) || phoneKey(x.whatsapp), name_key: nameKey(x.name, x.city || x.locality) };
+    let id = (await findByEmail(d, x.email)) || (await findDuplicate(d, k));
+    if (id) {
+      if (!b.update) { res.skipped.push({ row: at, name: x.name, reason: "Already in Lead Intelligence (" + id + ")", id }); continue; }
+      await run(d, "UPDATE li_businesses SET website=COALESCE(NULLIF(website,''),NULLIF(?2,'')), domain=COALESCE(NULLIF(domain,''),NULLIF(?3,'')), phone=COALESCE(NULLIF(phone,''),NULLIF(?4,'')), phone_key=COALESCE(NULLIF(phone_key,''),NULLIF(?5,'')), city=COALESCE(NULLIF(city,''),NULLIF(?6,'')), locality=COALESCE(NULLIF(locality,''),NULLIF(?7,'')), industry=COALESCE(NULLIF(industry,''),NULLIF(?8,'')), email=COALESCE(NULLIF(email,''),NULLIF(?9,'')), whatsapp=COALESCE(NULLIF(whatsapp,''),NULLIF(?10,'')), owner_name=COALESCE(NULLIF(owner_name,''),NULLIF(?11,'')), owner_role=CASE WHEN COALESCE(owner_name,'')='' THEN NULLIF(?12,'') ELSE owner_role END, owner_conf=CASE WHEN COALESCE(owner_name,'')='' AND ?11<>'' THEN 'provided' ELSE owner_conf END, notes=CASE WHEN ?13='' THEN notes WHEN COALESCE(notes,'')='' THEN ?13 ELSE notes || char(10) || ?13 END, updated_at=?14 WHERE id=?1",
+        id, x.website, k.domain, x.phone || x.whatsapp, k.phone_key, x.city, x.locality, x.industry, x.email, x.whatsapp, x.person, x.role, x.notes, t);
+      res.updated.push({ row: at, id, name: x.name });
+    } else {
+      id = "LI-" + randId(8).toUpperCase();
+      await run(d, "INSERT INTO li_businesses (id,name,industry,category,address,locality,city,state,country,website,domain,phone,phone_key,name_key,email,whatsapp,owner_name,owner_role,owner_conf,notes,source,source_ref,status,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'India',?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,'import',?20,?21,?22,?22)",
+        id, x.name, x.industry || null, x.industry || null, x.address, x.locality, x.city, x.state, x.website, k.domain, x.phone || x.whatsapp, k.phone_key, k.name_key, x.email || null, x.whatsapp || null, x.person || null, x.person ? x.role || null : null, x.person ? "provided" : null, x.notes || null, tag, status, t);
+      if (status !== "new") await run(d, "INSERT INTO li_outreach (business_id, from_status, to_status, channel, note, by_email, at) VALUES (?1,'new',?2,'import',?3,?4,?5)", id, status, tag, clip(by, 254), t);
+      res.added.push({ row: at, id, name: x.name });
+    }
+    if (x.email) await addContact(d, id, "email", mailKind(x.email), x.email, "", src);
+    if (x.phone) await addContact(d, id, "phone", "Phone", x.phone, "", src);
+    if (x.whatsapp) await addContact(d, id, "whatsapp", "WhatsApp", x.whatsapp, "", src);
+    if (x.website) await addContact(d, id, "website", "Website", x.website, "", src);
+    for (const s of ["instagram", "facebook", "linkedin"]) if (x[s]) await addContact(d, id, s, { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn" }[s], x[s], "", src);
+    if (x.person) await run(d, "INSERT OR IGNORE INTO li_people (business_id, name, role, profile_url, confidence, source_url, evidence, found_at) VALUES (?1,?2,?3,'','provided','',?4,?5)", id, x.person, x.role || "", "From your own client data (" + tag + ")", t);
+  }
+  if (res.added.length || res.updated.length) await act(d, "import", null, tag + ": " + res.added.length + " added, " + res.updated.length + " updated, " + res.skipped.length + " skipped", by);
+  return res;
+}

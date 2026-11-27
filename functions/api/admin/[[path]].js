@@ -161,6 +161,8 @@ export async function onRequest(ctx) {
         else if (a === "file") r = await LI.shareFile(env, b, u.email);
         else if (a === "email-send" && id) { r = await LI.emailSend(env, id, b, u.email); await logEvent(env, u.id, "li_email", id + (b.test ? " test" : "")); }
         else if (a === "to-pitch") r = await LI.toPitch(env, b, u.email);
+        else if (a === "import-preview") r = await LI.importPreview(env, b);   /* v55.28 own client data */
+        else if (a === "import") { r = await LI.importRows(env, b, u.email); await logEvent(env, u.id, "li_import", r.added.length + " added · " + r.updated.length + " updated"); }
         else if (a === "jobs" && id === "save") r = await LI.saveJob(env, b, u.email);
         else if (a === "jobs" && id && path[3] === "run") r = await LI.runJob(env, id, u.email);
         else if (a === "jobs" && id && path[3] === "delete") r = await LI.delJob(env, id);

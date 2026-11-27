@@ -285,3 +285,4 @@ tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var
 .ad-li-m{padding:8px 12px;border-radius:12px;max-width:85%;border:1px solid var(--line-3,var(--line))}.ad-li-m p{margin:2px 0 0;white-space:pre-wrap}
 .ad-li-m.in{align-self:flex-start}.ad-li-m.out{align-self:flex-end;background:color-mix(in srgb,#7B61FF 12%,transparent)}
 .ad-li-try{margin:0 0 14px}.ad-li-try summary{cursor:pointer;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ad-li-try .ad-li-msgs{max-height:420px;min-height:60px;padding:4px 2px}
+/* v55.28 Import client data panel */.ad-li-imp textarea.ad-in{display:block;width:100%;min-height:120px;margin:0 0 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}.ad-li-imp details{margin:10px 0}

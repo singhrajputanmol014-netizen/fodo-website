@@ -8,7 +8,10 @@
  *   META_PAGE_ID               FODO Page id (659006123960042). Optional, used to ignore our own messages.
  *   META_IG_ID                 Instagram account id (17841476681882495). Optional, used to ignore our own messages.
  *   META_BOT_DISABLED          "1" = kill switch: webhook still answers Meta, the bot sends nothing.
- *   META_BOT_HUMAN_PAUSE_HOURS hours the bot stays quiet in a chat after a human (Anmol / Rohit) replies there. Default 12.
+ *   META_BOT_HUMAN_PAUSE_MINUTES minutes the bot stays quiet in a chat after a human (Anmol / Rohit) writes there. Default 30
+ *                              (v55.27; META_BOT_HUMAN_PAUSE_HOURS still works). A person who writes while the team has the
+ *                              chat is saved as a lead if they share a number/email, and gets a bot reply from the hourly
+ *                              tick if nobody from the team answered (followUpWaiting).
  *   META_BOT_AUTO_ECHO_SECONDS an echo this soon after the person's message is a Meta inbox automation
  *                              (Instant reply / FAQ / keyword), not a human, so it does NOT pause the bot. Default 45.
  *   META_BOT_AUTOMATION_APP_IDS comma list of app ids whose echoes never pause the bot (extra safety).
@@ -93,6 +96,19 @@ export function toDmText(text) {
 
 const kvGet = async (env, k) => { try { return env.CHAT_KV ? await env.CHAT_KV.get(k) : null; } catch (e) { return null; } };
 const kvPut = async (env, k, v, ttl) => { try { if (env.CHAT_KV) await env.CHAT_KV.put(k, v, { expirationTtl: ttl }); } catch (e) { /* never block a reply on KV */ } };
+const kvDel = async (env, k) => { try { if (env.CHAT_KV) await env.CHAT_KV.delete(k); } catch (e) {} };
+/* v55.27 how long the bot stays quiet after a team member writes in a chat. Default 30 minutes (was 12 hours, which let
+   replies to the team's own outreach sit unanswered). META_BOT_HUMAN_PAUSE_MINUTES overrides; the old HOURS variable still works. */
+export function pauseSeconds(env) {
+  const m = parseInt(env.META_BOT_HUMAN_PAUSE_MINUTES || "", 10);
+  if (m > 0) return Math.max(5, m) * 60;
+  const h = parseInt(env.META_BOT_HUMAN_PAUSE_HOURS || "", 10);
+  return h > 0 ? h * 3600 : 30 * 60;
+}
+async function addHistory(env, platform, sender, role, content) {
+  if (!content) return;
+  try { const past = await history(env, platform, sender); await kvPut(env, "dm:h:" + platform + ":" + sender, JSON.stringify([...past, { role, content: String(content).slice(0, 600) }].slice(-HISTORY_TURNS * 2)), HISTORY_TTL); } catch (e) {}
+}
 
 /* Turn a Meta webhook body into plain events: { kind: "message" | "human_echo", platform, sender, text, mid } */
 export function parseEvents(env, body) {
@@ -338,8 +354,9 @@ async function handleEventInner(env, ev) {
     const win = Math.max(5, parseInt(env.META_BOT_AUTO_ECHO_SECONDS || "45", 10) || 45) * 1000;
     const last = Number(await kvGet(env, lastKey)) || 0;
     if (last && ev.ts && ev.ts - last >= 0 && ev.ts - last < win) return "automation_echo";
-    const hrs = Math.max(1, parseInt(env.META_BOT_HUMAN_PAUSE_HOURS || "12", 10) || 12);
-    await kvPut(env, pauseKey, "1", hrs * 3600);
+    await kvPut(env, pauseKey, "1", pauseSeconds(env));
+    if (ev.text) await addHistory(env, ev.platform, ev.sender, "assistant", "[Team] " + ev.text);   // v55.27 the bot knows what the team said
+    await kvDel(env, "dm:wait:" + ev.platform + ":" + ev.sender);
     await cvLog(env, ev, { out: ev.text || "(the team replied in the app)", by: "human", state: "human" });
     return "paused";
   }
@@ -358,7 +375,17 @@ async function handleEventInner(env, ev) {
   const wa = ev.platform === "whatsapp", waPhone = wa ? String(ev.waPhoneId || env.META_WA_PHONE_ID || "") : "";
   if (wa ? !(env.META_WA_TOKEN && waPhone) : !env.META_PAGE_TOKEN) return "no_token";
   if (ev.mid) { const k = "dm:seen:" + ev.mid; if (await kvGet(env, k)) return "duplicate"; await kvPut(env, k, "1", DEDUPE_TTL); }
-  if (await kvGet(env, pauseKey)) { await cvLog(env, ev, { in: ev.text, state: "human" }); return "human_active"; }
+  if (await kvGet(env, pauseKey)) {
+    /* v55.27 a person who answers the team's own message must never be lost: keep the message, save the lead at once
+       (enquiry + CRM + alert email) when it carries a number or email, and mark the chat as waiting. If nobody from the
+       team answers within the pause window, the hourly tick lets the bot reply (followUpWaiting). */
+    await addHistory(env, ev.platform, ev.sender, "user", ev.text);
+    const c = findContact(ev.text); let lead = "";
+    if (c) { try { lead = await captureLead(env, ev, c); } catch (e) { lead = "lead_error"; } }
+    await kvPut(env, "dm:wait:" + ev.platform + ":" + ev.sender, JSON.stringify({ ts: Date.now(), text: String(ev.text || "").slice(0, 600), name: ev.name || "", wa: ev.waPhoneId || "" }), 23 * 3600);
+    await cvLog(env, ev, { in: ev.text, state: "human", lead: lead === "saved" || lead === "updated" ? "saved" : "" });
+    return "human_active" + (lead ? "+lead_" + lead : "");
+  }
   const leadKey = "dm:lead:" + ev.platform + ":" + ev.sender, hadLead = !!(await kvGet(env, leadKey));
   let contact = findContact(ev.text);
   if (wa) {
@@ -378,4 +405,35 @@ async function handleEventInner(env, ev) {
   if (contact) { try { lead = await captureLead(env, ev, contact); } catch (e) { console.error("fodo-dm lead:", String((e && e.message) || e).slice(0, 120)); lead = "lead_error"; } }
   await cvLog(env, ev, { in: ev.text, out: reply, state: "bot", lead: hadLead || lead === "saved" || lead === "updated" ? "saved" : "" });
   return (reply === FALLBACK ? "sent_fallback" : "sent") + (lead ? "+lead_" + lead : "");
+}
+
+
+/* v55.27 hourly (owner-brain tick): chats where the person wrote while the team had the chat, nobody from the team answered,
+   and the quiet window is over. The bot answers once, inside Meta's 24-hour window, with the whole chat (team messages too). */
+export async function followUpWaiting(env, opt) {
+  opt = opt || {}; const out = { checked: 0, replied: 0, skipped: 0, errors: 0 };
+  if (!env.CHAT_KV || !env.CHAT_KV.list || String(env.META_BOT_DISABLED || "") === "1") return out;
+  const now = opt.now || Date.now(), quiet = pauseSeconds(env) * 1000;
+  const L = await env.CHAT_KV.list({ prefix: "dm:wait:" });
+  for (const k of (L.keys || []).slice(0, 20)) {
+    out.checked++;
+    try {
+      const w = JSON.parse((await kvGet(env, k.name)) || "null"); if (!w) continue;
+      const parts = k.name.split(":"), platform = parts[2], sender = parts.slice(3).join(":");
+      if (now - w.ts < quiet || now - w.ts > 23 * 3600e3 || (await kvGet(env, "dm:hp:" + platform + ":" + sender))) { out.skipped++; continue; }
+      const wa = platform === "whatsapp", waPhone = wa ? String(w.wa || env.META_WA_PHONE_ID || "") : "";
+      if (wa ? !(env.META_WA_TOKEN && waPhone) : !env.META_PAGE_TOKEN) { out.skipped++; continue; }
+      const past = await history(env, platform, sender);
+      const trimmed = past.length && past[past.length - 1].role === "user" ? past.slice(0, -1) : past;   // replyFor adds the last message itself
+      await kvPut(env, "dm:h:" + platform + ":" + sender, JSON.stringify(trimmed), HISTORY_TTL);
+      const hadLead = !!(await kvGet(env, "dm:lead:" + platform + ":" + sender));
+      let reply; try { reply = await replyFor(env, platform, sender, w.text || "(no text)", { saved: hadLead }); } catch (e) { reply = FALLBACK; }
+      const res = wa ? await sendWa(env, waPhone, sender, reply || FALLBACK) : await sendDm(env, sender, reply || FALLBACK);
+      if (res && res.message_id) await kvPut(env, "dm:mine:" + res.message_id, "1", DEDUPE_TTL);
+      await kvDel(env, k.name);
+      await cvLog(env, { platform, sender, name: w.name || "" }, { out: reply, state: "bot", lead: hadLead ? "saved" : "" });
+      out.replied++;
+    } catch (e) { out.errors++; console.error("fodo-dm followUpWaiting:", String((e && e.message) || e).slice(0, 160)); }
+  }
+  return out;
 }

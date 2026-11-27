@@ -58,7 +58,8 @@ export async function onRequest(ctx) {
       if (!env.CRON_KEY || String(env.CRON_KEY).length < 16 || !sameKey(request.headers.get("x-cron-key"), env.CRON_KEY) || String(env.BRAIN_ENABLED || "1") === "0") return deny();
       const r = await AU.tick(env), daily = new Date(Date.now() + 5.5 * 3600e3).getUTCHours() >= 6 ? await brainDaily(env, request) : { skipped: "before 06:00 IST" };
       let social = null, cleaned = null; try { social = await SO.runDue(env, SITE(env)); cleaned = await MD.cleanup(env); const exp = (await SO.accounts(env, false)).filter((a) => a.expiresSoon); for (const a of exp) await AU.notifyOwner(env, "Reconnect " + a.name + " (" + a.platform + ")", "The " + a.platform + " connection expires " + String(a.expires_at).slice(0, 10) + ": LinkedIn allows 60 days. Open Brain → Social → Reconnect.", "info"); } catch (e) { social = { error: e.message }; }
-      return json({ ok: true, automations: r, briefing: daily, social, media: cleaned });
+      let dmWaiting = null; try { dmWaiting = await (await import("../../_lib/metadm.js")).followUpWaiting(env); } catch (e) { dmWaiting = { error: String((e && e.message) || e).slice(0, 120) }; }   // v55.27
+      return json({ ok: true, automations: r, briefing: daily, social, media: cleaned, dmWaiting });
     }
     // v27 Website Engineer: GitHub Actions reports (QA of a Brain pull request, visual inspection, project index): CRON_KEY, not a session
     if (p0 === "eng" && (path[1] === "qa" || path[1] === "index") && m === "POST") {

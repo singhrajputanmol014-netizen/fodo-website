@@ -2,12 +2,12 @@
 // Run: node --no-warnings tests/v54-meta-dm.test.mjs
 import { createHmac } from "node:crypto";
 import { onRequestGet, onRequestPost } from "../functions/api/meta/webhook.js";
-import { toDmText, findContact, _setLeadStore } from "../functions/_lib/metadm.js";
+import { toDmText, findContact, _setLeadStore, followUpWaiting, pauseSeconds } from "../functions/_lib/metadm.js";
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + m); };
 console.error = () => {};
 
 const kv = new Map();
-const CHAT_KV = { get: async (k) => (kv.has(k) ? kv.get(k) : null), put: async (k, v) => { kv.set(k, v); } };
+const CHAT_KV = { get: async (k) => (kv.has(k) ? kv.get(k) : null), put: async (k, v) => { kv.set(k, v); }, delete: async (k) => { kv.delete(k); }, list: async (o) => ({ keys: [...kv.keys()].filter((k) => k.startsWith((o && o.prefix) || "")).map((name) => ({ name })) }) };
 const prompts = [], sent = [], waSent = [];
 let aiFail = false, aiReply = "Hi! We build **websites** and run ads. See [Free Growth Audit](/contact/?mode=audit).";
 const AI = { run: async (m, inp) => { if (aiFail) throw new Error("model down"); prompts.push(inp.messages); return { response: aiReply }; } };
@@ -158,5 +158,31 @@ ok(toDmText("a. ".repeat(600)).length <= 950, "replies are capped for Instagram'
   ok(sent.length === s0 + 3 && /shared a post or reel/.test(prompts[prompts.length - 1].slice(-1)[0].content), "a reel shared on its own still gets a reply");
   const sys = prompts[prompts.length - 1][0].content;
   ok(/Never promise a call or a reply at a set time/.test(sys), "the bot never promises a call 'abhi' or at a set time"); }
+
+/* v55.27 the team's own outreach: a person who answers it is never lost */
+{ const s0 = sent.length, l0 = leads.length, T = Date.now();
+  ok(pauseSeconds({}) === 1800 && pauseSeconds({ META_BOT_HUMAN_PAUSE_MINUTES: "10" }) === 600 && pauseSeconds({ META_BOT_HUMAN_PAUSE_HOURS: "2" }) === 7200, "quiet window: 30 min default, minutes/hours overrides");
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: env.META_IG_ID }, recipient: { id: "p1" }, timestamp: T, message: { mid: "o1", is_echo: true, app_id: "263902037430900", text: "Hi Dr. Sarthak, Anmol from FODO here, can we help with your clinic's Google listing?" } }] }] });
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "p1" }, recipient: { id: env.META_IG_ID }, timestamp: T + 600000, message: { mid: "o2", text: "8076787981" } }] }] });
+  ok(sent.length === s0, "while the team has the chat the bot does not jump in");
+  ok(leads.length === l0 + 1 && /8076787981/.test(leads[leads.length - 1].phone), "a number shared in a team chat is saved as a lead at once");
+  ok(kv.has("dm:wait:instagram:p1"), "the chat is marked as waiting for a reply");
+  let r1 = await followUpWaiting(env, { now: T + 600000 + 5 * 60e3 });
+  ok(sent.length === s0, "no follow-up while the team still has time to answer");
+  kv.delete("dm:hp:instagram:p1");   // the 30-minute quiet window ran out
+  r1 = await followUpWaiting(env, { now: T + 600000 + 31 * 60e3 });
+  ok(r1.replied === 1 && sent.length === s0 + 1 && sent[sent.length - 1].recipient.id === "p1", "nobody from the team answered: the bot replies once from the hourly tick");
+  const conv = prompts[prompts.length - 1].map((m) => m.content).join("\n");
+  ok(/\[Team\] Hi Dr\. Sarthak/.test(conv) && /8076787981/.test(conv), "the bot sees the team's outreach message and the person's answer");
+  ok(!kv.has("dm:wait:instagram:p1"), "answered chats are not followed up twice");
+  r1 = await followUpWaiting(env, { now: T + 600000 + 90 * 60e3 });
+  ok(r1.replied === 0 && sent.length === s0 + 1, "second hourly run sends nothing more");
+  // the team answers in time: no bot follow-up
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: env.META_IG_ID }, recipient: { id: "p2" }, timestamp: T, message: { mid: "q1", is_echo: true, app_id: "263902037430900", text: "Hello from Anmol" } }] }] });
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: "p2" }, recipient: { id: env.META_IG_ID }, timestamp: T + 600000, message: { mid: "q2", text: "interested, tell me more" } }] }] });
+  await post({ object: "instagram", entry: [{ id: env.META_IG_ID, messaging: [{ sender: { id: env.META_IG_ID }, recipient: { id: "p2" }, timestamp: T + 900000, message: { mid: "q3", is_echo: true, app_id: "263902037430900", text: "Sure, sending details" } }] }] });
+  kv.delete("dm:hp:instagram:p2");
+  r1 = await followUpWaiting(env, { now: T + 3 * 3600e3 });
+  ok(sent.length === s0 + 1 && !kv.has("dm:wait:instagram:p2"), "when the team answered in time the bot stays out"); }
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

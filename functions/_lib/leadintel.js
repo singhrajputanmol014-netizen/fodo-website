@@ -546,6 +546,8 @@ export async function list(env, q) {
   const rows = await all(d, "SELECT id,name,industry,sub_industry,category,locality,city,website,phone,email,whatsapp,owner_name,owner_role,owner_conf,score,priority,status,source,source_ref,email_check,email_reason,rating,reviews,researched_at,created_at,updated_at,archived FROM li_businesses" + where + " ORDER BY " + (SORTS[q.sort] || SORTS.score) + ", id LIMIT " + lim + " OFFSET " + (page - 1) * lim, ...a);
   const total = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses" + where, ...a)) || {}).n || 0;
   const S = await sentMap(d, rows.map((r) => r.email)); rows.forEach((r) => { const m = r.email && S[String(r.email).toLowerCase()]; if (m) { r.sent_at = m.at; r.sent_via = m.via; } });
+  const miss = rows.filter((r) => !r.sent_at && r.status === "email_sent").map((r) => r.id);
+  if (miss.length) { try { const H = {}; ((await d.prepare("SELECT business_id AS b, MAX(at) AS at FROM li_outreach WHERE to_status='email_sent' AND business_id IN (SELECT value FROM json_each(?1)) GROUP BY business_id").bind(JSON.stringify(miss)).all()).results || []).forEach((h) => { H[h.b] = h.at; }); rows.forEach((r) => { if (!r.sent_at && H[r.id]) { r.sent_at = H[r.id]; r.sent_via = "Lead page"; } }); } catch (e) {} }
   return { leads: rows, total, page, pages: Math.max(1, Math.ceil(total / lim)), per: lim };
 }
 /* v55.32 which of these emails already got an email from FODO (lead emails, client emails, Bulk pitch, Email campaigns); tests excluded */

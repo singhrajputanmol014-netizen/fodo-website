@@ -90,6 +90,10 @@ ok(!by("client2@shop2.in").sent_at && by("client2@shop2.in").status === "not_con
 ok(!by("client3@shop3.in").sent_at && by("client3@shop3.in").status === "not_contacted", "failed sends do not count");
 ok((await LP("leads?status=email_sent&limit=50")).j.total === 2, "Status filter Email sent finds them");
 
+X("INSERT INTO li_businesses (id,name,email,source,status,archived,created_at,updated_at) VALUES ('LI-PAGE1','Page Sent','page@sent.in','manual','email_sent',0,'2026','2026')");
+X("INSERT INTO li_outreach (business_id,from_status,to_status,channel,at) VALUES ('LI-PAGE1','new','email_sent','email','2026-11-26T08:00:00Z')");
+const ps = (await LP("leads?status=email_sent&limit=50")).j.leads.find((l) => l.id === "LI-PAGE1");
+ok(ps && ps.sent_at === "2026-11-26T08:00:00Z" && ps.sent_via === "Lead page", "emails sent from the lead page show Sent with their date");
 /* email check across all leads (not only one database) */
 globalThis.fetch = ((orig) => async (u, o) => { if (/cloudflare-dns\.com/.test(String(u))) return Response.json({ Answer: [{ type: 15, data: "10 mx" }] }); return orig(u, o); })(globalThis.fetch);
 X("INSERT INTO li_businesses (id,name,email,source,status,archived,created_at,updated_at) VALUES ('LI-SRCH1','Search Find','noreply@found.in','google_places','new',0,'2026','2026')");

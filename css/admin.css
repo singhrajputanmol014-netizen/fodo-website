@@ -292,3 +292,4 @@ tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var
 .ad-li-db .ad-acts{display:flex;flex-wrap:wrap;gap:8px}.ad-li-db .ad-acts .btn{white-space:nowrap;margin:0}
 .ad-li-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;margin:16px 0}.ad-li-pager select{width:auto}.ad-li-sent{display:block;margin-top:4px;font-size:.8rem;color:#4ade80;font-weight:600}
 .ad-li-alw{border-color:rgba(156,145,255,.55)}.ad-li-off{opacity:.6}.ad-li-files .ad-li-lnk{margin-left:6px;font-size:.78rem}
+.ad-li-stg{margin:10px 0 4px}.ad-li-stg .chip b{margin-left:6px}

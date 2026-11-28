@@ -94,6 +94,14 @@ X("INSERT INTO li_businesses (id,name,email,source,status,archived,created_at,up
 X("INSERT INTO li_outreach (business_id,from_status,to_status,channel,at) VALUES ('LI-PAGE1','new','email_sent','email','2026-11-26T08:00:00Z')");
 const ps = (await LP("leads?status=email_sent&limit=50")).j.leads.find((l) => l.id === "LI-PAGE1");
 ok(ps && ps.sent_at === "2026-11-26T08:00:00Z" && ps.sent_via === "Lead page", "emails sent from the lead page show Sent with their date");
+/* v55.34 Leads & clients = still to contact; Sent leads = already emailed or messaged */
+const op = (await LP("leads?stage=open&limit=500")).j, ct = (await LP("leads?stage=contacted&limit=500")).j;
+ok(op.leads.every((l) => ["new", "not_contacted"].includes(l.status)) && ct.leads.every((l) => !["new", "not_contacted"].includes(l.status)), "open stage hides contacted leads, contacted stage shows only them");
+ok(op.stages.open === op.total && op.stages.contacted === ct.total && ct.total >= 3 && op.total + ct.total === (await LP("leads?limit=1")).j.total, "both counts come back and add up to every lead");
+ok(ct.leads.some((l) => l.email === "client1@shop1.in") && !op.leads.some((l) => l.email === "client1@shop1.in"), "an emailed lead moved from Leads & clients to Sent leads");
+ok((await LP("leads?stage=open&status=email_sent&limit=5")).j.total === ct.leads.filter((l) => l.status === "email_sent").length, "a chosen status wins over the stage");
+const AJ3 = fs.readFileSync("js/admin.js", "utf8");
+ok(/"li-contacted", "Sent leads"/.test(AJ3) && /stage: "open"/.test(AJ3) && /stage: "contacted"/.test(AJ3) && /To contact <b>/.test(AJ3), "Sent leads page in the menu, Leads & clients asks for open leads only");
 /* email check across all leads (not only one database) */
 globalThis.fetch = ((orig) => async (u, o) => { if (/cloudflare-dns\.com/.test(String(u))) return Response.json({ Answer: [{ type: 15, data: "10 mx" }] }); return orig(u, o); })(globalThis.fetch);
 X("INSERT INTO li_businesses (id,name,email,source,status,archived,created_at,updated_at) VALUES ('LI-SRCH1','Search Find','noreply@found.in','google_places','new',0,'2026','2026')");

@@ -431,7 +431,7 @@
         '<div class="ad-or-vars">' + OR_V.map(function (v) { return '<label><span class="ad-dl2">' + v[1] + '</span><input class="ad-in" data-ov="' + v[0] + '" maxlength="400" placeholder="' + (v[0] === "amount" && c && c.amount ? esc(c.amount) : v[0] === "date" ? "e.g. 30 Nov 2026" : v[0] === "link" ? "https://…" : "") + '" value="' + esc(OR.vars[v[0]] || "") + '"></label>'; }).join("") + "</div>" +
         OR_B.map(function (b) { return '<label class="ad-dl2" for="or-b-' + b[0] + '">' + b[1] + "</label>" + (b[2] > 1 ? '<textarea id="or-b-' + b[0] + '" class="ad-in ad-ta" rows="' + b[2] + '" data-ob="' + b[0] + '" maxlength="6000">' + esc(OR.blocks[b[0]] || "") + "</textarea>" : '<input id="or-b-' + b[0] + '" class="ad-in" data-ob="' + b[0] + '" maxlength="400" value="' + esc(OR.blocks[b[0]] || "") + '">'); }).join("") +
         '<div class="ad-or-att"><p class="ad-dl2">Attachments <span class="muted">(any file: PDF, image, Word, Excel, PPT, zip · up to ' + (OR.cfg.maxFiles || 5) + ' files, 10 MB each, 15 MB together)</span></p>' +
-          '<div class="ad-or-atl">' + OR.atts.map(function (a) { return '<span class="ad-or-chip">' + (a.always ? "📌 " : "📎 ") + esc(a.name) + ' <small class="muted">' + kb(a.size) + '</small><button type="button" class="ad-ib" data-ax="' + esc(a.id) + '" aria-label="Remove ' + esc(a.name) + '">×</button></span>'; }).join("") + "</div>" +
+          '<div class="ad-or-atl">' + OR.atts.map(function (a) { return '<span class="ad-or-chip">' + (a.always ? "📌 " : "📎 ") + esc(a.name) + ' <small class="muted">' + kb(a.size) + (a.always ? " · every email" : "") + '</small>' + (a.always ? '<button type="button" class="ad-li-lnk" data-astop="' + esc(a.id) + '">stop for all</button>' : "") + '<button type="button" class="ad-ib" data-ax="' + esc(a.id) + '" aria-label="Remove ' + esc(a.name) + '">×</button></span>'; }).join("") + "</div>" +
           (OR.cfg.attach === false ? '<p class="muted">Attachments need CHAT_KV storage on the website.</p>' : '<label class="btn sm ghost" for="or-attf">+ Attach file</label><input type="file" id="or-attf" class="sr-only" multiple>') + "</div>" +
         '<p class="muted ad-or-hint">Variables: {client_name} {first_name} {business_name} {city} {industry} {service} {amount} {pricing} {date} {next_step} {link} {phone} {email}. The design, header, "Anmol · FODO" sign-off and footer are fixed.</p>' +
         '<p id="or-empty" class="cf-status warn" hidden></p>' +
@@ -451,6 +451,7 @@
     $$("[data-ov]").forEach(function (el) { el.oninput = function () { OR.vars[el.dataset.ov] = el.value; orPreview(); }; });
     on("#or-reset", function () { ask({ title: "Reset the content?", text: "Subject and all content blocks go back to the template.", ok: "Reset" }).then(function (x) { if (x) { orReset(); orDraw(); } }); });
     $$("[data-ax]").forEach(function (b) { b.onclick = function () { OR.atts = OR.atts.filter(function (a) { return a.id !== b.dataset.ax; }); orDraw(); }; });
+    $$("[data-astop]").forEach(function (b) { b.onclick = function () { api("li/always-files", { remove: b.dataset.astop }).then(function (r) { toast(r.ok ? "It will not go with new emails any more" : r.reason, !r.ok); OR.atts.forEach(function (a) { if (a.id === b.dataset.astop) a.always = false; }); orDraw(); }); }; });
     var af = $("#or-attf"); if (af) af.onchange = function () { orAttach([].slice.call(this.files || [])); this.value = ""; };
     on("#or-test", function () { orSend(true); });
     on("#or-send", function () { orSend(false); });
@@ -468,7 +469,7 @@
       var f = files[k]; toast("Uploading " + f.name + "…");
       readB64(f).then(function (b64) { return api("outreach/attach", { file: b64, name: f.name, mime: f.type || "" }); }).then(function (j) {
         if (!j.ok) { toast(j.reason || "Could not attach " + f.name, true); return orDraw(); }
-        OR.atts.push(j.attachment); next(k + 1);
+        OR.atts.push(j.attachment); api("li/always-files", { add: j.attachment }).then(function (r) { if (r.ok) j.attachment.always = true; next(k + 1); });   /* v55.35 attached once = goes with every new email */
       }).catch(function () { toast("Could not read " + f.name, true); orDraw(); });
     };
     next(0);
@@ -508,7 +509,7 @@
     var name = function (id) { var c = OR.clients.filter(function (x) { return x.id === id; })[0]; return c ? c.business || c.name : ""; };
     return '<h2 class="ad-or-h2">Send log</h2><div class="ad-bar2"><select id="or-lc" class="ad-in" aria-label="Filter by client">' + opts([["", "All clients"]].concat(OR.clients.map(function (c) { return [c.id, c.business || c.name]; })), OR.lf.client) + '</select><select id="or-ls" class="ad-in" aria-label="Filter by status">' + opts([["", "Any status"], ["sent", "Sent"], ["failed", "Failed"]], OR.lf.status) + "</select></div>" +
       (OR.sends.length ? '<div class="ad-table"><table><thead><tr><th>When</th><th>Client</th><th>Type</th><th>Subject</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>' + OR.sends.map(function (s) { var st = OR_ST[s.status] || [s.status, ""];
-        return "<tr><td>" + date(s.at, true) + "</td><td>" + esc(name(s.client_id) || "-") + '<br><small class="muted">' + esc(s.email) + "</small></td><td>" + esc(s.type_label) + (s.test ? ' <span class="ad-tag">test</span>' : "") + "</td><td>" + esc(s.subject) + (s.attachments && s.attachments.length ? '<br><small class="muted">📎 ' + s.attachments.map(function (a) { return esc(a.name); }).join(", ") + "</small>" : "") + '</td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (s.attempts > 1 ? ' <small class="muted">' + s.attempts + " tries</small>" : "") + (s.error ? '<br><small class="muted">' + esc(s.error) + "</small>" : "") + (s.provider_id ? '<br><small class="muted">id ' + esc(s.provider_id) + "</small>" : "") + "</td><td><small>" + esc(s.admin || "") + "</small></td>" +
+        return "<tr><td>" + date(s.at, true) + "</td><td>" + esc(name(s.client_id) || "-") + '<br><small class="muted">' + esc(s.email) + "</small></td><td>" + esc(s.type_label) + (s.test ? ' <span class="ad-tag">test</span>' : "") + "</td><td>" + esc(s.subject) + (s.attachments && s.attachments.length ? '<br><small class="muted">📎 ' + s.attachments.map(function (a) { return esc(a.name); }).join(", ") + "</small>" : "") + '</td><td><span class="ad-tag ' + st[1] + '">' + st[0] + "</span>" + (s.status === "sent" && !s.test ? (s.opened_at ? ' <span class="ad-tag ok" title="First opened ' + esc(date(s.opened_at, true)) + '">&#128065; Seen' + (s.opens > 1 ? " " + s.opens + "×" : "") + "</span>" : ' <small class="muted">not opened yet</small>') : "") + (s.attempts > 1 ? ' <small class="muted">' + s.attempts + " tries</small>" : "") + (s.error ? '<br><small class="muted">' + esc(s.error) + "</small>" : "") + (s.provider_id ? '<br><small class="muted">id ' + esc(s.provider_id) + "</small>" : "") + "</td><td><small>" + esc(s.admin || "") + "</small></td>" +
           '<td class="ad-cp-act"><a class="btn sm ghost" href="/api/admin/outreach/sends/' + encodeURIComponent(s.id) + '/html" target="_blank" rel="noopener">View</a>' + (s.status === "failed" ? '<button type="button" class="btn sm" data-retry="' + esc(s.id) + '">Retry</button>' : "") + "</td></tr>"; }).join("") + "</tbody></table></div>"
         : '<div class="panel ad-card"><p class="muted">Nothing sent yet.</p></div>');
   }
@@ -539,6 +540,8 @@
   var lday = function (s) { return s ? date(s, true) : "Never"; };
   var opt = function (list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(l) + "</option>"; }).join(""); };
   var ECK = { risky: ["Risky", "mid"], invalid: ["Invalid", "bad"], test: ["Test / demo", "bad"], blocked: ["Spam: never email", "bad"] };
+  /* v55.35 email opens (a tracking image; only counts when the mail app loads images) */
+  var lseen = function (x) { return x.seen_at ? '<small class="ad-li-seen" title="First opened ' + esc(date(x.seen_at, true)) + (x.opens > 1 ? ", opened " + x.opens + " times, last " + esc(date(x.seen_last, true)) : "") + '">&#128065; Seen ' + esc(date(x.seen_last || x.seen_at)) + (x.opens > 1 ? " · " + x.opens + "×" : "") + "</small>" : (x.sent_at && x.sent_via !== "Lead page" ? '<small class="muted ad-li-unseen">Not opened yet</small>' : ""); };
   /* v55.32 pages: 100 leads per page */
   var lpager = function (j) {
     var o = ""; for (var p = 1; p <= j.pages; p++) o += '<option value="' + p + '"' + (p === j.page ? " selected" : "") + ">Page " + p + "</option>";
@@ -668,7 +671,7 @@
         '<button type="button" class="btn sm ghost" data-ba="' + (q.archived === "1" ? "unarchive" : "archive") + '">' + (q.archived === "1" ? "Restore" : "Archive") + '</button><button type="button" class="btn sm ghost" data-ba="delete">Delete</button></span>' +
         '<span class="ad-li-ex"><button type="button" class="btn sm ghost" id="lq-csv">Export all CSV</button> <button type="button" class="btn sm ghost" id="lq-xlsx">Excel</button>' + (mode === "li-leads" ? ' <button type="button" class="btn sm ghost" id="lq-dup">Check duplicates</button> <button type="button" class="btn sm ghost" id="lq-eck">Check emails</button>' : "") + "</span></div>" +
         '<div class="ad-table"><table><thead><tr><th><input type="checkbox" id="lq-all" aria-label="Select all"></th><th>Business</th><th>Score</th><th>' + cols[0] + "</th><th>" + cols[1] + "</th><th>Status</th></tr></thead><tbody>" +
-        (L.length ? L.map(function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><input type="checkbox" data-ck="' + esc(x.id) + '" aria-label="Select ' + esc(x.name) + '"></td><td><b>' + esc(x.name) + '</b>' + (x.source === "import" ? ' <span class="ad-st mid">Imported</span>' : "") + '<small class="muted ad-li-sub">' + esc([x.id, x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + "</td>" + cell(x) + '<td data-l="Status">' + esc(lst(x.status)) + (x.sent_at ? '<small class="ad-li-sent">&#10003; Sent ' + esc(date(x.sent_at)) + " · " + esc(x.sent_via || "Email") + "</small>" : "") + "</td></tr>"; }).join("")
+        (L.length ? L.map(function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><input type="checkbox" data-ck="' + esc(x.id) + '" aria-label="Select ' + esc(x.name) + '"></td><td><b>' + esc(x.name) + '</b>' + (x.source === "import" ? ' <span class="ad-st mid">Imported</span>' : "") + '<small class="muted ad-li-sub">' + esc([x.id, x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + "</td>" + cell(x) + '<td data-l="Status">' + esc(lst(x.status)) + (x.sent_at ? '<small class="ad-li-sent">&#10003; Sent ' + esc(date(x.sent_at)) + " · " + esc(x.sent_via || "Email") + "</small>" : "") + lseen(x) + "</td></tr>"; }).join("")
           : '<tr><td colspan="6" class="muted">No leads match. ' + (mode === "li-hot" ? "Research leads to score them." : "Use Find businesses to add some.") + "</td></tr>") + "</tbody></table></div>" + (j.pages > 1 ? lpager(j) : "") + "<div id=\"lq-dups\"></div>";
       var reload = function () { liLeads(mode); };
       var setQ = function () { ["q", "status", "priority", "industry", "city", "website", "people", "researched", "source", "echeck", "sort"].forEach(function (k) { q[k] = $("#lq-" + k).value.trim(); }); q.archived = $("#lq-archived").checked ? "1" : ""; delete q.page; reload(); };
@@ -927,7 +930,7 @@
           var r = i.reply;
           return '<tr data-li="' + esc(i.id) + '" tabindex="0"><td><b>' + esc(i.name) + '</b><small class="muted ad-li-sub">' + esc([i.category, i.place].filter(Boolean).join(" · ")) + " · " + esc(lst(i.status)) + "</small></td>" +
             '<td data-l="Sent on">' + i.channels.map(lchip).join(" ") + (i.sent_count > 1 ? ' <small class="muted">' + i.sent_count + " times</small>" : "") + "</td>" +
-            '<td data-l="Last sent">' + esc(lago(i.last_sent)) + '<small class="muted ad-li-sub">' + date(i.last_sent, true) + "</small></td>" +
+            '<td data-l="Last sent">' + esc(lago(i.last_sent)) + '<small class="muted ad-li-sub">' + date(i.last_sent, true) + "</small>" + (i.channels.indexOf("email") > -1 ? lseen(Object.assign({ sent_at: i.last_sent }, i)) : "") + "</td>" +
             '<td data-l="Files">' + (i.files.length ? i.files.map(function (f) { return '<small class="ad-or-chip">📎 ' + esc(f) + "</small>"; }).join(" ") : '<small class="muted">none</small>') + "</td>" +
             '<td data-l="Reply" class="ad-li-rep">' + (r ? lchip(r.channel) + ' <small class="muted">' + esc(lago(r.at)) + (i.reply_count > 1 ? " · " + i.reply_count + " replies" : "") + "</small>" + (r.text ? "<p>" + esc(r.text) + "</p>" : "") : '<span class="muted">No reply yet</span>') + "</td>" +
             '<td><button type="button" class="btn sm ghost" data-rep="' + esc(i.id) + '" data-nm="' + esc(i.name) + '" data-ch="' + esc(i.channels.join(",")) + '">Got a reply</button></td></tr>';
@@ -1002,8 +1005,8 @@
         (al ? '<button type="button" class="ad-li-lnk" data-fstop="' + esc(f.id) + '" title="Stop attaching this to every email">stop for all</button>' : (/^ca_/.test(f.id || "") ? '<button type="button" class="ad-li-lnk" data-fpin="' + i + '" title="Attach this to every email from now on">every email</button>' : "")) +
         '<button type="button" class="ad-ib" data-fx="' + i + '" aria-label="Remove ' + esc(f.name) + ' from this email">×</button></span>'; }).join("") +
       off.map(function (f) { return '<span class="ad-or-chip ad-li-off">📌 <s>' + esc(f.name) + '</s> <small class="muted">not in this email</small><button type="button" class="ad-li-lnk" data-fback="' + esc(f.id) + '">add back</button></span>'; }).join("") +
-      '<label class="btn sm ghost ad-li-up">+ Attach file<input type="file" multiple hidden data-fup></label><label class="btn sm ad-li-up">📌 Attach to every email<input type="file" multiple hidden data-fup="all"></label>' +
-      '<small class="muted">📌 files go with every client email automatically (× leaves one out of this email only). <b>+ Attach file</b> is for this email only. PDF, image, doc, up to 10 MB, 5 files. WhatsApp, Instagram, Facebook, LinkedIn: sent as a private link in the message.</small></div>';
+      '<label class="btn sm ad-li-up">📌 Attach file<input type="file" multiple hidden data-fup="all"></label><label class="btn sm ghost ad-li-up">Only for this email<input type="file" multiple hidden data-fup></label>' +
+      '<small class="muted"><b>📌 Attach file</b>: added once, it goes with every new email on its own (× leaves it out of one email, <i>stop for all</i> removes it). <b>Only for this email</b>: a one-time file. PDF, image, doc, up to 10 MB, 5 files. WhatsApp, Instagram, Facebook, LinkedIn: sent as a private link in the message.</small></div>';
   }
   function lfilesWire(box, onChange) {
     var redraw = function () { box.outerHTML = lfilesUI(box.id); var nb = document.getElementById(box.id); lfilesWire(nb, onChange); if (onChange) onChange(); };
@@ -1067,7 +1070,7 @@
     var profWire = function () {   /* v55.33 the services email names what goes with it; files are managed in Files above */
       var el = $("#le-prof"); if (!el) return;
       var al = LFILES.filter(lalwIs);
-      el.innerHTML = al.length ? "Goes with every email: <b>" + al.map(function (f) { return esc(f.name); }).join(", ") + "</b>" : "Tip: add the FODO company profile PDF with <b>📌 Attach to every email</b> above, once. It then goes with every client email.";
+      el.innerHTML = al.length ? "Goes with every email: <b>" + al.map(function (f) { return esc(f.name); }).join(", ") + "</b>" : "Tip: add the FODO company profile PDF with <b>📌 Attach file</b> above, once. It then goes with every client email.";
     };
     var show = function (c, kind, tpl) {
       cur = c; w.hidden = false; w.innerHTML = '<p class="muted">Writing ' + esc(c ? (LPLAT.find(function (p) { return p[0] === c.channel; }) || [0, ""])[1] : "the") + " message from the research…</p>";

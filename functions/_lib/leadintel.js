@@ -553,7 +553,7 @@ export async function list(env, q) {
   const where = w.length ? " WHERE " + w.join(" AND ") : "", lim = Math.max(1, Math.min(1000, +q.limit || 200)), page = Math.max(1, Math.min(100000, parseInt(q.page, 10) || 1));
   const rows = await all(d, "SELECT id,name,industry,sub_industry,category,locality,city,website,phone,email,whatsapp,owner_name,owner_role,owner_conf,score,priority,status,source,source_ref,email_check,email_reason,rating,reviews,researched_at,created_at,updated_at,archived FROM li_businesses" + where + " ORDER BY " + (SORTS[q.sort] || SORTS.score) + ", id LIMIT " + lim + " OFFSET " + (page - 1) * lim, ...a);
   const total = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses" + where, ...a)) || {}).n || 0;
-  const S = await sentMap(d, rows.map((r) => r.email)); rows.forEach((r) => { const m = r.email && S[String(r.email).toLowerCase()]; if (m) { r.sent_at = m.at; r.sent_via = m.via; } });
+  const S = await sentMap(d, rows.map((r) => r.email)); rows.forEach((r) => { const m = r.email && S[String(r.email).toLowerCase()]; if (m) { if (m.at) { r.sent_at = m.at; r.sent_via = m.via; } if (m.seen_at) { r.seen_at = m.seen_at; r.seen_last = m.seen_last; r.opens = m.opens; } } });
   const miss = rows.filter((r) => !r.sent_at && r.status === "email_sent").map((r) => r.id);
   if (miss.length) { try { const H = {}; ((await d.prepare("SELECT business_id AS b, MAX(at) AS at FROM li_outreach WHERE to_status='email_sent' AND business_id IN (SELECT value FROM json_each(?1)) GROUP BY business_id").bind(JSON.stringify(miss)).all()).results || []).forEach((h) => { H[h.b] = h.at; }); rows.forEach((r) => { if (!r.sent_at && H[r.id]) { r.sent_at = H[r.id]; r.sent_via = "Lead page"; } }); } catch (e) {} }
   return { leads: rows, total, page, pages: Math.max(1, Math.ceil(total / lim)), per: lim, stages: stageCounts };
@@ -566,6 +566,8 @@ async function sentMap(d, emails) {
     ["SELECT email AS e, MAX(at) AS at FROM cm_pitch_rcpt WHERE status='sent' AND lower(email) IN (SELECT value FROM json_each(?1)) GROUP BY lower(email)", "Bulk pitch"],
     ["SELECT email AS e, MAX(sent_at) AS at FROM camp_recips WHERE status='sent' AND lower(email) IN (SELECT value FROM json_each(?1)) GROUP BY lower(email)", "Email campaign"]];
   for (const [sql, via] of Q) { try { ((await d.prepare(sql).bind(JSON.stringify(E)).all()).results || []).forEach((r) => put(r.e, r.at, via)); } catch (e) { /* that product's tables are not set up yet */ } }
+  try { ((await d.prepare("SELECT lower(email) AS e, MAX(opened_at) AS o, MAX(last_open) AS l, SUM(COALESCE(opens,0)) AS n FROM cm_sends WHERE status='sent' AND COALESCE(test,0)=0 AND opened_at IS NOT NULL AND lower(email) IN (SELECT value FROM json_each(?1)) GROUP BY lower(email)").bind(JSON.stringify(E)).all()).results || [])
+    .forEach((r) => { out[r.e] = Object.assign(out[r.e] || {}, { seen_at: r.o, seen_last: r.l, opens: r.n }); }); } catch (e) {}   /* v55.35 opened */
   return out;
 }
 /* leads still "New / Not contacted" whose email was already sent from another FODO tool move to "Email sent" (at most every 5 minutes) */
@@ -747,6 +749,7 @@ export async function sentList(env, q) {
     return { id, name: b.name, category: b.category, place: [b.locality, b.city].filter(Boolean).join(", "), status: b.status, score: b.score, priority: b.priority,
       channels: [...new Set(r.sends.map((s) => s.channel))], sends: r.sends.slice(0, 10), sent_count: r.sends.length, last_sent: last.at, first_sent: r.sends[r.sends.length - 1].at,
       files: [...new Set([].concat(...r.sends.map((s) => s.files)))].slice(0, 6), replied: !!rep, reply: rep, reply_count: r.replies.length }; });
+  try { const S = await sentMap(d, ids.map((id) => (biz.get(id) || {}).email)); items.forEach((i) => { const m = S[String((biz.get(i.id) || {}).email || "").toLowerCase()]; if (m && m.seen_at) { i.seen_at = m.seen_at; i.seen_last = m.seen_last; i.opens = m.opens; } }); } catch (e) {}   /* v55.35 */
   const counts = { all: items.length, replied: items.filter((i) => i.replied).length, waiting: items.filter((i) => !i.replied).length, by_channel: {} };
   SENT_CH.forEach((c) => { counts.by_channel[c] = items.filter((i) => i.channels.indexOf(c) > -1).length; });
   if (q.view === "replied") items = items.filter((i) => i.replied); else if (q.view === "waiting") items = items.filter((i) => !i.replied);

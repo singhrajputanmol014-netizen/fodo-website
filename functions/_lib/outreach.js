@@ -33,7 +33,7 @@ const DDL = [
   "CREATE TABLE IF NOT EXISTS camp_unsub (email TEXT PRIMARY KEY, at TEXT, why TEXT)",
 ];
 /* v54.5: files attached to a send (JSON [{id,name,mime,size}]); the file bytes live in CHAT_KV under cm:att:<id> */
-const MIG = ["ALTER TABLE cm_sends ADD COLUMN atts TEXT", "ALTER TABLE cm_sends ADD COLUMN campaign_id TEXT"];   /* v54.6: campaign_id = a Bulk pitch campaign (pitch.js) */
+const MIG = ["ALTER TABLE cm_sends ADD COLUMN atts TEXT", "ALTER TABLE cm_sends ADD COLUMN campaign_id TEXT", /* v55.35 opens */ "ALTER TABLE cm_sends ADD COLUMN opened_at TEXT", "ALTER TABLE cm_sends ADD COLUMN opens INTEGER", "ALTER TABLE cm_sends ADD COLUMN last_open TEXT"];   /* v54.6: campaign_id = a Bulk pitch campaign (pitch.js) */
 /* the first client, added once (and again only if the table is emptied and the seed row was never made) */
 export const SEED = { id: "cl_shagun", name: "", business: "Shagun Banquet Hall", email: "singhrajputanmol014@gmail.com", phone: "", city: "Motihari", industry: "Banquet hall / events",
   service: "AI Digital Growth System", amount: "₹50,000 one-time", status: "proposal",
@@ -170,7 +170,20 @@ export async function provider(env) {
   if (env.RESEND_API_KEY) return { via: "resend", account: "" };
   return { via: "", account: "" };
 }
+/* v55.35 a 1x1 image so FODO sees when the email is opened (images must load; some mail apps open it on their own) */
+export function withPixel(env, html, id) {
+  if (!id || !/^cm_[A-Za-z0-9]+$/.test(String(id)) || typeof html !== "string" || html.indexOf("/api/o/") > -1) return html;
+  const img = '<img src="' + String(env.SITE_URL || "https://www.fodo.co.in").replace(/\/$/, "") + "/api/o/" + id + '.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0">';
+  return html.indexOf("</body>") > -1 ? html.replace("</body>", img + "</body>") : html + img;
+}
+export async function markOpen(env, id) {
+  if (!/^cm_[A-Za-z0-9]{6,40}$/.test(String(id || ""))) return false;
+  const d = await cmDb(env), t = nowIso(), cut = new Date(Date.now() - 10 * 60e3).toISOString();
+  const r = await d.prepare("UPDATE cm_sends SET opens=COALESCE(opens,0)+1, opened_at=COALESCE(opened_at,?2), last_open=?2 WHERE id=?1 AND status='sent' AND (last_open IS NULL OR last_open < ?3)").bind(id, t, cut).run();   /* one write per 10 minutes at most */
+  return !!(r.meta && r.meta.changes);
+}
 async function resend(env, o) {
+  if (o && o.id && !o.noTrack) o = Object.assign({}, o, { html: withPixel(env, o.html, o.id) });
   const how = o.how || (await provider(env));
   if (!how.via) throw err("Email sending is not connected yet. Open Admin ▸ Studio ▸ Inbox and log in with Google as anmol@fodo.co.in (or add RESEND_API_KEY in Cloudflare).", 503, { setup: true });
   if (how.via === "gmail") {
@@ -188,7 +201,7 @@ async function resend(env, o) {
   if (!r.ok || !j.id) return { ok: false, error: "Resend " + r.status + (j.message ? ": " + String(j.message).slice(0, 180) : "") };
   return { ok: true, id: j.id, via: "resend" };
 }
-const pubSend = (r) => r && { id: r.id, at: r.at, last_at: r.last_at, admin: r.admin, client_id: r.client_id, email: r.email, type: r.type, type_label: (T.TYPES[r.type] || { label: r.type }).label, subject: r.subject, status: r.status, provider_id: r.provider_id, error: r.error, test: !!r.test, marketing: !!r.marketing, attempts: r.attempts || 1, attachments: (() => { try { return JSON.parse(r.atts || "[]").map((a) => ({ name: a.name, size: a.size })); } catch (e) { return []; } })() };
+const pubSend = (r) => r && { id: r.id, at: r.at, last_at: r.last_at, admin: r.admin, client_id: r.client_id, email: r.email, type: r.type, type_label: (T.TYPES[r.type] || { label: r.type }).label, subject: r.subject, status: r.status, provider_id: r.provider_id, error: r.error, test: !!r.test, marketing: !!r.marketing, attempts: r.attempts || 1, opened_at: r.opened_at || null, opens: r.opens || 0, attachments: (() => { try { return JSON.parse(r.atts || "[]").map((a) => ({ name: a.name, size: a.size })); } catch (e) { return []; } })() };
 export async function usedThisHour(env) { const d = await cmDb(env); const r = await one(d, "SELECT COUNT(*) AS n FROM cm_sends WHERE test=0 AND last_at > ?1", new Date(Date.now() - 3600e3).toISOString()); return (r && r.n) || 0; }
 
 /* b: { client_id | client, type, subject, blocks, vars, marketing, test, to (test only), confirm, override } */

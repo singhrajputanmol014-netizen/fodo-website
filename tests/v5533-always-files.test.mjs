@@ -84,7 +84,7 @@ ok(r.files.length === 3 && r.expired.indexOf("Rate card.pdf") > -1, "an expired 
 ok((await LP("always-files", undefined, "v")).status === 403, "viewers cannot read it");
 
 const AJ = fs.readFileSync("js/admin.js", "utf8");
-ok(/📌 Attach to every email/.test(AJ) && /\+ Attach file/.test(AJ) && /data-fup="all"/.test(AJ), "two buttons: for every email, and for this email only");
+ok(/📌 Attach file/.test(AJ) && /Only for this email/.test(AJ) && /data-fup="all"/.test(AJ), "two buttons: for every email, and for this email only");
 ok(/data-fstop=/.test(AJ) && /data-fpin=/.test(AJ) && /data-fback=/.test(AJ) && /LALWOFF/.test(AJ), "pin a file for all, stop for all, leave out of one email and add back");
 ok(/lalwLoad\(\)\.then\(function \(\) \{ redrawFiles/.test(AJ) && /lalwLoad\(\);   \/\* v55\.33/.test(AJ) && /every-email files \*\//.test(AJ), "lead page, outreach queue and Client emails all pick them up");
 

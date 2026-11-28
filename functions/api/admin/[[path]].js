@@ -88,6 +88,7 @@ export async function onRequest(ctx) {
           if (a === "bot-convo") return json(Object.assign({ ok: true }, await LI.botConvo(env, q.get("ref"))));
           if (a === "sent-list") return json(Object.assign({ ok: true }, await LI.sentList(env, lq)));
           if (a === "lead" && path[2]) return json(Object.assign({ ok: true }, await LI.lead(env, path[2])));
+          if (a === "imports") return json(Object.assign({ ok: true }, await LI.imports(env)));   /* v55.29 client databases */
           if (a === "stats") return json(Object.assign({ ok: true, statuses: LI.STATUSES, industries: LI.INDUSTRIES }, await LI.stats(env, lq)));
           if (a === "jobs") return json(Object.assign({ ok: true }, await LI.jobs(env)));
           if (a === "integrations") return json(Object.assign({ ok: true }, await LI.integrations(env)));

@@ -41,12 +41,12 @@
   TABS.push(["campaigns", "Email campaigns", "M3 6h18v12H3zm0 0 9 7 9-7M17 3l4 3"]);   // v53.8
   TABS.push(["outreach", "Client Emails", "M4 5h16v14H4zm0 0 8 7 8-7M8 15h4"]);   // v54.2
   TABS.push(["pitch", "Bulk pitch", "M3 11l18-7-7 18-2-8zM12 14l9-10"]);   // v54.6
-  TABS.push(["li-dash", "Lead dashboard", "M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"], ["li-find", "Find businesses", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4.3-4.3"], ["li-people", "Decision makers", "M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm-7 9a7 7 0 0 1 14 0"], ["li-leads", "Leads & clients", "M4 6h16M4 12h16M4 18h16"],
+  TABS.push(["li-dash", "Lead dashboard", "M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"], ["li-find", "Find businesses", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4.3-4.3"], ["li-people", "Decision makers", "M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm-7 9a7 7 0 0 1 14 0"], ["li-leads", "Leads & clients", "M4 6h16M4 12h16M4 18h16"], ["li-imports", "Client databases", "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"],
     ["li-hot", "Hot leads", "M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"], ["li-audit", "Website audit", "M4 4h16v12H4zM8 20h8M12 16v4M8 10l2 2 4-4"], ["li-analytics", "Lead analytics", "M3 3v18h18M7 15l4-4 3 3 6-6"], ["li-outreach", "Outreach manager", "M3 11l18-7-7 18-2-8z"], ["li-sent", "Sent & replies", "M4 4h16v12H7l-3 3zM8 9l3 3 5-5"], ["li-settings", "Integrations", "M10 14l-6 6M14 10l6-6M8 6l10 10M6 8l2-2 10 10-2 2z"]);   // v55 Lead Intelligence
   TABS.push(["autopilot", "Autopilot", "M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"]);   // v55.24
   TABS.push(["helpdesk", "Help desk", "M4 4h16v12H7l-3 3zm4 5h8M8 12h5"], ["mail", "Mail", "M3 6h18v12H3zm0 0 9 7 9-7"], ["chats", "AI chats", "M4 5h16v10H9l-5 4zM8 9h.01M12 9h.01M16 9h.01"]);
   /* v17.1 navigation: grouped sidebar + ☰ menu (all sections, quick links) */
-  var GROUPS = [["", ["overview", "autopilot"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Lead Intelligence", ["li-dash", "li-find", "li-people", "li-leads", "li-hot", "li-audit", "li-analytics", "li-outreach", "li-sent", "li-settings"]], ["Customers", ["enquiries", "users", "studio", "pitch", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
+  var GROUPS = [["", ["overview", "autopilot"]], ["Growth Lab", ["lab", "xrays", "businesses", "findings", "quality", "monitoring", "prompts"]], ["Support", ["helpdesk", "mail", "chats"]], ["Lead Intelligence", ["li-dash", "li-find", "li-people", "li-leads", "li-imports", "li-hot", "li-audit", "li-analytics", "li-outreach", "li-sent", "li-settings"]], ["Customers", ["enquiries", "users", "studio", "pitch", "outreach", "campaigns", "leads", "payments", "activity"]], ["Website", ["traffic", "sitesettings", "security"]], ["Money & setup", ["costs", "settings", "team"]]];
   var TAB = {}; TABS.forEach(function (t) { TAB[t[0]] = t; });
   var MOBILE = ["overview", "lab", "users", "costs"];
   var navLink = function (id) { var t = TAB[id]; return t ? '<a href="#' + t[0] + '" data-tab="' + t[0] + '">' + ico(t[2]) + "<span>" + t[1] + "</span></a>" : ""; };
@@ -107,7 +107,7 @@
     var v = $("#ad-view"); v.innerHTML = '<div class="ad-load">Loading…</div>';
     setTimeout(liveTick, 50);
     ({ overview: overview, traffic: trafficView, users: usersView, studio: studioView, user: function () { userView(parts[1]); }, xrays: runsView, leads: leadsView, payments: paymentsView, activity: activityView, team: teamView, costs: costsView, monitoring: monitoringView, settings: settingsView, lab: labView, businesses: businessesView, business: function () { businessView(decodeURIComponent(parts.slice(1).join("/"))); }, findings: findingsView, quality: qualityView, report: function () { reportView(parts[1]); }, prompts: promptsView,
-      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, pitch: pitchView, autopilot: autopilotView, "li-dash": function () { liDash(false); }, "li-analytics": function () { liDash(true); }, "li-find": liFind, "li-people": function () { liLeads("li-people"); }, "li-leads": function () { liLeads("li-leads"); }, "li-hot": function () { liLeads("li-hot"); }, "li-audit": function () { liLeads("li-audit"); }, "li-outreach": function () { liLeads("li-outreach"); }, "li-settings": liSettings, "li-sent": function () { liSentView(parts[1]); }, "li-lead": function () { liLead(decodeURIComponent(parts[1] || "")); }, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
+      campaigns: function () { campaignsView(parts[1]); }, outreach: outreachView, pitch: pitchView, autopilot: autopilotView, "li-dash": function () { liDash(false); }, "li-analytics": function () { liDash(true); }, "li-find": liFind, "li-people": function () { liLeads("li-people"); }, "li-leads": function () { liLeads("li-leads"); }, "li-imports": liImports, "li-hot": function () { liLeads("li-hot"); }, "li-audit": function () { liLeads("li-audit"); }, "li-outreach": function () { liLeads("li-outreach"); }, "li-settings": liSettings, "li-sent": function () { liSentView(parts[1]); }, "li-lead": function () { liLead(decodeURIComponent(parts[1] || "")); }, helpdesk: helpdeskView, ticket: function () { ticketView(parts[1]); }, mail: mailView, chats: chatsView, enquiries: enquiriesView, sitesettings: siteSettingsView, security: securityView, chat: function () { chatView(parts[1]); } }[tab] || overview)();
     scrollTo(0, 0);
   }
   /* ---------- v17: API costs & profitability, system health ---------- */
@@ -537,7 +537,7 @@
   var lconf = function (c) { var x = LCONF[c] || LCONF.not_found; return '<span class="ad-st ' + x[1] + '">' + x[0] + "</span>"; };
   var lday = function (s) { return s ? date(s, true) : "Never"; };
   var opt = function (list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(l) + "</option>"; }).join(""); };
-  var lnav = function (cur) { var T = [["li-dash", "Dashboard"], ["li-find", "Find businesses"], ["li-people", "Decision makers"], ["li-leads", "Leads & clients"], ["li-hot", "Hot leads"], ["li-audit", "Website audit"], ["li-analytics", "Analytics"], ["li-outreach", "Outreach"], ["li-sent", "Sent & replies"], ["li-settings", "Integrations"]];
+  var lnav = function (cur) { var T = [["li-dash", "Dashboard"], ["li-find", "Find businesses"], ["li-people", "Decision makers"], ["li-leads", "Leads & clients"], ["li-imports", "Client databases"], ["li-hot", "Hot leads"], ["li-audit", "Website audit"], ["li-analytics", "Analytics"], ["li-outreach", "Outreach"], ["li-sent", "Sent & replies"], ["li-settings", "Integrations"]];
     return '<nav class="ad-li-tabs" aria-label="Lead Intelligence">' + T.map(function (t) { return '<a href="#' + t[0] + '"' + (t[0] === cur ? ' aria-current="page" class="on"' : "") + ">" + t[1] + "</a>"; }).join("") + "</nav>"; };
   function liGate(title) { if (ME && !owner()) { $("#ad-view").innerHTML = head(title, "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners and Full-control admins can open Lead Intelligence.</p></div>'; return true; } return false; }
   var lqs = function (o) { return Object.keys(o).filter(function (k) { return o[k] !== "" && o[k] != null; }).map(function (k) { return k + "=" + encodeURIComponent(o[k]); }).join("&"); };
@@ -649,7 +649,8 @@
         if (mode === "li-outreach") return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Change status"><select class="ad-in" data-ls="' + esc(x.id) + '" aria-label="Status for ' + esc(x.name) + '">' + opt(LIST, x.status) + "</select></td>";
         return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Decision maker">' + (x.owner_name ? esc(x.owner_name) + " " + lconf(x.owner_conf) : '<span class="muted">None yet</span>') + "</td>";
       };
-      $("#ad-view").innerHTML = head(titles[mode], subs[mode], (mode === "li-leads" ? '<button type="button" class="btn sm ghost" id="lq-imp">Import client data</button> ' : "") + '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + '<div id="lq-impbox"></div>' + filt +
+      $("#ad-view").innerHTML = head(titles[mode], subs[mode], (mode === "li-leads" ? '<button type="button" class="btn sm ghost" id="lq-imp">Import client data</button> ' : "") + '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + '<div id="lq-impbox"></div>' +
+        (q.list ? '<p class="ad-li-dbchip"><span class="ad-st mid">Client database</span> <b>' + esc(q.list) + '</b> <button type="button" class="btn sm ghost" id="lq-dbx">Show all leads</button> <a class="btn sm ghost" href="#li-imports">All databases</a></p>' : "") + filt +
         '<div class="ad-li-bulk"><span id="lq-n" class="muted">' + j.total + " leads" + (j.total > L.length ? " (showing " + L.length + ")" : "") + '</span><span class="ad-li-ba" id="lq-ba" hidden><b id="lq-sn">0</b> selected · ' +
         '<button type="button" class="btn sm" data-ba="research">Research</button><select class="ad-in" id="lq-bst" aria-label="Set status">' + opt(LIST, "", "Set status…") + "</select>" +
         '<button type="button" class="btn sm ghost" data-ba="csv">CSV</button><button type="button" class="btn sm ghost" data-ba="xlsx">Excel</button><button type="button" class="btn sm" data-ba="queue">Outreach queue</button><button type="button" class="btn sm ghost" data-ba="pitch">Add to Bulk pitch</button>' +
@@ -679,6 +680,7 @@
       }; });
       $("#lq-csv").onclick = function () { liExport("csv"); }; $("#lq-xlsx").onclick = function () { liExport("xlsx"); };
       var ib = $("#lq-imp"); if (ib) ib.onclick = function () { liImport($("#lq-impbox"), reload); };
+      var dbx = $("#lq-dbx"); if (dbx) dbx.onclick = function () { delete q.list; reload(); };
       var du = $("#lq-dup"); if (du) du.onclick = function () { api("li/duplicates").then(function (r) { if (!r.ok) return toast(r.reason, true); $("#lq-dups").innerHTML = '<div class="panel ad-card"><h2>Possible duplicates</h2>' + (r.groups.length ? '<ul class="ad-li-ul">' + r.groups.map(function (g) { return "<li>Same " + esc(g.by) + ": " + g.ids.map(function (id) { return '<a href="#li-lead/' + esc(id) + '">' + esc(id) + "</a>"; }).join(", ") + ' <small class="muted">' + esc(g.names) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No duplicates found.</p>') + "</div>"; }); };
       lclick("tr[data-li]");
     });
@@ -714,17 +716,31 @@
           go.disabled = true; var rows = data.rows.filter(function (r) { return !r.error; }), N = rows.length, i = 0, tot = { added: 0, updated: 0, skipped: [] };
           var st = $("#li-ist").value, tag = $("#li-itag").value.trim() || (F ? F.name.replace(/\.(xlsx|csv)$/i, "") : "Pasted client data"), up = $("#li-iup").checked;
           var step = function () {
-            if (i >= N) { out.innerHTML = '<p class="cf-status ok">Imported: ' + tot.added + " new, " + tot.updated + " updated" + (tot.skipped.length ? ", " + tot.skipped.length + " skipped" : "") + ". They are in this list with the Imported tag.</p>" + (tot.skipped.length ? '<details open><summary>Skipped</summary><ul class="ad-li-ul">' + tot.skipped.slice(0, 200).map(function (s) { return "<li>" + esc(s.name || "") + ": " + esc(s.reason) + "</li>"; }).join("") + "</ul></details>" : ""); toast(tot.added + " imported"); setTimeout(done, tot.skipped.length ? 4000 : 1200); return; }
-            out.innerHTML = '<p class="muted">Importing… ' + i + " of " + N + "</p>";
-            api("li/import", { rows: rows.slice(i, i + 40), status: st, tag: tag, update: up, offset: i }).then(function (r) {
+            if (i >= N) { out.innerHTML = '<p class="cf-status ok">Imported: ' + tot.added + " new, " + tot.updated + " updated" + (tot.skipped.length ? ", " + tot.skipped.length + " skipped" : "") + ". They are in this list with the Imported tag.</p>" + (tot.skipped.length ? '<details open><summary>Skipped</summary><ul class="ad-li-ul">' + tot.skipped.slice(0, 200).map(function (s) { return "<li>" + esc(s.name || "") + ": " + esc(s.reason) + "</li>"; }).join("") + "</ul></details>" : ""); toast(tot.added + " imported"); LQ["li-leads"] = { sort: "newest", source: "import", list: tag }; setTimeout(function () { if (location.hash === "#li-leads") done(); else location.hash = "#li-leads"; }, tot.skipped.length ? 4000 : 1200); return; }
+            out.innerHTML = '<p class="muted">Importing… ' + i + " of " + N + '</p><progress max="' + N + '" value="' + i + '" style="width:100%"></progress><p class="muted">Keep this tab open until it finishes.</p>';
+            api("li/import", { rows: rows.slice(i, i + 400), status: st, tag: tag, update: up, offset: i }).then(function (r) {
               if (!r.ok) { out.innerHTML = '<p class="cf-status warn">' + esc(r.reason) + " (stopped after " + i + " of " + N + ")</p>"; return; }
-              tot.added += r.added.length; tot.updated += r.updated.length; tot.skipped = tot.skipped.concat(r.skipped); i += 40; step();
+              tot.added += r.added.length; tot.updated += r.updated.length; tot.skipped = tot.skipped.concat(r.skipped); i += 400; step();
             });
           };
           step();
         };
       });
     };
+  }
+  /* v55.29 every imported client database on its own card; Open shows only that database in Leads & clients */
+  function liImports() {
+    $("#ad-view").innerHTML = head("Client databases", "Each file or paste you import is kept as its own database. Open one to see, filter, export or contact only those clients. Nothing is sent to anyone by importing.", '<button type="button" class="btn sm" id="li-dbimp">Import client data</button>') + lnav("li-imports") + '<div id="li-dbbox"></div><div id="li-dbl"><p class="muted">Loading…</p></div>';
+    $("#li-dbimp").onclick = function () { liImport($("#li-dbbox"), liImports); };
+    api("li/imports").then(function (j) {
+      if (!j.ok) return fail(j);
+      var n = function (v) { return Number(v || 0).toLocaleString("en-IN"); };
+      $("#li-dbl").innerHTML = !j.lists.length ? '<div class="panel ad-card"><h2>No client databases yet</h2><p class="muted">Import an Excel or CSV file of your clients. Each import gets its own card here.</p></div>' :
+        '<div class="ad-li-dbs">' + j.lists.map(function (x, i) {
+          return '<div class="panel ad-card ad-li-db"><h2>' + esc(x.list || "Imported client data") + '</h2><p class="muted">Imported ' + esc(date(x.first)) + '</p><div class="ad-li-dbn"><span><b>' + n(x.total) + '</b> clients</span><span><b>' + n(x.emails) + '</b> with email</span><span><b>' + n(x.phones) + '</b> with phone</span><span><b>' + n(x.contacted) + '</b> contacted</span></div><button type="button" class="btn sm" data-db="' + i + '">Open database</button></div>';
+        }).join("") + "</div>";
+      document.querySelectorAll("#li-dbl [data-db]").forEach(function (b) { b.onclick = function () { LQ["li-leads"] = { sort: "newest", source: "import", list: j.lists[+b.dataset.db].list || "" }; location.hash = "#li-leads"; }; });
+    });
   }
   function liExport(kind, ids) {
     var q = LQ[(location.hash.slice(1).split("/")[0])] || {};

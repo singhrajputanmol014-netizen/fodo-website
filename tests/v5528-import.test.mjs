@@ -120,9 +120,28 @@ ok((await LP("email-send/" + sid, { subject: se.subject, blocks: se.blocks, conf
 /* admin UI */
 const AJ = fs.readFileSync("js/admin.js", "utf8");
 ok(/"li-leads", "Leads & clients"/.test(AJ) && !/"All leads"/.test(AJ), "page renamed to Leads & clients");
-ok(/id="lq-imp">Import client data/.test(AJ) && /li\/import-preview/.test(AJ) && /rows\.slice\(i, i \+ 40\)/.test(AJ) && /Download template/.test(AJ), "Import client data panel: file / paste, preview, chunked import, template");
+ok(/id="lq-imp">Import client data/.test(AJ) && /li\/import-preview/.test(AJ) && /rows\.slice\(i, i \+ 400\)/.test(AJ) && /Download template/.test(AJ), "Import client data panel: file / paste, preview, chunked import, template");
 ok(/provided: \["From your data"/.test(AJ) && /Imported client data/.test(AJ), "From your data badge and Source filter in the list");
 ok(!/onclick=|onchange=/.test(AJ.slice(AJ.indexOf("function liImport"), AJ.indexOf("function liExport"))), "no inline handlers (CSP)");
 
-console.log("\nv55.28 import: " + pass + " passed, " + fail + " failed");
+/* v55.29 big databases: 16,000 emails in chunks of 400, each database shown on its own */
+const big = []; for (let i = 0; i < 16000; i++) big.push({ name: "Client " + i, person: "Person " + i, email: "client" + i + "@bigco" + (i % 97) + ".in", city: i % 2 ? "Delhi" : "Noida" });
+big.push({ name: "Dup inside file", email: "client5@bigco5.in" });
+const bigCsv = "Company,Contact person,Email,City\n" + big.map((r) => [r.name, r.person || "", r.email, r.city || ""].join(",")).join("\n");
+const bpv = (await LP("import-preview", { text: bigCsv })).j; ok(bpv.ok && bpv.total === 16001 && bpv.ok === 16001, "preview reads a 16,001-row database (limit is now 50,000)");
+let stmts = 0; const origPrep = env.XRAY_DB.prepare; env.XRAY_DB.prepare = (q) => { stmts++; return origPrep(q); };
+let A = 0, U = 0, S = 0; const t0 = Date.now();
+for (let i = 0; i < bpv.rows.length; i += 400) { const r = (await LP("import", { rows: bpv.rows.slice(i, i + 400), status: "not_contacted", tag: "Big client DB", update: false, offset: i })).j; if (!r.ok) { console.log(r); break; } A += r.added.length; U += r.updated.length; S += r.skipped.length; }
+env.XRAY_DB.prepare = origPrep;
+ok(A === 16000 && S === 1, "all 16,000 emails imported, the in-file duplicate skipped (" + A + " added, " + S + " skipped, " + (Date.now() - t0) + " ms)");
+ok(stmts < 41 * 15, "bulk import uses a few statements per 400-row chunk, not ~10 per row (" + stmts + " statements for 41 chunks)");
+ok(q1("SELECT COUNT(*) n FROM li_contacts c JOIN li_businesses b ON b.id=c.business_id WHERE b.source_ref='Big client DB' AND c.kind='email'").n === 16000, "16,000 email contacts saved");
+const again = (await LP("import", { rows: bpv.rows.slice(0, 400), tag: "Big client DB", update: false })).j; ok(again.added.length === 0 && again.skipped.length === 400, "re-importing the same file does not double anything");
+const dbs = (await LP("imports")).j; const bdb = dbs.lists.find((x) => x.list === "Big client DB");
+ok(dbs.ok && bdb && bdb.total === 16000 && bdb.emails === 16000 && dbs.lists.find((x) => x.list === "Old clients 2024"), "Client databases: each import is its own database with counts");
+const one = (await LP("leads?list=" + encodeURIComponent("Big client DB") + "&limit=50")).j; ok(one.total === 16000 && one.leads.every((l) => l.source_ref === "Big client DB"), "opening a database shows only its clients");
+ok((await LP("imports", undefined, "v")).status === 403, "viewers cannot see client databases");
+ok(/"li-imports", "Client databases"/.test(AJ) || /li-imports/.test(fs.readFileSync("js/admin.js", "utf8")), "Client databases tab in the admin");
+const AJ2 = fs.readFileSync("js/admin.js", "utf8"); ok(/function liImports/.test(AJ2) && /Open database/.test(AJ2) && /lq-dbx/.test(AJ2) && /Keep this tab open/.test(AJ2), "database cards, Open database, Show all leads, progress bar");
+console.log("\nv55.28/29 import: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

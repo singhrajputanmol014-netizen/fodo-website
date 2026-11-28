@@ -537,6 +537,8 @@
   var lconf = function (c) { var x = LCONF[c] || LCONF.not_found; return '<span class="ad-st ' + x[1] + '">' + x[0] + "</span>"; };
   var lday = function (s) { return s ? date(s, true) : "Never"; };
   var opt = function (list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(l) + "</option>"; }).join(""); };
+  var ECK = { risky: ["Risky", "mid"], invalid: ["Invalid", "bad"], test: ["Test / demo", "bad"], blocked: ["Spam: never email", "bad"] };
+  var echk = function (x) { var e = ECK[x.email_check]; return e && x.email ? ' <span class="ad-st ' + e[1] + '" title="' + esc(x.email_reason || "") + '">' + e[0] + "</span>" : ""; };
   var lnav = function (cur) { var T = [["li-dash", "Dashboard"], ["li-find", "Find businesses"], ["li-people", "Decision makers"], ["li-leads", "Leads & clients"], ["li-imports", "Client databases"], ["li-hot", "Hot leads"], ["li-audit", "Website audit"], ["li-analytics", "Analytics"], ["li-outreach", "Outreach"], ["li-sent", "Sent & replies"], ["li-settings", "Integrations"]];
     return '<nav class="ad-li-tabs" aria-label="Lead Intelligence">' + T.map(function (t) { return '<a href="#' + t[0] + '"' + (t[0] === cur ? ' aria-current="page" class="on"' : "") + ">" + t[1] + "</a>"; }).join("") + "</nav>"; };
   function liGate(title) { if (ME && !owner()) { $("#ad-view").innerHTML = head(title, "") + '<div class="panel ad-card"><p class="cf-status warn">Only FODO owners and Full-control admins can open Lead Intelligence.</p></div>'; return true; } return false; }
@@ -640,6 +642,7 @@
         '<select id="lq-people" class="ad-in" aria-label="Decision maker">' + opt([["provided", "From your data"], ["verified", "Verified"], ["partial", "Partially verified"], ["unverified", "Unverified"], ["not_found", "Not found"]], q.people || "", "Decision maker: any") + "</select>" +
         '<select id="lq-researched" class="ad-in" aria-label="Researched">' + opt([["1", "Researched"], ["0", "Not researched"]], q.researched || "", "Researched: any") + "</select>" +
         '<select id="lq-source" class="ad-in" aria-label="Source">' + opt([["import", "Imported client data"], ["google_places", "Found on Google Maps"], ["openstreetmap", "Found on OpenStreetMap"]], q.source || "", "Source: any") + "</select>" +
+        '<select id="lq-echeck" class="ad-in" aria-label="Email check">' + opt([["ok", "Email: valid"], ["risky", "Email: risky"], ["bad", "Email: spam / invalid"], ["none", "Email: not checked"]], q.echeck || "", "Email: any") + "</select>" +
         '<select id="lq-sort" class="ad-in" aria-label="Sort">' + opt([["score", "Sort: score"], ["newest", "Sort: newest"], ["updated", "Sort: updated"], ["name", "Sort: name"], ["reviews", "Sort: reviews"]], q.sort || "score") + "</select>" +
         '<label class="ad-tog"><input type="checkbox" id="lq-archived"' + (q.archived === "1" ? " checked" : "") + "> Archived</label></div>";
       var cols = mode === "li-people" ? ["Decision maker", "Confidence"] : mode === "li-audit" ? ["Website", "Researched"] : mode === "li-outreach" ? ["Contact", "Change status"] : ["Contact", "Decision maker"];
@@ -647,7 +650,7 @@
         if (mode === "li-people") return '<td data-l="Decision maker">' + (x.owner_name ? "<b>" + esc(x.owner_name) + "</b><small class=\"muted ad-li-sub\">" + esc(x.owner_role || "") + "</small>" : '<span class="muted">' + (x.researched_at ? "None found" : "Not searched yet") + "</span>") + '</td><td data-l="Confidence">' + lconf(x.owner_conf) + "</td>";
         if (mode === "li-audit") return '<td data-l="Website">' + (x.website ? '<a href="' + esc(x.website) + '" target="_blank" rel="noopener nofollow">' + esc(x.website.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)) + "</a>" : '<span class="muted">No website</span>') + '</td><td data-l="Researched">' + lday(x.researched_at) + "</td>";
         if (mode === "li-outreach") return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Change status"><select class="ad-in" data-ls="' + esc(x.id) + '" aria-label="Status for ' + esc(x.name) + '">' + opt(LIST, x.status) + "</select></td>";
-        return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Decision maker">' + (x.owner_name ? esc(x.owner_name) + " " + lconf(x.owner_conf) : '<span class="muted">None yet</span>') + "</td>";
+        return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + echk(x) + '</td><td data-l="Decision maker">' + (x.owner_name ? esc(x.owner_name) + " " + lconf(x.owner_conf) : '<span class="muted">None yet</span>') + "</td>";
       };
       $("#ad-view").innerHTML = head(titles[mode], subs[mode], (mode === "li-leads" ? '<button type="button" class="btn sm ghost" id="lq-imp">Import client data</button> ' : "") + '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + '<div id="lq-impbox"></div>' +
         (q.list ? '<p class="ad-li-dbchip"><span class="ad-st mid">Client database</span> <b>' + esc(q.list) + '</b> <button type="button" class="btn sm ghost" id="lq-dbx">Show all leads</button> <a class="btn sm ghost" href="#li-imports">All databases</a></p>' : "") + filt +
@@ -660,8 +663,8 @@
         (L.length ? L.map(function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><input type="checkbox" data-ck="' + esc(x.id) + '" aria-label="Select ' + esc(x.name) + '"></td><td><b>' + esc(x.name) + '</b>' + (x.source === "import" ? ' <span class="ad-st mid">Imported</span>' : "") + '<small class="muted ad-li-sub">' + esc([x.id, x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + "</td>" + cell(x) + '<td data-l="Status">' + esc(lst(x.status)) + "</td></tr>"; }).join("")
           : '<tr><td colspan="6" class="muted">No leads match. ' + (mode === "li-hot" ? "Research leads to score them." : "Use Find businesses to add some.") + "</td></tr>") + "</tbody></table></div><div id=\"lq-dups\"></div>";
       var reload = function () { liLeads(mode); };
-      var setQ = function () { ["q", "status", "priority", "industry", "city", "website", "people", "researched", "source", "sort"].forEach(function (k) { q[k] = $("#lq-" + k).value.trim(); }); q.archived = $("#lq-archived").checked ? "1" : ""; reload(); };
-      ["status", "priority", "industry", "website", "people", "researched", "source", "sort"].forEach(function (k) { $("#lq-" + k).onchange = setQ; }); $("#lq-archived").onchange = setQ;
+      var setQ = function () { ["q", "status", "priority", "industry", "city", "website", "people", "researched", "source", "echeck", "sort"].forEach(function (k) { q[k] = $("#lq-" + k).value.trim(); }); q.archived = $("#lq-archived").checked ? "1" : ""; reload(); };
+      ["status", "priority", "industry", "website", "people", "researched", "source", "echeck", "sort"].forEach(function (k) { $("#lq-" + k).onchange = setQ; }); $("#lq-archived").onchange = setQ;
       $("#lq-q").onkeydown = $("#lq-city").onkeydown = function (e) { if (e.key === "Enter") setQ(); };
       var ids = function () { return Object.keys(sel).filter(function (k) { return sel[k]; }); };
       var upd = function () { var n = ids().length; $("#lq-ba").hidden = !n; $("#lq-sn").textContent = n; };
@@ -716,7 +719,7 @@
           go.disabled = true; var rows = data.rows.filter(function (r) { return !r.error; }), N = rows.length, i = 0, tot = { added: 0, updated: 0, skipped: [] };
           var st = $("#li-ist").value, tag = $("#li-itag").value.trim() || (F ? F.name.replace(/\.(xlsx|csv)$/i, "") : "Pasted client data"), up = $("#li-iup").checked;
           var step = function () {
-            if (i >= N) { out.innerHTML = '<p class="cf-status ok">Imported: ' + tot.added + " new, " + tot.updated + " updated" + (tot.skipped.length ? ", " + tot.skipped.length + " skipped" : "") + ". They are in this list with the Imported tag.</p>" + (tot.skipped.length ? '<details open><summary>Skipped</summary><ul class="ad-li-ul">' + tot.skipped.slice(0, 200).map(function (s) { return "<li>" + esc(s.name || "") + ": " + esc(s.reason) + "</li>"; }).join("") + "</ul></details>" : ""); toast(tot.added + " imported"); LQ["li-leads"] = { sort: "newest", source: "import", list: tag }; setTimeout(function () { if (location.hash === "#li-leads") done(); else location.hash = "#li-leads"; }, tot.skipped.length ? 4000 : 1200); return; }
+            if (i >= N) { out.innerHTML = '<p class="cf-status ok">Imported: ' + tot.added + " new, " + tot.updated + " updated" + (tot.skipped.length ? ", " + tot.skipped.length + " skipped" : "") + ". They are in this list with the Imported tag.</p>" + (tot.skipped.length ? '<details open><summary>Skipped</summary><ul class="ad-li-ul">' + tot.skipped.slice(0, 200).map(function (s) { return "<li>" + esc(s.name || "") + ": " + esc(s.reason) + "</li>"; }).join("") + "</ul></details>" : ""); toast(tot.added + " imported"); liCheck({ list: tag }, null, null); LQ["li-leads"] = { sort: "newest", source: "import", list: tag }; setTimeout(function () { if (location.hash === "#li-leads") done(); else location.hash = "#li-leads"; }, tot.skipped.length ? 4000 : 1200); return; }
             out.innerHTML = '<p class="muted">Importing… ' + i + " of " + N + '</p><progress max="' + N + '" value="' + i + '" style="width:100%"></progress><p class="muted">Keep this tab open until it finishes.</p>';
             api("li/import", { rows: rows.slice(i, i + 400), status: st, tag: tag, update: up, offset: i }).then(function (r) {
               if (!r.ok) { out.innerHTML = '<p class="cf-status warn">' + esc(r.reason) + " (stopped after " + i + " of " + N + ")</p>"; return; }
@@ -737,10 +740,33 @@
       var n = function (v) { return Number(v || 0).toLocaleString("en-IN"); };
       $("#li-dbl").innerHTML = !j.lists.length ? '<div class="panel ad-card"><h2>No client databases yet</h2><p class="muted">Import an Excel or CSV file of your clients. Each import gets its own card here.</p></div>' :
         '<div class="ad-li-dbs">' + j.lists.map(function (x, i) {
-          return '<div class="panel ad-card ad-li-db"><h2>' + esc(x.list || "Imported client data") + '</h2><p class="muted">Imported ' + esc(date(x.first)) + '</p><div class="ad-li-dbn"><span><b>' + n(x.total) + '</b> clients</span><span><b>' + n(x.emails) + '</b> with email</span><span><b>' + n(x.phones) + '</b> with phone</span><span><b>' + n(x.contacted) + '</b> contacted</span></div><button type="button" class="btn sm" data-db="' + i + '">Open database</button></div>';
+          return '<div class="panel ad-card ad-li-db"><h2>' + esc(x.list || "Imported client data") + '</h2><p class="muted">Imported ' + esc(date(x.first)) + '</p><div class="ad-li-dbn"><span><b>' + n(x.total) + '</b> clients</span><span><b>' + n(x.emails) + '</b> with email</span><span><b>' + n(x.phones) + '</b> with phone</span><span><b>' + n(x.contacted) + '</b> contacted</span></div>' +
+            '<p class="ad-li-dbq"><span class="ad-st ok">' + n(x.valid) + ' valid</span> <span class="ad-st mid">' + n(x.risky) + ' risky</span> <span class="ad-st bad">' + n(x.bad) + ' spam / invalid</span>' + (+x.unchecked ? ' <span class="ad-st">' + n(x.unchecked) + " not checked</span>" : "") + "</p>" +
+            '<div class="ad-acts"><button type="button" class="btn sm" data-db="' + i + '">Open database</button><button type="button" class="btn sm ghost" data-ck="' + i + '">' + (+x.unchecked ? "Check emails" : "Check again") + '</button>' + (+x.bad ? '<button type="button" class="btn sm ghost" data-bad="' + i + '">Show spam / invalid</button>' : "") + '</div><p class="muted ad-li-ckp" id="li-ckp-' + i + '"></p></div>';
         }).join("") + "</div>";
       document.querySelectorAll("#li-dbl [data-db]").forEach(function (b) { b.onclick = function () { LQ["li-leads"] = { sort: "newest", source: "import", list: j.lists[+b.dataset.db].list || "" }; location.hash = "#li-leads"; }; });
+      document.querySelectorAll("#li-dbl [data-bad]").forEach(function (b) { b.onclick = function () { LQ["li-leads"] = { sort: "name", source: "import", list: j.lists[+b.dataset.bad].list || "", echeck: "bad" }; location.hash = "#li-leads"; }; });
+      document.querySelectorAll("#li-dbl [data-ck]").forEach(function (b) { b.onclick = function () { var x = j.lists[+b.dataset.ck]; b.disabled = true; liCheck({ list: x.list || "", recheck: !+x.unchecked }, $("#li-ckp-" + b.dataset.ck), liImports); }; });
     });
+    /* never-email list: words or domains; any email or name containing one is marked spam and never emailed */
+    api("li/blocklist").then(function (k) {
+      if (!k.ok) return;
+      $("#li-dbbox").insertAdjacentHTML("afterend", '<details class="panel ad-card ad-li-bl"><summary><b>Never-email list</b> <span class="muted">' + k.words.length + ' words or domains</span></summary><p class="muted">One per line, for example a company name (quickads) or a domain (88ventures.com). Any email or name that contains one is marked spam and is never emailed. Test / demo accounts, no-reply addresses, throwaway inboxes and domains without a mail server are caught automatically.</p><textarea id="li-blw" class="ad-in ad-ta" rows="6" aria-label="Never-email list">' + esc(k.words.join("\n")) + '</textarea><div class="ad-acts"><button type="button" class="btn sm" id="li-bls">Save and check all databases again</button></div></details>');
+      $("#li-bls").onclick = function () { var b = this; b.disabled = true; api("li/blocklist", { words: $("#li-blw").value.split(/\n+/) }).then(function (r) { if (!r.ok) { b.disabled = false; return toast(r.reason, true); } toast("Saved " + r.words.length); liCheck({ source: "import", recheck: true }, $("#li-dbl"), liImports); }); };
+    });
+  }
+  /* v55.31 run the email check in steps (500 rows, 40 new domains each) until the database is done */
+  function liCheck(o, el, done) {
+    var tot = { ok: 0, risky: 0, invalid: 0, test: 0, blocked: 0 }, first = true;
+    var step = function () {
+      api("li/email-check", Object.assign({}, o, { recheck: first && !!o.recheck })).then(function (r) {
+        first = false; if (!r.ok) { if (el) el.innerHTML = '<span class="cf-status warn">' + esc(r.reason) + "</span>"; return; }
+        Object.keys(tot).forEach(function (k) { tot[k] += r.counts[k] || 0; });
+        if (el) el.innerHTML = (r.done ? "Checked. " : "Checking emails… " + Number(r.left).toLocaleString("en-IN") + " left. ") + tot.ok + " valid, " + tot.risky + " risky, " + (tot.invalid + tot.test + tot.blocked) + " spam / invalid.";
+        if (r.done || (!r.checked && !r.counts.waiting)) { toast("Email check done"); if (done) setTimeout(done, 900); } else setTimeout(step, 150);
+      });
+    };
+    step();
   }
   function liExport(kind, ids) {
     var q = LQ[(location.hash.slice(1).split("/")[0])] || {};
@@ -1055,6 +1081,7 @@
           if (j.lead.status === "dnc" || j.opted_out) return { id: id, name: j.lead.name, skip: "Do not contact" };
           var c = (j.channels || []).filter(function (c) { return chv === "best" ? true : c.channel === chv; }).sort(function (a, b) { return LBEST.indexOf(a.channel) - LBEST.indexOf(b.channel); })[0];
           if (!c) return { id: id, name: j.lead.name, skip: "no " + (chv === "best" ? "public channel" : chv) };
+          if (c.channel === "email" && ["invalid", "test", "blocked"].indexOf(j.lead.email_check) > -1) return { id: id, name: j.lead.name, skip: "email marked " + (ECK[j.lead.email_check] || [j.lead.email_check])[0] + (j.lead.email_reason ? " (" + j.lead.email_reason + ")" : "") };
           return liDraft(id, c.channel, c.channel === "email" && !j.lead.website && !j.lead.researched_at ? "services" : "").then(function (r) { return { id: id, name: j.lead.name, j: j, c: c, d: r, text: r.ok ? r.text || "" : "", ai: r.ai, err: r.ok ? "" : r.reason }; });
         })); };
       var draw = function () {

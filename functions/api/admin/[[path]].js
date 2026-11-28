@@ -88,6 +88,7 @@ export async function onRequest(ctx) {
           if (a === "bot-convo") return json(Object.assign({ ok: true }, await LI.botConvo(env, q.get("ref"))));
           if (a === "sent-list") return json(Object.assign({ ok: true }, await LI.sentList(env, lq)));
           if (a === "lead" && path[2]) return json(Object.assign({ ok: true }, await LI.lead(env, path[2])));
+          if (a === "blocklist") return json(Object.assign({ ok: true, defaults: LI.DEFAULT_BLOCK }, await LI.blockList(env)));   /* v55.31 */
           if (a === "profile-pdf") return json(Object.assign({ ok: true }, await LI.profilePdf(env, null)));   /* v55.30 */
           if (a === "imports") return json(Object.assign({ ok: true }, await LI.imports(env)));   /* v55.29 client databases */
           if (a === "stats") return json(Object.assign({ ok: true, statuses: LI.STATUSES, industries: LI.INDUSTRIES }, await LI.stats(env, lq)));
@@ -164,6 +165,8 @@ export async function onRequest(ctx) {
         else if (a === "email-send" && id) { r = await LI.emailSend(env, id, b, u.email); await logEvent(env, u.id, "li_email", id + (b.test ? " test" : "")); }
         else if (a === "to-pitch") r = await LI.toPitch(env, b, u.email);
         else if (a === "profile-pdf") r = await LI.profilePdf(env, b);
+        else if (a === "blocklist") r = await LI.blockList(env, { words: Array.isArray(b.words) ? b.words : String(b.words || "").split(/[\n,]+/) });
+        else if (a === "email-check") r = await LI.emailCheck(env, b, u.email);
         else if (a === "import-preview") r = await LI.importPreview(env, b);   /* v55.28 own client data */
         else if (a === "import") { r = await LI.importRows(env, b, u.email); await logEvent(env, u.id, "li_import", r.added.length + " added · " + r.updated.length + " updated"); }
         else if (a === "jobs" && id === "save") r = await LI.saveJob(env, b, u.email);

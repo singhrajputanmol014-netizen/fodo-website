@@ -83,9 +83,12 @@ const DDL = [
   "CREATE INDEX IF NOT EXISTS li_replies_b ON li_replies(business_id, at)",
   "CREATE INDEX IF NOT EXISTS li_outreach_ch ON li_outreach(channel, at)",
 ];
+/* v55.31 email list cleaning: every email gets a check result before any marketing email goes out */
+const MIG = ["ALTER TABLE li_businesses ADD COLUMN email_check TEXT", "ALTER TABLE li_businesses ADD COLUMN email_reason TEXT",
+  "CREATE INDEX IF NOT EXISTS li_biz_echeck ON li_businesses(source_ref, email_check)"];
 export async function ldb(env) {
   const d = await adb(env); if (!d) throw err("Database not connected.", 503);
-  await SCH.setup(d, "leadintel", async () => { await SCH.ddl(d, DDL); });
+  await SCH.setup(d, "leadintel", async () => { await SCH.ddl(d, DDL); await SCH.alters(d, MIG); });
   return d;
 }
 async function usage(d, api, ok) { try { await run(d, "INSERT INTO li_usage (day, api, calls, errors) VALUES (?1,?2,1,?3) ON CONFLICT(day, api) DO UPDATE SET calls=calls+1, errors=errors+?3", nowIso().slice(0, 10), api, ok ? 0 : 1); } catch (e) {} }
@@ -532,13 +535,14 @@ export async function list(env, q) {
   if (q.priority) add("priority=?", clip(q.priority, 10));
   if (q.source) add("source=?", clip(q.source, 30));
   if (q.list) add("source_ref=?", clip(q.list, 80));   /* v55.29 one imported client database */
+  if (q.echeck === "none") w.push("email_check IS NULL AND COALESCE(email,'')<>''"); else if (q.echeck === "bad") w.push("email_check IN ('invalid','test','blocked')"); else if (q.echeck) add("email_check=?", clip(q.echeck, 12));
   if (q.website === "has") w.push("COALESCE(website,'')<>''"); if (q.website === "none") w.push("COALESCE(website,'')=''");
   if (q.people) add("owner_conf=?", clip(q.people, 20));
   if (q.researched === "1") w.push("researched_at IS NOT NULL"); if (q.researched === "0") w.push("researched_at IS NULL");
   if (q.min) add("COALESCE(score,0)>=?", +q.min || 0);
   if (q.from) add("created_at>=?", clip(q.from, 10)); if (q.to) add("created_at<=?", clip(q.to, 10) + "T99");
   const where = w.length ? " WHERE " + w.join(" AND ") : "", lim = Math.max(1, Math.min(1000, +q.limit || 200));
-  const rows = await all(d, "SELECT id,name,industry,sub_industry,category,locality,city,website,phone,email,whatsapp,owner_name,owner_role,owner_conf,score,priority,status,source,source_ref,rating,reviews,researched_at,created_at,updated_at,archived FROM li_businesses" + where + " ORDER BY " + (SORTS[q.sort] || SORTS.score) + " LIMIT " + lim, ...a);
+  const rows = await all(d, "SELECT id,name,industry,sub_industry,category,locality,city,website,phone,email,whatsapp,owner_name,owner_role,owner_conf,score,priority,status,source,source_ref,email_check,email_reason,rating,reviews,researched_at,created_at,updated_at,archived FROM li_businesses" + where + " ORDER BY " + (SORTS[q.sort] || SORTS.score) + " LIMIT " + lim, ...a);
   const total = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses" + where, ...a)) || {}).n || 0;
   return { leads: rows, total };
 }
@@ -965,6 +969,7 @@ export async function emailSend(env, id, b, by) {
   if (!to) throw err(test ? "Your admin email is not valid." : "This business has no public email.");
   if (!test) {
     if (x.status === "dnc" || L.opted_out) throw err("This business is marked Do not contact (or opted out).", 409);
+    if (BAD_CHECK.indexOf(x.email_check) > -1 && to === cleanEmail(x.email) && !b.allow_flagged) throw err("This email was marked " + (CHECK_LABEL[x.email_check] || x.email_check) + ": " + (x.email_reason || "") + ". It is not sent, to protect your sending reputation.", 409);
     if (!b.confirm) throw err("Please confirm the send first.", 400);
     if (await one(d, "SELECT email FROM camp_unsub WHERE email=?1", to).catch(() => null)) throw err(to + " has unsubscribed from FODO emails.", 409);
     if ((await OR.usedThisHour(env)) >= OR.hourly(env)) throw err("Hourly limit reached (" + OR.hourly(env) + " emails per hour). Try again a bit later.", 429);
@@ -984,7 +989,7 @@ export async function emailSend(env, id, b, by) {
 export async function toPitch(env, b, by) {
   const d = await ldb(env), ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 500), lines = ["name,business,email,city"]; let skipped = 0;
   for (const id of ids) {
-    const x = await one(d, "SELECT * FROM li_businesses WHERE id=?1", clip(id, 20)); if (!x || !x.email || x.status === "dnc") { skipped++; continue; }
+    const x = await one(d, "SELECT * FROM li_businesses WHERE id=?1", clip(id, 20)); if (!x || !x.email || x.status === "dnc" || BAD_CHECK.indexOf(x.email_check) > -1) { skipped++; continue; }
     const nm = x.owner_conf === "verified" || x.owner_conf === "partial" ? x.owner_name || "" : "";
     lines.push([nm, x.name, x.email, x.city || ""].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(","));
   }
@@ -1192,6 +1197,71 @@ export async function importRows(env, b, by) {
 /* the imported client databases, one card each */
 export async function imports(env) {
   const d = await ldb(env);
-  const r = (await d.prepare("SELECT source_ref AS list, COUNT(*) AS total, SUM(CASE WHEN COALESCE(email,'')<>'' THEN 1 ELSE 0 END) AS emails, SUM(CASE WHEN COALESCE(phone_key,'')<>'' OR COALESCE(whatsapp,'')<>'' THEN 1 ELSE 0 END) AS phones, SUM(CASE WHEN status NOT IN ('new','not_contacted') THEN 1 ELSE 0 END) AS contacted, MIN(created_at) AS first, MAX(updated_at) AS last FROM li_businesses WHERE source='import' AND archived=0 GROUP BY source_ref ORDER BY MAX(created_at) DESC LIMIT 200").all()).results || [];
+  const r = (await d.prepare("SELECT source_ref AS list, COUNT(*) AS total, SUM(CASE WHEN COALESCE(email,'')<>'' THEN 1 ELSE 0 END) AS emails, SUM(CASE WHEN COALESCE(phone_key,'')<>'' OR COALESCE(whatsapp,'')<>'' THEN 1 ELSE 0 END) AS phones, SUM(CASE WHEN status NOT IN ('new','not_contacted') THEN 1 ELSE 0 END) AS contacted, SUM(CASE WHEN email_check='ok' THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN email_check='risky' THEN 1 ELSE 0 END) AS risky, SUM(CASE WHEN email_check IN ('invalid','test','blocked') THEN 1 ELSE 0 END) AS bad, SUM(CASE WHEN email_check IS NULL AND COALESCE(email,'')<>'' THEN 1 ELSE 0 END) AS unchecked, MIN(created_at) AS first, MAX(updated_at) AS last FROM li_businesses WHERE source='import' AND archived=0 GROUP BY source_ref ORDER BY MAX(created_at) DESC LIMIT 200").all()).results || [];
   return { lists: r };
+}
+
+/* ---------------- v55.31 email list cleaning ----------------
+   Before a marketing email goes out, each address is checked: format, Gmail rules, throwaway inbox services, no-reply and
+   role addresses, test / demo accounts, your own Never-email list (words or domains), and whether the domain has a mail server
+   (DNS MX, cached 30 days). Invalid, test and blocked addresses are never emailed; risky ones are flagged for a look. */
+const DISPOSABLE = new Set(("mailinator.com guerrillamail.com guerrillamail.net sharklasers.com grr.la 10minutemail.com 10minutemail.net temp-mail.org tempmail.com tempmail.net tempmailo.com " +
+  "yopmail.com yopmail.fr trashmail.com trashmail.de getnada.com nada.email maildrop.cc dispostable.com mohmal.com emailondeck.com throwawaymail.com fakeinbox.com mintemail.com " +
+  "mailnesia.com mytemp.email tempail.com tempr.email discard.email spamgourmet.com burnermail.io moakt.com inboxkitten.com mailcatch.com emailfake.com armyspy.com cuvox.de " +
+  "dayrep.com einrot.com fleckens.hu gustr.com jourrapide.com rhyta.com superrito.com teleworm.us mailpoof.com tmail.ws tmpmail.org tmpmail.net emailnax.com 1secmail.com " +
+  "1secmail.org 1secmail.net mail.tm tempinbox.com spambox.us mvrht.net mailsac.com inboxbear.com fexpost.com fexbox.org owlymail.com").split(" "));
+const ROLE_BAD = /^(no-?reply|do-?not-?reply|donotreply|mailer-?daemon|postmaster|bounces?|abuse|spam|root|null|devnull)([.+_-]|$)/;
+const ROLE_RISKY = /^(admin|webmaster|hostmaster|security|privacy|legal|billing|accounts?|payroll|careers|jobs|hr|recruit(ing|ment)?|support|helpdesk|unsubscribe)([.+_-]\w*)?$/;
+const TESTY = /(^|[._+-])(test(ing)?|demo|dummy|fake|sample|example|qwerty|asdf(gh)?|xyz|temp|trial|sandbox)\d*([._+-]|$)/;
+const FAKE_DOMAIN = /^(example|test|testing|sample|domain|email|mail|abc|xyz|asdf)\.(com|in|org|net)$|\.(test|example|invalid|localhost)$/;
+export const CHECK_LABEL = { ok: "Valid", risky: "Risky", invalid: "Invalid", test: "Test / demo account", blocked: "On your Never-email list" };
+const BAD_CHECK = ["invalid", "test", "blocked"];
+export const DEFAULT_BLOCK = ["quickads", "88ventures", "brandbooster"];
+export async function blockList(env, b) {
+  if (b && Array.isArray(b.words)) { const w = [...new Set(b.words.map((x) => String(x || "").toLowerCase().trim().replace(/^@/, "")).filter((x) => x.length >= 3 && x.length <= 60))].slice(0, 300); await env.CHAT_KV.put("li:blocklist", JSON.stringify(w)); return { words: w }; }
+  const v = J(await env.CHAT_KV.get("li:blocklist"), null); return { words: Array.isArray(v) ? v : DEFAULT_BLOCK.slice() };
+}
+const squash = (t) => String(t || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9.@-]/g, "");
+/* pure part (no network): returns [check, reason] or null when only the MX check is left */
+export function emailVerdict(email, name, words) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return ["invalid", "No email"];
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(e) || /\.\.|^\.|\.@/.test(e)) return ["invalid", "Not a valid email address"];
+  const [lp, dom] = e.split("@"), base = lp.split("+")[0], hay = squash(e) + " " + squash(name).replace(/[.@-]/g, "");
+  const w = (words || []).find((x) => { const k = squash(x).replace(/^@/, ""); return k && (dom === k || dom.endsWith("." + k) || hay.indexOf(k.replace(/[.@-]/g, "")) > -1 || hay.indexOf(k) > -1); });
+  if (w) return ["blocked", "Matches \"" + w + "\" on your Never-email list"];
+  if (FAKE_DOMAIN.test(dom)) return ["invalid", "Placeholder domain (" + dom + ")"];
+  if (DISPOSABLE.has(dom)) return ["invalid", "Throwaway inbox service (" + dom + ")"];
+  if (ROLE_BAD.test(base)) return ["invalid", "No-reply / system address"];
+  if (/^(gmail|googlemail)\.com$/.test(dom)) { const g = base.replace(/\./g, ""); if (g.length < 6 || g.length > 30 || !/^[a-z0-9]+$/.test(g)) return ["invalid", "Gmail addresses are 6 to 30 letters or numbers"]; }
+  if (TESTY.test(base) || /^(test|demo)/.test(base)) return ["test", "Looks like a test / demo account"];
+  if (/^(.)\1{4,}$/.test(base) || /^\d{1,4}$/.test(base)) return ["test", "Looks made up (" + base + ")"];
+  if (ROLE_RISKY.test(base)) return ["risky", "Team / role inbox (" + base + "@)"];
+  if (lp.indexOf("+") > -1) return ["risky", "Sign-up alias with + (" + lp + ")"];
+  return null;
+}
+async function mxOk(env, d, dom) {
+  if (FREEMAIL.test(dom) || /^(gmail|yahoo|outlook|hotmail|icloud|proton|zoho)\./.test(dom)) return true;
+  const k = "li:mx:" + dom, c = await env.CHAT_KV.get(k); if (c === "1") return true; if (c === "0") return false;
+  const r = await mxCheck(env, d, dom); if (r === "not checked") return null;
+  const okk = /MX found/.test(r); await env.CHAT_KV.put(k, okk ? "1" : "0", { expirationTtl: 30 * 86400 }); return okk;
+}
+/* one step: up to 500 rows of one database (or all imports), at most 40 new domains looked up; the browser calls until done */
+export async function emailCheck(env, b, by) {
+  const d = await ldb(env); b = b || {}; const words = (await blockList(env)).words;
+  const where = ["COALESCE(email,'')<>''", "email_check IS NULL"], a = []; if (b.list) { a.push(clip(b.list, 80)); where.push("source_ref=?" + a.length); } else if (b.source) { a.push(clip(b.source, 30)); where.push("source=?" + a.length); }
+  if (b.recheck) await d.prepare("UPDATE li_businesses SET email_check=NULL, email_reason=NULL WHERE " + where.filter((w) => w !== "email_check IS NULL").join(" AND ")).bind(...a).run();   /* start over (e.g. after editing the Never-email list) */
+  const rows = await all(d, "SELECT id, name, email FROM li_businesses WHERE " + where.join(" AND ") + " ORDER BY id LIMIT 500", ...a);
+  const out = [], cnt = { ok: 0, risky: 0, invalid: 0, test: 0, blocked: 0, waiting: 0 }; let looked = 0; const mx = {};
+  for (const r of rows) {
+    let v = emailVerdict(r.email, r.name, words);
+    if (!v) { const dom = String(r.email).toLowerCase().split("@")[1];
+      if (!(dom in mx)) { const known = FREEMAIL.test(dom) || (await env.CHAT_KV.get("li:mx:" + dom)) != null; if (!known && looked >= 40) { cnt.waiting++; continue; } if (!known) looked++; mx[dom] = await mxOk(env, d, dom); }
+      v = mx[dom] === false ? ["invalid", "The domain " + dom + " has no mail server"] : mx[dom] === null ? ["risky", "Mail server could not be checked"] : ["ok", ""]; }
+    cnt[v[0]]++; out.push({ id: r.id, c: v[0], r: v[1] });
+  }
+  if (out.length) await d.prepare("UPDATE li_businesses SET email_check=j.c, email_reason=NULLIF(j.r,'') FROM (SELECT json_extract(value,'$.id') AS id, json_extract(value,'$.c') AS c, json_extract(value,'$.r') AS r FROM json_each(?1)) AS j WHERE li_businesses.id=j.id").bind(JSON.stringify(out)).run();
+  const left = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses WHERE " + where.join(" AND "), ...a)) || {}).n || 0, done = left === 0;
+  if (done && out.length) await act(d, "email_check", null, (b.list || b.source || "all") + " emails checked", by);
+  return { checked: out.length, counts: cnt, left, done };
 }

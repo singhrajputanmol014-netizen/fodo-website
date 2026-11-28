@@ -538,6 +538,13 @@
   var lday = function (s) { return s ? date(s, true) : "Never"; };
   var opt = function (list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(l) + "</option>"; }).join(""); };
   var ECK = { risky: ["Risky", "mid"], invalid: ["Invalid", "bad"], test: ["Test / demo", "bad"], blocked: ["Spam: never email", "bad"] };
+  /* v55.32 pages: 100 leads per page */
+  var lpager = function (j) {
+    var o = ""; for (var p = 1; p <= j.pages; p++) o += '<option value="' + p + '"' + (p === j.page ? " selected" : "") + ">Page " + p + "</option>";
+    return '<nav class="ad-li-pager" aria-label="Pages"><button type="button" class="btn sm ghost" data-pg="' + Math.max(1, j.page - 1) + '"' + (j.page <= 1 ? " disabled" : "") + '>&larr; Previous</button>' +
+      '<select id="lq-pg" class="ad-in" aria-label="Go to page">' + o + '</select><span class="muted">' + ((j.page - 1) * j.per + 1).toLocaleString("en-IN") + "–" + Math.min(j.total, j.page * j.per).toLocaleString("en-IN") + " of " + Number(j.total).toLocaleString("en-IN") + "</span>" +
+      '<button type="button" class="btn sm ghost" data-pg="' + Math.min(j.pages, j.page + 1) + '"' + (j.page >= j.pages ? " disabled" : "") + ">Next &rarr;</button></nav>";
+  };
   var echk = function (x) { var e = ECK[x.email_check]; return e && x.email ? ' <span class="ad-st ' + e[1] + '" title="' + esc(x.email_reason || "") + '">' + e[0] + "</span>" : ""; };
   var lnav = function (cur) { var T = [["li-dash", "Dashboard"], ["li-find", "Find businesses"], ["li-people", "Decision makers"], ["li-leads", "Leads & clients"], ["li-imports", "Client databases"], ["li-hot", "Hot leads"], ["li-audit", "Website audit"], ["li-analytics", "Analytics"], ["li-outreach", "Outreach"], ["li-sent", "Sent & replies"], ["li-settings", "Integrations"]];
     return '<nav class="ad-li-tabs" aria-label="Lead Intelligence">' + T.map(function (t) { return '<a href="#' + t[0] + '"' + (t[0] === cur ? ' aria-current="page" class="on"' : "") + ">" + t[1] + "</a>"; }).join("") + "</nav>"; };
@@ -630,7 +637,7 @@
     var subs = { "li-leads": "Every business found by search plus the client data you import. Imported clients work like any lead: WhatsApp and email drafts, email send, Bulk pitch, outreach queue and statuses. Click a row for the full profile.", "li-hot": "Leads scoring 60 or more (High potential and Hot). The score is the sum of 8 evidenced parts; open a lead to see why.",
       "li-people": "Decision makers come from the business's own website (Verified) or public search results that name the business (Partially verified). LinkedIn is never opened or scraped, and no name or email is guessed.",
       "li-audit": "Automatic checks of each business's own website: HTTPS, mobile tag, speed, SEO basics, broken links, forms, booking, chat, analytics and ad tags. AI summaries are labelled.", "li-outreach": "Track every lead through 12 statuses. Drafts are written for you to copy; nothing is sent from here. Do not contact and unsubscribed emails are blocked." };
-    api("li/leads?" + lqs(q)).then(function (j) {
+    api("li/leads?" + lqs(Object.assign({ limit: 100 }, q))).then(function (j) {
       if (!j.ok) return fail(j);
       var L = j.leads, sel = {};
       var filt = '<div class="ad-li-filt"><input id="lq-q" class="ad-in" placeholder="Search name, website, owner, email, ID" value="' + esc(q.q || "") + '">' +
@@ -654,16 +661,16 @@
       };
       $("#ad-view").innerHTML = head(titles[mode], subs[mode], (mode === "li-leads" ? '<button type="button" class="btn sm ghost" id="lq-imp">Import client data</button> ' : "") + '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + '<div id="lq-impbox"></div>' +
         (q.list ? '<p class="ad-li-dbchip"><span class="ad-st mid">Client database</span> <b>' + esc(q.list) + '</b> <button type="button" class="btn sm ghost" id="lq-dbx">Show all leads</button> <a class="btn sm ghost" href="#li-imports">All databases</a></p>' : "") + filt +
-        '<div class="ad-li-bulk"><span id="lq-n" class="muted">' + j.total + " leads" + (j.total > L.length ? " (showing " + L.length + ")" : "") + '</span><span class="ad-li-ba" id="lq-ba" hidden><b id="lq-sn">0</b> selected · ' +
+        '<div class="ad-li-bulk"><span id="lq-n" class="muted">' + Number(j.total).toLocaleString("en-IN") + " leads" + (j.pages > 1 ? " · page " + j.page + " of " + j.pages : "") + '</span><span class="ad-li-ba" id="lq-ba" hidden><b id="lq-sn">0</b> selected · ' +
         '<button type="button" class="btn sm" data-ba="research">Research</button><select class="ad-in" id="lq-bst" aria-label="Set status">' + opt(LIST, "", "Set status…") + "</select>" +
         '<button type="button" class="btn sm ghost" data-ba="csv">CSV</button><button type="button" class="btn sm ghost" data-ba="xlsx">Excel</button><button type="button" class="btn sm" data-ba="queue">Outreach queue</button><button type="button" class="btn sm ghost" data-ba="pitch">Add to Bulk pitch</button>' +
         '<button type="button" class="btn sm ghost" data-ba="' + (q.archived === "1" ? "unarchive" : "archive") + '">' + (q.archived === "1" ? "Restore" : "Archive") + '</button><button type="button" class="btn sm ghost" data-ba="delete">Delete</button></span>' +
-        '<span class="ad-li-ex"><button type="button" class="btn sm ghost" id="lq-csv">Export all CSV</button> <button type="button" class="btn sm ghost" id="lq-xlsx">Excel</button>' + (mode === "li-leads" ? ' <button type="button" class="btn sm ghost" id="lq-dup">Check duplicates</button>' : "") + "</span></div>" +
+        '<span class="ad-li-ex"><button type="button" class="btn sm ghost" id="lq-csv">Export all CSV</button> <button type="button" class="btn sm ghost" id="lq-xlsx">Excel</button>' + (mode === "li-leads" ? ' <button type="button" class="btn sm ghost" id="lq-dup">Check duplicates</button> <button type="button" class="btn sm ghost" id="lq-eck">Check emails</button>' : "") + "</span></div>" +
         '<div class="ad-table"><table><thead><tr><th><input type="checkbox" id="lq-all" aria-label="Select all"></th><th>Business</th><th>Score</th><th>' + cols[0] + "</th><th>" + cols[1] + "</th><th>Status</th></tr></thead><tbody>" +
-        (L.length ? L.map(function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><input type="checkbox" data-ck="' + esc(x.id) + '" aria-label="Select ' + esc(x.name) + '"></td><td><b>' + esc(x.name) + '</b>' + (x.source === "import" ? ' <span class="ad-st mid">Imported</span>' : "") + '<small class="muted ad-li-sub">' + esc([x.id, x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + "</td>" + cell(x) + '<td data-l="Status">' + esc(lst(x.status)) + "</td></tr>"; }).join("")
-          : '<tr><td colspan="6" class="muted">No leads match. ' + (mode === "li-hot" ? "Research leads to score them." : "Use Find businesses to add some.") + "</td></tr>") + "</tbody></table></div><div id=\"lq-dups\"></div>";
+        (L.length ? L.map(function (x) { return '<tr data-li="' + esc(x.id) + '" tabindex="0"><td><input type="checkbox" data-ck="' + esc(x.id) + '" aria-label="Select ' + esc(x.name) + '"></td><td><b>' + esc(x.name) + '</b>' + (x.source === "import" ? ' <span class="ad-st mid">Imported</span>' : "") + '<small class="muted ad-li-sub">' + esc([x.id, x.category || x.industry, x.locality || x.city].filter(Boolean).join(" · ")) + '</small></td><td data-l="Score">' + lpri(x.priority, x.score) + "</td>" + cell(x) + '<td data-l="Status">' + esc(lst(x.status)) + (x.sent_at ? '<small class="ad-li-sent">&#10003; Sent ' + esc(date(x.sent_at)) + " · " + esc(x.sent_via || "Email") + "</small>" : "") + "</td></tr>"; }).join("")
+          : '<tr><td colspan="6" class="muted">No leads match. ' + (mode === "li-hot" ? "Research leads to score them." : "Use Find businesses to add some.") + "</td></tr>") + "</tbody></table></div>" + (j.pages > 1 ? lpager(j) : "") + "<div id=\"lq-dups\"></div>";
       var reload = function () { liLeads(mode); };
-      var setQ = function () { ["q", "status", "priority", "industry", "city", "website", "people", "researched", "source", "echeck", "sort"].forEach(function (k) { q[k] = $("#lq-" + k).value.trim(); }); q.archived = $("#lq-archived").checked ? "1" : ""; reload(); };
+      var setQ = function () { ["q", "status", "priority", "industry", "city", "website", "people", "researched", "source", "echeck", "sort"].forEach(function (k) { q[k] = $("#lq-" + k).value.trim(); }); q.archived = $("#lq-archived").checked ? "1" : ""; delete q.page; reload(); };
       ["status", "priority", "industry", "website", "people", "researched", "source", "echeck", "sort"].forEach(function (k) { $("#lq-" + k).onchange = setQ; }); $("#lq-archived").onchange = setQ;
       $("#lq-q").onkeydown = $("#lq-city").onkeydown = function (e) { if (e.key === "Enter") setQ(); };
       var ids = function () { return Object.keys(sel).filter(function (k) { return sel[k]; }); };
@@ -683,7 +690,11 @@
       }; });
       $("#lq-csv").onclick = function () { liExport("csv"); }; $("#lq-xlsx").onclick = function () { liExport("xlsx"); };
       var ib = $("#lq-imp"); if (ib) ib.onclick = function () { liImport($("#lq-impbox"), reload); };
-      var dbx = $("#lq-dbx"); if (dbx) dbx.onclick = function () { delete q.list; reload(); };
+      var dbx = $("#lq-dbx"); if (dbx) dbx.onclick = function () { delete q.list; delete q.page; reload(); };
+      [].slice.call(document.querySelectorAll("#ad-view [data-pg]")).forEach(function (b) { b.onclick = function () { q.page = String(b.dataset.pg); reload(); window.scrollTo(0, 0); }; });
+      var pgs = $("#lq-pg"); if (pgs) pgs.onchange = function () { q.page = pgs.value; reload(); window.scrollTo(0, 0); };
+      if (mode === "li-leads") { var sk = "fodo-li-eck"; try { if (!sessionStorage.getItem(sk)) { sessionStorage.setItem(sk, "1"); liCheck({}, null, null); } } catch (e) {} }   /* new emails are checked quietly once per visit */
+      var eck = $("#lq-eck"); if (eck) eck.onclick = function () { eck.disabled = true; liCheck(q.list ? { list: q.list } : {}, $("#lq-n"), reload); };
       var du = $("#lq-dup"); if (du) du.onclick = function () { api("li/duplicates").then(function (r) { if (!r.ok) return toast(r.reason, true); $("#lq-dups").innerHTML = '<div class="panel ad-card"><h2>Possible duplicates</h2>' + (r.groups.length ? '<ul class="ad-li-ul">' + r.groups.map(function (g) { return "<li>Same " + esc(g.by) + ": " + g.ids.map(function (id) { return '<a href="#li-lead/' + esc(id) + '">' + esc(id) + "</a>"; }).join(", ") + ' <small class="muted">' + esc(g.names) + "</small></li>"; }).join("") + "</ul>" : '<p class="muted">No duplicates found.</p>') + "</div>"; }); };
       lclick("tr[data-li]");
     });
@@ -763,7 +774,7 @@
         first = false; if (!r.ok) { if (el) el.innerHTML = '<span class="cf-status warn">' + esc(r.reason) + "</span>"; return; }
         Object.keys(tot).forEach(function (k) { tot[k] += r.counts[k] || 0; });
         if (el) el.innerHTML = (r.done ? "Checked. " : "Checking emails… " + Number(r.left).toLocaleString("en-IN") + " left. ") + tot.ok + " valid, " + tot.risky + " risky, " + (tot.invalid + tot.test + tot.blocked) + " spam / invalid.";
-        if (r.done || (!r.checked && !r.counts.waiting)) { toast("Email check done"); if (done) setTimeout(done, 900); } else setTimeout(step, 150);
+        if (r.done || (!r.checked && !r.counts.waiting)) { if (el) toast("Email check done"); if (done) setTimeout(done, 900); } else setTimeout(step, 150);
       });
     };
     step();

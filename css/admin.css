@@ -290,3 +290,4 @@ tr[data-li]{cursor:pointer}tr[data-li]:hover td{background:color-mix(in srgb,var
 .ad-li-mode{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}.ad-li-prof{margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font-size:.92rem}
 .ad-li-dbq{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}.ad-li-ckp{margin:8px 0 0;font-size:.88rem}.ad-li-bl{margin:0 0 14px}.ad-li-bl summary{cursor:pointer}
 .ad-li-db .ad-acts{display:flex;flex-wrap:wrap;gap:8px}.ad-li-db .ad-acts .btn{white-space:nowrap;margin:0}
+.ad-li-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;margin:16px 0}.ad-li-pager select{width:auto}.ad-li-sent{display:block;margin-top:4px;font-size:.8rem;color:#4ade80;font-weight:600}

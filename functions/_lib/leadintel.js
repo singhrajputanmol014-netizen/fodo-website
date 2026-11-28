@@ -526,6 +526,7 @@ export async function lead(env, id) {
 const SORTS = { score: "COALESCE(score,-1) DESC", newest: "created_at DESC", name: "name COLLATE NOCASE", updated: "updated_at DESC", reviews: "COALESCE(reviews,-1) DESC" };
 export async function list(env, q) {
   const d = await ldb(env); q = q || {}; const w = [], a = [];
+  try { await syncSent(env, d); } catch (e) {}
   const add = (sql, v) => { a.push(v); w.push(sql.replace(/\?/g, "?" + a.length)); };
   if (q.archived === "1") w.push("archived=1"); else w.push("archived=0");
   if (q.q) { const s = "%" + clip(q.q, 80).toLowerCase() + "%"; a.push(s); const n = a.length; w.push("(lower(name) LIKE ?" + n + " OR lower(COALESCE(website,'')) LIKE ?" + n + " OR lower(COALESCE(owner_name,'')) LIKE ?" + n + " OR lower(COALESCE(email,'')) LIKE ?" + n + " OR lower(id) LIKE ?" + n + ")"); }
@@ -541,10 +542,30 @@ export async function list(env, q) {
   if (q.researched === "1") w.push("researched_at IS NOT NULL"); if (q.researched === "0") w.push("researched_at IS NULL");
   if (q.min) add("COALESCE(score,0)>=?", +q.min || 0);
   if (q.from) add("created_at>=?", clip(q.from, 10)); if (q.to) add("created_at<=?", clip(q.to, 10) + "T99");
-  const where = w.length ? " WHERE " + w.join(" AND ") : "", lim = Math.max(1, Math.min(1000, +q.limit || 200));
-  const rows = await all(d, "SELECT id,name,industry,sub_industry,category,locality,city,website,phone,email,whatsapp,owner_name,owner_role,owner_conf,score,priority,status,source,source_ref,email_check,email_reason,rating,reviews,researched_at,created_at,updated_at,archived FROM li_businesses" + where + " ORDER BY " + (SORTS[q.sort] || SORTS.score) + " LIMIT " + lim, ...a);
+  const where = w.length ? " WHERE " + w.join(" AND ") : "", lim = Math.max(1, Math.min(1000, +q.limit || 200)), page = Math.max(1, Math.min(100000, parseInt(q.page, 10) || 1));
+  const rows = await all(d, "SELECT id,name,industry,sub_industry,category,locality,city,website,phone,email,whatsapp,owner_name,owner_role,owner_conf,score,priority,status,source,source_ref,email_check,email_reason,rating,reviews,researched_at,created_at,updated_at,archived FROM li_businesses" + where + " ORDER BY " + (SORTS[q.sort] || SORTS.score) + ", id LIMIT " + lim + " OFFSET " + (page - 1) * lim, ...a);
   const total = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses" + where, ...a)) || {}).n || 0;
-  return { leads: rows, total };
+  const S = await sentMap(d, rows.map((r) => r.email)); rows.forEach((r) => { const m = r.email && S[String(r.email).toLowerCase()]; if (m) { r.sent_at = m.at; r.sent_via = m.via; } });
+  return { leads: rows, total, page, pages: Math.max(1, Math.ceil(total / lim)), per: lim };
+}
+/* v55.32 which of these emails already got an email from FODO (lead emails, client emails, Bulk pitch, Email campaigns); tests excluded */
+async function sentMap(d, emails) {
+  const E = [...new Set(emails.filter(Boolean).map((e) => String(e).toLowerCase()))], out = {}; if (!E.length) return out;
+  const put = (e, at, via) => { e = String(e || "").toLowerCase(); if (e && (!out[e] || String(at) > String(out[e].at))) out[e] = { at, via }; };
+  const Q = [["SELECT email AS e, MAX(at) AS at FROM cm_sends WHERE status='sent' AND COALESCE(test,0)=0 AND lower(email) IN (SELECT value FROM json_each(?1)) GROUP BY lower(email)", "Email"],
+    ["SELECT email AS e, MAX(at) AS at FROM cm_pitch_rcpt WHERE status='sent' AND lower(email) IN (SELECT value FROM json_each(?1)) GROUP BY lower(email)", "Bulk pitch"],
+    ["SELECT email AS e, MAX(sent_at) AS at FROM camp_recips WHERE status='sent' AND lower(email) IN (SELECT value FROM json_each(?1)) GROUP BY lower(email)", "Email campaign"]];
+  for (const [sql, via] of Q) { try { ((await d.prepare(sql).bind(JSON.stringify(E)).all()).results || []).forEach((r) => put(r.e, r.at, via)); } catch (e) { /* that product's tables are not set up yet */ } }
+  return out;
+}
+/* leads still "New / Not contacted" whose email was already sent from another FODO tool move to "Email sent" (at most every 5 minutes) */
+export async function syncSent(env, d, force) {
+  if (!force && env.CHAT_KV && (await env.CHAT_KV.get("li:sentsync"))) return 0; if (env.CHAT_KV) await env.CHAT_KV.put("li:sentsync", "1", { expirationTtl: 300 });
+  let n = 0; const t = nowIso();
+  for (const src of ["SELECT lower(email) FROM cm_sends WHERE status='sent' AND COALESCE(test,0)=0", "SELECT lower(email) FROM cm_pitch_rcpt WHERE status='sent'", "SELECT lower(email) FROM camp_recips WHERE status='sent'"]) {
+    try { const r = await d.prepare("UPDATE li_businesses SET status='email_sent', updated_at=?1 WHERE status IN ('new','not_contacted') AND COALESCE(email,'')<>'' AND lower(email) IN (" + src + ")").bind(t).run(); n += (r.meta && r.meta.changes) || 0; } catch (e) {}
+  }
+  return n;
 }
 export async function update(env, id, b, by) {
   const d = await ldb(env), cur = await one(d, "SELECT * FROM li_businesses WHERE id=?1", String(id || "")); if (!cur) throw err("Lead not found.", 404); b = b || {};

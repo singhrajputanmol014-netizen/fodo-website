@@ -406,6 +406,7 @@
       OR = { clients: j.clients, types: j.types, statuses: j.statuses, sends: j.sends, cfg: j.config, me: j.me, q: prev.q || "", sel: prev.sel || (j.clients[0] && j.clients[0].id) || "", type: prev.type || "proposal", blocks: prev.blocks || null, subject: prev.subject != null ? prev.subject : null, vars: prev.vars || {}, atts: prev.atts || [], lf: prev.lf || { client: "", status: "" } };
       if (!OR.blocks) orReset();
       orDraw();
+      if (!prev.clients) api("li/always-files").then(function (r) { if (!r.ok || !r.files || !r.files.length) return; var add = r.files.filter(function (f) { return !OR.atts.some(function (a) { return a.id === f.id; }); }); if (!add.length) return; OR.atts = OR.atts.concat(add.map(function (f) { return { id: f.id, name: f.name, size: f.size, always: true }; })); orDraw(); });   /* v55.33 every-email files */
     });
   }
   var orType = function () { return OR.types.filter(function (t) { return t.id === OR.type; })[0] || OR.types[0]; };
@@ -430,7 +431,7 @@
         '<div class="ad-or-vars">' + OR_V.map(function (v) { return '<label><span class="ad-dl2">' + v[1] + '</span><input class="ad-in" data-ov="' + v[0] + '" maxlength="400" placeholder="' + (v[0] === "amount" && c && c.amount ? esc(c.amount) : v[0] === "date" ? "e.g. 30 Nov 2026" : v[0] === "link" ? "https://…" : "") + '" value="' + esc(OR.vars[v[0]] || "") + '"></label>'; }).join("") + "</div>" +
         OR_B.map(function (b) { return '<label class="ad-dl2" for="or-b-' + b[0] + '">' + b[1] + "</label>" + (b[2] > 1 ? '<textarea id="or-b-' + b[0] + '" class="ad-in ad-ta" rows="' + b[2] + '" data-ob="' + b[0] + '" maxlength="6000">' + esc(OR.blocks[b[0]] || "") + "</textarea>" : '<input id="or-b-' + b[0] + '" class="ad-in" data-ob="' + b[0] + '" maxlength="400" value="' + esc(OR.blocks[b[0]] || "") + '">'); }).join("") +
         '<div class="ad-or-att"><p class="ad-dl2">Attachments <span class="muted">(any file: PDF, image, Word, Excel, PPT, zip · up to ' + (OR.cfg.maxFiles || 5) + ' files, 10 MB each, 15 MB together)</span></p>' +
-          '<div class="ad-or-atl">' + OR.atts.map(function (a) { return '<span class="ad-or-chip">📎 ' + esc(a.name) + ' <small class="muted">' + kb(a.size) + '</small><button type="button" class="ad-ib" data-ax="' + esc(a.id) + '" aria-label="Remove ' + esc(a.name) + '">×</button></span>'; }).join("") + "</div>" +
+          '<div class="ad-or-atl">' + OR.atts.map(function (a) { return '<span class="ad-or-chip">' + (a.always ? "📌 " : "📎 ") + esc(a.name) + ' <small class="muted">' + kb(a.size) + '</small><button type="button" class="ad-ib" data-ax="' + esc(a.id) + '" aria-label="Remove ' + esc(a.name) + '">×</button></span>'; }).join("") + "</div>" +
           (OR.cfg.attach === false ? '<p class="muted">Attachments need CHAT_KV storage on the website.</p>' : '<label class="btn sm ghost" for="or-attf">+ Attach file</label><input type="file" id="or-attf" class="sr-only" multiple>') + "</div>" +
         '<p class="muted ad-or-hint">Variables: {client_name} {first_name} {business_name} {city} {industry} {service} {amount} {pricing} {date} {next_step} {link} {phone} {email}. The design, header, "Anmol · FODO" sign-off and footer are fixed.</p>' +
         '<p id="or-empty" class="cf-status warn" hidden></p>' +
@@ -988,18 +989,36 @@
   var lkb = function (n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; };
   var lfileBlock = function () { return LFILES.length ? "\n\n" + (LFILES.length === 1 ? "I've put together a short file for you (" + LFILES[0].name + "):\n" + LFILES[0].url : "Sharing a few files for you:\n" + LFILES.map(function (f) { return f.name + ": " + f.url; }).join("\n")) : ""; };
   var lwithFiles = function (t) { t = String(t || ""); var missing = LFILES.filter(function (f) { return t.indexOf(f.url) < 0; }); if (!missing.length) return t; var keep = LFILES; LFILES = missing; var b = lfileBlock(); LFILES = keep; var at = t.search(/\n\nAnmol, FODO/); return at > -1 ? t.slice(0, at) + b + t.slice(at) : t + b; };
+  /* v55.33 files saved once go with every client email; "+ Attach file" stays for one email only */
+  var LALW = [], LALWOFF = {};
+  var lalwIs = function (f) { return LALW.some(function (z) { return z.id === f.id; }); };
+  var lalwLoad = function () { return api("li/always-files").then(function (r) { if (!r.ok) return; LALW = r.files || [];
+    LFILES = LFILES.filter(function (f) { return !f.always || lalwIs(f); });
+    LALW.forEach(function (f) { if (!LALWOFF[f.id] && !LFILES.some(function (z) { return z.id === f.id; })) LFILES.push(Object.assign({ always: true }, f)); });
+    if (r.expired && r.expired.length) toast("Expired, upload again: " + r.expired.join(", "), true); return r; }); };
   function lfilesUI(id) {
-    return '<div class="ad-li-files" id="' + id + '"><span class="ad-dl2">Files</span>' + LFILES.map(function (f, i) { return '<span class="ad-or-chip">📎 ' + esc(f.name) + ' <small class="muted">' + lkb(f.size) + '</small> <a href="' + esc(f.url) + '" target="_blank" rel="noopener" title="Open or download">open</a><button type="button" class="ad-ib" data-fx="' + i + '" aria-label="Remove ' + esc(f.name) + '">×</button></span>'; }).join("") +
-      '<label class="btn sm ghost ad-li-up">+ Attach file<input type="file" multiple hidden data-fup></label><small class="muted">PDF, image, doc, up to 10 MB, 5 files. Email: attached. WhatsApp, Instagram, Facebook, LinkedIn: sent as a private link in the message.</small></div>';
+    var off = LALW.filter(function (f) { return !LFILES.some(function (z) { return z.id === f.id; }); });
+    return '<div class="ad-li-files" id="' + id + '"><span class="ad-dl2">Files</span>' + LFILES.map(function (f, i) { var al = lalwIs(f); return '<span class="ad-or-chip' + (al ? " ad-li-alw" : "") + '">' + (al ? "📌 " : "📎 ") + esc(f.name) + ' <small class="muted">' + lkb(f.size) + (al ? " · every email" : "") + '</small> <a href="' + esc(f.url) + '" target="_blank" rel="noopener" title="Open or download">open</a>' +
+        (al ? '<button type="button" class="ad-li-lnk" data-fstop="' + esc(f.id) + '" title="Stop attaching this to every email">stop for all</button>' : (/^ca_/.test(f.id || "") ? '<button type="button" class="ad-li-lnk" data-fpin="' + i + '" title="Attach this to every email from now on">every email</button>' : "")) +
+        '<button type="button" class="ad-ib" data-fx="' + i + '" aria-label="Remove ' + esc(f.name) + ' from this email">×</button></span>'; }).join("") +
+      off.map(function (f) { return '<span class="ad-or-chip ad-li-off">📌 <s>' + esc(f.name) + '</s> <small class="muted">not in this email</small><button type="button" class="ad-li-lnk" data-fback="' + esc(f.id) + '">add back</button></span>'; }).join("") +
+      '<label class="btn sm ghost ad-li-up">+ Attach file<input type="file" multiple hidden data-fup></label><label class="btn sm ad-li-up">📌 Attach to every email<input type="file" multiple hidden data-fup="all"></label>' +
+      '<small class="muted">📌 files go with every client email automatically (× leaves one out of this email only). <b>+ Attach file</b> is for this email only. PDF, image, doc, up to 10 MB, 5 files. WhatsApp, Instagram, Facebook, LinkedIn: sent as a private link in the message.</small></div>';
   }
   function lfilesWire(box, onChange) {
     var redraw = function () { box.outerHTML = lfilesUI(box.id); var nb = document.getElementById(box.id); lfilesWire(nb, onChange); if (onChange) onChange(); };
-    $$("[data-fx]", box).forEach(function (b) { b.onclick = function () { LFILES.splice(+b.dataset.fx, 1); redraw(); }; });
-    var inp = $("[data-fup]", box); if (inp) inp.onchange = function () {
-      var list = [].slice.call(this.files || []); if (!list.length) return; if (LFILES.length + list.length > 5) return toast("Up to 5 files.", true);
+    $$("[data-fx]", box).forEach(function (b) { b.onclick = function () { var f = LFILES[+b.dataset.fx]; if (f && lalwIs(f)) LALWOFF[f.id] = 1; LFILES.splice(+b.dataset.fx, 1); redraw(); }; });
+    $$("[data-fback]", box).forEach(function (b) { b.onclick = function () { delete LALWOFF[b.dataset.fback]; var f = LALW.find(function (z) { return z.id === b.dataset.fback; }); if (f) LFILES.push(Object.assign({ always: true }, f)); redraw(); }; });
+    $$("[data-fpin]", box).forEach(function (b) { b.onclick = function () { var f = LFILES[+b.dataset.fpin]; api("li/always-files", { add: f }).then(function (r) { toast(r.ok ? f.name + " now goes with every email" : r.reason, !r.ok); if (r.ok) { f.always = true; LALW = r.files; } redraw(); }); }; });
+    $$("[data-fstop]", box).forEach(function (b) { b.onclick = function () { var id = b.dataset.fstop; ask({ title: "Stop attaching this to every email?", text: "It stays in this email; new emails will not get it.", ok: "Stop" }).then(function (y) { if (!y) return; api("li/always-files", { remove: id }).then(function (r) { if (r.ok) { LALW = r.files; LFILES.forEach(function (f) { if (f.id === id) f.always = false; }); } toast(r.ok ? "Removed from every email" : r.reason, !r.ok); redraw(); }); }); }; });
+    $$("[data-fup]", box).forEach(function (inp) { inp.onchange = function () {
+      var all = inp.dataset.fup === "all", list = [].slice.call(this.files || []); this.value = ""; if (!list.length) return; if (LFILES.length + list.length > 5) return toast("Up to 5 files per email.", true);
       var next = function () { var f = list.shift(); if (!f) return redraw(); if (f.size > 10 * 1048576) { toast(f.name + " is over 10 MB.", true); return next(); }
-        toast("Uploading " + f.name + "…"); readB64(f).then(function (b64) { return api("li/file", { file: b64, name: f.name, mime: f.type }); }).then(function (r) { if (r.ok) LFILES.push(r.file); else toast(r.reason, true); next(); }, function (e) { toast(String(e.message || e), true); next(); }); };
-      next(); };
+        toast("Uploading " + f.name + "…"); readB64(f).then(function (b64) { return api("li/file", { file: b64, name: f.name, mime: f.type }); }).then(function (r) { if (!r.ok) { toast(r.reason, true); return next(); }
+          if (!all) { LFILES.push(r.file); return next(); }
+          api("li/always-files", { add: r.file }).then(function (k) { if (k.ok) { LALW = k.files; LFILES.push(Object.assign({ always: true }, r.file)); toast(r.file.name + " will go with every email"); } else { LFILES.push(r.file); toast(k.reason, true); } next(); });
+        }, function (e) { toast(String(e.message || e), true); next(); }); };
+      next(); }; });
   }
   /* lead page panel: every platform side by side; ones research did not find can still be drafted and searched */
   var LPLAT = [["whatsapp", "WhatsApp"], ["email", "Email"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["linkedin", "LinkedIn"], ["x", "X"]];
@@ -1016,7 +1035,7 @@
     var B = d.blocks || {}, f = function (k, label, rows, hint) { return '<label class="ad-dl2" for="le-' + k + '">' + label + (hint ? ' <span class="muted">' + hint + "</span>" : "") + '</label><textarea id="le-' + k + '" class="ad-in ad-ta" rows="' + rows + '">' + esc(B[k] || "") + "</textarea>"; };
     var sv = d.template === "services";
     return '<div class="ad-li-mode" role="group" aria-label="Email type"><button type="button" class="btn sm' + (sv ? " ghost" : "") + '" data-tpl="research" aria-pressed="' + !sv + '">Personalised from research</button><button type="button" class="btn sm' + (sv ? "" : " ghost") + '" data-tpl="services" aria-pressed="' + sv + '">FODO services template</button></div>' +
-      '<p class="muted" id="ll-drm">' + (sv ? "The FODO services email: same professional text for everyone, only the name and email change for this client. No research needed. Your company profile PDF is attached automatically." : d.ai ? "Subject, intro and closing written by AI from the research; findings and numbers come straight from the data. Check before sending." : "Template text built from the research. Edit before sending.") + "</p>" +
+      '<p class="muted" id="ll-drm">' + (sv ? "The FODO services email: same professional text for everyone, only the name and email change for this client. No research needed. Files marked 📌 (company profile and so on) go with it automatically." : d.ai ? "Subject, intro and closing written by AI from the research; findings and numbers come straight from the data. Check before sending." : "Template text built from the research. Edit before sending.") + "</p>" +
       (sv ? '<p class="ad-li-prof" id="le-prof"></p>' : "") +
       '<div class="ad-li-eg"><div><label class="ad-dl2" for="le-to">To</label><input id="le-to" class="ad-in" value="' + esc(to || "") + '" placeholder="no public email found: type one you have verified">' +
       '<label class="ad-dl2" for="le-subject">Subject</label><input id="le-subject" class="ad-in" maxlength="150" value="' + esc(d.subject || "") + '">' +
@@ -1040,21 +1059,15 @@
   }
   function liMsgWire(j, reload) {
     var x = j.lead, C = liChans(j), w = $("#ll-mw"), cur = null;
-    var fcb = function () { var ta = $("#ll-dr"); if (ta) ta.value = lwithFiles(ta.value); if ($("#le-pv")) $("#le-prev").click(); };
+    var fcb = function () { var ta = $("#ll-dr"); if (ta) ta.value = lwithFiles(ta.value); if ($("#le-pv")) $("#le-prev").click(); if (profWire) profWire(); };
     var fb = $("#ll-files"); if (fb) lfilesWire(fb, fcb);
     var redrawFiles = function () { var o = $("#ll-files"); if (!o) return; o.outerHTML = lfilesUI("ll-files"); lfilesWire($("#ll-files"), fcb); };
+    lalwLoad().then(function () { redrawFiles(); });
     /* v55.30 services template: attach the saved company profile, or offer to save an attached PDF as it */
-    var profWire = function () {
+    var profWire = function () {   /* v55.33 the services email names what goes with it; files are managed in Files above */
       var el = $("#le-prof"); if (!el) return;
-      api("li/profile-pdf").then(function (r) {
-        var f = r.ok && r.file; if (f && !LFILES.some(function (z) { return z.id === f.id; })) { LFILES.push(f); redrawFiles(); fcb(); }
-        var pdf = LFILES.find(function (z) { return /\.pdf$/i.test(z.name || ""); });
-        el.innerHTML = f ? 'Company profile: <b>' + esc(f.name) + '</b> (attached) <button type="button" class="ad-li-lnk" id="le-pclr">Change</button>' :
-          (pdf ? 'Use <b>' + esc(pdf.name) + '</b> as the FODO company profile for every services email? <button type="button" class="btn sm ghost" id="le-pset">Save as company profile</button>' :
-          (r.expired ? "The saved company profile (" + esc(r.expired) + ") has expired. " : "") + "Attach the FODO company profile PDF with <b>+ Attach file</b> above, then save it here once.");
-        var ps = $("#le-pset"); if (ps) ps.onclick = function () { api("li/profile-pdf", { set: pdf }).then(function (k) { toast(k.ok ? "Saved as company profile" : k.reason, !k.ok); profWire(); }); };
-        var pc = $("#le-pclr"); if (pc) pc.onclick = function () { api("li/profile-pdf", { clear: true }).then(function () { LFILES = LFILES.filter(function (z) { return z.id !== f.id; }); redrawFiles(); fcb(); profWire(); }); };
-      });
+      var al = LFILES.filter(lalwIs);
+      el.innerHTML = al.length ? "Goes with every email: <b>" + al.map(function (f) { return esc(f.name); }).join(", ") + "</b>" : "Tip: add the FODO company profile PDF with <b>📌 Attach to every email</b> above, once. It then goes with every client email.";
     };
     var show = function (c, kind, tpl) {
       cur = c; w.hidden = false; w.innerHTML = '<p class="muted">Writing ' + esc(c ? (LPLAT.find(function (p) { return p[0] === c.channel; }) || [0, ""])[1] : "the") + " message from the research…</p>";
@@ -1084,7 +1097,7 @@
     ask({ title: "Outreach queue: " + ids.length + " leads", text: "Pick the channel. For each lead the message is written for you; you open it in WhatsApp, Gmail or the profile, press Send, then mark it sent here. Leads without that channel, Do not contact and unsubscribed leads are skipped.\n\nChannel: whatsapp, email, linkedin, instagram, facebook, x, or best (first available)", input: "Channel", ok: "Start" }).then(function (chv) {
       if (chv === null) return; chv = String(chv || "best").toLowerCase().trim(); if (["best"].concat(LBEST).indexOf(chv) < 0) return toast("Unknown channel: " + chv, true);
       var w = document.createElement("div"); w.className = "cfx ad-dlg ad-li-q"; document.body.appendChild(w);
-      api("li/profile-pdf").then(function (r) { var f = r.ok && r.file; if (f && !LFILES.some(function (z) { return z.id === f.id; })) LFILES.push(f); });   /* v55.30 company profile goes with services emails */
+      lalwLoad();   /* v55.33 files saved for every email go with every queued email */
       var i = 0, sent = 0, skipped = [], pre = {}, close = function () { w.remove(); toast(sent + " sent, " + skipped.length + " skipped"); route(); };
       var load = function (k) { if (pre[k]) return pre[k]; var id = ids[k];
         return (pre[k] = api("li/lead/" + encodeURIComponent(id)).then(function (j) {

@@ -920,6 +920,19 @@ export async function profilePdf(env, b) {
   if (v && !(await env.CHAT_KV.get("cm:att:" + v.id))) return { file: null, expired: v.name };   /* uploaded files are kept 180 days */
   return { file: v };
 }
+/* v55.33 files that go with every client email (company profile, rate card...): saved once, attached automatically; the old single company profile PDF is the first entry */
+const ALWAYS = "li:always_files";
+export async function alwaysFiles(env, b) {
+  if (!env.CHAT_KV) return { files: [], expired: [] };
+  b = b || {}; let L = J(await env.CHAT_KV.get(ALWAYS), null);
+  if (!Array.isArray(L)) { L = []; const p = J(await env.CHAT_KV.get("li:profile_pdf"), null); if (p && p.id) L.push(p); }
+  if (b.add) { const f = b.add; if (!/^ca_/.test(String(f.id || ""))) throw err("Upload the file first.");
+    if (!L.some((x) => x.id === f.id)) { if (L.length >= 5) throw err("Up to 5 files can go with every email. Remove one first."); L.push({ id: clip(f.id, 60), name: clip(f.name, 120), size: +f.size || 0, url: clip(f.url, 200), at: nowIso() }); } }
+  if (b.remove) { L = L.filter((x) => x.id !== String(b.remove)); const p = J(await env.CHAT_KV.get("li:profile_pdf"), null); if (p && p.id === String(b.remove)) await env.CHAT_KV.delete("li:profile_pdf"); }
+  if (b.add || b.remove) await env.CHAT_KV.put(ALWAYS, JSON.stringify(L));
+  const files = [], expired = []; for (const f of L) { if (await env.CHAT_KV.get("cm:att:" + f.id)) files.push(f); else expired.push(f.name); }   /* uploaded files are kept 180 days */
+  return { files, expired };
+}
 /* the designed email: the same content in the FODO design */
 export function emailBlocks(F, w) {
   w = w || {}; const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";

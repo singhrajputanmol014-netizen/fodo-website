@@ -118,7 +118,7 @@ ok((await LP("profile-pdf", { clear: true })).j.file === null, "company profile 
 const AJ2 = fs.readFileSync("js/admin.js", "utf8");
 ok(/Personalised from research/.test(AJ2) && /FODO services template/.test(AJ2) && /data-tpl/.test(AJ2), "email type switch on the client page");
 ok(/!x\.website && !x\.researched_at \? "services"/.test(AJ2), "clients without a website or research open on the services template");
-ok(/Save as company profile/.test(AJ2) && /li\/profile-pdf/.test(AJ2), "company profile PDF saved once and attached automatically");
+ok(/Attach to every email/.test(AJ2) && /li\/always-files/.test(AJ2), "company profile PDF saved once and attached automatically (v55.33: every-email files)");
 ok(/services: g\("services"\), mid_text: g\("mid_text"\), mid_link: g\("mid_link"\)/.test(AJ2), "editor sends services and the middle button");
 
 console.log("\nv55.30 services mail: " + pass + " passed, " + fail + " failed");

@@ -1,0 +1,21 @@
+# FODO auto email (v55.37): every 5 minutes, sends the lead emails that are due when Auto email is on
+# (Admin ▸ Lead Intelligence ▸ Leads & clients ▸ Auto email). When it is off the site answers at once.
+# Uses the same secret as the other workflows: FODO_CRON_KEY (= CRON_KEY in Cloudflare). Free on GitHub Actions for this repo.
+name: FODO auto email
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+concurrency: { group: fodo-autoemail, cancel-in-progress: false }
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Auto email tick
+        env:
+          KEY: ${{ secrets.FODO_CRON_KEY }}
+          SITE: https://www.fodo.co.in
+        run: |
+          if [ -z "$KEY" ]; then echo "FODO_CRON_KEY secret is not set, skipping."; exit 0; fi
+          curl -s -m 90 -X POST "$SITE/api/monitor/autoemail" -H "x-cron-key: $KEY" -H "content-type: application/json" -d '{}' || true

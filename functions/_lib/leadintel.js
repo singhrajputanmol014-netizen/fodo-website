@@ -1321,7 +1321,8 @@ export async function emailCheck(env, b, by) {
    Runs from the hourly background job (and "Send next batch now"). Only leads with a checked, valid email that were never emailed.
    Speed is capped by the hourly client-mail limit (CLIENT_MAIL_HOURLY, default 20) and the daily limit chosen when starting. */
 const AUTO = "li:auto";
-async function autoState(env) { return Object.assign({ on: false, list: "", per_day: 150, sent_today: 0, day: "", total: 0, skip: [] }, J(await env.CHAT_KV.get(AUTO), {}) || {}); }
+export const AUTO_GAPS = [1, 5, 60, 300, 900, 1800, 3600];   /* v55.37 seconds between two emails */
+async function autoState(env) { return Object.assign({ on: false, list: "", per_day: 150, interval: 300, sent_today: 0, day: "", total: 0, skip: [] }, J(await env.CHAT_KV.get(AUTO), {}) || {}); }
 async function autoSave(env, st) { st.skip = (st.skip || []).slice(-3000); await env.CHAT_KV.put(AUTO, JSON.stringify(st)); }
 function autoWhere(st) {
   const w = ["archived=0", "status IN ('new','not_contacted')", "COALESCE(email,'')<>''", "email_check='ok'",
@@ -1354,10 +1355,13 @@ export async function autoSet(env, b, by) {
   if (b.action === "start") {
     if (!b.confirm) throw err("Please confirm first.", 400);
     if (!st.tested_at) throw err("Send yourself a test first, so you have seen exactly what clients get.", 400);
-    Object.assign(st, { on: true, list: clip(b.list || "", 80), per_day: Math.max(10, Math.min(500, parseInt(b.per_day, 10) || 150)), by: clip(by, 254), started_at: t, done_at: null, last_error: null });
+    const gap = parseInt(b.interval, 10);
+    Object.assign(st, { on: true, list: clip(b.list || "", 80), per_day: Math.max(10, Math.min(500, parseInt(b.per_day, 10) || 150)), interval: AUTO_GAPS.indexOf(gap) > -1 ? gap : 300, by: clip(by, 254), started_at: t, done_at: null, last_error: null, paused_why: null });
     await autoSave(env, st); return autoStatus(env);
   }
   if (b.action === "run") { const r = await autoTick(env, 25000, true); return Object.assign(await autoStatus(env), { run: r }); }
+  if (b.action === "tick") { const r = await autoTick(env, 8000); return { run: r, auto: Object.assign({}, await autoState(env), { skip: undefined }) }; }   /* the open Admin page keeps short gaps on time */
+  if (b.action === "speed") { const gap = parseInt(b.interval, 10); if (AUTO_GAPS.indexOf(gap) > -1) st.interval = gap; if (b.per_day) st.per_day = Math.max(10, Math.min(500, parseInt(b.per_day, 10) || st.per_day)); await autoSave(env, st); return autoStatus(env); }
   throw err("Unknown action.");
 }
 export async function autoTick(env, budgetMs, manual) {
@@ -1365,12 +1369,17 @@ export async function autoTick(env, budgetMs, manual) {
   const st = await autoState(env); if (!st.on) return { off: true };
   const t0 = Date.now(), day = nowIso().slice(0, 10), OR = await import("./outreach.js"), d = await ldb(env); await OR.cmDb(env);
   if (st.day !== day) { st.day = day; st.sent_today = 0; }
-  const room = Math.min(st.per_day - st.sent_today, OR.hourly(env) - (await OR.usedThisHour(env)), 15);
+  if (st.sent_today >= st.per_day) { await autoSave(env, st); return { sent: 0, waiting: "daily limit reached" }; }
+  const iv = Math.max(1, +st.interval || 300) * 1000, last = st.last_at ? Date.parse(st.last_at) : 0;
+  const due = manual ? 1 : last ? Math.floor((Date.now() - last) / iv) : 15;
+  if (due <= 0) return { sent: 0, waiting: "next email after " + new Date(last + iv).toISOString() };
+  const room = Math.min(st.per_day - st.sent_today, OR.hourly(env) - (await OR.usedThisHour(env)), 15, due);
   if (room <= 0) { await autoSave(env, st); return { sent: 0, waiting: st.sent_today >= st.per_day ? "daily limit reached" : "hourly limit reached" }; }
   const L = await autoNext(env, d, st, room), files = (await alwaysFiles(env)).files.map((f) => f.id);
   if (!L.length) { st.on = false; st.done_at = nowIso(); await autoSave(env, st); return { sent: 0, done: true }; }
   let sent = 0, errs = 0;
-  for (const x of L) {
+  for (let k = 0; k < L.length; k++) { const x = L[k];
+    if (k > 0) { if (Date.now() - t0 + iv > (budgetMs || 35000)) break; await new Promise((ok) => setTimeout(ok, iv)); }   /* keep the chosen gap between emails */
     if (Date.now() - t0 > (budgetMs || 35000)) break;
     const m = servicesEmail(x);
     try { await emailSend(env, x.id, { to: x.email, subject: m.subject, blocks: m.blocks, attachments: files, confirm: true }, st.by || "auto@fodo.co.in"); sent++; st.sent_today++; st.total = (st.total || 0) + 1; st.last_at = nowIso(); st.last_to = x.email; errs = 0; }

@@ -80,7 +80,8 @@ ok((await LP("auto", { action: "start", confirm: true, list: "Auto test" })).sta
 let before = mails.length; const t = (await LP("auto", { action: "test", list: "Auto test" })).j;
 ok(t.ok && mails.length === before + 1 && mails[mails.length - 1].to[0] === "anmol@fodo.co.in" && /\[TEST\]/.test(mails[mails.length - 1].subject), "test goes to the admin only");
 ok((await LP("auto", { action: "start", list: "Auto test" })).status === 400, "start needs confirm");
-ok((await LP("auto", { action: "start", confirm: true, list: "Auto test", per_day: 3 })).j.auto.per_day === 10, "a day limit under 10 is raised to 10");
+const stt = (await LP("auto", { action: "start", confirm: true, list: "Auto test", per_day: 3, interval: 1 })).j.auto; ok(stt.per_day === 10 && stt.interval === 1, "a day limit under 10 is raised to 10; gap 1 second kept");
+ok((await LP("auto", { action: "speed", interval: 7 })).j.auto.interval === 1 && (await LP("auto", { action: "speed", interval: 60 })).j.auto.interval === 60 && (await LP("auto", { action: "speed", interval: 1 })).j.auto.interval === 1, "only the listed gaps (1s, 5s, 1m, 5m, 15m, 30m, 1h) are accepted");
 { const z = JSON.parse(KV.get("li:auto")); z.per_day = 3; KV.set("li:auto", JSON.stringify(z)); }
 ok((await LP("auto", { action: "start", confirm: true }, "v")).status === 403, "viewers cannot start it");
 
@@ -91,17 +92,30 @@ ok(r.sent === 3 && got.length === 3 && got.every((m) => /@shop[0-3]\.in$/.test(m
 ok(got.every((m) => /\/api\/o\/cm_/.test(m.html)) && got.every((m) => !/\[TEST\]/.test(m.subject)), "real emails, with Seen tracking");
 ok(q1("SELECT COUNT(*) n FROM li_businesses WHERE source_ref='Auto test' AND status='email_sent'").n === 3, "those leads move to Sent leads");
 r = await LIb.autoTick(env, 30000); ok(r.sent === 0 && /daily/.test(r.waiting), "daily limit holds");
-const st = JSON.parse(KV.get("li:auto")); st.day = "2000-01-01"; KV.set("li:auto", JSON.stringify(st));
+const st = JSON.parse(KV.get("li:auto")); st.day = "2000-01-01"; st.last_at = "2000-01-01T00:00:00Z"; KV.set("li:auto", JSON.stringify(st));
 before = mails.length; r = await LIb.autoTick(env, 30000); ok(r.sent === 1 && mails.length === before + 1, "next day: the last waiting lead");
-r = await LIb.autoTick(env, 30000); ok(r.done && !JSON.parse(KV.get("li:auto")).on, "nobody left: auto email switches itself off");
+{ const z = JSON.parse(KV.get("li:auto")); z.last_at = "2000-01-01T00:00:00Z"; KV.set("li:auto", JSON.stringify(z)); } r = await LIb.autoTick(env, 30000); ok(r.done && !JSON.parse(KV.get("li:auto")).on, "nobody left: auto email switches itself off");
 ok(!mails.some((m) => m.to[0] === "owner5@shop5.in" || m.to[0] === "owner4@shop4.in"), "invalid and unchecked emails never get it");
+
+/* v55.37 gap between emails */
+X("INSERT INTO li_businesses (id,name,email,email_check,source,source_ref,status,archived,created_at,updated_at) VALUES ('LI-GP1','Gap One','a@gap1.in','ok','import','Gap test','new',0,'2026','2026'),('LI-GP2','Gap Two','b@gap2.in','ok','import','Gap test','new',0,'2026','2026')");
+await LP("auto", { action: "start", confirm: true, list: "Gap test", interval: 900 });
+{ const z = JSON.parse(KV.get("li:auto")); z.day = "2000-02-01"; z.last_at = new Date(Date.now() - 60e3).toISOString(); KV.set("li:auto", JSON.stringify(z)); }
+r = await LIb.autoTick(env, 30000); ok(r.sent === 0 && /next email after/.test(r.waiting), "15-minute gap: nothing sent 1 minute after the last email");
+{ const z = JSON.parse(KV.get("li:auto")); z.last_at = new Date(Date.now() - 16 * 60e3).toISOString(); KV.set("li:auto", JSON.stringify(z)); }
+before = mails.length; r = await LIb.autoTick(env, 30000); ok(r.sent === 1 && mails.length === before + 1, "after 16 minutes exactly one email goes (not a burst)");
+before = mails.length; r = (await LP("auto", { action: "run" })).j; ok(r.run.sent === 1 && mails.length === before + 1, "Send next batch now sends one right away");
+const AE = (await import("../functions/api/monitor/autoemail.js")).onRequest;
+const ae = async (key) => (await AE({ request: new Request("https://www.fodo.co.in/api/monitor/autoemail", { method: "POST", headers: key ? { "x-cron-key": key } : {} }), env: Object.assign({}, env, { CRON_KEY: "k".repeat(20) }) })).status;
+ok(await ae("") === 401 && await ae("k".repeat(20)) === 200, "5-minute endpoint needs the cron key");
+ok(/\*\/5 \* \* \* \*/.test(fs.readFileSync(".github/workflows/fodo-autoemail.yml", "utf8")), "GitHub runs it every 5 minutes");
 
 /* pause + unsubscribed */
 X("INSERT INTO li_businesses (id,name,email,email_check,source,source_ref,status,archived,created_at,updated_at) VALUES ('LI-AU1','Unsub Co','gone@unsub.in','ok','import','Auto test','new',0,'2026','2026')");
 try { X("CREATE TABLE IF NOT EXISTS camp_unsub (email TEXT PRIMARY KEY, at TEXT)"); } catch (e) {}
 X("INSERT INTO camp_unsub (email, at) VALUES ('gone@unsub.in','2026')");
 await LP("auto", { action: "start", confirm: true, list: "Auto test" });
-const st2 = JSON.parse(KV.get("li:auto")); st2.day = "2000-01-02"; KV.set("li:auto", JSON.stringify(st2));
+const st2 = JSON.parse(KV.get("li:auto")); st2.day = "2000-01-02"; st2.last_at = "2000-01-01T00:00:00Z"; KV.set("li:auto", JSON.stringify(st2));
 before = mails.length; r = await LIb.autoTick(env, 30000);
 ok(mails.length === before && JSON.parse(KV.get("li:auto")).skip.indexOf("LI-AU1") > -1, "unsubscribed lead is skipped for good, not emailed");
 await LP("auto", { action: "pause" }); ok(!JSON.parse(KV.get("li:auto")).on && (await LIb.autoTick(env)).off, "pause stops it");
@@ -109,6 +123,7 @@ await LP("auto", { action: "pause" }); ok(!JSON.parse(KV.get("li:auto")).on && (
 const AJ = fs.readFileSync("js/admin.js", "utf8"), JB = fs.readFileSync("functions/api/monitor/jobs.js", "utf8");
 ok(/id="lq-auto">&#9993; Auto email/.test(AJ) && /Send a test to me/.test(AJ) && /Start auto email/.test(AJ) && /Send next batch now/.test(AJ), "Auto email button and panel on Leads & clients");
 ok(/autoTick\(env, 30000\)/.test(JB), "hourly background job sends the next batch");
+ok(/\[1, "1 second"\], \[5, "5 seconds"\], \[60, "1 minute"\], \[300, "5 minutes"\], \[900, "15 minutes"\], \[1800, "30 minutes"\], \[3600, "1 hour"\]/.test(AJ) && /id="au-file"/.test(AJ) && /data-aurm=/.test(AJ), "speed choices and add / remove file inside Auto email");
 
-console.log("\nv55.36 auto email: " + pass + " passed, " + fail + " failed");
+console.log("\nv55.36/37 auto email: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

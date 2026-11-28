@@ -1252,14 +1252,18 @@ export async function emailCheck(env, b, by) {
   const where = ["COALESCE(email,'')<>''", "email_check IS NULL"], a = []; if (b.list) { a.push(clip(b.list, 80)); where.push("source_ref=?" + a.length); } else if (b.source) { a.push(clip(b.source, 30)); where.push("source=?" + a.length); }
   if (b.recheck) await d.prepare("UPDATE li_businesses SET email_check=NULL, email_reason=NULL WHERE " + where.filter((w) => w !== "email_check IS NULL").join(" AND ")).bind(...a).run();   /* start over (e.g. after editing the Never-email list) */
   const rows = await all(d, "SELECT id, name, email FROM li_businesses WHERE " + where.join(" AND ") + " ORDER BY id LIMIT 500", ...a);
-  const out = [], cnt = { ok: 0, risky: 0, invalid: 0, test: 0, blocked: 0, waiting: 0 }; let looked = 0; const mx = {};
-  for (const r of rows) {
-    let v = emailVerdict(r.email, r.name, words);
-    if (!v) { const dom = String(r.email).toLowerCase().split("@")[1];
-      if (!(dom in mx)) { const known = FREEMAIL.test(dom) || (await env.CHAT_KV.get("li:mx:" + dom)) != null; if (!known && looked >= 40) { cnt.waiting++; continue; } if (!known) looked++; mx[dom] = await mxOk(env, d, dom); }
+  const out = [], cnt = { ok: 0, risky: 0, invalid: 0, test: 0, blocked: 0, waiting: 0 }, mx = {}, V = rows.map((r) => emailVerdict(r.email, r.name, words));
+  /* mail-server lookups: cached ones first, then up to 40 new domains per step, 10 at a time */
+  const doms = [...new Set(rows.filter((r, i) => !V[i]).map((r) => String(r.email).toLowerCase().split("@")[1]))], fresh = [];
+  for (const dom of doms) { if (FREEMAIL.test(dom) || /^(gmail|yahoo|outlook|hotmail|icloud|proton|zoho)\./.test(dom)) { mx[dom] = true; continue; } const c = await env.CHAT_KV.get("li:mx:" + dom); if (c === "1" || c === "0") mx[dom] = c === "1"; else fresh.push(dom); }
+  const now = fresh.slice(0, 40);
+  for (let i = 0; i < now.length; i += 10) { const part = now.slice(i, i + 10); const res = await Promise.all(part.map((dom) => mxOk(env, d, dom))); part.forEach((dom, k) => { mx[dom] = res[k]; }); }
+  rows.forEach((r, i) => {
+    let v = V[i];
+    if (!v) { const dom = String(r.email).toLowerCase().split("@")[1]; if (!(dom in mx)) { cnt.waiting++; return; }
       v = mx[dom] === false ? ["invalid", "The domain " + dom + " has no mail server"] : mx[dom] === null ? ["risky", "Mail server could not be checked"] : ["ok", ""]; }
     cnt[v[0]]++; out.push({ id: r.id, c: v[0], r: v[1] });
-  }
+  });
   if (out.length) await d.prepare("UPDATE li_businesses SET email_check=j.c, email_reason=NULLIF(j.r,'') FROM (SELECT json_extract(value,'$.id') AS id, json_extract(value,'$.c') AS c, json_extract(value,'$.r') AS r FROM json_each(?1)) AS j WHERE li_businesses.id=j.id").bind(JSON.stringify(out)).run();
   const left = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses WHERE " + where.join(" AND "), ...a)) || {}).n || 0, done = left === 0;
   if (done && out.length) await act(d, "email_check", null, (b.list || b.source || "all") + " emails checked", by);

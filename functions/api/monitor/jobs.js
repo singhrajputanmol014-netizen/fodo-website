@@ -12,5 +12,6 @@ export async function onRequest({ request, env }) {
   try { const h = new Date().toISOString().slice(0, 13); await enqueue(env, "os_hourly", {}, { key: "os_hourly:" + h, maxAttempts: 2 }); } catch (e) {}   /* v50.2: one FODO OS housekeeping job per hour */
   let social = null; try { social = await (await import("../../_lib/sstudio.js")).tick(env, new URL(request.url).origin); } catch (e) { social = { error: String((e && e.message) || e).slice(0, 120) }; }   /* v52 Social Studio: due posts, comments, numbers */
   let stuck = null; try { stuck = await expireStuckRuns(env, 3); } catch (e) { stuck = { error: String((e && e.message) || e).slice(0, 120) }; }   /* v55.26: stuck X-Ray runs */
-  return json(Object.assign({ ok: true }, await runDue(env, 25), { social, stuck }));
+  let auto = null; try { auto = await (await import("../../_lib/leadintel.js")).autoTick(env, 30000); } catch (e) { auto = { error: String((e && e.message) || e).slice(0, 120) }; }   /* v55.36 auto email to leads */
+  return json(Object.assign({ ok: true }, await runDue(env, 25), { social, stuck, auto }));
 }

@@ -663,7 +663,7 @@
         if (mode === "li-outreach") return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + '</td><td data-l="Change status"><select class="ad-in" data-ls="' + esc(x.id) + '" aria-label="Status for ' + esc(x.name) + '">' + opt(LIST, x.status) + "</select></td>";
         return '<td data-l="Contact">' + esc(x.email || x.phone || "None public") + echk(x) + '</td><td data-l="Decision maker">' + (x.owner_name ? esc(x.owner_name) + " " + lconf(x.owner_conf) : '<span class="muted">None yet</span>') + "</td>";
       };
-      $("#ad-view").innerHTML = head(titles[mode], subs[mode], (mode === "li-leads" ? '<button type="button" class="btn sm ghost" id="lq-imp">Import client data</button> ' : "") + '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + (j.stages ? '<div class="chips ad-li-stg" role="tablist"><a class="chip" href="#li-leads" aria-pressed="' + (mode === "li-leads") + '">To contact <b>' + Number(j.stages.open).toLocaleString("en-IN") + '</b></a><a class="chip" href="#li-contacted" aria-pressed="' + (mode === "li-contacted") + '">&#10003; Sent / contacted <b>' + Number(j.stages.contacted).toLocaleString("en-IN") + "</b></a></div>" : "") + '<div id="lq-impbox"></div>' +
+      $("#ad-view").innerHTML = head(titles[mode], subs[mode], (mode === "li-leads" ? '<button type="button" class="btn sm" id="lq-auto">&#9993; Auto email</button> <button type="button" class="btn sm ghost" id="lq-imp">Import client data</button> ' : "") + '<a class="btn sm" href="#li-find">+ Find businesses</a>') + lnav(mode) + (j.stages ? '<div class="chips ad-li-stg" role="tablist"><a class="chip" href="#li-leads" aria-pressed="' + (mode === "li-leads") + '">To contact <b>' + Number(j.stages.open).toLocaleString("en-IN") + '</b></a><a class="chip" href="#li-contacted" aria-pressed="' + (mode === "li-contacted") + '">&#10003; Sent / contacted <b>' + Number(j.stages.contacted).toLocaleString("en-IN") + "</b></a></div>" : "") + '<div id="lq-impbox"></div>' +
         (q.list ? '<p class="ad-li-dbchip"><span class="ad-st mid">Client database</span> <b>' + esc(q.list) + '</b> <button type="button" class="btn sm ghost" id="lq-dbx">Show all leads</button> <a class="btn sm ghost" href="#li-imports">All databases</a></p>' : "") + filt +
         '<div class="ad-li-bulk"><span id="lq-n" class="muted">' + Number(j.total).toLocaleString("en-IN") + " leads" + (j.pages > 1 ? " · page " + j.page + " of " + j.pages : "") + '</span><span class="ad-li-ba" id="lq-ba" hidden><b id="lq-sn">0</b> selected · ' +
         '<button type="button" class="btn sm" data-ba="research">Research</button><select class="ad-in" id="lq-bst" aria-label="Set status">' + opt(LIST, "", "Set status…") + "</select>" +
@@ -694,6 +694,7 @@
       }; });
       $("#lq-csv").onclick = function () { liExport("csv"); }; $("#lq-xlsx").onclick = function () { liExport("xlsx"); };
       var ib = $("#lq-imp"); if (ib) ib.onclick = function () { liImport($("#lq-impbox"), reload); };
+      var ab = $("#lq-auto"); if (ab) { ab.onclick = function () { liAuto($("#lq-impbox"), q.list || "", reload); }; liAutoBanner(); }
       var dbx = $("#lq-dbx"); if (dbx) dbx.onclick = function () { delete q.list; delete q.page; reload(); };
       [].slice.call(document.querySelectorAll("#ad-view [data-pg]")).forEach(function (b) { b.onclick = function () { q.page = String(b.dataset.pg); reload(); window.scrollTo(0, 0); }; });
       var pgs = $("#lq-pg"); if (pgs) pgs.onchange = function () { q.page = pgs.value; reload(); window.scrollTo(0, 0); };
@@ -992,6 +993,42 @@
   var lkb = function (n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; };
   var lfileBlock = function () { return LFILES.length ? "\n\n" + (LFILES.length === 1 ? "I've put together a short file for you (" + LFILES[0].name + "):\n" + LFILES[0].url : "Sharing a few files for you:\n" + LFILES.map(function (f) { return f.name + ": " + f.url; }).join("\n")) : ""; };
   var lwithFiles = function (t) { t = String(t || ""); var missing = LFILES.filter(function (f) { return t.indexOf(f.url) < 0; }); if (!missing.length) return t; var keep = LFILES; LFILES = missing; var b = lfileBlock(); LFILES = keep; var at = t.search(/\n\nAnmol, FODO/); return at > -1 ? t.slice(0, at) + b + t.slice(at) : t + b; };
+  /* v55.36 auto email: the FODO services email to every lead still to contact, one by one from the hourly job */
+  function liAutoBanner() {
+    api("li/auto").then(function (r) { var a = r.ok && r.auto, el = $("#lq-impbox"); if (!a || !el || el.innerHTML) return;
+      if (a.on) el.innerHTML = '<p class="cf-status ok ad-li-autob">&#9993; Auto email is on: ' + a.sent_today + " of " + a.per_day + " sent today · " + (a.total || 0) + " in total · " + r.left + ' leads left. <button type="button" class="ad-li-lnk" id="lq-autoo">Open</button></p>';
+      else if (a.paused_why) el.innerHTML = '<p class="cf-status warn ad-li-autob">Auto email stopped: ' + esc(a.paused_why) + ' <button type="button" class="ad-li-lnk" id="lq-autoo">Open</button></p>';
+      var o = $("#lq-autoo"); if (o) o.onclick = function () { el.innerHTML = ""; liAuto(el, a.list || "", null); }; });
+  }
+  function liAuto(box, list, after) {
+    box.innerHTML = '<div class="panel ad-card ad-li-auto"><p class="muted">Loading…</p></div>';
+    var draw = function (r, listSel) {
+      if (!r.ok) { box.innerHTML = '<div class="panel ad-card"><p class="cf-status warn">' + esc(r.reason || "Could not load.") + "</p></div>"; return; }
+      var a = r.auto, on = a.on, P = r.preview;
+      box.innerHTML = '<div class="panel ad-card ad-li-auto"><h2>&#9993; Auto email <small class="muted">the FODO services email, one lead after another, with your 📌 files</small></h2>' +
+        (on ? '<p class="cf-status ok">Running. ' + a.sent_today + " of " + a.per_day + " sent today · " + (a.total || 0) + " in total" + (a.last_to ? " · last: " + esc(a.last_to) + " " + esc(lago(a.last_at)) : "") + "</p>" : a.done_at ? '<p class="cf-status ok">Finished: every waiting lead got the email.</p>' : a.paused_why ? '<p class="cf-status warn">Stopped: ' + esc(a.paused_why) + "</p>" : "") +
+        (a.last_error && on ? '<p class="muted">Last problem: ' + esc(a.last_error) + "</p>" : "") +
+        '<dl class="ad-li-autod"><dt>Who</dt><dd><b>' + Number(r.left).toLocaleString("en-IN") + "</b> leads waiting: not contacted yet, email checked and valid, never emailed before." + (r.list ? " Database: <b>" + esc(r.list) + "</b>." : " All leads.") + (r.unchecked ? ' <span class="muted">' + r.unchecked + " more have an email that is not checked yet (they join after Check emails).</span>" : "") + (a.skipped ? ' <span class="muted">' + a.skipped + " skipped (opted out, do not contact or flagged).</span>" : "") + "</dd>" +
+        "<dt>Email</dt><dd>FODO services template. Name and email change per client" + (P ? ', e.g. <b>' + esc(P.subject) + "</b> to " + esc(P.to) : "") + ".</dd>" +
+        "<dt>Files</dt><dd>" + (r.files.length ? r.files.map(function (f) { return '<span class="ad-or-chip">📌 ' + esc(f.name) + "</span>"; }).join(" ") : '<span class="cf-status warn">No file yet. Open any lead, Email, and add the PDF with <b>📌 Attach file</b>.</span>') + "</dd>" +
+        "<dt>Speed</dt><dd>" + (on ? a.per_day + " a day" : '<select id="au-day" class="ad-in" aria-label="Emails per day">' + [50, 100, 150, 250, 400].map(function (n) { return '<option value="' + n + '"' + (n === (a.per_day || 150) ? " selected" : "") + ">" + n + " a day</option>"; }).join("") + "</select>") + ' <span class="muted">· at most ' + r.hourly + " an hour, sent every hour by the background job. Start slow: new cold emails in big numbers can land in spam and hurt fodo.co.in.</span></dd></dl>" +
+        (P ? '<details class="ad-li-autop"><summary>Preview the email</summary><iframe id="au-pv" class="ad-li-pv" title="Auto email preview" sandbox=""></iframe></details>' : "") +
+        '<div class="ad-acts">' + (on ? '<button type="button" class="btn sm" id="au-run">Send next batch now</button><button type="button" class="btn sm ghost" id="au-pause">Pause</button>'
+          : '<button type="button" class="btn sm ghost" id="au-test"' + (r.left ? "" : " disabled") + '>Send a test to me</button><button type="button" class="btn sm" id="au-start"' + (r.left && a.tested_at ? "" : " disabled") + ">Start auto email</button>" + (a.tested_at ? "" : '<small class="muted">Send yourself a test first.</small>')) +
+        '<button type="button" class="btn sm ghost" id="au-x">Close</button></div></div>';
+      var pv = $("#au-pv"); if (pv && P) pv.srcdoc = P.html;
+      var go = function (body, okMsg) { return api("li/auto", Object.assign({ list: list }, body)).then(function (k) { if (k.ok && okMsg) toast(typeof okMsg === "function" ? okMsg(k) : okMsg); if (!k.ok) toast(k.reason, true); draw(k.ok ? k : r); if (after && k.ok) after(); }); };
+      var b = function (id, fn) { var e = $(id); if (e) e.onclick = function () { e.disabled = true; fn(); }; };
+      b("#au-x", function () { box.innerHTML = ""; });
+      b("#au-test", function () { go({ action: "test" }, function (k) { return "Test sent to " + (k.test && k.test.to); }); });
+      b("#au-pause", function () { go({ action: "pause" }, "Auto email paused"); });
+      b("#au-run", function () { go({ action: "run" }, function (k) { return (k.run && k.run.sent || 0) + " sent" + (k.run && k.run.waiting ? " (" + k.run.waiting + ")" : ""); }); });
+      b("#au-start", function () { var n = +($("#au-day") || {}).value || 150;
+        ask({ title: "Start auto email to " + Number(r.left).toLocaleString("en-IN") + " leads?", text: "The FODO services email" + (r.files.length ? " with " + r.files.map(function (f) { return f.name; }).join(", ") : " (no file attached)") + " goes from anmol@fodo.co.in to each lead, " + n + " a day, at most " + r.hourly + " an hour, until you press Pause. Each email has an unsubscribe link. You can pause any time.", ok: "Start" })
+          .then(function (y) { if (!y) { draw(r); return; } go({ action: "start", confirm: true, per_day: n }, "Auto email started"); }); });
+    };
+    api("li/auto?list=" + encodeURIComponent(list || "")).then(function (r) { draw(r); });
+  }
   /* v55.33 files saved once go with every client email; "+ Attach file" stays for one email only */
   var LALW = [], LALWOFF = {};
   var lalwIs = function (f) { return LALW.some(function (z) { return z.id === f.id; }); };

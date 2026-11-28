@@ -1316,3 +1316,72 @@ export async function emailCheck(env, b, by) {
   if (done && out.length) await act(d, "email_check", null, (b.list || b.source || "all") + " emails checked", by);
   return { checked: out.length, counts: cnt, left, done };
 }
+
+/* ---------------- v55.36 auto email: the FODO services email to every lead still to contact, one by one ----------------
+   Runs from the hourly background job (and "Send next batch now"). Only leads with a checked, valid email that were never emailed.
+   Speed is capped by the hourly client-mail limit (CLIENT_MAIL_HOURLY, default 20) and the daily limit chosen when starting. */
+const AUTO = "li:auto";
+async function autoState(env) { return Object.assign({ on: false, list: "", per_day: 150, sent_today: 0, day: "", total: 0, skip: [] }, J(await env.CHAT_KV.get(AUTO), {}) || {}); }
+async function autoSave(env, st) { st.skip = (st.skip || []).slice(-3000); await env.CHAT_KV.put(AUTO, JSON.stringify(st)); }
+function autoWhere(st) {
+  const w = ["archived=0", "status IN ('new','not_contacted')", "COALESCE(email,'')<>''", "email_check='ok'",
+    "NOT EXISTS (SELECT 1 FROM cm_sends s WHERE lower(s.email)=lower(li_businesses.email) AND s.status='sent' AND COALESCE(s.test,0)=0)",
+    "id NOT IN (SELECT value FROM json_each(?1))"], a = [JSON.stringify(st.skip || [])];
+  if (st.list) { a.push(st.list); w.push("source_ref=?2"); }
+  return { sql: " WHERE " + w.join(" AND "), a };
+}
+async function autoNext(env, d, st, n) { const W = autoWhere(st); return all(d, "SELECT * FROM li_businesses" + W.sql + " ORDER BY created_at, id LIMIT " + Math.max(1, Math.min(50, n)), ...W.a); }
+export async function autoStatus(env, q) {
+  if (!env.CHAT_KV) throw err("Auto email needs CHAT_KV storage.", 503);
+  const d = await ldb(env), OR = await import("./outreach.js"); await OR.cmDb(env); q = q || {};
+  const st = await autoState(env), probe = Object.assign({}, st, { list: q.list != null && !st.on ? clip(q.list, 80) : st.list }), W = autoWhere(probe);
+  const left = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses" + W.sql, ...W.a)) || {}).n || 0;
+  const unchecked = ((await one(d, "SELECT COUNT(*) AS n FROM li_businesses WHERE archived=0 AND status IN ('new','not_contacted') AND COALESCE(email,'')<>'' AND email_check IS NULL" + (probe.list ? " AND source_ref=?1" : ""), ...(probe.list ? [probe.list] : []))) || {}).n || 0;
+  const files = (await alwaysFiles(env)).files, first = (await autoNext(env, d, probe, 1))[0];
+  let preview = null; if (first) { const m = servicesEmail(first); preview = { lead: first.name, to: first.email, subject: m.subject, html: (await emailRender(env, first.id, { subject: m.subject, blocks: m.blocks, attachments: files.map((f) => f.id) }, first.email)).html }; }
+  return { auto: Object.assign({}, st, { skip: undefined, skipped: (st.skip || []).length }), left, unchecked, list: probe.list, files, hourly: OR.hourly(env), preview };
+}
+export async function autoSet(env, b, by) {
+  b = b || {}; const st = await autoState(env), t = nowIso();
+  if (b.action === "pause") { st.on = false; st.paused_at = t; await autoSave(env, st); return autoStatus(env); }
+  if (b.action === "test") {
+    const d = await ldb(env), first = (await autoNext(env, d, Object.assign({}, st, { list: b.list != null ? clip(b.list, 80) : st.list }), 1))[0];
+    if (!first) throw err("No lead is waiting for the auto email.");
+    const m = servicesEmail(first), files = (await alwaysFiles(env)).files;
+    const r = await emailSend(env, first.id, { test: true, subject: m.subject, blocks: m.blocks, attachments: files.map((f) => f.id) }, by);
+    st.tested_at = t; await autoSave(env, st); return Object.assign(await autoStatus(env, { list: b.list }), { test: r.sent });
+  }
+  if (b.action === "start") {
+    if (!b.confirm) throw err("Please confirm first.", 400);
+    if (!st.tested_at) throw err("Send yourself a test first, so you have seen exactly what clients get.", 400);
+    Object.assign(st, { on: true, list: clip(b.list || "", 80), per_day: Math.max(10, Math.min(500, parseInt(b.per_day, 10) || 150)), by: clip(by, 254), started_at: t, done_at: null, last_error: null });
+    await autoSave(env, st); return autoStatus(env);
+  }
+  if (b.action === "run") { const r = await autoTick(env, 25000, true); return Object.assign(await autoStatus(env), { run: r }); }
+  throw err("Unknown action.");
+}
+export async function autoTick(env, budgetMs, manual) {
+  if (!env.CHAT_KV) return { skipped: "no KV" };
+  const st = await autoState(env); if (!st.on) return { off: true };
+  const t0 = Date.now(), day = nowIso().slice(0, 10), OR = await import("./outreach.js"), d = await ldb(env); await OR.cmDb(env);
+  if (st.day !== day) { st.day = day; st.sent_today = 0; }
+  const room = Math.min(st.per_day - st.sent_today, OR.hourly(env) - (await OR.usedThisHour(env)), 15);
+  if (room <= 0) { await autoSave(env, st); return { sent: 0, waiting: st.sent_today >= st.per_day ? "daily limit reached" : "hourly limit reached" }; }
+  const L = await autoNext(env, d, st, room), files = (await alwaysFiles(env)).files.map((f) => f.id);
+  if (!L.length) { st.on = false; st.done_at = nowIso(); await autoSave(env, st); return { sent: 0, done: true }; }
+  let sent = 0, errs = 0;
+  for (const x of L) {
+    if (Date.now() - t0 > (budgetMs || 35000)) break;
+    const m = servicesEmail(x);
+    try { await emailSend(env, x.id, { to: x.email, subject: m.subject, blocks: m.blocks, attachments: files, confirm: true }, st.by || "auto@fodo.co.in"); sent++; st.sent_today++; st.total = (st.total || 0) + 1; st.last_at = nowIso(); st.last_to = x.email; errs = 0; }
+    catch (e) {
+      const code = e.status || 500, msg = String(e.message || e).slice(0, 200);
+      if (code === 429) { st.last_error = msg; break; }
+      if (code === 409 || code === 400) { st.skip = (st.skip || []).concat(x.id); continue; }   /* opted out, do not contact, flagged: never again */
+      st.last_error = msg; st.last_error_at = nowIso(); errs++;
+      if (code === 503 || errs >= 3) { st.on = false; st.paused_at = nowIso(); st.paused_why = msg; break; }   /* sending is not connected or keeps failing: stop and show why */
+    }
+  }
+  await autoSave(env, st);
+  return { sent, manual: !!manual, today: st.sent_today, total: st.total, on: st.on, error: st.on ? null : st.paused_why || null };
+}

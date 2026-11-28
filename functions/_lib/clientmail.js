@@ -138,6 +138,20 @@ function itemRows(t) {
       '<td valign="top" align="right" style="border-top:1px solid ' + C.line + ';padding:13px 0;font-family:' + FONT + ';font-size:15px;line-height:22px;color:' + C.muted + '">' + inline(b) + "</td></tr>"; }).join("") +
     '<tr><td colspan="2" style="border-top:1px solid ' + C.line + ';font-size:1px;line-height:1px">&nbsp;</td></tr></table>';
 }
+/* v55.30 services grid (two tiles per row: "Service | one line") and a quieter outline button for the middle of the email */
+function svcGrid(t) {
+  const L = lines(t).map(split).filter((x) => x[0]); if (!L.length) return "";
+  const cell = (s) => '<td width="50%" valign="top" class="cm-stat" style="width:50%;padding:0 6px 12px 6px">' + (s ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tr><td bgcolor="' + C.card + '" style="background:' + C.card + ";border:1px solid " + C.line + ';border-radius:16px;padding:16px 16px 15px 16px">' +
+    '<p style="margin:0 0 8px 0;font-size:1px;line-height:1px"><span style="display:inline-block;width:22px;height:3px;border-radius:3px;background:' + C.violet + '">&nbsp;</span></p>' +
+    '<p style="margin:0;font-family:' + FONT + ";font-size:15px;line-height:21px;font-weight:700;color:" + C.text + '">' + inline(s[0]) + "</p>" +
+    (s[1] ? '<p style="margin:6px 0 0 0;font-family:' + FONT + ";font-size:13px;line-height:19px;color:" + C.muted + '">' + inline(s[1]) + "</p>" : "") + "</td></tr></table>" : "&nbsp;") + "</td>";
+  let rows = ""; for (let i = 0; i < L.length; i += 2) rows += "<tr>" + cell(L[i]) + cell(L[i + 1]) + "</tr>";
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="cm-stats" style="margin:2px 0 10px -6px;width:calc(100% + 12px)">' + rows + "</table>";
+}
+function midBtn(text, link) {
+  const u = safeUrl(link); if (!text || !u) return "";
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 28px 0"><tr><td align="center"><a href="' + esc(u) + '" target="_blank" style="display:inline-block;padding:13px 28px;border-radius:999px;border:1px solid ' + C.violet + ";color:" + C.text + ";font-family:" + FONT + ';font-size:15px;font-weight:700;line-height:18px;text-decoration:none">' + esc(text) + " &rarr;</a></td></tr></table>";
+}
 function statBoxes(t) {
   const L = lines(t).map(split).filter((x) => x[0]); if (!L.length) return "";
   const cell = (s) => '<td width="50%" valign="top" class="cm-stat" style="width:50%;padding:0 6px 12px 6px">' + (s ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tr><td bgcolor="' + C.card + '" style="background:' + C.card + ";border:1px solid " + C.line + ';border-radius:14px;padding:18px 18px 16px 18px">' +
@@ -178,7 +192,7 @@ export function renderMail(o) {
     '<tr><td class="cm-px" style="padding:36px 40px 8px 40px">' +
       (b.eyebrow ? '<p style="margin:0 0 14px 0;font-family:' + FONT + ";font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:" + C.violet + '">' + esc(b.eyebrow) + "</p>" : "") +
       (b.headline ? '<h1 class="cm-h1" style="margin:0 0 24px 0;font-family:' + FONT + ";font-size:34px;line-height:40px;font-weight:700;letter-spacing:-.8px;color:" + C.text + '">' + accent(b.headline) + "</h1>" : "") +
-      paras(b.intro) + itemRows(b.items) + statBoxes(b.stats) +
+      paras(b.intro) + itemRows(b.items) + svcGrid(b.services) + midBtn(b.mid_text, b.mid_link) + statBoxes(b.stats) +
       (b.cta_text && cta ? '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 26px 0"><tr><td><a class="cm-btn" href="' + esc(cta) + '" target="_blank" style="display:inline-block;padding:14px 26px;border-radius:999px;background:' + C.violet + ";color:#0B0B0C;font-family:" + FONT + ';font-size:15px;font-weight:700;line-height:18px;text-decoration:none">' + esc(b.cta_text) + "</a></td></tr></table>" : "") +
       paras(b.closing) +
     "</td></tr>" +
@@ -196,6 +210,8 @@ export function renderMail(o) {
   const tx = (s) => String(s || "").replace(/\*\*([^*\n]+)\*\*/g, "$1");
   const text = [b.eyebrow ? String(b.eyebrow).toUpperCase() : "", String(b.headline || "").replace(/\*([^*\n]+)\*/g, "$1"), "", tx(b.intro).trim(),
     lines(b.items).map((l) => { const [a, c] = split(l); return "- " + a + (c ? ": " + c : ""); }).join("\n"),
+    lines(b.services).map((l) => { const [a, c] = split(l); return "- " + a + (c ? ": " + c : ""); }).join("\n"),
+    b.mid_text && safeUrl(b.mid_link) ? b.mid_text + ": " + safeUrl(b.mid_link) : "",
     lines(b.stats).map((l) => { const [a, c] = split(l); return c + ": " + a; }).join("\n"),
     b.cta_text && cta ? b.cta_text + ": " + cta : "", tx(b.closing).trim(), (o.attachments || []).map((a) => "[Attached: " + a.name + "]").join("\n"), "Regards,\n" + sign + "\nfodo.co.in · +91 78270 07676",
     "--\nFODO, New Delhi, India" + (o.optOutUrl ? "\nUnsubscribe: " + o.optOutUrl : "")].filter((x) => x !== undefined && x !== null && String(x).trim() !== "" || x === "").join("\n\n").replace(/\n{3,}/g, "\n\n").trim();

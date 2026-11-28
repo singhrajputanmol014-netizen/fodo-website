@@ -858,6 +858,41 @@ export function fullMessage(F, ch, w) {
   if (ch === "instagram" && out.length > 1000) out = out.replace(/\n\nWhat's already working\n[\s\S]*?(?=\n\nWhat's missing)/, F.strengths[0] ? "\n\nLoved seeing " + F.strengths[0].replace(/, that's a lot of happy customers$/, "") + "." : "");
   return out.slice(0, ch === "instagram" ? 1000 : 4000);
 }
+/* v55.30 FODO services email: the general pitch for clients we only have an email for (no research needed).
+   Only the greeting and subject change per lead; everything else is the same approved FODO text. No numbers we can't stand behind. */
+export function greetOf(x) {
+  x = x || {}; const own = x.owner_name && ["provided", "verified", "partial"].indexOf(x.owner_conf) > -1 ? String(x.owner_name).replace(/^(dr|mr|mrs|ms|er)\.?\s+/i, "").trim().split(/\s+/)[0] : "";
+  if (own && /^[A-Za-zऀ-ॿ]{2,}$/.test(own)) return { hi: "Hi " + own, first: own };
+  const n = String(x.name || "").trim(); if (n && n.length <= 40 && !/[\d@]/.test(n)) return { hi: "Hi " + n + " team", first: "" };
+  return { hi: "Hello", first: "" };
+}
+export const SERVICES_MAIL = {
+  eyebrow: "A note from FODO", headline: "Don't let your brand *disappear*",
+  services: ["Performance ads | Meta and Google ads planned, built and improved every week for leads and sales.",
+    "Social media and content | Monthly posts, reels and shoots that keep your brand active and consistent.",
+    "Websites and landing pages | Fast, mobile-first websites made to turn visitors into enquiries.",
+    "SEO and Google Business Profile | Show up when nearby customers search for what you offer.",
+    "Branding and design | Logo, brand kit and creatives that make you look as good as your work.",
+    "AI automation and WhatsApp | Chat assistants, WhatsApp marketing and follow-ups that run on their own."].join("\n"),
+  mid_text: "See our work on fodo.co.in", mid_link: "https://www.fodo.co.in/?utm_source=email&utm_medium=outreach&utm_campaign=services_pitch",
+  stats: ["30 | Services under one roof", "Your accounts | Ads, pages and data stay in your name"].join("\n"),
+  cta_text: "Book a 15-minute call",
+};
+export function servicesEmail(x) {
+  const g = greetOf(x), biz = g.first || g.hi === "Hello" ? "" : String(x.name).trim();
+  return { subject: (g.first ? g.first + ", one" : "One") + " team for your ads, content and website", blocks: Object.assign({}, SERVICES_MAIL, {
+    intro: g.hi + ",\n\nI'm Anmol, I run FODO, a digital marketing agency in New Delhi. We help businesses get found online, look premium and turn that attention into real enquiries, with one team handling strategy, creative, ads, websites and automation.\n\nHere is what we can take off your plate" + (biz ? " at " + biz : "") + ":",
+    cta_link: "https://wa.me/917827007676?text=" + encodeURIComponent("Hi Anmol, I got your email about FODO" + (x.name && g.hi !== "Hello" ? " (" + x.name + ")" : "")),
+    closing: "If any of this is on your list for the coming months, just reply to this email or tap the button and tell me what you're working on. I'll suggest where to start, no long proposals. I've attached our company profile so you can see everything in one place." }) };
+}
+/* the company profile PDF that goes with the services email: kept once, picked up automatically */
+export async function profilePdf(env, b) {
+  if (b && b.set) { const f = b.set; if (!/^ca_/.test(String(f.id || ""))) throw err("Upload the PDF first."); const v = { id: clip(f.id, 60), name: clip(f.name, 120), size: +f.size || 0, url: clip(f.url, 200), at: nowIso() }; await env.CHAT_KV.put("li:profile_pdf", JSON.stringify(v)); return { file: v }; }
+  if (b && b.clear) { await env.CHAT_KV.delete("li:profile_pdf"); return { file: null }; }
+  const v = J(await env.CHAT_KV.get("li:profile_pdf"), null);
+  if (v && !(await env.CHAT_KV.get("cm:att:" + v.id))) return { file: null, expired: v.name };   /* uploaded files are kept 180 days */
+  return { file: v };
+}
 /* the designed email: the same content in the FODO design */
 export function emailBlocks(F, w) {
   w = w || {}; const hi = F.first ? "Hi " + F.first : "Hi " + F.name + " team";
@@ -889,6 +924,7 @@ export async function drafts(env, id, b) {
   const L = await lead(env, id), x = L.lead; b = b || {};
   if (x.status === "dnc" || L.opted_out) throw err("This business is marked Do not contact (or opted out). No drafts.", 409);
   let ch = b.channel === "dm" ? "instagram" : b.channel; if (["email", "whatsapp", "instagram", "facebook", "linkedin", "x", "followup", "opener"].indexOf(ch) < 0) ch = "email";
+  if (ch === "email" && b.template === "services") return Object.assign({ channel: "email", template: "services", ai: false, to: (L.channels.find((c) => c.channel === "email") || {}).target || "" }, servicesEmail(x));
   const F = factsOf(L), facts = factText(F);
   if (ch === "email") {
     const ai = await aiRun(env, SYS + " Reply with JSON only: {\"subject\": \"...\", \"intro\": \"...\", \"closing\": \"...\"}.",
@@ -913,8 +949,8 @@ export async function drafts(env, id, b) {
   return { channel: ch, text: fullMessage(F, ch, w), note, gaps: F.gaps, strengths: F.strengths, ai: !!w, model: w ? w.model : null, template: !w };
 }
 /* designed email: preview, test to yourself, send to the lead (needs confirm; unsubscribe link; hourly cap; opt-outs respected) */
-const cleanBlocks = (b) => { b = b || {}; const o = {}; ["eyebrow", "headline", "intro", "items", "stats", "cta_text", "cta_link", "closing"].forEach((k) => { o[k] = clip(String(b[k] == null ? "" : b[k]).replace(/\r/g, ""), k === "intro" || k === "closing" || k === "items" ? 1500 : 300).replace(/ {2,}/g, " "); });
-  ["intro", "closing", "items", "stats"].forEach((k) => { o[k] = String(b[k] == null ? "" : b[k]).replace(/\r/g, "").replace(/<[^>]*>/g, "").slice(0, 1500); }); return o; };
+const cleanBlocks = (b) => { b = b || {}; const o = {}; ["eyebrow", "headline", "intro", "items", "services", "stats", "mid_text", "mid_link", "cta_text", "cta_link", "closing"].forEach((k) => { o[k] = clip(String(b[k] == null ? "" : b[k]).replace(/\r/g, ""), k === "intro" || k === "closing" || k === "items" ? 1500 : 300).replace(/ {2,}/g, " "); });
+  ["intro", "closing", "items", "services", "stats"].forEach((k) => { o[k] = String(b[k] == null ? "" : b[k]).replace(/\r/g, "").replace(/<[^>]*>/g, "").slice(0, 1500); }); return o; };
 export async function emailRender(env, id, b, to) {
   const T = await import("./clientmail.js"), OR = await import("./outreach.js"); b = b || {};
   const subject = clip(b.subject, 150); if (!subject) throw err("Add a subject.");
@@ -1046,6 +1082,7 @@ export async function activity(env) { const d = await ldb(env); return { items: 
    Rows become ordinary leads (source "import"), so everything on a lead works for them: WhatsApp / email drafts, email send,
    Bulk pitch, outreach queue, statuses, research. Duplicates (same website, phone, email or name + city) are filled in, never doubled.
    The browser sends the rows in small chunks (D1 allows ~1,000 queries per request). */
+const FREEMAIL = /^(gmail|googlemail|yahoo|ymail|rocketmail|outlook|hotmail|live|msn|icloud|me|mac|aol|rediffmail|rediff|protonmail|proton|zoho|zohomail|gmx|mail|yandex)\.[a-z.]+$/i;
 const IMP_COLS = [
   ["business", /^(business|company|firm|brand|client|organi[sz]ation|shop|store|clinic|restaurant|hotel|account)( ?name)?$|^(business|company|client) name$/],
   ["person", /^(contact( ?person| ?name)?|person|owner|founder|full ?name|first ?name|decision ?maker|name of (the )?(owner|contact)|client contact)$/],
@@ -1069,7 +1106,10 @@ export function importRow(r, m) {
   const g = (k) => (m[k] == null ? "" : String(r[m[k]] == null ? "" : r[m[k]]).trim());
   const email = cleanEmail(g("email").split(/[\s,;/]+/)[0]), phone = clip(g("phone"), 40), wa = clip(g("whatsapp"), 40);
   let web = clip(g("website"), 300); if (web && !/^https?:\/\//i.test(web) && /^[\w-]+(\.[\w-]+)+/.test(web)) web = "https://" + web; if (!/^https?:\/\/[\w-]+(\.[\w-]+)+/i.test(web)) web = "";
-  const person = clip(g("person"), 120), business = clip(g("business"), 160) || person || (email ? email.split("@")[1].split(".")[0] : "");
+  let person = clip(g("person"), 120), business = clip(g("business"), 160) || person;
+  if (!business && email) { const [lp, dom] = email.split("@"), tc = (t) => t.replace(/\b[a-z]/g, (c) => c.toUpperCase());   /* v55.30 email-only rows */
+    if (FREEMAIL.test(dom)) { const nm = lp.replace(/[._-]+/g, " ").trim(); if (/^[a-z]{2,}( [a-z]{2,}){0,2}$/.test(nm)) { person = tc(nm); business = person; } else business = lp; }
+    else business = tc(dom.split(".")[0].replace(/[-_]+/g, " ")); }
   const o = { name: business, person, role: clip(g("role"), 80), email, phone, whatsapp: wa, website: web, city: clip(g("city"), 80), locality: clip(g("locality"), 80), state: clip(g("state"), 80),
     address: clip(g("address"), 300), industry: clip(g("industry"), 80), notes: clip(g("notes"), 2000) };
   ["instagram", "facebook", "linkedin"].forEach((k) => { const v = clip(g(k), 300); o[k] = /^https?:\/\//i.test(v) ? v : ""; });
@@ -1085,7 +1125,7 @@ export async function importPreview(env, b) {
   if (rows.length < 2) throw err("The sheet needs a header row (Business, Contact person, Email, Phone, City ...) and at least one client.");
   if (rows.length > 50001) throw err("Up to 50,000 clients per import. Split the sheet and import it in parts.");
   const m = importMap(rows[0]);
-  if (m.business == null && m.person == null) throw err("Couldn't find a name column. Use a header such as Business name, Company or Contact person.");
+  if (m.business == null && m.person == null && m.email == null) throw err("Couldn't find a name or email column. Use a header such as Business name, Contact person or Email.");   /* v55.30 an email-only list is fine */
   if (m.email == null && m.phone == null && m.whatsapp == null && m.website == null) throw err("Couldn't find an Email, Phone, WhatsApp or Website column.");
   const out = rows.slice(1).map((r) => importRow(r, m));
   const fields = {}; Object.keys(m).forEach((k) => { fields[k] = String(rows[0][m[k]] || ""); });

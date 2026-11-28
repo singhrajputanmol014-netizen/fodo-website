@@ -945,7 +945,7 @@
     });
   }
   function liSent(id, ch, note) { return api("li/sent/" + encodeURIComponent(id), { channel: ch, note: (note || "") + (LFILES.length ? " (+" + LFILES.map(function (f) { return f.name; }).join(", ") + ")" : "") }); }
-  function liDraft(id, ch) { return api("li/drafts/" + encodeURIComponent(id), { channel: ch }); }
+  function liDraft(id, ch, tpl) { return api("li/drafts/" + encodeURIComponent(id), { channel: ch, template: tpl || "" }); }
   /* v55.15 files for outreach: kept for the whole session (every lead and the queue use them until removed) */
   var LFILES = [];
   var lkb = function (n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; };
@@ -977,16 +977,20 @@
   }
   function liEmailBox(x, d, to) {
     var B = d.blocks || {}, f = function (k, label, rows, hint) { return '<label class="ad-dl2" for="le-' + k + '">' + label + (hint ? ' <span class="muted">' + hint + "</span>" : "") + '</label><textarea id="le-' + k + '" class="ad-in ad-ta" rows="' + rows + '">' + esc(B[k] || "") + "</textarea>"; };
-    return '<p class="muted" id="ll-drm">' + (d.ai ? "Subject, intro and closing written by AI from the research; findings and numbers come straight from the data. Check before sending." : "Template text built from the research. Edit before sending.") + "</p>" +
+    var sv = d.template === "services";
+    return '<div class="ad-li-mode" role="group" aria-label="Email type"><button type="button" class="btn sm' + (sv ? " ghost" : "") + '" data-tpl="research" aria-pressed="' + !sv + '">Personalised from research</button><button type="button" class="btn sm' + (sv ? "" : " ghost") + '" data-tpl="services" aria-pressed="' + sv + '">FODO services template</button></div>' +
+      '<p class="muted" id="ll-drm">' + (sv ? "The FODO services email: same professional text for everyone, only the name and email change for this client. No research needed. Your company profile PDF is attached automatically." : d.ai ? "Subject, intro and closing written by AI from the research; findings and numbers come straight from the data. Check before sending." : "Template text built from the research. Edit before sending.") + "</p>" +
+      (sv ? '<p class="ad-li-prof" id="le-prof"></p>' : "") +
       '<div class="ad-li-eg"><div><label class="ad-dl2" for="le-to">To</label><input id="le-to" class="ad-in" value="' + esc(to || "") + '" placeholder="no public email found: type one you have verified">' +
       '<label class="ad-dl2" for="le-subject">Subject</label><input id="le-subject" class="ad-in" maxlength="150" value="' + esc(d.subject || "") + '">' +
       '<label class="ad-dl2" for="le-headline">Headline <span class="muted">*word* = purple italic</span></label><input id="le-headline" class="ad-in" maxlength="120" value="' + esc(B.headline || "") + '">' +
-      f("intro", "Intro", 5) + f("items", "What is missing", 5, "one per line: what is missing | why it costs them customers") + f("stats", "Numbers", 2, "value | label, from research") + f("closing", "Closing", 3) +
+      f("intro", "Intro", 5) + (sv ? f("services", "Services", 6, "one per line: service | one line") + f("stats", "Highlights", 2, "value | label") : f("items", "What is missing", 5, "one per line: what is missing | why it costs them customers") + f("stats", "Numbers", 2, "value | label, from research")) + f("closing", "Closing", 3) +
+      '<input type="hidden" id="le-mid_text" value="' + esc(B.mid_text || "") + '"><input type="hidden" id="le-mid_link" value="' + esc(B.mid_link || "") + '">' +
       '<input type="hidden" id="le-eyebrow" value="' + esc(B.eyebrow || "") + '"><input type="hidden" id="le-cta_text" value="' + esc(B.cta_text || "") + '"><input type="hidden" id="le-cta_link" value="' + esc(B.cta_link || "") + '"></div>' +
       '<div><p class="ad-dl2">Preview</p><iframe id="le-pv" class="ad-li-pv" title="Email preview" sandbox=""></iframe></div></div>' +
       '<div class="ad-acts"><button type="button" class="btn sm ghost" id="le-prev">Update preview</button><button type="button" class="btn sm ghost" id="le-test">Send test to me</button><button type="button" class="btn sm" id="le-send">Send email</button></div>';
   }
-  var leRead = function (w) { var g = function (k) { var e = $("#le-" + k, w); return e ? e.value : ""; }; return { to: g("to").trim(), subject: g("subject").trim(), attachments: LFILES.map(function (f) { return f.id; }), blocks: { eyebrow: g("eyebrow"), headline: g("headline"), intro: g("intro"), items: g("items"), stats: g("stats"), cta_text: g("cta_text"), cta_link: g("cta_link"), closing: g("closing") } }; };
+  var leRead = function (w) { var g = function (k) { var e = $("#le-" + k, w); return e ? e.value : ""; }; return { to: g("to").trim(), subject: g("subject").trim(), attachments: LFILES.map(function (f) { return f.id; }), blocks: { eyebrow: g("eyebrow"), headline: g("headline"), intro: g("intro"), items: g("items"), services: g("services"), mid_text: g("mid_text"), mid_link: g("mid_link"), stats: g("stats"), cta_text: g("cta_text"), cta_link: g("cta_link"), closing: g("closing") } }; };
   function leWire(w, id, after) {
     var pv = function () { var m = leRead(w); api("li/email-preview/" + encodeURIComponent(id), m).then(function (r) { if (r.ok) $("#le-pv", w).srcdoc = r.html; else toast(r.reason, true); }); };
     pv(); $("#le-prev", w).onclick = pv;
@@ -999,12 +1003,31 @@
   }
   function liMsgWire(j, reload) {
     var x = j.lead, C = liChans(j), w = $("#ll-mw"), cur = null;
-    var fb = $("#ll-files"); if (fb) lfilesWire(fb, function () { var ta = $("#ll-dr"); if (ta) ta.value = lwithFiles(ta.value); if ($("#le-pv")) $("#le-prev").click(); });
-    var show = function (c, kind) {
+    var fcb = function () { var ta = $("#ll-dr"); if (ta) ta.value = lwithFiles(ta.value); if ($("#le-pv")) $("#le-prev").click(); };
+    var fb = $("#ll-files"); if (fb) lfilesWire(fb, fcb);
+    var redrawFiles = function () { var o = $("#ll-files"); if (!o) return; o.outerHTML = lfilesUI("ll-files"); lfilesWire($("#ll-files"), fcb); };
+    /* v55.30 services template: attach the saved company profile, or offer to save an attached PDF as it */
+    var profWire = function () {
+      var el = $("#le-prof"); if (!el) return;
+      api("li/profile-pdf").then(function (r) {
+        var f = r.ok && r.file; if (f && !LFILES.some(function (z) { return z.id === f.id; })) { LFILES.push(f); redrawFiles(); fcb(); }
+        var pdf = LFILES.find(function (z) { return /\.pdf$/i.test(z.name || ""); });
+        el.innerHTML = f ? 'Company profile: <b>' + esc(f.name) + '</b> (attached) <button type="button" class="ad-li-lnk" id="le-pclr">Change</button>' :
+          (pdf ? 'Use <b>' + esc(pdf.name) + '</b> as the FODO company profile for every services email? <button type="button" class="btn sm ghost" id="le-pset">Save as company profile</button>' :
+          (r.expired ? "The saved company profile (" + esc(r.expired) + ") has expired. " : "") + "Attach the FODO company profile PDF with <b>+ Attach file</b> above, then save it here once.");
+        var ps = $("#le-pset"); if (ps) ps.onclick = function () { api("li/profile-pdf", { set: pdf }).then(function (k) { toast(k.ok ? "Saved as company profile" : k.reason, !k.ok); profWire(); }); };
+        var pc = $("#le-pclr"); if (pc) pc.onclick = function () { api("li/profile-pdf", { clear: true }).then(function () { LFILES = LFILES.filter(function (z) { return z.id !== f.id; }); redrawFiles(); fcb(); profWire(); }); };
+      });
+    };
+    var show = function (c, kind, tpl) {
       cur = c; w.hidden = false; w.innerHTML = '<p class="muted">Writing ' + esc(c ? (LPLAT.find(function (p) { return p[0] === c.channel; }) || [0, ""])[1] : "the") + " message from the research…</p>";
-      liDraft(x.id, kind || c.channel).then(function (r) {
+      if (c && c.channel === "email" && !tpl) tpl = !x.website && !x.researched_at ? "services" : "research";   /* email-only clients start on the services template */
+      liDraft(x.id, kind || c.channel, tpl === "services" ? "services" : "").then(function (r) {
         if (!r.ok) { w.innerHTML = '<p class="cf-status warn">' + esc(r.reason) + "</p>"; return; }
-        if (c && c.channel === "email") { w.innerHTML = liEmailBox(x, r, c.target); return leWire(w, x.id, function () { reload(); }); }
+        if (c && c.channel === "email") { w.innerHTML = liEmailBox(x, r, c.target);
+          [].slice.call(w.querySelectorAll("[data-tpl]")).forEach(function (bt) { bt.onclick = function () { if (bt.getAttribute("aria-pressed") === "true") return; show(c, null, bt.dataset.tpl); }; });
+          if (r.template === "services") profWire();
+          return leWire(w, x.id, function () { reload(); }); }
         w.innerHTML = '<p class="muted" id="ll-drm">' + (c ? (c.missing ? "Not found in research. " : "To " + esc(c.target) + (c.note ? " (" + esc(c.note) + ")" : "") + ". ") : "") + (r.ai ? "AI draft from the research, check before sending." : "Template draft, edit before sending.") + "</p>" +
           '<textarea id="ll-dr" class="ad-in ad-ta" rows="14" aria-label="Message">' + esc(lwithFiles(r.text)) + "</textarea>" + (r.note ? '<p class="muted">LinkedIn connection requests allow about 300 characters. Send this short note with the request, and the full message once they accept: <button type="button" class="ad-li-lnk" id="ll-note">Copy connection note</button></p>' : "") +
           '<div class="ad-acts">' + (c && !c.missing ? '<button type="button" class="btn sm" id="ll-open">' + LOPEN[c.channel] + "</button>" : "") + (c && c.missing ? '<a class="btn sm ghost" href="' + esc(lfind(x, c.channel)) + '" target="_blank" rel="noopener">Find on Google</a>' : "") + '<button type="button" class="btn sm ghost" id="ll-cp">Copy</button></div>' +
@@ -1024,6 +1047,7 @@
     ask({ title: "Outreach queue: " + ids.length + " leads", text: "Pick the channel. For each lead the message is written for you; you open it in WhatsApp, Gmail or the profile, press Send, then mark it sent here. Leads without that channel, Do not contact and unsubscribed leads are skipped.\n\nChannel: whatsapp, email, linkedin, instagram, facebook, x, or best (first available)", input: "Channel", ok: "Start" }).then(function (chv) {
       if (chv === null) return; chv = String(chv || "best").toLowerCase().trim(); if (["best"].concat(LBEST).indexOf(chv) < 0) return toast("Unknown channel: " + chv, true);
       var w = document.createElement("div"); w.className = "cfx ad-dlg ad-li-q"; document.body.appendChild(w);
+      api("li/profile-pdf").then(function (r) { var f = r.ok && r.file; if (f && !LFILES.some(function (z) { return z.id === f.id; })) LFILES.push(f); });   /* v55.30 company profile goes with services emails */
       var i = 0, sent = 0, skipped = [], pre = {}, close = function () { w.remove(); toast(sent + " sent, " + skipped.length + " skipped"); route(); };
       var load = function (k) { if (pre[k]) return pre[k]; var id = ids[k];
         return (pre[k] = api("li/lead/" + encodeURIComponent(id)).then(function (j) {
@@ -1031,7 +1055,7 @@
           if (j.lead.status === "dnc" || j.opted_out) return { id: id, name: j.lead.name, skip: "Do not contact" };
           var c = (j.channels || []).filter(function (c) { return chv === "best" ? true : c.channel === chv; }).sort(function (a, b) { return LBEST.indexOf(a.channel) - LBEST.indexOf(b.channel); })[0];
           if (!c) return { id: id, name: j.lead.name, skip: "no " + (chv === "best" ? "public channel" : chv) };
-          return liDraft(id, c.channel).then(function (r) { return { id: id, name: j.lead.name, j: j, c: c, d: r, text: r.ok ? r.text || "" : "", ai: r.ai, err: r.ok ? "" : r.reason }; });
+          return liDraft(id, c.channel, c.channel === "email" && !j.lead.website && !j.lead.researched_at ? "services" : "").then(function (r) { return { id: id, name: j.lead.name, j: j, c: c, d: r, text: r.ok ? r.text || "" : "", ai: r.ai, err: r.ok ? "" : r.reason }; });
         })); };
       var draw = function () {
         if (i >= ids.length) { w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box" role="dialog" aria-modal="true"><h3>Queue finished</h3><p>' + sent + " sent, " + skipped.length + " skipped.</p>" + (skipped.length ? '<ul class="ad-li-ul">' + skipped.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ul>" : "") + '<div class="ad-acts"><button type="button" class="btn" data-qx>Close</button></div></div>'; w.querySelector("[data-qx]").onclick = close; return; }
@@ -1042,6 +1066,8 @@
           if (q.c.channel === "email" && q.d && q.d.ok) {   // designed email: preview + send straight from the queue (your click is the confirmation)
             w.innerHTML = '<div class="cfx-back"></div><div class="cfx-box ad-li-qb ad-li-qe" role="dialog" aria-modal="true" aria-labelledby="lq-t"><p class="muted">Lead ' + (i + 1) + " of " + ids.length + " · " + sent + " sent · " + skipped.length + ' skipped</p><h3 id="lq-t">' + esc(q.name) + "</h3>" + lfilesUI("lq-files") + liEmailBox(q.j.lead, q.d, q.c.target).replace('<button type="button" class="btn sm" id="le-send">Send email</button>', '<button type="button" class="btn sm" id="lq-esend">Send email, next</button><button type="button" class="btn sm ghost" id="lq-skip">Skip</button><button type="button" class="btn sm ghost" id="lq-stop">Stop</button>') + "</div>";
             var qf2 = $("#lq-files", w); if (qf2) lfilesWire(qf2, function () { $("#le-prev", w).click(); });
+            [].slice.call(w.querySelectorAll("[data-tpl]")).forEach(function (bt) { bt.onclick = function () { if (bt.getAttribute("aria-pressed") === "true") return; liDraft(q.id, "email", bt.dataset.tpl === "services" ? "services" : "").then(function (r) { if (r.ok) { q.d = r; draw(); } else toast(r.reason, true); }); }; });
+            var pf = $("#le-prof", w); if (pf) pf.innerHTML = LFILES.length ? "Attached: " + LFILES.map(function (f) { return esc(f.name); }).join(", ") : "No company profile saved yet. Save one from any client's email first.";
             var pv = function () { api("li/email-preview/" + encodeURIComponent(q.id), leRead(w)).then(function (r) { if (r.ok) $("#le-pv", w).srcdoc = r.html; }); }; pv(); $("#le-prev", w).onclick = pv;
             $("#le-test", w).onclick = function () { api("li/email-send/" + encodeURIComponent(q.id), Object.assign(leRead(w), { test: true })).then(function (r) { toast(r.ok ? "Test sent to " + r.sent.to : r.reason, !r.ok); }); };
             $("#lq-esend", w).onclick = function () { var b = this; b.disabled = true; api("li/email-send/" + encodeURIComponent(q.id), Object.assign(leRead(w), { confirm: true })).then(function (r) { if (r.ok) { sent++; i++; draw(); } else { b.disabled = false; toast(r.reason, true); } }); };
